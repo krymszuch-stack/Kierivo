@@ -9,7 +9,15 @@ import {
   ANONYMOUS_PROFILE_ID,
 } from '../localProfile';
 import { createEmptyVault } from '../sampleVault';
-import { StorageKeys, migrateLegacyKeys, resetLastGoodCache, vaultKeyFor } from '../storage';
+import {
+  applicationsKeyFor,
+  readJson,
+  StorageKeys,
+  migrateLegacyKeys,
+  resetLastGoodCache,
+  vaultKeyFor,
+  writeJson,
+} from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 
 beforeEach(() => {
@@ -145,6 +153,19 @@ describe('Praca sprzed założenia profilu', () => {
     expect(vault.personalInfo.email).toBe('sean@example.pl');
     expect(loadProfileVault(profile.id)?.personalInfo.email).toBe('sean@example.pl');
     expect(loadProfileVault(ANONYMOUS_PROFILE_ID)).toBeNull();
+  });
+
+  it('przenosi anonimową historię Pipeline do nowego profilu', () => {
+    writeJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), [
+      { id: 'anon-1', company: 'Firma testowa', position: 'Monter', salary: '', date: '2026-09-10', status: 'Wysłana' },
+    ]);
+
+    const { profile } = createLocalProfile('Jan Kowalski');
+
+    expect(readJson<Array<{ company: string }>>(applicationsKeyFor(profile.id), [])).toEqual([
+      expect.objectContaining({ company: 'Firma testowa' }),
+    ]);
+    expect(readJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), [])).toEqual([]);
   });
 });
 
