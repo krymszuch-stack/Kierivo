@@ -58,8 +58,15 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   showShortcutsHint = false,
   onDismissShortcutsHint,
 }) => {
-  const { applications, saveApplication, removeApplication, patchApplication, setStatus } =
-    useApplications();
+  const {
+    applications,
+    saveApplication,
+    removeApplication,
+    patchApplication,
+    setStatus,
+    hasUnassignedLegacyApplications,
+    claimLegacyApplications,
+  } = useApplications();
   const {
     highlightedApplicationId,
     setHighlightedApplicationId,
@@ -153,6 +160,23 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     showToast('Notatka zapisana', { message: `${notesApp.company} — ${notesApp.position}.` });
   };
 
+  const handleClaimLegacyApplications = () => {
+    if (
+      !window.confirm(
+        'Przypisać starszą historię Pipeline do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dane jako swoje.'
+      )
+    ) {
+      return;
+    }
+
+    const claimed = claimLegacyApplications();
+    if (claimed > 0) {
+      showToast('Historia została przypisana', {
+        message: `Przeniesiono ${claimed} ${claimed === 1 ? 'zgłoszenie' : 'zgłoszeń'} do bieżącego profilu.`,
+      });
+    }
+  };
+
   const filterButtons: Array<{ id: string; label: string; count: number }> = [
     { id: 'ALL', label: 'Wszystkie', count: totalApps },
     { id: 'Do wysłania', label: 'Do wysłania', count: applications.filter((a) => a?.status === 'Do wysłania').length },
@@ -183,6 +207,22 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           </Button>
         }
       />
+
+      {hasUnassignedLegacyApplications && (
+        <Card tone="raised" className="border-l-4 border-l-amber-500">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-ink">Wykryto starszą historię Pipeline</h2>
+              <p className="mt-1 text-sm text-muted">
+                Dane z wcześniejszej wersji nie są automatycznie pokazywane w profilu. Przypisz je tylko, jeśli są Twoje.
+              </p>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={handleClaimLegacyApplications}>
+              Przypisz do bieżącego profilu
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Zasobnik Rozmowy — nad tabelą, bo gdy rozmowa jest umówiona, to ona
           jest najważniejszą rzeczą na tym ekranie. Sam się nie pokaże, dopóki

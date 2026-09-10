@@ -57,6 +57,14 @@ export function vaultKeyFor(profileId: string): string {
 }
 
 /**
+ * Historia Pipeline należy do profilu tak samo jak vault. Adres e-mail nie
+ * może wejść do klucza: bywa zmieniany, a identyfikator profilu jest stały.
+ */
+export function applicationsKeyFor(profileId: string): string {
+  return `${StorageKeys.applications}:${profileId}`;
+}
+
+/**
  * Cache spersonalizowanej części ściągi, kluczowany skrótem (oferta + vault).
  *
  * Wchodzi pod wspólny prefiks świadomie. Wpis zawiera punkty STAR zbudowane
