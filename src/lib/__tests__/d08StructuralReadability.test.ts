@@ -23,7 +23,7 @@ describe('D08 Structural Readability — kontrakt bazowy', () => {
     expect(result.ledger?.finalScore).toBe(result.score);
   });
 
-  it('runtime score i ledger finalScore są identyczne', () => {
+  it('runtime score i canonical D07 ledger finalScore są identyczne', () => {
     const signals = createCleanD08Signals();
     signals.layout.clippingRatio = 0.03;
     signals.adversarial.hiddenTextRatio = 0.02;
@@ -34,8 +34,8 @@ describe('D08 Structural Readability — kontrakt bazowy', () => {
     expect(result.score).not.toBeNull();
     expect(result.ledger).not.toBeNull();
     expect(result.ledger!.finalScore).toBe(result.score);
-    expect(result.ledger!.componentScore - result.ledger!.penaltyTotal)
-      .toBeCloseTo(result.ledger!.afterPenalties, 12);
+    expect(result.ledger!.componentTotal - result.ledger!.penaltyTotal)
+      .toBeCloseTo(result.ledger!.scoreAfterPenalties, 12);
   });
 
   it('każdy aktywny komponent pozostaje w zakresie 0..1 i ma spójny wkład', () => {
@@ -145,7 +145,6 @@ describe('D08 — monotoniczność i izolacja', () => {
     const oneColumn = createCleanD08Signals();
     const twoColumnSafe = cloneD08Signals(oneColumn);
 
-    // Topologia jest identyczna jakościowo; D08 nie posiada pola "columnCount".
     expect(scoreStructuralReadability(twoColumnSafe).score)
       .toBe(scoreStructuralReadability(oneColumn).score);
   });
