@@ -104,4 +104,8 @@ Jeśli ekran pokazuje liczbę, nazwę systemu lub obietnicę, musi ona odpowiada
 
 ## Licencja
 
-Projekt CVelocity. Wszelkie prawa zastrzeżone. Nazwy produktów i usług stron trzecich należą do ich właścicieli; ewentualne wzmianki służą wyłącznie opisowi ograniczeń lub interoperacyjności i nie oznaczają integracji ani partnerstwa.
+Projekt CVelocity — Copyright (c) 2026 Adrian Koziński. Wszelkie prawa zastrzeżone.
+Pełna treść w pliku [LICENSE](./LICENSE): użytek osobisty, niekomercyjny; zakaz
+kopiowania i rozpowszechniania bez pisemnej zgody autora. Nazwy produktów i usług
+stron trzecich należą do ich właścicieli; ewentualne wzmianki służą wyłącznie
+opisowi ograniczeń lub interoperacyjności i nie oznaczają integracji ani partnerstwa.
