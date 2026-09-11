@@ -16,6 +16,12 @@ coverage/
 # Temporary test files
 test_files/
 
+# Prywatne korpusy kalibracyjne Audit Core.
+# Surowe CV/JD mogą zawierać PII i nigdy nie mogą trafić do publicznego repo.
+.private-corpus/
+corpus-private/
+audit-corpus-private/
+
 # OS metadata
 .DS_Store
 Thumbs.db
