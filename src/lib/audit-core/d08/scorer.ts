@@ -1,4 +1,4 @@
-import { computeAuditConfidence } from '../confidence';
+import { computeAuditConfidence, confidenceBand } from '../confidence';
 import type {
   AuditModuleResult,
   HardCap,
@@ -6,8 +6,9 @@ import type {
   Penalty,
   Recommendation,
   ScoreComponent,
-  ScoreLedger,
 } from '../contracts';
+import { buildScoreLedger } from '../ledger';
+import { applyPenaltyBudget } from '../penalties';
 import type { D08ComponentId, D08Signals } from './types';
 
 export const D08_MODULE_ID = 'MOD_STRUCTURAL_READABILITY';
@@ -357,6 +358,7 @@ function buildComponents(
       maxContribution,
       unrealizedPotential: Math.max(0, maxContribution - contribution),
       evidenceIds: component.evidenceIds,
+      signalFamily: 'STRUCTURE',
     };
   });
 
@@ -368,25 +370,24 @@ function continuousPenalty(max: number, ratio: number, scale: number): number {
   return max * (1 - Math.exp(-ratio / scale));
 }
 
-function buildPenalties(signals: D08Signals): Penalty[] {
+function buildRequestedPenalties(signals: D08Signals): Penalty[] {
   const penalties: Penalty[] = [];
 
   if (signals.adversarial.hiddenTextMeasured) {
     const hiddenRatio = clamp01(signals.adversarial.hiddenTextRatio ?? 0);
     if (hiddenRatio > 0) {
-      const deduction = continuousPenalty(
-        D08_CONFIG.hiddenTextPenaltyMax,
-        hiddenRatio,
-        D08_CONFIG.hiddenTextPenaltyScale,
-      );
       penalties.push({
         id: 'PEN_D08_HIDDEN_TEXT',
         ruleCode: 'PEN_D08_HIDDEN_TEXT',
         defectFingerprint: 'D08:HIDDEN_TEXT:VISIBLE_DOCUMENT',
         targetModuleId: D08_MODULE_ID,
         severity: hiddenRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
-        requestedDeduction: deduction,
-        appliedDeduction: deduction,
+        requestedDeduction: continuousPenalty(
+          D08_CONFIG.hiddenTextPenaltyMax,
+          hiddenRatio,
+          D08_CONFIG.hiddenTextPenaltyScale,
+        ),
+        appliedDeduction: 0,
         evidenceIds: signals.adversarial.hiddenTextEvidenceIds,
         explanation: 'Wykryto tekst niewidoczny lub praktycznie niewidoczny dla człowieka.',
       });
@@ -396,19 +397,18 @@ function buildPenalties(signals: D08Signals): Penalty[] {
   if (signals.adversarial.duplicateInvisibleLayerMeasured) {
     const duplicateRatio = clamp01(signals.adversarial.duplicateInvisibleLayerRatio ?? 0);
     if (duplicateRatio > 0) {
-      const deduction = continuousPenalty(
-        D08_CONFIG.duplicateLayerPenaltyMax,
-        duplicateRatio,
-        D08_CONFIG.duplicateLayerPenaltyScale,
-      );
       penalties.push({
         id: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
         ruleCode: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
         defectFingerprint: 'D08:DUPLICATE_INVISIBLE_LAYER:DOCUMENT',
         targetModuleId: D08_MODULE_ID,
         severity: duplicateRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
-        requestedDeduction: deduction,
-        appliedDeduction: deduction,
+        requestedDeduction: continuousPenalty(
+          D08_CONFIG.duplicateLayerPenaltyMax,
+          duplicateRatio,
+          D08_CONFIG.duplicateLayerPenaltyScale,
+        ),
+        appliedDeduction: 0,
         evidenceIds: signals.adversarial.duplicateLayerEvidenceIds,
         explanation: 'Wykryto niewidoczną zduplikowaną warstwę tekstową.',
       });
@@ -500,7 +500,7 @@ function buildRecommendations(hardCaps: HardCap[], penalties: Penalty[]): Recomm
       priority: 'CRITICAL',
       issue: 'Kolejność odczytu bloków jest istotnie zaburzona.',
       suggestedAction: 'Uprość topologię dokumentu lub popraw kolejność bloków tak, aby ekstrakcja zachowywała logiczny tok.',
-      potentialScoreGain: 30,
+      potentialScoreGainRange: { min: 0, max: 30 },
     });
   }
 
@@ -512,7 +512,7 @@ function buildRecommendations(hardCaps: HardCap[], penalties: Penalty[]): Recomm
       priority: 'CRITICAL',
       issue: 'Dokument zawiera znaczną liczbę nierozwiązanych uszkodzeń znaków.',
       suggestedAction: 'Wygeneruj dokument ponownie z poprawną warstwą Unicode i osadzonymi fontami.',
-      potentialScoreGain: 25,
+      potentialScoreGainRange: { min: 0, max: 25 },
     });
   }
 
@@ -524,39 +524,11 @@ function buildRecommendations(hardCaps: HardCap[], penalties: Penalty[]): Recomm
       priority: 'HIGH',
       issue: 'Wykryto niewidoczny tekst obecny w warstwie dokumentu.',
       suggestedAction: 'Usuń niewidoczne lub ukryte bloki tekstowe i pozostaw wyłącznie treść widoczną dla czytelnika.',
-      potentialScoreGain: D08_CONFIG.hiddenTextPenaltyMax,
+      potentialScoreGainRange: { min: 0, max: D08_CONFIG.hiddenTextPenaltyMax },
     });
   }
 
   return recommendations;
-}
-
-function buildLedger(
-  breakdown: ScoreComponent[],
-  penalties: Penalty[],
-  hardCaps: HardCap[],
-): ScoreLedger {
-  const componentScore = breakdown.reduce((sum, component) => sum + component.contribution, 0);
-  const penaltyTotal = penalties.reduce((sum, penalty) => sum + penalty.appliedDeduction, 0);
-  const afterPenalties = Math.max(0, componentScore - penaltyTotal);
-  const triggeredCaps = hardCaps.filter((cap) => cap.triggered);
-  const effectiveCap = triggeredCaps.length > 0
-    ? Math.min(...triggeredCaps.map((cap) => cap.capLimit))
-    : null;
-  const finalScore = effectiveCap === null
-    ? afterPenalties
-    : Math.min(afterPenalties, effectiveCap);
-
-  return {
-    componentScore,
-    penaltyTotal,
-    afterPenalties,
-    effectiveCap,
-    finalScore,
-    equation: effectiveCap === null
-      ? `${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)} = ${finalScore.toFixed(4)}`
-      : `min(${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)}, ${effectiveCap.toFixed(4)}) = ${finalScore.toFixed(4)}`,
-  };
 }
 
 function insufficientResult(
@@ -626,13 +598,28 @@ export function scoreStructuralReadability(signals: D08Signals): AuditModuleResu
     );
   }
 
-  const penalties = buildPenalties(signals);
+  const requestedPenalties = buildRequestedPenalties(signals);
+  const penaltyResult = applyPenaltyBudget(requestedPenalties, {
+    components: breakdown,
+    modulePenaltyBudget: D08_CONFIG.hiddenTextPenaltyMax + D08_CONFIG.duplicateLayerPenaltyMax,
+    maxPerDefectFingerprint: Math.max(
+      D08_CONFIG.hiddenTextPenaltyMax,
+      D08_CONFIG.duplicateLayerPenaltyMax,
+    ),
+  });
+  const penalties = penaltyResult.penalties;
   const hardCaps = buildHardCaps(signals, text, order);
-  const ledger = buildLedger(breakdown, penalties, hardCaps);
   const confidenceBreakdown = computeAuditConfidence(signals.confidenceInput);
-  const hasHardNegativeEvidence = hardCaps.some((cap) => cap.triggered);
+  const ledger = buildScoreLedger({
+    moduleId: D08_MODULE_ID,
+    components: breakdown,
+    penalties,
+    hardCaps,
+    confidenceBreakdown,
+  });
 
-  if (confidenceBreakdown.combined < 0.35 && !hasHardNegativeEvidence) {
+  const hasHardNegativeEvidence = hardCaps.some((cap) => cap.triggered);
+  if (confidenceBand(confidenceBreakdown.combined) === 'INSUFFICIENT' && !hasHardNegativeEvidence) {
     return {
       moduleId: D08_MODULE_ID,
       moduleName: D08_MODULE_NAME,
@@ -653,15 +640,16 @@ export function scoreStructuralReadability(signals: D08Signals): AuditModuleResu
     };
   }
 
-  const applicability = confidenceBreakdown.combined < 0.55
+  const applicability = confidenceBand(confidenceBreakdown.combined) === 'LOW'
     ? 'PARTIALLY_APPLICABLE'
     : 'APPLICABLE';
+  const score = ledger.finalScore;
 
   return {
     moduleId: D08_MODULE_ID,
     moduleName: D08_MODULE_NAME,
     domainId: 'DOCUMENT_QUALITY',
-    score: ledger.finalScore,
+    score,
     confidence: confidenceBreakdown.combined,
     confidenceBreakdown,
     applicability,
@@ -673,9 +661,9 @@ export function scoreStructuralReadability(signals: D08Signals): AuditModuleResu
     ledger,
     verdictCode: hardCaps.some((cap) => cap.triggered)
       ? 'D08_TECHNICAL_HARD_CAP'
-      : ledger.finalScore >= 85
+      : score !== null && score >= 85
         ? 'D08_STRONG_STRUCTURE'
-        : ledger.finalScore >= 65
+        : score !== null && score >= 65
           ? 'D08_USABLE_WITH_ISSUES'
           : 'D08_STRUCTURAL_RISK',
     verdict: hardCaps.some((cap) => cap.triggered)
