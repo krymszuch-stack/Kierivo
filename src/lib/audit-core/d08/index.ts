@@ -22,6 +22,8 @@ export type {
   D08TokenAgreement,
 } from './extractor';
 
+export type { D08PdfExtractionResult } from './pdfAdapter';
+
 export {
   analyzeD08Encoding,
   computeD08TokenAgreement,
@@ -29,6 +31,11 @@ export {
   normalizeD08Text,
   tokenizeD08Text,
 } from './extractor';
+
+export {
+  auditPdfStructuralReadability,
+  extractD08SignalsFromPdf,
+} from './pdfAdapter';
 
 export {
   D08_BASE_WEIGHTS,
