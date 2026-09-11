@@ -61,7 +61,7 @@ function baseExtractionConfidence(line: string, priority: D10RequirementPriority
 function educationFieldConstraint(line: string): string | null {
   const normalized = normalizeFormalTerm(line);
   const patterns = [
-    /(?:kierunek|specjalnosc|field(?: of study)?)\s*[:\-]?\s*([a-z0-9 +.#/-]{3,80})$/,
+    /(?:kierunek|specjalnosc|field(?: of study)?)\s*[:-]?\s*([a-z0-9 +.#/-]{3,80})$/,
     /(?:in|z zakresu|w dziedzinie)\s+([a-z0-9 +.#/-]{3,80})$/,
   ];
   for (const pattern of patterns) {
