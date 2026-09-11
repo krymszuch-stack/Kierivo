@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MasterVault } from '../../types';
+import { DEFAULT_AUDIT_CORE_CONFIG } from '../audit-core/config';
 import { runD11FromVault } from '../audit-core/d11/engine';
 import { halfLifeDecay } from '../audit-core/d11/scorer';
 import { toMonthIndex } from '../audit-core/temporal';
@@ -71,6 +72,12 @@ function experience(input: {
 }
 
 describe('D11 Competency Recency & Half-Life Decay', () => {
+  it('JOB_FIT agreguje kanoniczny identyfikator D09, a nie nazwę legacy', () => {
+    const jobFit = DEFAULT_AUDIT_CORE_CONFIG.domainPolicies.find((policy) => policy.domainId === 'JOB_FIT');
+    expect(jobFit?.moduleWeights.MOD_JOB_ALIGNMENT).toBe(1);
+    expect(jobFit?.moduleWeights.MOD_KEYWORDS_REQUIREMENTS).toBeUndefined();
+  });
+
   it('ma dokładnie 50% wartości po jednym half-life', () => {
     expect(halfLifeDecay(48, 48)).toBeCloseTo(0.5, 10);
     expect(halfLifeDecay(0, 48)).toBe(1);
