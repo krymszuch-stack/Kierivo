@@ -1,21 +1,23 @@
 import type { MasterVault } from '../../../types';
 import type { Evidence } from '../contracts';
 import { buildEvidenceId } from '../hash';
+import { detectD10Entities } from './detectors';
+import { segmentD10FormalLine } from './segmentation';
 import {
   canonicalFormalEntity,
   canonicalLanguage,
   genericCredentialCanonicalId,
   normalizeFormalTerm,
-  parseCefrLevel,
   parseEducationLevel,
 } from './taxonomy';
 import type {
   D10CandidateEvidence,
   D10CandidateSource,
   D10FormalRequirementKind,
+  D10SourceSpan,
 } from './types';
 
-const SCHEMA_VERSION = 'D10.candidate-evidence.v1';
+const SCHEMA_VERSION = 'D10.candidate-evidence.v2';
 
 async function makeEvidence(
   source: 'VAULT' | 'CV',
@@ -25,18 +27,31 @@ async function makeEvidence(
   kind: D10FormalRequirementKind,
   extractionConfidence: number,
   candidateSource: D10CandidateSource,
+  sourceSpan?: D10SourceSpan,
 ): Promise<Evidence> {
   const id = await buildEvidenceId(
     SCHEMA_VERSION,
     source,
     jsonPath,
-    { canonicalId, kind, label, candidateSource },
+    {
+      canonicalId,
+      kind,
+      label,
+      candidateSource,
+      charStart: sourceSpan?.start ?? null,
+      charEnd: sourceSpan?.end ?? null,
+    },
     source === 'VAULT' ? 'USER_ASSERTED_CANONICAL' : 'EXPLICIT_DOCUMENT_FACT',
   );
   return {
     id,
     provenance: source === 'VAULT' ? 'USER_ASSERTED_CANONICAL' : 'EXPLICIT_DOCUMENT_FACT',
-    pointer: { source, jsonPath },
+    pointer: {
+      source,
+      jsonPath,
+      charStart: sourceSpan?.start,
+      charEnd: sourceSpan?.end,
+    },
     description: `Dowód formalny kandydata: ${label}.`,
     redactedSnippet: source === 'CV' ? label.slice(0, 180) : undefined,
     normalizedPayload: { canonicalId, kind, candidateSource },
@@ -165,73 +180,48 @@ export async function buildD10CandidateEvidenceFromText(
 ): Promise<D10CandidateEvidence[]> {
   const out: D10CandidateEvidence[] = [];
   const seen = new Set<string>();
-  const lines = rawText.normalize('NFKC').replace(/\r\n?/g, '\n').split('\n').map((line) => line.trim()).filter(Boolean);
+  const lines = rawText
+    .normalize('NFKC')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const entities: Array<{
-      canonicalId: string;
-      kind: D10FormalRequirementKind;
-      label: string;
-      languageLevel?: D10CandidateEvidence['languageLevel'];
-      educationLevel?: D10CandidateEvidence['educationLevel'];
-      fieldOfStudy?: string | null;
-    }> = [];
+    const segments = segmentD10FormalLine(line);
 
-    const formal = canonicalFormalEntity(line);
-    if (formal) {
-      entities.push({
-        ...formal,
-        languageLevel: formal.kind === 'LANGUAGE' ? (parseCefrLevel(line) ?? undefined) : undefined,
-      });
-    }
-
-    const language = canonicalLanguage(line);
-    if (language && !entities.some((item) => item.canonicalId === `language.${language}`)) {
-      entities.push({
-        canonicalId: `language.${language}`,
-        kind: 'LANGUAGE',
-        label: language,
-        languageLevel: parseCefrLevel(line) ?? undefined,
-      });
-    }
-
-    const education = parseEducationLevel(line);
-    if (education) {
-      entities.push({
-        canonicalId: `education.${education.toLowerCase()}`,
-        kind: 'EDUCATION',
-        label: education,
-        educationLevel: education,
-        fieldOfStudy: line,
-      });
-    }
-
-    for (const entity of entities) {
-      const key = `${entity.kind}:${entity.canonicalId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const evidence = await makeEvidence(
-        'CV',
-        `document.lines[${index}]`,
-        line,
-        entity.canonicalId,
-        entity.kind,
-        extractionConfidence,
-        'DOCUMENT_EXPLICIT',
-      );
-      out.push({
-        id: `D10_CAND_DOC_${index}_${out.length}`,
-        kind: entity.kind,
-        label: entity.label,
-        canonicalId: entity.canonicalId,
-        source: 'DOCUMENT_EXPLICIT',
-        extractionConfidence,
-        languageLevel: entity.languageLevel,
-        educationLevel: entity.educationLevel,
-        fieldOfStudy: entity.fieldOfStudy,
-        evidence,
-      });
+    for (const segment of segments) {
+      const entities = detectD10Entities(segment);
+      for (const entity of entities) {
+        const key = `${entity.kind}:${entity.canonicalId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const snippet = line.slice(entity.sourceSpan.start, entity.sourceSpan.end);
+        const evidence = await makeEvidence(
+          'CV',
+          `document.lines[${index}]`,
+          snippet || entity.label,
+          entity.canonicalId,
+          entity.kind,
+          extractionConfidence,
+          'DOCUMENT_EXPLICIT',
+          entity.sourceSpan,
+        );
+        out.push({
+          id: `D10_CAND_DOC_${index}_${out.length}`,
+          kind: entity.kind,
+          label: entity.label,
+          canonicalId: entity.canonicalId,
+          source: 'DOCUMENT_EXPLICIT',
+          extractionConfidence,
+          sourceSpan: entity.sourceSpan,
+          languageLevel: entity.languageLevel,
+          educationLevel: entity.educationLevel,
+          fieldOfStudy: entity.kind === 'EDUCATION' ? segment.text : undefined,
+          evidence,
+        });
+      }
     }
   }
 
