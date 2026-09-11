@@ -37,6 +37,13 @@ interface PageBounds {
 }
 
 async function loadPdfJs() {
+  if (typeof window === 'undefined') {
+    // Oficjalny legacy build PDF.js obsługuje środowisko Node bez browserowego
+    // worker URL. Dzięki temu real-binary integration test przechodzi tym samym
+    // parserem, zamiast podstawiać atrapę dokumentu.
+    return import('pdfjs-dist/legacy/build/pdf.mjs');
+  }
+
   const pdfjsLib = await import('pdfjs-dist');
   const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
