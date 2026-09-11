@@ -10,6 +10,19 @@ import { scoreStructuralReadability } from '../audit-core/d08/strictScorer';
 
 const vault: MasterVault = {
   version: '2.0',
+  updatedAt: '2026-09-11T00:00:00.000Z',
+  profiler: {
+    flags: ['OFFICE_IT'],
+    experienceLevel: 'MID',
+    location: {
+      city: 'Kraków',
+      radiusKm: 30,
+      willingnessToTravel: true,
+      hybridWork: true,
+      remoteOnly: false,
+    },
+    languages: [],
+  },
   personalInfo: {
     fullName: 'Jan Kowalski',
     title: 'IT Support Specialist',
@@ -23,8 +36,7 @@ const vault: MasterVault = {
   skillsMatrix: {
     hardSkills: ['Microsoft 365', 'Active Directory', 'PowerShell'],
     softSkills: [],
-    tools: [],
-    languages: [],
+    toolsAndTech: [],
     certifications: [],
   },
   history: [
@@ -32,6 +44,7 @@ const vault: MasterVault = {
       id: 'exp-1',
       role: 'IT Support Specialist',
       company: 'Example Sp. z o.o.',
+      location: 'Kraków',
       startDate: '2024-01',
       endDate: '2026-08',
       isCurrent: false,
@@ -40,6 +53,11 @@ const vault: MasterVault = {
         {
           id: 'hl-1',
           text: 'Obsługa zgłoszeń i automatyzacja powtarzalnych zadań PowerShell.',
+          action: 'Automatyzacja',
+          target: 'powtarzalnych zadań wsparcia',
+          tool: 'PowerShell',
+          metric: '',
+          keywords: ['PowerShell', 'IT Support'],
         },
       ],
     },
@@ -55,7 +73,6 @@ const vault: MasterVault = {
     },
   ],
   projects: [],
-  preferences: {},
 };
 
 describe('D08 SOURCE_AWARE — referencja renderera CVelocity', () => {
