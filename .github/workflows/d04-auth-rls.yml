@@ -94,8 +94,6 @@ jobs:
 
           npm run test:rls
           npm run test:auth-lifecycle
+          supabase db lint --level error
 
           kill "$FUNCTIONS_PID" >/dev/null 2>&1 || true
-
-      - name: Database lint
-        run: supabase db lint --level error
