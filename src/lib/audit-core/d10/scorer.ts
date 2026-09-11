@@ -14,7 +14,6 @@ import {
 import { matchD10Requirement } from './matching';
 import type {
   D10AuditResult,
-  D10RequirementMatch,
   D10ScoringInput,
 } from './types';
 
