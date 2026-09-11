@@ -59,8 +59,8 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
         <div>
           <h3 className="text-sm font-bold text-ink">Audyt CVelocity: zgodność z ofertą</h3>
           <p className="text-xs text-muted">
-            Własna ocena regułowa CVelocity na podstawie treści CV i ogłoszenia. To nie jest wynik
-            żadnego zewnętrznego systemu ATS ani gwarancja przejścia rekrutacji.
+            Własna ocena regułowa CVelocity na podstawie treści CV i ogłoszenia. Nie jest wynikiem
+            żadnego zewnętrznego systemu ATS ani gwarancją przejścia rekrutacji.
           </p>
         </div>
       </div>
