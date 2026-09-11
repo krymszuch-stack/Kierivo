@@ -31,7 +31,7 @@ jobs:
         run: npm run lint
 
       - name: D08 Focused Tests
-        run: npx vitest run src/lib/__tests__/d08StructuralReadability.test.ts src/lib/__tests__/d08Extractor.test.ts
+        run: npx vitest run src/lib/__tests__/d08*.test.ts
 
       - name: Full Unit Test Suite
         run: npm test
