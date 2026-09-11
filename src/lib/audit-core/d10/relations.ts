@@ -75,7 +75,7 @@ export function buildD10RequirementGroupsForLine(
       index += 1;
       continue;
     }
-    let start = index - 1;
+    const start = index - 1;
     let end = index;
     while (end + 1 < seeds.length && seeds[end + 1].connectorBefore === 'ANY_OF') end += 1;
     const members = seeds.slice(start, end + 1);
@@ -95,7 +95,7 @@ export function buildD10RequirementGroupsForLine(
       index += 1;
       continue;
     }
-    let start = index - 1;
+    const start = index - 1;
     let end = index;
     while (
       end + 1 < seeds.length &&
