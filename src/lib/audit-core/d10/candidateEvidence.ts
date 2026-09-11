@@ -4,6 +4,7 @@ import { buildEvidenceId } from '../hash';
 import {
   canonicalFormalEntity,
   canonicalLanguage,
+  genericCredentialCanonicalId,
   normalizeFormalTerm,
   parseCefrLevel,
   parseEducationLevel,
@@ -79,7 +80,7 @@ export async function buildD10CandidateEvidenceFromVault(
   for (let index = 0; index < (vault.profiler?.licenses ?? []).length; index += 1) {
     const label = vault.profiler!.licenses![index];
     const entity = canonicalFormalEntity(label);
-    const canonicalId = entity?.canonicalId ?? `license.generic.${normalizeFormalTerm(label).replace(/[^a-z0-9]+/g, '-').slice(0, 72)}`;
+    const canonicalId = entity?.canonicalId ?? genericCredentialCanonicalId(label, 'LICENSE');
     const kind = entity?.kind ?? 'LICENSE';
     const evidence = await makeEvidence(
       'VAULT',
@@ -104,7 +105,7 @@ export async function buildD10CandidateEvidenceFromVault(
   for (let index = 0; index < (vault.skillsMatrix?.certifications ?? []).length; index += 1) {
     const certification = vault.skillsMatrix!.certifications[index];
     const entity = canonicalFormalEntity(certification.name);
-    const canonicalId = entity?.canonicalId ?? `cert.generic.${normalizeFormalTerm(certification.name).replace(/[^a-z0-9]+/g, '-').slice(0, 72)}`;
+    const canonicalId = entity?.canonicalId ?? genericCredentialCanonicalId(certification.name, 'CERTIFICATION');
     const kind = entity?.kind === 'LICENSE' ? 'LICENSE' : 'CERTIFICATION';
     const evidence = await makeEvidence(
       'VAULT',
