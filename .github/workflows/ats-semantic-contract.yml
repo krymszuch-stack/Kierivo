@@ -36,10 +36,22 @@ jobs:
         run: npm run lint
 
       - name: ATS Semantic Contract
+        id: semantic_contract
+        continue-on-error: true
         run: npx vitest run src/lib/__tests__/atsSemanticContract.test.ts
 
       - name: Full Unit Test Suite
+        id: full_suite
+        continue-on-error: true
         run: npm test
 
       - name: Build Client and Server
         run: npm run build
+
+      - name: Fail if semantic contract or full suite failed
+        if: always()
+        run: |
+          if [ "${{ steps.semantic_contract.outcome }}" != "success" ] || [ "${{ steps.full_suite.outcome }}" != "success" ]; then
+            echo "ATS semantic contract lub pełny test suite wykrył regresję/rozjazd."
+            exit 1
+          fi
