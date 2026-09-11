@@ -19,6 +19,7 @@ interface CandidateEvidenceSeed {
   sourcePath: string;
   evidenceDepth: number;
   extractionConfidence: number;
+  claimStrength: number;
   provenance: EvidenceProvenance;
   snippet?: string;
 }
@@ -32,6 +33,7 @@ async function buildCandidateEvidence(seed: CandidateEvidenceSeed): Promise<D09C
       canonicalId: seed.canonicalId,
       source: seed.source,
       evidenceDepth: seed.evidenceDepth,
+      claimStrength: seed.claimStrength,
       sourceLabel: seed.sourceLabel,
     },
     seed.provenance,
@@ -49,6 +51,7 @@ async function buildCandidateEvidence(seed: CandidateEvidenceSeed): Promise<D09C
     normalizedPayload: {
       canonicalId: seed.canonicalId,
       evidenceDepth: seed.evidenceDepth,
+      claimStrength: seed.claimStrength,
       candidateSource: seed.source,
     },
     extractionConfidence: seed.extractionConfidence,
@@ -65,6 +68,7 @@ async function buildCandidateEvidence(seed: CandidateEvidenceSeed): Promise<D09C
     sourceLabel: seed.sourceLabel,
     evidenceDepth: seed.evidenceDepth,
     extractionConfidence: seed.extractionConfidence,
+    claimStrength: seed.claimStrength,
     evidence,
   };
 }
@@ -115,6 +119,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
       sourcePath: `skillsMatrix.hardSkills[${index}]`,
       evidenceDepth: 0.35,
       extractionConfidence: 1,
+      claimStrength: 1,
       provenance: 'USER_ASSERTED_CANONICAL',
       snippet: term,
     });
@@ -126,6 +131,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
       sourcePath: `skillsMatrix.toolsAndTech[${index}]`,
       evidenceDepth: 0.35,
       extractionConfidence: 1,
+      claimStrength: 1,
       provenance: 'USER_ASSERTED_CANONICAL',
       snippet: term,
     });
@@ -137,6 +143,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
       sourcePath: `skillsMatrix.softSkills[${index}]`,
       evidenceDepth: 0.30,
       extractionConfidence: 1,
+      claimStrength: 1,
       provenance: 'USER_ASSERTED_CANONICAL',
       snippet: term,
     });
@@ -148,6 +155,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
     sourcePath: 'personalInfo.summary',
     evidenceDepth: 0.45,
     extractionConfidence: 1,
+    claimStrength: 1,
     provenance: 'USER_ASSERTED_CANONICAL',
   });
 
@@ -159,6 +167,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
         sourcePath: `projects[${projectIndex}].techStack[${techIndex}]`,
         evidenceDepth: 0.78,
         extractionConfidence: 1,
+        claimStrength: 1,
         provenance: 'USER_ASSERTED_CANONICAL',
         snippet: term,
       });
@@ -169,6 +178,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
       sourcePath: `projects[${projectIndex}].description`,
       evidenceDepth: 0.75,
       extractionConfidence: 1,
+      claimStrength: 1,
       provenance: 'USER_ASSERTED_CANONICAL',
     });
   });
@@ -180,6 +190,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
       sourcePath: `history[${experienceIndex}].description`,
       evidenceDepth: 0.90,
       extractionConfidence: 1,
+      claimStrength: 1,
       provenance: 'USER_ASSERTED_CANONICAL',
     });
 
@@ -191,6 +202,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
           sourcePath: `history[${experienceIndex}].highlights[${highlightIndex}].keywords[${keywordIndex}]`,
           evidenceDepth: 0.98,
           extractionConfidence: 1,
+          claimStrength: 1,
           provenance: 'USER_ASSERTED_CANONICAL',
           snippet: highlight.text,
         });
@@ -201,6 +213,7 @@ export async function buildD09CandidateEvidenceFromVault(vault: MasterVault): Pr
         sourcePath: `history[${experienceIndex}].highlights[${highlightIndex}].text`,
         evidenceDepth: 0.98,
         extractionConfidence: 1,
+        claimStrength: 1,
         provenance: 'USER_ASSERTED_CANONICAL',
       });
     });
@@ -234,6 +247,7 @@ export async function buildD09CandidateEvidenceFromDocument(
         sourcePath: block.sourcePath,
         evidenceDepth: mappedSource.depth,
         extractionConfidence: block.extractionConfidence,
+        claimStrength: 1,
         provenance: 'EXPLICIT_DOCUMENT_FACT',
         snippet: block.text,
       });
@@ -245,8 +259,8 @@ export async function buildD09CandidateEvidenceFromDocument(
 /**
  * Adapter dla przyszłego semantic/NLI layer. Model może zaproponować np.
  * "obsługa sieci 16 000 detalistów" -> Key Account Management, ale nie może
- * udawać faktu kanonicznego: provenance pozostaje INFERRED_HEURISTIC i
- * confidence jest jawne.
+ * udawać faktu kanonicznego: provenance pozostaje INFERRED_HEURISTIC.
+ * `inferenceConfidence` staje się claimStrength, a nie extraction confidence.
  */
 export async function createD09SemanticInferenceEvidence(input: {
   canonicalId: string;
@@ -255,6 +269,7 @@ export async function createD09SemanticInferenceEvidence(input: {
   rationale: string;
   inferenceConfidence: number;
   evidenceDepth?: number;
+  extractionConfidence?: number;
 }): Promise<D09CandidateEvidence> {
   const entity = getD09OntologyEntity(input.canonicalId);
   if (!entity) throw new Error(`Nieznana encja D09: ${input.canonicalId}`);
@@ -265,7 +280,8 @@ export async function createD09SemanticInferenceEvidence(input: {
     sourceLabel: input.sourceLabel,
     sourcePath: input.sourcePath,
     evidenceDepth: Math.min(0.90, Math.max(0.20, input.evidenceDepth ?? 0.75)),
-    extractionConfidence: Math.min(1, Math.max(0, input.inferenceConfidence)),
+    extractionConfidence: Math.min(1, Math.max(0, input.extractionConfidence ?? 1)),
+    claimStrength: Math.min(1, Math.max(0, input.inferenceConfidence)),
     provenance: 'INFERRED_HEURISTIC',
     snippet: input.rationale,
   });
