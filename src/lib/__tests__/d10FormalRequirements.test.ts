@@ -275,4 +275,31 @@ describe('D10 Formal Requirements', () => {
     expect(result.formal.missingCoreMustIds.length).toBe(1);
     expect(result.score).toBeLessThanOrEqual(35);
   });
+
+  it('matches a previously unseen certification without a hand-written dictionary entry', async () => {
+    const result = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nWymagany certyfikat Foo Bar Professional',
+      vault: vault({
+        skillsMatrix: {
+          hardSkills: [], softSkills: [], toolsAndTech: [],
+          certifications: [{ id: 'foo', name: 'Foo Bar Professional', issuer: 'Example Institute' }],
+        },
+      }),
+      referenceDateIso,
+    });
+    expect(result.score).toBe(100);
+    expect(result.formal.matches[0].requirement.canonicalId).toBe('cert.generic.foo-bar-professional');
+    expect(result.formal.matches[0].status).toBe('CONFIRMED');
+  });
+
+  it('normalizes Polish fluent-language wording before CEFR inference', async () => {
+    const result = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nWymagany język angielski B2',
+      candidateText: 'Język angielski: biegły',
+      sourceCompletenessConfidence: 0.98,
+      referenceDateIso,
+    });
+    expect(result.score).toBe(100);
+    expect(result.formal.matches[0].status).toBe('CONFIRMED');
+  });
 });
