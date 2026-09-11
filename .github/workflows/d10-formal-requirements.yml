@@ -5,13 +5,13 @@ on:
     branches: [d20-adaptive-audit-learning, main]
     paths:
       - 'src/lib/audit-core/d10/**'
-      - 'src/lib/__tests__/d10FormalRequirements.test.ts'
+      - 'src/lib/__tests__/d10*.test.ts'
       - '.github/workflows/d10-formal-requirements.yml'
   push:
     branches: [d10-formal-requirements]
     paths:
       - 'src/lib/audit-core/d10/**'
-      - 'src/lib/__tests__/d10FormalRequirements.test.ts'
+      - 'src/lib/__tests__/d10*.test.ts'
       - '.github/workflows/d10-formal-requirements.yml'
 
 jobs:
@@ -34,7 +34,7 @@ jobs:
         run: npm run lint
 
       - name: D10 Focused Tests
-        run: npx vitest run src/lib/__tests__/d10FormalRequirements.test.ts
+        run: npx vitest run src/lib/__tests__/d10*.test.ts
 
       - name: D08-D09-D20 Regression Tests
         run: npx vitest run src/lib/__tests__/d08*.test.ts src/lib/__tests__/d09*.test.ts src/lib/__tests__/d20AdaptiveLearning.test.ts
