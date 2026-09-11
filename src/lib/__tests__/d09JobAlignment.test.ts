@@ -40,6 +40,7 @@ const cand = (
   canonicalId: string,
   depth = 1,
   extractionConfidence = 1,
+  claimStrength = 1,
 ): D09CandidateEvidence => ({
   id: `CAND_${canonicalId}_${depth}`,
   canonicalId,
@@ -48,6 +49,7 @@ const cand = (
   sourceLabel: 'Experience fixture',
   evidenceDepth: depth,
   extractionConfidence,
+  claimStrength,
   evidence: {
     id: `EV_CAND_${canonicalId}_${depth}`,
     provenance: 'USER_ASSERTED_CANONICAL',
