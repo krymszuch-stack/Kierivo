@@ -4,6 +4,9 @@ import { aiEndpointsLimiter } from '../middleware/rateLimiter';
 import { requireAuth } from '../middleware/requireAuth';
 import { executeAiOperation } from '../quota';
 import { MasterVault } from '../../types';
+import { checkOllamaHealth, callOllamaChat } from '../ollamaClient';
+import { generateWithUsage } from '../geminiClient';
+import { loadConfig } from '../config';
 
 export const aiRouter = Router();
 
@@ -102,3 +105,77 @@ aiRouter.post(
     }
   }
 );
+
+/**
+ * GET /api/ai/ollama/health
+ *
+ * Endpoint diagnostyczny sprawdzający łączność z instancją Ollama (/api/tags).
+ * Zwraca status połączenia oraz listę modeli bez ujawniania konfiguracji env/adresów wewnętrznych.
+ */
+aiRouter.get('/ai/ollama/health', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const health = await checkOllamaHealth();
+    res.json({
+      success: true,
+      provider: 'ollama',
+      connected: health.connected,
+      models: health.models,
+      checkedAt: health.checkedAt,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/ai/test-prompt
+ *
+ * Wykonuje testowy prompt za pośrednictwem aktywnego providera AI (Ollama lub Gemini).
+ */
+aiRouter.post(
+  '/ai/test-prompt',
+  async (req: Request<unknown, unknown, { prompt?: string; system?: string }>, res: Response, next: NextFunction) => {
+    try {
+      const { prompt, system } = req.body;
+      if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Brak treści promptu testowego.',
+        });
+      }
+
+      const config = loadConfig();
+      if (config.AI_PROVIDER === 'ollama') {
+        const result = await callOllamaChat({
+          messages: [
+            ...(system ? [{ role: 'system' as const, content: system }] : []),
+            { role: 'user' as const, content: prompt.trim() },
+          ],
+          context: 'test-prompt',
+        });
+        return res.json({
+          success: true,
+          provider: 'ollama',
+          model: result.model,
+          reply: result.content,
+        });
+      }
+
+      // Fallback/domyślny provider Gemini
+      const response = await generateWithUsage(
+        { contents: prompt.trim(), model: config.GEMINI_MODEL },
+        'test-prompt'
+      );
+
+      res.json({
+        success: true,
+        provider: 'gemini',
+        model: config.GEMINI_MODEL,
+        reply: response.text ?? '',
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
