@@ -23,15 +23,19 @@ try {
   await page.getByTestId('beta-landing').waitFor();
 
   const landingText = await page.locator('body').innerText();
-  if (!landingText.includes('Bezpłatna beta') || !landingText.includes('0 zł')) {
-    throw new Error('Ekran startowy nie komunikuje bezpłatnej bety i ceny 0 zł.');
+  const hasHonestBetaLabel =
+    landingText.includes('Public Pre-Beta') || landingText.includes('Bezpłatna beta');
+  if (!hasHonestBetaLabel || !landingText.includes('0 zł')) {
+    throw new Error('Ekran startowy nie komunikuje publicznego etapu beta/pre-beta i ceny 0 zł.');
   }
   for (const forbidden of forbiddenPurchaseCtas) {
     if (landingText.includes(forbidden)) throw new Error(`Ekran startowy nadal zawiera CTA zakupowe: ${forbidden}`);
   }
   await page.screenshot({ path: `${outputDir}/01-start-bezplatna-beta.png`, fullPage: true });
 
-  await page.getByRole('button', { name: 'Sprawdź CV za darmo' }).click();
+  // Nazwa CTA jest copy produktowym i może się zmieniać. Odbiór sprawdza cel:
+  // użytkownik ma mieć widoczne wejście do bezpłatnego testu CVelocity.
+  await page.getByRole('button', { name: /Testuj CVelocity|Sprawdź CV za darmo/i }).click();
   await page.locator('#quick-cv').fill(
     'Jan Kowalski. Specjalista wsparcia IT. Obsługa Microsoft 365, Active Directory, Windows 11, PowerShell i zgłoszeń użytkowników. Diagnozowałem problemy, konfigurowałem konta i dokumentowałem rozwiązania. Język angielski B2.'
   );
@@ -48,7 +52,7 @@ try {
   }
   await page.screenshot({ path: `${outputDir}/02-wynik-cvelocity-bez-platnosci.png`, fullPage: true });
 
-  await page.getByRole('button', { name: 'Zobacz zakres bety' }).click();
+  await page.getByRole('button', { name: /Zobacz zakres/i }).click();
   await page.getByTestId('beta-scope-view').waitFor();
   const scopeText = await page.getByTestId('beta-scope-view').innerText();
   if (!scopeText.includes('0 zł') || !scopeText.includes('Podstawowy przepływ nie wymaga płatności')) {

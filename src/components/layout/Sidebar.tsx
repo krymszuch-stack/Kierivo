@@ -20,6 +20,7 @@ import { SidebarShortcutsWidget } from './SidebarShortcutsWidget';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
+import { PUBLIC_PREBETA_CODE } from '../../lib/beta';
 
 /**
  * Czytelne, jednoznaczne ikony sekcji z pakietu lucide-react.
@@ -129,7 +130,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Narzędzia dodatkowe: Podgląd CV oraz Porady (Blog/SEO) */}
+        {/* Narzędzia dodatkowe */}
         <div className="pt-2 border-t border-line/60 space-y-1">
           <NavItem
             icon={Eye}
@@ -160,6 +161,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
 
           <NavItem
+            icon={Sparkles}
+            label="Doradca regułowy"
+            badge="LOCAL"
+            badgeVariant="success"
+            hint="Lokalny moduł porad oparty na regułach. Nie czyta automatycznie Vaultu i nie wysyła rozmowy do modelu AI."
+            isCollapsed={isCollapsed}
+            onClick={onOpenAdvisor}
+            className="text-brand-fg hover:bg-brand-500/10"
+          />
+
+          <NavItem
             icon={ShieldCheck}
             label="Audyt ATS"
             badge="360°"
@@ -181,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Bottom Footer Section: Doradca, Polityka & Konto */}
+      {/* Bottom Footer Section: Polityka & Konto */}
       <div className="space-y-2.5 border-t border-line pt-3">
         {/* Linki prawne i wsparcie na dole paska */}
         {!isCollapsed && (
@@ -203,15 +215,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         )}
-
-        {/* Lokalny Doradca regułowy, bez zewnętrznego modelu językowego. */}
-        <NavItem
-          icon={Sparkles}
-          label="Zapytaj Doradcę regułowego"
-          isCollapsed={isCollapsed}
-          onClick={onOpenAdvisor}
-          className="text-brand-fg hover:bg-brand-500/10"
-        />
 
         {/* Pigułka Konta Użytkownika */}
         <Tooltip
@@ -240,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isAuthenticated ? userEmail : 'Logowanie / Konto'}
                 </p>
                 <p className="truncate font-mono text-[10px] text-muted">
-                  Bezpłatna beta · 0 zł
+                  Public Pre-Beta · {PUBLIC_PREBETA_CODE} · 0 zł
                 </p>
               </div>
             )}

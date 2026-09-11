@@ -1,17 +1,17 @@
-# CVelocity — bezpłatna beta ⚡
+# CVelocity — Public Pre-Beta `PB-2026.09` ⚡
 
 > Narzędzie do porządkowania profilu zawodowego, dopasowania CV do konkretnego ogłoszenia i prowadzenia własnego procesu aplikacyjnego.
 
 [![CI](https://github.com/krymszuch-stack/cvelocity/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](tsconfig.json)
 
-[**🌐 Otwórz bezpłatną betę**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
+[**🌐 Otwórz Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
 
 ## Status produktu
 
-CVelocity jest obecnie **bezpłatną betą, cena: 0 zł**.
+CVelocity Public Pre-Beta `PB-2026.09` jest **bezpłatna, cena: 0 zł**. To publiczna wersja testowa przed właściwą premierą: można już korzystać z podstawowego przepływu, sprawdzać zachowanie produktu i zgłaszać uwagi, ale nie opisujemy jej jako wydania finalnego.
 
-W becie:
+W Public Pre-Beta:
 
 - nie ma aktywnego checkoutu, subskrypcji Pro ani płatnego okresu próbnego;
 - nie można kupić pojedynczych szablonów ani Karnetu Aplikacyjnego;
@@ -19,9 +19,9 @@ W becie:
 - operacje wykorzystujące modele po stronie serwera nadal podlegają limitom technicznym egzekwowanym przez backend;
 - funkcje poza zakresem są oznaczane jako niedostępne zamiast prowadzić do martwej kasy.
 
-Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas tej bety**.
+Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas tej Public Pre-Beta**.
 
-## Co beta rzeczywiście robi
+## Co Public Pre-Beta rzeczywiście robi
 
 ### Profil i CV
 
@@ -54,9 +54,9 @@ CVelocity ma dwa istotne tryby:
 
 Dlatego nie opisujemy całego produktu jako „100% client-side”. To prawda dla lokalnego przepływu danych, ale nie dla świadomie włączonej synchronizacji konta.
 
-## Ograniczenia bety
+## Ograniczenia Public Pre-Beta
 
-Obecna beta nie obiecuje:
+Obecna wersja nie obiecuje:
 
 - zgodności z prywatną konfiguracją konkretnego systemu ATS pracodawcy;
 - przewidywania decyzji rekrutera;
