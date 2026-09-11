@@ -17,6 +17,7 @@ export type D10FormalRequirementKind =
   | 'OTHER_FORMAL';
 
 export type D10RequirementPriority = 'CORE_MUST' | 'MUST' | 'PREFERRED';
+export type D10RequirementGroupOperator = 'ANY_OF' | 'ALL_OF';
 
 export type D10RequirementStatus =
   | 'CONFIRMED'
@@ -42,6 +43,13 @@ export type EducationLevel =
   | 'MASTER'
   | 'DOCTORATE';
 
+export interface D10SourceSpan {
+  /** Offset within the line identified by the Evidence jsonPath. */
+  start: number;
+  /** Exclusive end offset within the same line. */
+  end: number;
+}
+
 export interface D10FormalRequirement {
   id: string;
   kind: D10FormalRequirementKind;
@@ -49,9 +57,12 @@ export interface D10FormalRequirement {
   label: string;
   canonicalId: string;
   sourceText: string;
+  sourceSpan?: D10SourceSpan;
   extractionConfidence: number;
   weight: number;
   evidenceIds: string[];
+  groupId?: string;
+  groupOperator?: D10RequirementGroupOperator;
   languageLevel?: CefrLevel;
   educationLevel?: EducationLevel;
   fieldConstraint?: string | null;
@@ -59,8 +70,20 @@ export interface D10FormalRequirement {
   validityRequired?: boolean;
 }
 
+export interface D10RequirementGroup {
+  id: string;
+  operator: D10RequirementGroupOperator;
+  priority: D10RequirementPriority;
+  memberRequirementIds: string[];
+  memberCanonicalIds: string[];
+  sourceText: string;
+  extractionConfidence: number;
+  evidenceIds: string[];
+}
+
 export interface D10RequirementExtractionResult {
   requirements: D10FormalRequirement[];
+  groups: D10RequirementGroup[];
   parserConfidence: number;
   evidence: Evidence[];
   requirementLikeLines: number;
@@ -76,6 +99,7 @@ export interface D10CandidateEvidence {
   source: D10CandidateSource;
   extractionConfidence: number;
   evidence: Evidence;
+  sourceSpan?: D10SourceSpan;
   languageLevel?: CefrLevel;
   educationLevel?: EducationLevel;
   fieldOfStudy?: string | null;
@@ -101,6 +125,7 @@ export interface D10FormalDiagnostics {
   preferredCoverage: number | null;
   unknownMandatoryWeightShare: number;
   matches: D10RequirementMatch[];
+  groups: D10RequirementGroup[];
   missingCoreMustIds: string[];
   adaptiveSignal?: AdaptiveRuntimeSignal;
 }
