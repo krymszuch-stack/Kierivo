@@ -42,7 +42,7 @@ function vault() {
 }
 
 describe('D10 presentation ledger', () => {
-  it('makes requirement earned points sum to the mathematical pre-cap score', async () => {
+  it('makes visible direct requirement points sum to the mathematical pre-cap score when there are no groups', async () => {
     const result = await runD10FormalAudit({
       jobDescription: [
         'Wymagania:',
@@ -58,6 +58,7 @@ describe('D10 presentation ledger', () => {
     const visibleEarned = view.rows.reduce((sum, row) => sum + (row.earnedPoints ?? 0), 0);
 
     expect(view.preCapScore).not.toBeNull();
+    expect(view.groups).toHaveLength(0);
     expect(visibleEarned).toBeCloseTo(view.preCapScore!, 2);
     expect(view.rows.find((row) => row.canonicalId === 'language.english')?.tone).toBe('POSITIVE');
     expect(view.rows.find((row) => row.canonicalId === 'cert.pmp')?.tone).toBe('NEGATIVE');
@@ -103,5 +104,28 @@ describe('D10 presentation ledger', () => {
     expect(view.rows[0].tone).toBe('UNKNOWN');
     expect(view.rows[0].earnedPoints).toBeNull();
     expect(view.rows[0].maxPoints).toBeNull();
+  });
+
+  it('renders ANY_OF as one scoring row and keeps alternatives as evidence-only rows', async () => {
+    const base = vault();
+    base.skillsMatrix.certifications = [{ id: 'pmp', name: 'PMP', issuer: 'PMI' }];
+    const result = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nPMP lub PRINCE2',
+      vault: base,
+      referenceDateIso,
+    });
+    const view = buildD10PresentationModel(result);
+    const visibleEarned = [
+      ...view.rows.filter((row) => row.contributesDirectly),
+      ...view.groups,
+    ].reduce((sum, row) => sum + (row.earnedPoints ?? 0), 0);
+
+    expect(view.groups).toHaveLength(1);
+    expect(view.groups[0].operator).toBe('ANY_OF');
+    expect(view.groups[0].tone).toBe('POSITIVE');
+    expect(view.groups[0].earnedPoints).toBeCloseTo(100, 2);
+    expect(view.rows.every((row) => row.contributesDirectly === false)).toBe(true);
+    expect(view.rows.every((row) => row.earnedPoints === null && row.maxPoints === null)).toBe(true);
+    expect(visibleEarned).toBeCloseTo(view.preCapScore!, 2);
   });
 });
