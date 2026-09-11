@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { MobileSidebar } from '../MobileSidebar';
+import { VaultSyncIndicator } from '../ui/VaultSyncIndicator';
 import { NavSectionId, NavTabId } from '../../lib/navigation';
 import { useAppStore } from '../../store/useAppStore';
 
@@ -133,6 +134,7 @@ export const Shell: React.FC<ShellProps> = ({
           isAuthenticated={isAuthenticated}
           userEmail={userEmail}
         />
+        <VaultSyncIndicator />
 
         {/* Content Area (p-6 lg:p-8, max-width 1440px / 1680px on 2K) */}
         <main className="flex-1 px-4 py-6 sm:px-6 lg:p-8">
