@@ -43,6 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p artifacts/d05-beta
           npx vite preview --host 127.0.0.1 --port 4173 > /tmp/d05-vite.log 2>&1 &
           PREVIEW_PID=$!
           trap 'kill "$PREVIEW_PID" >/dev/null 2>&1 || true' EXIT
