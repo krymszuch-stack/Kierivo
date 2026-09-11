@@ -1,0 +1,46 @@
+name: D10 FORMAL REQUIREMENTS
+
+on:
+  pull_request:
+    branches: [d20-adaptive-audit-learning, main]
+    paths:
+      - 'src/lib/audit-core/d10/**'
+      - 'src/lib/__tests__/d10FormalRequirements.test.ts'
+      - '.github/workflows/d10-formal-requirements.yml'
+  push:
+    branches: [d10-formal-requirements]
+    paths:
+      - 'src/lib/audit-core/d10/**'
+      - 'src/lib/__tests__/d10FormalRequirements.test.ts'
+      - '.github/workflows/d10-formal-requirements.yml'
+
+jobs:
+  formal-requirements:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check and Lint
+        run: npm run lint
+
+      - name: D10 Focused Tests
+        run: npx vitest run src/lib/__tests__/d10FormalRequirements.test.ts
+
+      - name: D08-D09-D20 Regression Tests
+        run: npx vitest run src/lib/__tests__/d08*.test.ts src/lib/__tests__/d09*.test.ts src/lib/__tests__/d20AdaptiveLearning.test.ts
+
+      - name: Full Unit Test Suite
+        run: npm test
+
+      - name: Build Client and Server
+        run: npm run build
