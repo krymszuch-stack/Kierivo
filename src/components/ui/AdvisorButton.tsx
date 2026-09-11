@@ -12,11 +12,11 @@ interface AdvisorButtonProps {
   variant?: 'brand' | 'warning';
 }
 
-/** Współdzielony przycisk Doradcy AI — dostępny w Topbar i widokach */
+/** Współdzielony przycisk lokalnego, regułowego Doradcy. */
 export const AdvisorButton: React.FC<AdvisorButtonProps> = ({
   onClick,
-  label = 'Doradca Kariery',
-  title = 'Zapytaj Doradcę Kariery',
+  label = 'Doradca regułowy',
+  title = 'Zapytaj lokalnego Doradcę regułowego',
   className = '',
   variant = 'brand',
 }) => {
@@ -26,7 +26,6 @@ export const AdvisorButton: React.FC<AdvisorButtonProps> = ({
     <motion.button
       type="button"
       onClick={onClick}
-      // Chunk Doradcy pobieramy już przy najechaniu/fokusie — otwarcie jest wtedy natychmiastowe.
       onMouseEnter={() => void preloadAdvisorModal()}
       onFocus={() => void preloadAdvisorModal()}
       title={title}
