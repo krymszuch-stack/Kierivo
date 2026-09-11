@@ -199,7 +199,7 @@ export async function callOllamaChat(
     eval_count?: number;
   }
 
-  let data: OllamaChatResponsePayload | null = null;
+  let data: OllamaChatResponsePayload;
   try {
     data = (await response.json()) as OllamaChatResponsePayload;
   } catch {
@@ -210,7 +210,7 @@ export async function callOllamaChat(
     );
   }
 
-  const content = data?.message?.content;
+  const content = data.message?.content;
   if (typeof content !== 'string') {
     throw new OllamaError(
       'Serwer Ollama zwrócił odpowiedź bez wymaganego pola message.content.',

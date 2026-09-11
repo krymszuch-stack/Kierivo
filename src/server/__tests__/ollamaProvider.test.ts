@@ -7,6 +7,10 @@ import { resetConfigCacheForTesting } from '../config';
 import { aiRouter } from '../routes/ai.routes';
 import { errorHandler } from '../middleware/errorHandler';
 
+vi.mock('../usageLedger', () => ({
+  recordUsage: vi.fn(),
+}));
+
 describe('Provider Ollama (src/server/ollamaClient.ts)', () => {
   const originalEnv = { ...process.env };
   const originalFetch = globalThis.fetch;

@@ -87,9 +87,13 @@ export function loadConfig(): ServerConfig {
   const data = parsed.data;
 
   // Walidacja warunkowa providera AI: przy domyślnym providerze `gemini`
-  // GEMINI_API_KEY jest wymagany. Przy `ollama` autoryzacja kluczem nie jest
-  // potrzebna (lokalna instancja Ollamy).
-  if (data.AI_PROVIDER === 'gemini' && (!data.GEMINI_API_KEY || data.GEMINI_API_KEY.trim().length === 0)) {
+  // GEMINI_API_KEY jest wymagany (poza środowiskiem testowym). Przy `ollama` autoryzacja kluczem
+  // nie jest potrzebna (lokalna instancja Ollamy).
+  if (
+    data.NODE_ENV !== 'test' &&
+    data.AI_PROVIDER === 'gemini' &&
+    (!data.GEMINI_API_KEY || data.GEMINI_API_KEY.trim().length === 0)
+  ) {
     throw new Error(
       'Nieprawidłowa konfiguracja serwera:\n  - GEMINI_API_KEY: GEMINI_API_KEY jest wymagany do działania funkcji AI przy AI_PROVIDER=gemini.\n\n' +
         'Uzupełnij plik .env na podstawie .env.example.'
