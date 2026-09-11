@@ -13,15 +13,25 @@ export async function runD09FromVault(input: {
   vault: MasterVault;
   jobDescription: string;
   inferredEvidence?: D09CandidateEvidence[];
+  /**
+   * Do czasu wdrożenia D18 Master Vault nie wolno zakładać, że puste pole
+   * oznacza świadome „nie posiadam”. Caller może podać 1 dopiero po preflight
+   * kompletności. Domyślnie zachowujemy epistemiczną ostrożność.
+   */
+  vaultCompletenessConfidence?: number;
 }): Promise<D09AuditResult> {
   const extraction = await extractD09Requirements(input.jobDescription);
   const vaultEvidence = await buildD09CandidateEvidenceFromVault(input.vault);
+  const completeness = Math.min(1, Math.max(0, input.vaultCompletenessConfidence ?? 0.65));
   return scoreD09JobAlignment({
     extraction,
     candidateEvidence: [...vaultEvidence, ...(input.inferredEvidence ?? [])],
     documentClass: 'CV',
-    sourceCompletenessConfidence: 1,
-    sourceMode: 'VAULT',
+    sourceCompletenessConfidence: completeness,
+    // scorerCore ma dziś semantykę „VAULT = brak jest świadomie potwierdzony”.
+    // Dopóki D18 nie dostarczy field-state completeness, używamy tego trybu
+    // tylko po przekroczeniu progu wystarczającej kompletności.
+    sourceMode: completeness >= 0.75 ? 'VAULT' : 'EXTRACTED_DOCUMENT',
   });
 }
 
