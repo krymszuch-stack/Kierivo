@@ -17,6 +17,7 @@ import {
   Database,
   Maximize2,
   Sparkles,
+  FolderGit2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MasterVault, ProfilerState } from '../../types';
@@ -28,6 +29,7 @@ import { ExperienceSection } from './ExperienceSection';
 import { SkillsMatrix } from './SkillsMatrix';
 import { SpecializationPicker } from './SpecializationPicker';
 import { EducationSection } from './EducationSection';
+import { ProjectsSection } from './ProjectsSection';
 import { PreferencesSection } from './PreferencesSection';
 import { Button } from '../../components/ui/Button';
 import { Tabs } from '../../components/ui/Tabs';
@@ -54,6 +56,7 @@ type ViewMode = 'stepper' | 'full';
 const VAULT_STEPS: StepItem[] = [
   { id: 'personal', label: 'Dane Osobowe', icon: User, description: 'Kontakt i nagłówek' },
   { id: 'experience', label: 'Doświadczenie', icon: Briefcase, description: 'Stanowiska & STAR' },
+  { id: 'projects', label: 'Projekty', icon: FolderGit2, description: 'Wdrożenia i portfolio' },
   { id: 'skills', label: 'Umiejętności', icon: Star, description: 'Tech, soft & języki' },
   { id: 'education', label: 'Edukacja', icon: GraduationCap, description: 'Uczelnie i stopnie' },
   { id: 'preferences', label: 'Preferencje', icon: Sliders, description: 'Stawki i dojazd' },
@@ -294,6 +297,14 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                   )}
 
                   {activeStep === 2 && (
+                    <ProjectsSection
+                      projects={vault.projects || []}
+                      onChange={(projects) => onChange({ ...vault, projects })}
+                      suggest={suggest}
+                    />
+                  )}
+
+                  {activeStep === 3 && (
                     <div className="space-y-6">
                       <SpecializationPicker
                         skillsMatrix={vault.skillsMatrix}
@@ -323,14 +334,15 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                     </div>
                   )}
 
-                  {activeStep === 3 && (
+                  {activeStep === 4 && (
                     <EducationSection
                       education={vault.education || []}
                       onChange={(education) => onChange({ ...vault, education })}
+                      suggest={suggest}
                     />
                   )}
 
-                  {activeStep === 4 && (
+                  {activeStep === 5 && (
                     <PreferencesSection
                       profiler={vault.profiler}
                       onChange={(profiler: ProfilerState) => onChange({ ...vault, profiler })}
@@ -384,6 +396,12 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                 suggest={suggest}
               />
 
+              <ProjectsSection
+                projects={vault.projects || []}
+                onChange={(projects) => onChange({ ...vault, projects })}
+                suggest={suggest}
+              />
+
               <SpecializationPicker
                 skillsMatrix={vault.skillsMatrix}
                 onUpdateSkillsMatrix={(skillsMatrix) => onChange({ ...vault, skillsMatrix })}
@@ -414,6 +432,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               <EducationSection
                 education={vault.education || []}
                 onChange={(education) => onChange({ ...vault, education })}
+                suggest={suggest}
               />
 
               <PreferencesSection

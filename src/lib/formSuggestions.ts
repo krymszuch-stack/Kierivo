@@ -42,7 +42,13 @@ export type SuggestionField =
   | 'location'
   | 'hardSkill'
   | 'softSkill'
-  | 'tool';
+  | 'tool'
+  | 'institution'
+  | 'fieldOfStudy'
+  | 'degree'
+  | 'certificateName'
+  | 'certificateIssuer'
+  | 'projectTech';
 
 export type SuggestionSource = 'own' | 'corpus' | 'catalog' | 'dictionary';
 
@@ -156,6 +162,26 @@ export function ownEntriesFor(
     case 'tool':
       values.push(...vault.skillsMatrix.toolsAndTech);
       break;
+    case 'institution':
+      values.push(...(vault.education || []).map((edu) => edu.institution));
+      break;
+    case 'fieldOfStudy':
+      values.push(...(vault.education || []).map((edu) => edu.fieldOfStudy));
+      break;
+    case 'degree':
+      values.push(...(vault.education || []).map((edu) => edu.degree));
+      break;
+    case 'certificateName':
+      values.push(...(vault.skillsMatrix.certifications || []).map((cert) => cert.name));
+      break;
+    case 'certificateIssuer':
+      values.push(...(vault.skillsMatrix.certifications || []).map((cert) => cert.issuer));
+      break;
+    case 'projectTech':
+      values.push(...(vault.skillsMatrix.toolsAndTech || []));
+      values.push(...(vault.skillsMatrix.hardSkills || []));
+      values.push(...(vault.projects || []).flatMap((p) => p.techStack || []));
+      break;
   }
 
   const seen = new Set<string>();
@@ -171,6 +197,52 @@ export function ownEntriesFor(
   return unique;
 }
 
+export const SUGGESTED_INSTITUTIONS: readonly string[] = [
+  'Politechnika Warszawska',
+  'Politechnika Krakowska',
+  'Akademia Górniczo-Hutnicza w Krakowie',
+  'Politechnika Wrocławska',
+  'Politechnika Śląska',
+  'Politechnika Poznańska',
+  'Politechnika Gdańska',
+  'Politechnika Łódzka',
+  'Uniwersytet Warszawski',
+  'Uniwersytet Jagielloński',
+  'Uniwersytet Wrocławski',
+  'Uniwersytet im. Adama Mickiewicza w Poznaniu',
+  'Uniwersytet Ekonomiczny w Krakowie',
+  'Szkoła Główna Handlowa w Warszawie',
+  'Uniwersytet Ekonomiczny w Katowicach',
+  'Zespół Szkół Technicznych',
+  'Zespół Szkół Budowlanych',
+  'Zespół Szkół Łączności',
+];
+
+export const SUGGESTED_DEGREES: readonly string[] = [
+  'Inżynier',
+  'Magister inżynier',
+  'Magister',
+  'Licencjat',
+  'Technik',
+  'Doktor',
+  'Studia podyplomowe',
+];
+
+export const SUGGESTED_CERT_ISSUERS: readonly string[] = [
+  'Stowarzyszenie Elektryków Polskich (SEP)',
+  'Urząd Dozoru Technicznego (UDT)',
+  'Instytut Spawalnictwa',
+  'Transportowy Dozór Techniczny (TDT)',
+  'Cisco',
+  'Microsoft',
+  'Amazon Web Services (AWS)',
+  'Google Cloud',
+  'TÜV Rheinland',
+  'DEKRA',
+  'Scrum.org',
+  'Project Management Institute (PMI)',
+];
+
 const DICTIONARIES: Record<SuggestionField, readonly string[]> = {
   company: [], // firm nie ma skąd wziąć ze słownika — to zawsze dane własne albo korpus
   jobTitle: SUGGESTED_JOB_TITLES,
@@ -178,7 +250,34 @@ const DICTIONARIES: Record<SuggestionField, readonly string[]> = {
   hardSkill: SUGGESTED_HARD_SKILLS,
   softSkill: SUGGESTED_SOFT_SKILLS,
   tool: SUGGESTED_TOOLS_AND_TECH,
+  institution: SUGGESTED_INSTITUTIONS,
+  fieldOfStudy: [],
+  degree: SUGGESTED_DEGREES,
+  certificateName: [],
+  certificateIssuer: SUGGESTED_CERT_ISSUERS,
+  projectTech: SUGGESTED_TOOLS_AND_TECH,
 };
+
+/**
+ * Proponuje lokalizację z poprzedniego wpisu doświadczenia lub profilu użytkownika.
+ * Bezpieczny smart default — zwraca wartość do zasugerowania (np. w placeholderze lub jako opcja),
+ * ale nie zapisuje jej bez potwierdzenia.
+ */
+export function getLatestExperienceLocation(vault: MasterVault): string {
+  const previousLocation = vault.history?.find((h) => h.location?.trim())?.location;
+  return previousLocation || vault.personalInfo?.location || vault.profiler?.location?.city || '';
+}
+
+/**
+ * Zwraca listę znanych technologii i narzędzi z profilu użytkownika dla nowego projektu.
+ */
+export function getKnownToolsAndSkills(vault: MasterVault): string[] {
+  const set = new Set<string>();
+  (vault.skillsMatrix?.toolsAndTech || []).forEach((t) => set.add(t));
+  (vault.skillsMatrix?.hardSkills || []).forEach((h) => set.add(h));
+  (vault.projects || []).flatMap((p) => p.techStack || []).forEach((t) => set.add(t));
+  return [...set];
+}
 
 /**
  * Propozycje z katalogu branż dla rozpoznanego zawodu.
@@ -210,6 +309,10 @@ function catalogEntriesFor(field: SuggestionField, vault: MasterVault): string[]
       return [...suggestions.hardSkills, ...suggestions.certifications];
     case 'tool':
       return suggestions.tools;
+    case 'projectTech':
+      return suggestions.tools;
+    case 'certificateName':
+      return suggestions.certifications;
     case 'softSkill':
       return suggestions.softSkills;
     case 'jobTitle':

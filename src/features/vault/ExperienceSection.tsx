@@ -3,20 +3,21 @@ import {
   Briefcase,
   Plus,
   Trash2,
-  Calendar,
   Building2,
   ChevronUp,
   ChevronDown,
   Sparkles,
+  MapPin,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { WorkExperience } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Input, Textarea } from '../../components/ui/Field';
+import { Textarea } from '../../components/ui/Field';
 import { Combobox } from '../../components/ui/Combobox';
+import { MonthYearPicker } from '../../components/ui/MonthYearPicker';
+import { validateDateRange } from '../../lib/dateUtils';
 import type { SuggestFn } from '../../hooks/useFieldSuggestions';
-import { Toggle } from '../../components/ui/Toggle';
 import { AchievementEditor } from './AchievementEditor';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExperienceWizardModal } from './ExperienceWizardModal';
@@ -181,7 +182,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                 </div>
 
                 {/* Form Inputs */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Combobox
                     label="Nazwa Firmy / Organizacji"
                     icon={Building2}
@@ -198,35 +199,59 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                     value={item.role}
                     onChange={(value) => handleUpdateExperience(item.id, 'role', value)}
                     suggestions={suggest?.('jobTitle', item.role) ?? []}
-                    placeholder="np. Lekarz / Monter / Magazynier / Inżynier..."
+                    placeholder="np. Monter / Programista / Inżynier..."
+                    hint="Zacznij wpisywać, np. IT Support Specialist lub Spawacz"
                     required
                   />
 
-                  <div className="flex flex-col justify-end pb-1">
-                    <Toggle
-                      checked={item.isCurrent || false}
-                      onChange={(checked) => handleUpdateExperience(item.id, 'isCurrent', checked)}
-                      label="Obecnie tu pracuję"
-                    />
-                  </div>
-
-                  <Input
-                    label="Data Rozpoczęcia"
-                    icon={Calendar}
-                    type="month"
-                    value={item.startDate}
-                    onChange={(e) => handleUpdateExperience(item.id, 'startDate', e.target.value)}
+                  <Combobox
+                    label="Lokalizacja"
+                    icon={MapPin}
+                    value={item.location || ''}
+                    onChange={(value) => handleUpdateExperience(item.id, 'location', value)}
+                    suggestions={suggest?.('location', item.location || '') ?? []}
+                    placeholder={
+                      history[index + 1]?.location
+                        ? `np. ${history[index + 1].location} (poprzednia)`
+                        : 'np. Warszawa / Kraków'
+                    }
                   />
 
-                  {!item.isCurrent && (
-                    <Input
-                      label="Data Zakończenia"
-                      icon={Calendar}
-                      type="month"
-                      value={item.endDate}
-                      onChange={(e) => handleUpdateExperience(item.id, 'endDate', e.target.value)}
-                    />
-                  )}
+                  {(() => {
+                    const dateValidation = validateDateRange(
+                      item.startDate,
+                      item.endDate,
+                      item.isCurrent
+                    );
+                    return (
+                      <>
+                        <MonthYearPicker
+                          label="Data Rozpoczęcia"
+                          value={item.startDate}
+                          onChange={(val) => handleUpdateExperience(item.id, 'startDate', val || '')}
+                          warning={dateValidation.warning}
+                          hint="Wystarczy miesiąc i rok"
+                        />
+
+                        <MonthYearPicker
+                          label="Data Zakończenia"
+                          value={item.endDate}
+                          onChange={(val) => handleUpdateExperience(item.id, 'endDate', val || '')}
+                          allowCurrent
+                          isCurrent={item.isCurrent}
+                          onToggleCurrent={(checked) => {
+                            handleUpdateExperience(item.id, 'isCurrent', checked);
+                            if (checked) {
+                              handleUpdateExperience(item.id, 'endDate', '');
+                            }
+                          }}
+                          currentLabel="Nadal tu pracuję / Obecnie"
+                          error={dateValidation.error}
+                          disabled={item.isCurrent}
+                        />
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Description with Experience Wizard */}
