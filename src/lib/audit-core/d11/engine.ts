@@ -84,12 +84,9 @@ function buildObservation(input: {
     return { observation: null, invalidTemporal: true };
   }
 
-  let observedMonth: MonthIndex | null = null;
-  if (input.experience.isCurrent) {
-    observedMonth = input.referenceMonth;
-  } else {
-    observedMonth = parseExactMonth(input.experience.endDate);
-  }
+  const observedMonth: MonthIndex | null = input.experience.isCurrent
+    ? input.referenceMonth
+    : parseExactMonth(input.experience.endDate);
 
   if (observedMonth === null || observedMonth > input.referenceMonth) {
     return { observation: null, invalidTemporal: true };
