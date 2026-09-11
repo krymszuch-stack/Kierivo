@@ -130,6 +130,11 @@ function isAncestor(ancestorId: string, descendantId: string, seen = new Set<str
 export interface D09SemanticRelation {
   matchType: D09MatchType;
   strength: number;
+  semanticStrength: number;
+}
+
+function relation(matchType: D09MatchType, strength: number): D09SemanticRelation {
+  return { matchType, strength, semanticStrength: strength };
 }
 
 export function resolveD09SemanticRelation(
@@ -137,17 +142,17 @@ export function resolveD09SemanticRelation(
   evidenceCanonicalId: string,
 ): D09SemanticRelation {
   if (requirementCanonicalId === evidenceCanonicalId) {
-    return { matchType: 'EXACT', strength: 1 };
+    return relation('EXACT', 1);
   }
 
   // Evidence bardziej szczegółowe spełnia szerszy wymóg, np. PostgreSQL → relational DB.
   if (isAncestor(requirementCanonicalId, evidenceCanonicalId)) {
-    return { matchType: 'EVIDENCE_SUBTYPE_OF_REQUIREMENT', strength: 0.95 };
+    return relation('EVIDENCE_SUBTYPE_OF_REQUIREMENT', 0.95);
   }
 
   // Sam szeroki termin jest słabym dowodem konkretnej technologii.
   if (isAncestor(evidenceCanonicalId, requirementCanonicalId)) {
-    return { matchType: 'EVIDENCE_SUPERTYPE_OF_REQUIREMENT', strength: 0.25 };
+    return relation('EVIDENCE_SUPERTYPE_OF_REQUIREMENT', 0.25);
   }
 
   const requirement = byId.get(requirementCanonicalId);
@@ -157,8 +162,8 @@ export function resolveD09SemanticRelation(
     evidence?.relatedIds?.includes(requirementCanonicalId)
   ) {
     // Related tech jest wyłącznie sygnałem transferowalności. Nie spełnia konkretnego wymagania.
-    return { matchType: 'RELATED_ONLY', strength: 0 };
+    return relation('RELATED_ONLY', 0);
   }
 
-  return { matchType: 'NONE', strength: 0 };
+  return relation('NONE', 0);
 }
