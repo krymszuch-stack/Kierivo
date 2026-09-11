@@ -1,0 +1,29 @@
+{
+  "id": "7ee533223a0cdd0c081b",
+  "generated_at": "2026-09-11T13:19:57.042Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "Windows administration",
+    "text": "Specialized in managing hybrid environments where the core infrastructure relies heavily on Windows Server 2019 clusters, requiring deep familiarity with Active Directory, Group Policy Objects, and local user management via the native MMC snap-ins.",
+    "expected": "PARTIAL",
+    "attack_type": "related_not_equivalent",
+    "difficulty": 5,
+    "reason": "The text screams 'Windows' (Server 2019, Active Directory, MMC), which triggers a strong semantic match for 'Windows administration'. However, the parser must decide if this counts as full 'Windows Admin' or just 'Windows familiarity'. The trap is that the candidate might actually be doing heavy Linux work but describing it with Windows-centric terminology (e.g., calling a WSL2 setup 'Windows Server'), or conversely, having pure Windows skills but describing them as 'Hybrid/Cluster management' which dilutes the specific 'Admin' title. It forces the parser to weigh the weight of 'Server 2019' against the generic nature of 'Management'.",
+    "evidence_terms": [
+      "Windows Server",
+      "Active Directory",
+      "Group Policy",
+      "Hybrid environments"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.92,
+    "reason": "The case is well-constructed and meets all criteria for a high-quality corpus entry. The text clearly demonstrates Windows administration skills through specific technologies like Active Directory, Group Policy Objects, and Windows Server 2019 clusters. The 'related_not_equivalent' attack type is effectively illustrated by the potential ambiguity between 'Windows administration' and 'Windows familiarity'. The evidence terms are relevant and provide a strong basis for the 'PARTIAL' classification. The difficulty level of 5 is appropriate given the nuanced reasoning required. This case would be useful for training a parser to distinguish between partial and full matches in CVelocity.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}

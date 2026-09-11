@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 3,
+  "iteration": 9,
+  "generated": 0,
+  "accepted": 8,
+  "rejected": 0,
+  "duplicates": 0,
+  "parserRuns": 0,
+  "parserErrors": 0,
+  "parserMatches": 0,
+  "parserDisagreements": 0,
+  "highSeverityFailures": 0,
+  "modelErrors": 1,
+  "focusedTestRuns": 0,
+  "focusedTestFailures": 0,
+  "fullTestRuns": 0,
+  "fullTestFailures": 0,
+  "proposals": 0,
+  "validatedProposals": 0,
+  "lastProposalFailureCount": 0,
+  "consecutiveErrors": 1,
+  "startedAt": "2026-09-11T13:12:35.320Z",
+  "updatedAt": "2026-09-11T13:43:49.638Z",
+  "coverage": {
+    "domains": {},
+    "attacks": {},
+    "expected": {},
+    "actual": {},
+    "failureTypes": {}
+  },
+  "testRuns": 0,
+  "testFailures": 0
+}

@@ -1,0 +1,30 @@
+{
+  "id": "c73a87b2582c2be07f07",
+  "generated_at": "2026-09-11T13:30:00.251Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "Microsoft Intune",
+    "text": "Specjalista od mobilności w środowisku hybrydowym, odpowiedzialny za zarządzanie konfiguracją urządzeń Windows przy użyciu Microsoft Endpoint Manager oraz integrację z Azure AD. Codzienna praca polega na tworzeniu profilów aplikacyjnych, obsłudze konteneryzacji danych oraz utrzymaniu polityk zgodności dla floty 500+ laptopów.",
+    "expected": "PARTIAL",
+    "attack_type": "false_positive",
+    "difficulty": 5,
+    "reason": "Użycie 'Microsoft Endpoint Manager' (synonim Intune) zamiast samego słowa 'Intune', połączone z obowiązkami typowymi dla MDM w ogóle (profilowanie, polityki), co może zmylić parser szukający ściśle 'Intune' w kontekście czystego SaaS.",
+    "evidence_terms": [
+      "Microsoft Endpoint Manager",
+      "Endpoint Manager",
+      "Profilowanie urządzeń",
+      "Polityki zgodności",
+      "Azure AD"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.95,
+    "reason": "Przypadek dobrze odzwierciedla potencjalne błędy parsera, który może nie rozpoznać 'Microsoft Endpoint Manager' jako równoważnego z 'Intune'. Użycie terminów typowych dla MDM (profilowanie, polityki) oraz kontekst hybrydowego środowiska wzmocnia realistyczność. Przykład jest użyteczny do regresji i pokazuje, jak parser może popełnić fałszywy dodatni wynik.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}

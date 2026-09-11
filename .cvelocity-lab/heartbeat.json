@@ -1,0 +1,10 @@
+{
+  "timestamp": 1789134582132,
+  "iso": "2026-09-11T13:49:42.132Z",
+  "pid": 233865,
+  "iteration": 10,
+  "phase": "parser_judge",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "coder": "qwen-code:latest"
+}
