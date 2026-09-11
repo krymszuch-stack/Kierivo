@@ -1,0 +1,101 @@
+name: D04 AUTH + RLS
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  auth-rls-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.117.0
+
+      - name: Initialize isolated Supabase config
+        run: |
+          if [ ! -f supabase/config.toml ]; then
+            supabase init
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('supabase/config.toml')
+          text = path.read_text()
+          text = text.replace('enable_confirmations = false', 'enable_confirmations = true')
+
+          if '[functions.sprawdz-haslo]' not in text:
+              text += '\n[functions.sprawdz-haslo]\nverify_jwt = false\n'
+          if '[functions.usun-konto]' not in text:
+              text += '\n[functions.usun-konto]\nverify_jwt = true\n'
+
+          path.write_text(text)
+          PY
+
+      - name: Start isolated Supabase and run D04 acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'supabase stop --no-backup >/dev/null 2>&1 || true' EXIT
+
+          supabase start
+          supabase status -o env > /tmp/supabase.env
+          set -a
+          source /tmp/supabase.env
+          set +a
+
+          export SUPABASE_URL="$API_URL"
+          export SUPABASE_ANON_KEY="$ANON_KEY"
+          export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          export MAILPIT_URL="${INBUCKET_URL:-http://127.0.0.1:54324}"
+          export D04_TEST_REDIRECT_URL="http://127.0.0.1:3000/"
+
+          supabase functions serve > /tmp/d04-functions.log 2>&1 &
+          FUNCTIONS_PID=$!
+
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sS -m 3 -o /tmp/d04-password-check.json \
+              -w '%{http_code}' \
+              -X POST "$SUPABASE_URL/functions/v1/sprawdz-haslo" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H 'Content-Type: application/json' \
+              -d '{"prefix":"5BAA6"}' | grep -q '^200$'; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" != "1" ]; then
+            echo 'Edge Functions nie wystartowały:' >&2
+            cat /tmp/d04-functions.log >&2 || true
+            kill "$FUNCTIONS_PID" >/dev/null 2>&1 || true
+            exit 1
+          fi
+
+          npm run test:rls
+          npm run test:auth-lifecycle
+
+          kill "$FUNCTIONS_PID" >/dev/null 2>&1 || true
+
+      - name: Database lint
+        run: supabase db lint --level error
