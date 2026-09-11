@@ -35,7 +35,8 @@ export {
 export {
   auditPdfStructuralReadability,
   extractD08SignalsFromPdf,
-} from './pdfAdapter';
+  hardenD08PdfSignals,
+} from './pdfAudit';
 
 export {
   D08_BASE_WEIGHTS,
