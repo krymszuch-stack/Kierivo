@@ -26,7 +26,6 @@ describe('Atomic Quota Reservation & Refund', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Domyślnie konto darmowe — testy płacącego nadpisują status.
     mockSubscriptionsTable('free');
     vi.spyOn(supabaseModule, 'getSupabase').mockReturnValue({
       rpc: mockRpc,
@@ -66,14 +65,13 @@ describe('Atomic Quota Reservation & Refund', () => {
 
     expect(result).toEqual({ success: true });
     expect(task).toHaveBeenCalled();
-    // Konto darmowe rezerwuje z darmowym dziennym sufitem, nie z progiem Pro.
     expect(mockRpc).toHaveBeenCalledWith('reserve_ai_quota', {
       p_user_id: 'user-123',
       p_max_daily_uses: 5,
     });
   });
 
-  it('executeAiOperation daje planowi opłaconemu wyższy dzienny sufit', async () => {
+  it('w bezpłatnej becie historyczny plan opłacony nadal ma limit beta', async () => {
     mockSubscriptionsTable('active');
     mockRpc.mockResolvedValueOnce({ data: { allowed: true, current_uses: 1 }, error: null });
 
@@ -85,7 +83,7 @@ describe('Atomic Quota Reservation & Refund', () => {
 
     expect(mockRpc).toHaveBeenCalledWith('reserve_ai_quota', {
       p_user_id: 'user-pro',
-      p_max_daily_uses: 100,
+      p_max_daily_uses: 5,
     });
   });
 
@@ -101,8 +99,8 @@ describe('Atomic Quota Reservation & Refund', () => {
   });
 
   it('executeAiOperation wykonuje refund_ai_quota w przypadku awarii zadania LLM', async () => {
-    mockRpc.mockResolvedValueOnce({ data: { allowed: true, current_uses: 1 }, error: null }); // dla reserve
-    mockRpc.mockResolvedValueOnce({ data: null, error: null }); // dla refund
+    mockRpc.mockResolvedValueOnce({ data: { allowed: true, current_uses: 1 }, error: null });
+    mockRpc.mockResolvedValueOnce({ data: null, error: null });
 
     const task = vi.fn().mockRejectedValueOnce(new Error('LLM Timeout'));
 
