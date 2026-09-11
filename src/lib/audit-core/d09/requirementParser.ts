@@ -11,6 +11,7 @@ const SCHEMA_VERSION = 'D09.requirements.v1';
 
 const MUST_SECTION = /^(requirements?|wymagania|wymagane|must[- ]?have|minimum qualifications?|kwalifikacje wymagane)\s*:?[\s-]*$/i;
 const NICE_SECTION = /^(nice to have|preferred qualifications?|mile widziane|mile widziane umiejętności|dodatkowe atuty|atutem będzie)\s*:?[\s-]*$/i;
+const NEUTRAL_SECTION = /^(responsibilities|your responsibilities|what you will do|obowiązki|obowiazki|zakres obowiązków|zakres obowiazkow|oferujemy|we offer|benefits|benefity|about us|o nas|about the role|job description|opis stanowiska|what we offer|warunki pracy|company|firma)\s*:?[\s-]*$/i;
 const CORE_MARKER = /\b(mandatory|required|must have|must-have|warunek konieczny|bezwzględnie wymagane|konieczne|niezbędne)\b/i;
 const MUST_MARKER = /\b(required|requirements?|wymagane|wymagamy|oczekujemy|minimum|co najmniej|must)\b/i;
 const NICE_MARKER = /\b(nice to have|preferred|mile widziane|atutem|dodatkowym atutem|plus|bonus)\b/i;
@@ -74,6 +75,10 @@ export async function extractD09Requirements(rawJobDescription: string): Promise
     }
     if (NICE_SECTION.test(line)) {
       section = 'NICE';
+      continue;
+    }
+    if (NEUTRAL_SECTION.test(line)) {
+      section = null;
       continue;
     }
 
