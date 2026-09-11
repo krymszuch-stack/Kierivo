@@ -86,7 +86,7 @@ export function buildD10PresentationModel(result: D10AuditResult): D10Presentati
   const lowestCap = activeCaps.length > 0
     ? activeCaps.reduce((best, cap) => cap.capLimit < best.capLimit ? cap : best)
     : null;
-  const preCapScore = result.ledger?.afterPenalties ?? null;
+  const preCapScore = result.ledger?.scoreAfterPenalties ?? null;
 
   return {
     moduleId: result.moduleId,
