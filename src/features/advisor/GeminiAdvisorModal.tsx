@@ -21,6 +21,9 @@ export interface GeminiAdvisorModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialQuestion?: string;
+  // Prop zachowany dla kontraktu wywołań (App.tsx / AdvisorModalHost), ale w obecnym
+  // silniku regułowym offline nie jest konsumowany — żadne dane profilu ani Vault
+  // nie są przekazywane do przetwarzania ani wysyłane na zewnątrz.
   vault?: MasterVault;
 }
 
@@ -85,7 +88,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         // metryk — reguła 1; audyt treści §2.3).
         replyText = 'Metoda STAR (Situation, Task, Action, Result) to złoty standard. Podawaj wyłącznie metryki, które obronisz na rozmowie. Zamiast pisać "odpowiedzialny za rozwój API", napisz: "Zoptymalizowałem zapytania SQL w PostgreSQL (Action), skracając czas X o [wpisz swoją realną liczbę]% (Result)".';
       } else if (qLower.includes('kolumn') || qLower.includes('pdf')) {
-        replyText = 'Parsery ATS (np. Workday, Taleo) czytają tekst od lewej do prawej. W układzie dwukolumnowym tekst z lewej i prawej kolumny potrafi się zlepić w jeden nieczytelny ciąg, co prowadzi do utraty punktów dopasowania. Jednokolumnowy układ to najbezpieczniejszy wybór dla parserów.';
+        replyText = 'Większość parserów ATS czyta tekst od lewej do prawej. W układzie dwukolumnowym tekst z lewej i prawej kolumny potrafi się zlepić w jeden nieczytelny ciąg, co prowadzi do utraty punktów dopasowania. Jednokolumnowy układ to najbezpieczniejszy wybór dla czytelności maszynowej.';
       } else if (qLower.includes('senior')) {
         replyText = 'Dla stanowisk Senior / Lead liczy się wpływ na architekturę, mentoring i optymalizację kosztów chmury (FinOps). Zadbaj, aby w najnowszym stanowisku pojawiły się frazy: "Architektura modularna", "Code Review", "Projektowanie systemów rozproszonych" oraz "Wdrażanie standardów bezpieczeństwa".';
       }

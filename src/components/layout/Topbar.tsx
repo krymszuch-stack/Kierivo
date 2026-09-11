@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   Trash2,
-  ExternalLink,
   ChevronDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,6 +20,7 @@ import { useEntitlements } from '../../store/useEntitlements';
 import { useAuth } from '../../context/AuthContext';
 import { api, ApiError } from '../../lib/apiClient';
 import { showToast } from '../../store/useToastStore';
+import { BETA_LABEL, PURCHASES_DISABLED_REASON } from '../../lib/betaConfig';
 
 export interface TopbarProps {
   activeTab: NavTabId;
@@ -77,34 +77,13 @@ export const Topbar: React.FC<TopbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Trasa istnieje od dawna (`POST /api/billing/portal-session`) — przycisk
-  // wcześniej tylko o niej opowiadał, zamiast ją wywoływać (reguła 5).
-  // Instalacja bez kluczy Stripe odpowie 501 i wtedy dopiero mówi o tym toast.
+  // W bezpłatnej wersji beta zakupy i komercyjny panel subskrypcji są wyłączone.
   const handleOpenCustomerPortal = async () => {
     setIsDropdownOpen(false);
-    // Endpoint wymaga sesji (token z konta w chmurze). Bez tego sprawdzenia
-    // niezalogowany dostawałby komunikat o błędzie serwera zamiast informacji,
-    // że najpierw trzeba się zalogować — ten sam wzór co `isCloudAccount`
-    // w `StripeCheckoutModal`.
-    if (!(mode === 'cloud' && !!user)) {
-      showToast('Panel subskrypcji', {
-        message: 'Panel subskrypcji jest dostępny po zalogowaniu na konto.',
-        variant: 'info',
-      });
-      return;
-    }
-    try {
-      const { url } = await api.post<{ url: string }>('/api/billing/portal-session', {});
-      window.location.assign(url);
-    } catch (err) {
-      showToast('Panel klienta Stripe', {
-        message:
-          err instanceof ApiError
-            ? err.message
-            : 'Nie udało się otworzyć panelu Stripe. Spróbuj ponownie.',
-        variant: 'info',
-      });
-    }
+    showToast('Panel subskrypcji Stripe', {
+      message: PURCHASES_DISABLED_REASON,
+      variant: 'info',
+    });
   };
 
   return (
@@ -129,6 +108,9 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="flex items-center gap-2">
           <span className="rounded-lg border border-line bg-elevated px-2.5 py-1 font-mono text-xs font-semibold text-ink">
             {TAB_NAMES[activeTab] || 'CVelocity'}
+          </span>
+          <span className="hidden md:inline-flex items-center rounded-md border border-brand-500/30 bg-brand-500/10 px-2 py-0.5 font-mono text-[9px] font-bold text-brand-fg tracking-wide uppercase">
+            {BETA_LABEL}
           </span>
         </div>
       </div>
@@ -208,15 +190,9 @@ export const Topbar: React.FC<TopbarProps> = ({
               <>
                 <div className="relative flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-indigo-600 font-bold text-white shadow-xs text-[10px]">
                   {(user?.name || userEmail || 'U').slice(0, 2).toUpperCase()}
-                  {/* Badge PRO nałożony bezpośrednio na róg avatara */}
-                  <span
-                    className={`absolute -bottom-1 -right-1 flex items-center justify-center rounded-full px-1 py-px font-mono text-[7px] font-black uppercase tracking-tighter shadow-xs border ${
-                      isPro
-                        ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 border-surface'
-                        : 'bg-sunken text-muted border-line'
-                    }`}
-                  >
-                    {isPro ? 'PRO' : 'FREE'}
+                  {/* Badge BETA nałożony bezpośrednio na róg avatara */}
+                  <span className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full px-1 py-px font-mono text-[7px] font-black uppercase tracking-tighter shadow-xs border bg-brand-500/20 text-brand-fg border-brand-500/30">
+                    BETA
                   </span>
                 </div>
 
@@ -265,12 +241,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                     {isAuthenticated ? userEmail : 'Dane trzymane w tej przeglądarce'}
                   </div>
                   <div className="mt-1.5">
-                    <span
-                      className={`inline-block rounded-md px-1.5 py-px font-mono text-[9px] font-bold uppercase ${
-                        isPro ? 'bg-brand-50 text-brand-fg border border-brand-200' : 'bg-sunken text-muted'
-                      }`}
-                    >
-                      Plan: {isPro ? 'CVelocity Pro' : 'CVelocity Free'}
+                    <span className="inline-block rounded-md px-1.5 py-px font-mono text-[9px] font-bold uppercase bg-brand-50 text-brand-fg border border-brand-200">
+                      Bezpłatna Beta (Tester)
                     </span>
                   </div>
                 </div>
@@ -293,16 +265,13 @@ export const Topbar: React.FC<TopbarProps> = ({
                     </button>
                   )}
 
-                  {/* Jedna pozycja menu, bo Customer Portal obsługuje i plan,
-                      i faktury — dwa wpisy wołały dokładnie tę samą trasę. */}
                   <button
                     type="button"
                     onClick={handleOpenCustomerPortal}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-ink hover:bg-brand-50 hover:text-brand-fg transition-colors"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-muted hover:bg-surface hover:text-ink transition-colors cursor-pointer"
                   >
                     <CreditCard className="h-3.5 w-3.5 text-muted" />
-                    <span>Zarządzaj subskrypcją (Stripe Portal)</span>
-                    <ExternalLink className="h-3 w-3 ml-auto text-subtle" />
+                    <span>Subskrypcje (wyłączone w becie)</span>
                   </button>
                 </div>
 

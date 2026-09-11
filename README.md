@@ -3,7 +3,7 @@
 > **Inteligentna Platforma Optymalizacji CV pod Polskie Filtry ATS, Deterministyczny Symulator Rozmów Rekrutacyjnych oraz Kalkulator Opłacalności Kariery.**
 
 [![CI Status](https://img.shields.io/badge/CI-passing-emerald.svg)](.github/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/Vitest-813%20passed%20(100%25)-success.svg)](src/lib/__tests__)
+[![Tests](https://img.shields.io/badge/Vitest-822%20passed%20(100%25)-success.svg)](src/lib/__tests__)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8%20Strict-blue.svg)](tsconfig.json)
 [![Zero Token Cost](https://img.shields.io/badge/VAD%20Router-0%20Tokens-purple.svg)](src/lib/recruiterAudio)
 [![Privacy First](https://img.shields.io/badge/Privacy-100%25%20Client--Side-teal.svg)](SECURITY.md)
@@ -64,7 +64,7 @@ Przeglądarka i odtwarzacz 15 kategorii nagrań rekrutacyjnych: pytania STAR, te
 ---
 
 ### 7. Przejrzyste Pakiety & Transparentny Model (`PricingView`)
-Dostęp do narzędzia w trybie 100% lokalnym (bezpłatnym) oraz opcjonalne pakiety chmurowe i zaawansowane audyty.
+Dostęp do narzędzia w trybie 100% lokalnym (bezpłatnym) oraz opcjonalny plan Pro (nielimitowany import i asystent AI).
 ![Cennik](docs/assets/pricing_plans.png)
 
 ---
@@ -131,7 +131,7 @@ Aplikacja będzie dostępna pod adresem: `http://localhost:5173/` (lub `http://l
 Projekt utrzymuje rygorystyczną bramkę jakościową — 100% testów przechodzi w środowisku Node:
 
 ```bash
-# Uruchomienie wszystkich 813 testów jednostkowych
+# Uruchomienie wszystkich 822 testów jednostkowych (83 zestawy)
 npm test
 
 # Sprawdzenie typów TypeScript i reguł ESLint

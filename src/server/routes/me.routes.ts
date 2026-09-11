@@ -28,13 +28,11 @@ meRouter.get('/me', requireAuth, async (req: Request, res: Response, next: NextF
       getEntitlements(userId),
     ]);
 
-    // Karnet Aplikacyjny żyje na `profiles.plan_expires_at`, poza statusem
-    // subskrypcji — jednorazowy zakup nie może wyglądać jak plan cykliczny.
-    // Bez tego pola kupiony karnet niczego nie rozstrzygałby mimo poprawnego
-    // zapisu z webhooka.
+    // W bezpłatnej wersji beta podstawowy przepływ testera nie wymaga płatnego karnetu:
+    // dostęp do narzędzi jest odblokowany bez opłat, a serwer nadal egzekwuje dobowe limity AI.
     const expiresAt = profileResult.data?.plan_expires_at;
     const hasActivePass =
-      typeof expiresAt === 'string' && new Date(expiresAt).getTime() > Date.now();
+      (typeof expiresAt === 'string' && new Date(expiresAt).getTime() > Date.now()) || true;
 
     res.json({
       success: true,

@@ -13,7 +13,6 @@ import { Tabs } from '../../components/ui/Tabs';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { PremiumBadge } from '../../components/ui/PremiumBadge';
 import { useEntitlements } from '../../store/useEntitlements';
-import { StripeCheckoutModal } from '../../components/payments/StripeCheckoutModal';
 import { showToast } from '../../store/useToastStore';
 
 export interface CVParserModalProps {
@@ -41,7 +40,6 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   const [parseProgress, setParseProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [parsedResult, setParsedResult] = useState<ParsedCVResult | null>(null);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const { usage, isPro, consumeImport } = useEntitlements();
 
@@ -59,11 +57,12 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
         return;
       }
 
-      // Sprawdzenie limitu przed pracą, ale odjęcie dopiero po udanym
-      // parsowaniu — wcześniej nieczytelny plik kosztował jeden z darmowych
-      // importów, choć nic z niego nie wyciągnęliśmy.
       if (!isPro && usage.importUses <= 0) {
-        setIsCheckoutOpen(true);
+        showToast('Limit importu plików', {
+          message: 'Wykorzystano miesięczny limit importu pliku. W wersji beta zakupy są wyłączone — skorzystaj z nielimitowanego wklejania tekstu CV.',
+          variant: 'info',
+        });
+        setIngestMode('rawText');
         return;
       }
 
@@ -237,27 +236,6 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
           parsedData={parsedResult}
           onApplyMerge={handleApplyMerge}
           onCancel={() => setParsedResult(null)}
-        />
-      )}
-
-      {/* Stripe Checkout Modal for Instant Import Upgrade */}
-      {isCheckoutOpen && (
-        <StripeCheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          product={{
-            sku: 'price_cvelocity_pro_monthly',
-            title: 'CVelocity Pro (Nielimitowany Instant-Import)',
-            price: '49 zł',
-            period: '/ miesiąc brutto',
-            recurring: true,
-            // Cykl musi być jawny — bez `interval` modal wpada w ogólny tekst o odnowieniu.
-            interval: 'month',
-            trialDays: 30,
-          }}
-          onUnlocked={() => {
-            showToast('Plan Pro aktywny', { message: 'Importujesz pliki bez limitu.' });
-          }}
         />
       )}
     </div>

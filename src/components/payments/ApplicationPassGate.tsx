@@ -1,13 +1,12 @@
 import React from 'react';
-import { Button } from '../ui/Button';
+import { IS_BETA } from '../../lib/betaConfig';
 
 /**
  * Bramka funkcji dostępnej w Karnecie Aplikacyjnym.
  *
- * To czytelna informacja w interfejsie, nie granica bezpieczeństwa. Stan jest
- * odświeżany z `/api/me`, ale jego kopia do szybkiego renderu żyje także w
- * przeglądarce. Operacje generujące koszt nadal muszą sprawdzać uprawnienie na
- * backendzie; ten komponent jedynie nie pokazuje płatnego widoku przypadkiem.
+ * W trakcie trwania bezpłatnej bety testerzy mają zapewniony pełny dostęp
+ * do podstawowego przepływu bez konieczności zakupu karnetu (zakupy są wyłączone).
+ * Ewentualne operacje kosztowe AI nadal egzekwują limity na backendzie.
  */
 export interface ApplicationPassGateProps {
   hasActivePass: boolean;
@@ -22,7 +21,7 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
   onBuyPass,
   children,
 }) => {
-  if (hasActivePass) return <>{children}</>;
+  if (hasActivePass || IS_BETA) return <>{children}</>;
 
   return (
     <section
@@ -30,8 +29,8 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
       aria-label="Funkcja dostępna w Karnecie Aplikacyjnym"
       className="rounded-2xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900/60"
     >
-      <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#F26440]">
-        Karnet Aplikacyjny
+      <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-brand-fg">
+        Bezpłatna Beta
       </p>
       <h2 className="mt-1.5 text-lg font-black tracking-tight text-slate-900 dark:text-slate-100">
         Teleprompter Live HUD
@@ -40,16 +39,8 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
         {pitch}
       </p>
       <p className="mt-3 text-sm font-bold text-slate-900 dark:text-slate-100">
-        Funkcja jest dostępna w aktywnym Karnecie Aplikacyjnym.
+        Funkcja jest udostępniona testerom bezpłatnej wersji beta bez konieczności zakupu płatnego karnetu.
       </p>
-
-      {onBuyPass && (
-        <div className="mt-4 flex justify-center">
-          <Button type="button" variant="primary" size="sm" onClick={onBuyPass}>
-            Zobacz Karnet
-          </Button>
-        </div>
-      )}
     </section>
   );
 };

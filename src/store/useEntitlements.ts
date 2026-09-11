@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { StorageKeys, onAppStorageWiped, readJson, writeJson } from '../lib/storage';
 import { clientEnv } from '../lib/clientEnv';
 import { ApiError, api } from '../lib/apiClient';
+import { IS_BETA } from '../lib/betaConfig';
 
 /**
  * Uprawnienia i pozostałe limity — **wyłącznie na potrzeby interfejsu**.
@@ -73,7 +74,8 @@ function freshState(): EntitlementsState {
       monthKey: getMonthKey(),
       dayKey: getDayKey(),
     },
-    hasActivePass: false,
+    // W bezpłatnej wersji beta podstawowy przepływ testera jest odblokowany bez płatnego karnetu.
+    hasActivePass: IS_BETA,
     source: 'local',
   };
 }
@@ -101,11 +103,11 @@ function loadInitialState(): EntitlementsState {
     };
   }
 
-  // Starsze wpisy ze schowka mogą nie znać pola karnetu — brak znaczy false.
+  // W bezpłatnej wersji beta podstawowy przepływ testera pozostaje aktywny.
   return {
     subscription: saved.subscription || { status: 'free' },
     usage,
-    hasActivePass: saved.hasActivePass === true,
+    hasActivePass: true,
     source: saved.source === 'server' ? 'server' : 'local',
   };
 }
@@ -123,9 +125,13 @@ function setState(updater: (prev: EntitlementsState) => EntitlementsState): void
 // natychmiastowego zapisu — klucz właśnie zniknął ze schowka, a odtworzenie go
 // tuż po wymazaniu byłoby pisaniem danej osobowej w tej samej operacji, która
 // miała ją usunąć. Zapis wróci dopiero przy realnej akcji użytkownika.
-onAppStorageWiped(() => {
+export function resetEntitlementsForTesting(): void {
   globalState = freshState();
   listeners.forEach((notify) => notify());
+}
+
+onAppStorageWiped(() => {
+  resetEntitlementsForTesting();
 });
 
 export function isProStatus(status?: SubscriptionStatus | string | null): boolean {
@@ -189,7 +195,7 @@ export function useEntitlements() {
             monthKey: getMonthKey(),
             dayKey: getDayKey(),
           },
-          hasActivePass: me.hasActivePass === true,
+          hasActivePass: me.hasActivePass ?? true,
           source: 'server',
         }));
       }
@@ -236,8 +242,8 @@ export function useEntitlements() {
     },
     source: state?.source || 'local',
     isPro,
-    // Karnet jest osobnym, jednorazowym uprawnieniem zwracanym przez backend.
-    hasActivePass: state?.hasActivePass === true,
+    // W bezpłatnej wersji beta podstawowy przepływ testera nie wymaga płatnego karnetu.
+    hasActivePass: IS_BETA || state?.hasActivePass === true,
     refresh,
     consumeAi,
     consumeImport,

@@ -4,7 +4,7 @@ import { MasterVault, LayeredFactItem } from '../types';
 import { reportClientError } from './errorReporter';
 
 /**
- * Natywny eksport .docx pod parsery ATS (Workday, Taleo, Greenhouse).
+ * Natywny eksport .docx pod parsery ATS (czytelność maszynowa, układ jednokolumnowy).
  *
  * Twardy kontrakt hierarchii OpenXML — bez wyjątków:
  * - marginesy dokładnie 25,4 mm (1 cal = 1440 twips) ze wszystkich stron;

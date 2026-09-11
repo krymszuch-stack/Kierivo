@@ -187,6 +187,11 @@ describe('werdykty per system rekrutacyjny', () => {
       'Modern ATS / Boolean',
       'Polish Market (MŚP)',
     ]);
+    expect(report.systemVulnerabilities.map((system) => system.featureName)).toEqual([
+      'Parsowanie liniowe i odporność strukturalna',
+      'Filtry słów kluczowych i gęstość fraz',
+      'Mapowanie formularzy i fleksja polska',
+    ]);
   });
 
   it('tabele i wielokolumny bolą legacy bardziej niż booleanowe', () => {

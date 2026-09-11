@@ -20,6 +20,7 @@ import { SidebarShortcutsWidget } from './SidebarShortcutsWidget';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
+import { BETA_LABEL } from '../../lib/betaConfig';
 
 /**
  * Czytelne, jednoznaczne ikony sekcji z pakietu lucide-react.
@@ -165,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label="Audyt ATS"
             badge="360°"
             badgeVariant="warning"
-            hint="Wielosilnikowe laboratorium audytu CV pod kątem Workday, Taleo, Greenhouse i iCIMS."
+            hint="Laboratorium audytu CV: analiza lematyczna, struktura dokumentu i czytelność maszynowa."
             isActive={activeTab === 'ats-lab'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('ats-lab')}
@@ -240,12 +241,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <p className="truncate text-label font-semibold text-ink">
                   {isAuthenticated ? userEmail : 'Logowanie / Konto'}
                 </p>
-                <p className="truncate font-mono text-[10px] text-muted">
-                  {planStatus === 'active'
-                    ? 'Plan Pro aktywny'
-                    : planStatus === 'trialing'
-                    ? 'Plan Pro — okres próbny'
-                    : 'Plan Free'}
+                <p className="truncate font-mono text-[10px] text-brand-fg font-medium">
+                  {BETA_LABEL} (Tester)
                 </p>
               </div>
             )}

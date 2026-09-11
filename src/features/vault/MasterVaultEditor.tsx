@@ -167,7 +167,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
       {/* Header with Mode Switcher & Actions */}
       <PageHeader
         title="Master Vault • Profil Główny Kandydata"
-        description="Jedyne źródło danych dokumentów: kompetencje, doświadczenie i preferencje. Zmiany zapisują się automatycznie — lokalnie, a po zalogowaniu także w chmurze konta."
+        description="Jedyne źródło danych dokumentów: kompetencje, doświadczenie i preferencje. Zmiany zapisują się automatycznie w Twojej przeglądarce na tym urządzeniu."
         badge={
           <ConsistencyLockBadge
             isConsistent={consistency.isConsistent}

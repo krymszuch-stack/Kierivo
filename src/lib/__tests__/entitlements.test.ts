@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isProStatus, consumeAiLocally, FREE_MONTHLY_IMPORTS, FREE_DAILY_AI_USES } from '../../store/useEntitlements';
+import {
+  isProStatus,
+  consumeAiLocally,
+  resetEntitlementsForTesting,
+  FREE_MONTHLY_IMPORTS,
+  FREE_DAILY_AI_USES,
+} from '../../store/useEntitlements';
 import { StorageKeys, writeJson, wipeAppStorage } from '../storage';
 
 describe('useEntitlements i isProStatus', () => {
   beforeEach(() => {
     wipeAppStorage();
+    resetEntitlementsForTesting();
   });
 
   it('isProStatus poprawnie rozpoznaje statusy bez rzucania wyjątków na undefined/null', () => {
@@ -37,5 +44,16 @@ describe('useEntitlements i isProStatus', () => {
     });
 
     expect(isProStatus(undefined)).toBe(false);
+  });
+
+  it('w bezpłatnej wersji beta odblokowuje karnet testerski i pilnuje limitu AI', () => {
+    wipeAppStorage();
+    resetEntitlementsForTesting();
+    // 5 dozwolonych użyć dobowych
+    for (let i = 0; i < FREE_DAILY_AI_USES; i++) {
+      expect(consumeAiLocally()).toBe(true);
+    }
+    // Szóste wywołanie w tej samej dobie zostaje odrzucone
+    expect(consumeAiLocally()).toBe(false);
   });
 });

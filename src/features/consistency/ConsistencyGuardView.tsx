@@ -91,7 +91,7 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
               />
             </div>
             <p className="text-xs text-muted">
-              Gwarancja Single Source of Truth — renderery (CV, HUD, Pitch) zasilane bezpośrednio z MasterVault przez claimId.
+              Jedno źródło prawdy — renderery (CV, HUD, Pitch) zasilane z MasterVault przez identyfikatory faktów. Sprawdzana jest spójność chronologii i brak sprzeczności technologicznych w zbadanym zakresie.
             </p>
           </div>
         </div>

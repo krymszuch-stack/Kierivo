@@ -1,4 +1,4 @@
-﻿import { MasterVault } from '../types';
+import { MasterVault } from '../types';
 import {
   getPolishStem,
   HR_AND_COMMON_STOP_WORDS,
@@ -79,6 +79,8 @@ export interface AtsTelemetryReport {
   systemVulnerabilities: Array<{
     systemId: 'Taleo_Workday' | 'Greenhouse_Lever' | 'eRecruiter_Traffit';
     systemCategory: 'Enterprise Legacy' | 'Modern ATS / Boolean' | 'Polish Market (MŚP)';
+    /** Nazwa rzeczywiście mierzonej cechy / wymiaru podatności dokumentu. */
+    featureName: string;
     passProbability: number;
     criticalRisks: string[];
     complianceReasons: string[];
@@ -392,6 +394,7 @@ function buildSystemVulnerabilities(
     results.push({
       systemId: 'Taleo_Workday',
       systemCategory: 'Enterprise Legacy',
+      featureName: 'Parsowanie liniowe i odporność strukturalna',
       passProbability: probability,
       criticalRisks,
       complianceReasons,
@@ -434,6 +437,7 @@ function buildSystemVulnerabilities(
     results.push({
       systemId: 'Greenhouse_Lever',
       systemCategory: 'Modern ATS / Boolean',
+      featureName: 'Filtry słów kluczowych i gęstość fraz',
       passProbability: probability,
       criticalRisks,
       complianceReasons,
@@ -480,6 +484,7 @@ function buildSystemVulnerabilities(
     results.push({
       systemId: 'eRecruiter_Traffit',
       systemCategory: 'Polish Market (MŚP)',
+      featureName: 'Mapowanie formularzy i fleksja polska',
       passProbability: probability,
       criticalRisks,
       complianceReasons,

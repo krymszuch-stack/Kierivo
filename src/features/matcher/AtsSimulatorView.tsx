@@ -25,11 +25,33 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
   onAddToVault,
   className = '',
 }) => {
-  const systemScores = [
-    { name: 'Workday', score: Math.min(100, Math.round(result.overallScore * 0.92 + result.structureScore * 0.08)), desc: 'Parsowanie nagłówków i dat' },
-    { name: 'Greenhouse', score: Math.min(100, Math.round((result.layer2Nlp?.hardSkillsCoverage || result.keywordCoverageScore) * 0.85 + result.formattingScore * 0.15)), desc: 'Lematyzacja słów kluczowych' },
-    { name: 'Lever', score: Math.min(100, Math.round(result.keywordCoverageScore * 0.8 + result.structureScore * 0.2)), desc: 'Struktura jednokolumnowa' },
-    { name: 'Taleo / Oracle', score: Math.min(100, Math.round(result.structureScore * 0.5 + result.keywordCoverageScore * 0.5)), desc: 'Tradycyjny parser korporacyjny' },
+  const featureScores = [
+    {
+      name: 'Parsowanie nagłówków i dat',
+      score: Math.min(100, Math.round(result.overallScore * 0.92 + result.structureScore * 0.08)),
+      desc: 'Standard nagłówków, chronologia i formatowanie dat',
+    },
+    {
+      name: 'Lematyzacja słów kluczowych',
+      score: Math.min(
+        100,
+        Math.round(
+          (result.layer2Nlp?.hardSkillsCoverage || result.keywordCoverageScore) * 0.85 +
+            result.formattingScore * 0.15
+        )
+      ),
+      desc: 'Pokrycie odmian słów kluczowych i kompetencji twardych',
+    },
+    {
+      name: 'Układ jednokolumnowy',
+      score: Math.min(100, Math.round(result.keywordCoverageScore * 0.8 + result.structureScore * 0.2)),
+      desc: 'Odporność na błędy odczytu i integralność sekcji',
+    },
+    {
+      name: 'Odporność parsera liniowego',
+      score: Math.min(100, Math.round(result.structureScore * 0.5 + result.keywordCoverageScore * 0.5)),
+      desc: 'Liniowa czytelność maszynowa tekstu bez gubienia kontekstu',
+    },
   ];
 
   return (
@@ -40,9 +62,9 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <h3 className="text-sm font-bold text-ink">Audyt ATS: zgodność z ofertą</h3>
+          <h3 className="text-sm font-bold text-ink">Audyt zgodności z ofertą</h3>
           <p className="text-xs text-muted">
-            Ocena lematyczna z uwzględnieniem wag technologii twardych (3.0x), świeżości doświadczenia oraz struktury dokumentu.
+            Ocena lematyczna z uwzględnieniem wag technologii twardych (3.0x), świeżości doświadczenia oraz struktury dokumentu. Wynik CVelocity nie jest wynikiem zewnętrznego systemu ATS ani gwarancją rekrutacji.
           </p>
         </div>
       </div>
@@ -52,7 +74,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
         {/* Left Column: Score Ring & Corporate Engines */}
         <div className="lg:col-span-5 space-y-4">
           <Card tone="raised" className="flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <ScoreRing score={result.overallScore} size={150} />
+            <ScoreRing score={result.overallScore} size={150} label="Dopasowanie" />
 
             <div className="w-full border-t border-line/60 pt-3">
               <span className="font-mono text-[11px] font-bold text-muted uppercase tracking-wider block mb-1">
@@ -64,32 +86,29 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
             </div>
           </Card>
 
-          {/* Corporate ATS Systems Preview */}
+          {/* Mierzone wymiary czytelności maszynowej */}
           <Card tone="raised" className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Estymacja Kompatybilności w Systemach ATS
+              Mierzone Wymiary Czytelności Maszynowej
             </h4>
-            {/* Oceny systemów to heurystyki złożone ze składowych naszego audytu,
-                nie pomiary na produkcyjnych instalacjach — bez adnotacji czytałyby
-                się jak zwalidowany benchmark. */}
-            <p className="text-[11px] text-subtle">
-              Estymacje heurystyczne — nie mierzone na produkcyjnych ATS.
+            <p className="text-[11px] text-subtle leading-relaxed">
+              Wskaźniki oparte na analizie strukturalnej i lematycznej dokumentu. Wynik CVelocity nie jest wynikiem zewnętrznego systemu ATS ani gwarancją rekrutacji.
             </p>
 
             <div className="space-y-2">
-              {systemScores.map((sys) => (
+              {featureScores.map((feat) => (
                 <div
-                  key={sys.name}
+                  key={feat.name}
                   className="flex items-center justify-between rounded-xl border border-line/60 bg-surface p-2.5 text-xs"
                 >
                   <div>
-                    <span className="font-bold text-ink">{sys.name}</span>
-                    <span className="block font-mono text-[10px] text-muted">{sys.desc}</span>
+                    <span className="font-bold text-ink">{feat.name}</span>
+                    <span className="block font-mono text-[10px] text-muted">{feat.desc}</span>
                   </div>
                   <span className={`font-mono text-xs font-bold ${
-                    sys.score >= 80 ? 'text-success-fg' : sys.score >= 60 ? 'text-warning-fg' : 'text-danger-fg'
+                    feat.score >= 80 ? 'text-success-fg' : feat.score >= 60 ? 'text-warning-fg' : 'text-danger-fg'
                   }`}>
-                    {sys.score}%
+                    {feat.score}%
                   </span>
                 </div>
               ))}

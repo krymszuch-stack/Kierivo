@@ -126,7 +126,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             Audyt ATS i Konsensus Rynkowy
           </h1>
           <p className="mt-1 text-sm text-ink-muted">
-            Sprawdź, jak 10 wyspecjalizowanych filtrów i silników weryfikacji w CVelocity ocenia Twoje CV pod kątem czytelności, słów kluczowych i wymagań formalnych.
+            Sprawdź, jak 10 wyspecjalizowanych filtrów i silników weryfikacji w CVelocity ocenia Twoje CV pod kątem czytelności, słów kluczowych i wymagań formalnych. Wynik CVelocity nie jest wynikiem zewnętrznego systemu ATS ani gwarancją rekrutacji.
           </p>
         </div>
 
@@ -351,20 +351,17 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           </div>
         </div>
 
-        {/* Werdykty per system */}
-        {/* Prawdopodobieństwa pochodzą z heurystyk wewnętrznych, nie z pomiaru na
-            produkcyjnych instalacjach ATS — bez adnotacji czytałyby się jak
-            zwalidowany benchmark (wzorzec: mapa ciepła LandingView). */}
+        {/* Mierzone wymiary zgodności */}
         <p className="mt-6 text-[11px] text-ink-faint">
-          Model poglądowy — estymacje heurystyczne, niewalidowane na produkcyjnych systemach ATS.
+          Wskaźniki heurystyczne mierzonych cech dokumentu. Wynik CVelocity nie jest wynikiem zewnętrznego systemu ATS ani gwarancją rekrutacji.
         </p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {telemetry.systemVulnerabilities.map((system) => (
             <div key={system.systemId} className="p-5 rounded-2xl border border-ink/5 bg-surface/60 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-bold text-ink">{system.systemId.replace('_', ' / ')}</p>
-                  <p className="text-[11px] text-ink-faint">{system.systemCategory}</p>
+                  <p className="text-sm font-bold text-ink">{system.featureName}</p>
+                  <p className="text-[11px] text-ink-faint">{system.systemCategory} • heurystyka techniczna</p>
                 </div>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white ${
                   system.passProbability >= 75 ? 'bg-emerald-500' : system.passProbability >= 50 ? 'bg-blue-500' : system.passProbability >= 30 ? 'bg-amber-500' : 'bg-rose-500'

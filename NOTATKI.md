@@ -17,14 +17,6 @@
 
 <!-- Dopisuj tutaj. Jeden punkt = jedna uwaga. -->
 
-- Zniżki za rangę (−15%/−30% z `LEVEL_PRIVILEGES`) nalicza teraz serwer przy
-  tworzeniu sesji checkout (kupony Stripe `ranga-15`/`ranga-30`, twórczone przy
-  pierwszym użyciu). Odczyt XP idzie z tabeli `user_gamification` — **do czasu
-  aplikowania migracji `docs/migracje/0007` sesje po prostu wychodzą bez
-  zniżki** (log ostrzega). Przed włączeniem płatności aplikować migrację,
-  inaczej obietnica z Centrum Kariery będzie martwa mimo kodu.
-  _(wpis od agenta)_
-
 - Eksport Lovable (`cvelocity_doimportu`) zawierał plik `.env.development` z
   **prawdziwym kluczem publikowalnym Stripe (`pk_test_…`)**. Do repo go nie
   wpuściłem, ale klucz krążył poza kontrolą wersji — jeśli ten projekt testowy
@@ -32,15 +24,16 @@
   testowym. Pliku nie ma w historii gita, więc rotacja to czysta ostrożność.
   _(wpis od agenta po PR #101)_
 
-- Migracje `docs/migracje/0005–0007` (gamifikacja, ankieta, antyfarming) i
+- Migracje `docs/migracje/0005–0007` (dane ankiety, schemat) i
   `docs/sql/0005_katalog_platnosci.sql` (tabela `template_entitlements`) są
-  **dokumentacją schematu, nie zastosowanymi migracjami** — trasy
-  `gamification.routes.ts` i `intel.routes.ts` zamontowane w `server.ts`
-  odpalą się dopiero w trybie chmurowym i przy braku tych tabel będą padać.
-  Pod Firebase Hosting (frontend-only) nie mają dziś odbiorcy, zgodnie z
+  **dokumentacją schematu, nie zastosowanymi migracjami** — trasa
+  `intel.routes.ts` zamontowana w `server.ts`
+  odpali się dopiero w trybie chmurowym i przy braku tych tabel będzie rzucać błąd.
+  Pod Firebase Hosting (frontend-only) nie ma dziś odbiorcy, zgodnie z
   opisem stanu w README. Decyzja: aplikować do Supabase przed włączeniem
-  backendu w chmurze.
-  _(wpis od agenta po PR #101)_
+  backendu w chmurze. Gamifikacja i trasa `gamification.routes.ts` zostały
+  całkowicie wycofane w PR #107.
+  _(wpis od agenta po PR #101, zaktualizowany po PR #107)_
 
 - Suita testowa podpakietu `semantic-work-graph` krzacza się przy teardównie na
   Node 22/Windows natywnym błędem better-sqlite3 (`Assertion failed:
@@ -74,6 +67,12 @@ Format wpisu:
 - ~~Treść uwagi~~
   - **Agent RRRR-MM-DD:** co zostało zrobione albo dlaczego zdecydowano inaczej. PR #NN.
 -->
+
+- ~~Oznaczenie wersji jako bezpłatna beta, wyłączenie aktywnych zakupów, odblokowanie przepływu bez płatnego karnetu~~
+  - **Antigravity 2026-09-11:** oznaczono wersję w całym UI i w `package.json` jako `0.1.0-beta` (Bezpłatna Beta), wyłączono aktywne zakupy w `billing.routes.ts` (odpowiedź 503) i w modalu Stripe oraz cenniku, zapewniono podstawowy przepływ testera (w tym Teleprompter Live HUD) bez płatnego karnetu (`hasActivePass: true`), zachowano twarde egzekwowanie dobowych limitów AI na serwerze (5/dzień), a funkcje poza zakresem (Pro Insights) oznaczono jednoznacznie jako niedostępne w fazie beta.
+
+- ~~Zniżki za rangę (−15%/−30% z LEVEL_PRIVILEGES) i odczyt XP z tabeli user_gamification~~
+  - **PR #107 (commit d8ba941):** Gamifikacja, XP, rangi, wyzwania i rabaty zależne od poziomu zostały definitywnie wycofane z produktu. Tabela `user_gamification` została wyłączona z Data API, a trasy usunięte.
 
 - ~~Pozostałości po audycie UI/UX: martwe zmienne w HUD i szablony DocumentRenderer~~
   - **Antigravity 2026-08-27:** uporządkowano nieużywane zmienne w `ReactFloatingPanel.tsx` (usunięto nieużywane `isZoomSimulated`, zastąpiono zmienną `wpmSpeed` stałą `WPM_SPEED`), wdrożono dedykowane style i layouty dla wszystkich 4 szablonów w `DocumentRenderer.tsx` (Nowoczesny, Minimalny, Menedżerski, Kreatywny) wraz z pełną edycją inline.

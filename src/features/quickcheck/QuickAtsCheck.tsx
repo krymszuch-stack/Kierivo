@@ -352,7 +352,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
 
           <div className="flex flex-col gap-2 border-t border-line/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[11px] text-subtle">
-              Chcesz poprawić wynik? Zapisz profil i edytuj CV pod tę ofertę.
+              Wynik jest analizą zgodności CV z ofertą — nie stanowi wyniku zewnętrznego ATS ani gwarancji rekrutacji.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => onSaveProfile(result.vault)}>

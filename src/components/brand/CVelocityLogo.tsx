@@ -1,16 +1,19 @@
 import React from 'react';
 import { CVelocityMark } from './CVelocityMark';
+import { BETA_BADGE } from '../../lib/betaConfig';
 
 export interface LogoProps {
   className?: string;
   showBadge?: boolean;
+  badgeText?: string;
   /** Sam kafelek ze znakiem — pasek boczny w wersji zwiniętej. */
   collapsed?: boolean;
 }
 
 export const CVelocityLogo: React.FC<LogoProps> = ({
   className = '',
-  showBadge = false,
+  showBadge = true,
+  badgeText = BETA_BADGE,
   collapsed = false,
 }) => (
   <div className={`flex items-center gap-2.5 ${className}`}>
@@ -27,8 +30,8 @@ export const CVelocityLogo: React.FC<LogoProps> = ({
           <span>ELOCITY</span>
         </span>
         {showBadge && (
-          <span className="rounded-md border border-brand-500/20 bg-brand-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-brand-fg">
-            AI
+          <span className="rounded-md border border-brand-500/30 bg-brand-500/10 px-1.5 py-0.5 font-mono text-[9px] font-bold text-brand-fg tracking-wide">
+            {badgeText}
           </span>
         )}
       </div>

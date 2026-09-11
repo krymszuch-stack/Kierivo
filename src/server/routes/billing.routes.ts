@@ -1,154 +1,36 @@
-import { NextFunction, Request, Response, Router } from 'express';
-import { requireAuth } from '../middleware/requireAuth';
-import { validateBody } from '../middleware/validate';
-import { checkoutSessionSchema, type CheckoutSessionInput } from '../../types/contracts';
-import { loadConfig } from '../config';
-import { getStripe } from '../stripeClient';
-import { getSupabase } from '../supabase';
+import { Request, Response, Router } from 'express';
+import { PURCHASES_DISABLED_REASON } from '../../lib/betaConfig';
 
 export const billingRouter = Router();
 
 function paymentsUnavailable(res: Response): void {
-  res.status(501).json({
+  res.status(503).json({
     success: false,
-    error: 'Płatności nie są uruchomione w tej instalacji.',
+    error: PURCHASES_DISABLED_REASON,
   });
-}
-
-/**
- * Znajduje albo zakłada klienta w Stripe dla danego konta.
- *
- * Jeden użytkownik = jeden `stripe_customer_id`. Bez tego każde wejście do kasy
- * tworzyłoby nowego klienta, historia płatności rozsypałaby się po kilku
- * rekordach, a Customer Portal pokazywałby pustkę zamiast aktywnej subskrypcji.
- */
-async function resolveCustomerId(userId: string, email?: string): Promise<string> {
-  const supabase = getSupabase();
-
-  const { data } = await supabase
-    .from('subscriptions')
-    .select('stripe_customer_id')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (data?.stripe_customer_id) return data.stripe_customer_id;
-
-  const customer = await getStripe().customers.create({
-    email,
-    // `metadata.user_id` to jedyny sposób, w jaki webhook potrafi powiązać
-    // zdarzenie ze Stripe'a z kontem w naszej bazie.
-    metadata: { user_id: userId },
-  });
-
-  const { error } = await supabase
-    .from('subscriptions')
-    .upsert({ user_id: userId, stripe_customer_id: customer.id }, { onConflict: 'user_id' });
-
-  if (error) throw new Error(`Nie udało się zapisać klienta płatności: ${error.message}`);
-
-  return customer.id;
 }
 
 /**
  * POST /api/billing/checkout-session
  *
- * Tworzy sesję płatności po stronie serwera i zwraca adres bramki. Przeglądarka
- * jedynie pod niego przechodzi — nie ma tu Stripe.js, więc CSP zostaje przy
- * `script-src 'self'`.
- *
- * Cena pochodzi z tabeli `plans`, a przysłany `priceId` jest wyłącznie kluczem
- * wyszukiwania. Gdyby trafiał wprost do Stripe'a, wystarczyłoby podmienić go
- * w żądaniu i kupić plan Pro za cenę jednorazowego szablonu.
+ * W wersji bezpłatnej beta tworzenie sesji płatności jest bezwzględnie wyłączone.
  */
 billingRouter.post(
   '/billing/checkout-session',
-  requireAuth,
-  validateBody(checkoutSessionSchema),
-  async (req: Request<unknown, unknown, CheckoutSessionInput>, res: Response, next: NextFunction) => {
-    try {
-      const config = loadConfig();
-      if (!config.paymentsEnabled) return paymentsUnavailable(res);
-
-      const { data: plan, error: planError } = await getSupabase()
-        .from('plans')
-        .select('id, stripe_price_id, interval, trial_days')
-        .eq('stripe_price_id', req.body.priceId)
-        .eq('active', true)
-        .maybeSingle();
-
-      if (planError) throw new Error(`Nie udało się odczytać cennika: ${planError.message}`);
-      if (!plan) {
-        res.status(400).json({ success: false, error: 'Nieznany plan.' });
-        return;
-      }
-
-      const userId = req.user!.id;
-      const customerId = await resolveCustomerId(userId, req.user!.email);
-      const isRecurring = plan.interval !== 'one_time';
-
-      const session = await getStripe().checkout.sessions.create({
-        customer: customerId,
-        mode: isRecurring ? 'subscription' : 'payment',
-        line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
-        success_url: `${config.APP_URL}/?checkout=success`,
-        cancel_url: `${config.APP_URL}/?checkout=cancelled`,
-        // Powtarzane w dwóch miejscach celowo: `checkout.session.completed`
-        // niesie metadane sesji, a `customer.subscription.*` metadane
-        // subskrypcji. Webhook musi umieć powiązać konto w obu przypadkach.
-        metadata: { user_id: userId, plan_id: plan.id },
-        ...(isRecurring
-          ? {
-              subscription_data: {
-                metadata: { user_id: userId, plan_id: plan.id },
-                ...(plan.trial_days > 0 ? { trial_period_days: plan.trial_days } : {}),
-              },
-            }
-          : {}),
-      });
-
-      if (!session.url) throw new Error('Stripe nie zwrócił adresu sesji płatności.');
-
-      res.json({ success: true, url: session.url });
-    } catch (err) {
-      next(err);
-    }
+  async (_req: Request, res: Response) => {
+    return paymentsUnavailable(res);
   }
 );
 
 /**
  * POST /api/billing/portal-session
  *
- * Customer Portal Stripe'a: zmiana karty, faktury i anulowanie subskrypcji.
- * Budowanie własnych ekranów do tych operacji oznaczałoby obsługę kart płatniczych
- * po naszej stronie — czyli zakres PCI DSS, którego ten projekt nie chce.
+ * W wersji bezpłatnej beta portal zarządzania subskrypcjami komercyjnymi jest wyłączony.
  */
 billingRouter.post(
   '/billing/portal-session',
-  requireAuth,
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const config = loadConfig();
-      if (!config.paymentsEnabled) return paymentsUnavailable(res);
-
-      const { data } = await getSupabase()
-        .from('subscriptions')
-        .select('stripe_customer_id')
-        .eq('user_id', req.user!.id)
-        .maybeSingle();
-
-      if (!data?.stripe_customer_id) {
-        res.status(400).json({ success: false, error: 'Brak historii płatności dla tego konta.' });
-        return;
-      }
-
-      const session = await getStripe().billingPortal.sessions.create({
-        customer: data.stripe_customer_id,
-        return_url: config.APP_URL,
-      });
-
-      res.json({ success: true, url: session.url });
-    } catch (err) {
-      next(err);
-    }
+  async (_req: Request, res: Response) => {
+    return paymentsUnavailable(res);
   }
 );
+

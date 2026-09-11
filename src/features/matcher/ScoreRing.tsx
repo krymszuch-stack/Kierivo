@@ -13,7 +13,7 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
   score,
   size = 140,
   strokeWidth = 10,
-  label = 'ATS Score',
+  label = 'Dopasowanie',
   className = '',
 }) => {
   const radius = (size - strokeWidth) / 2;

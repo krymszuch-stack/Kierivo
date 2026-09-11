@@ -39,7 +39,7 @@ export const ConsistencyLockBadge: React.FC<ConsistencyLockBadgeProps> = ({
 
   // „claimy" to żargon wewnętrzny wyciekający do UI — dla użytkownika to fakty z Vaultu.
   const defaultTooltip = isVerified
-    ? `🔒 Spójność potwierdzona (${claimsCount ? `${claimsCount} zweryfikowanych faktów z Vaultu` : '100% zgodności z MasterVault'})`
+    ? `🔒 Spójność potwierdzona (${claimsCount && claimsCount > 0 ? `${claimsCount} zweryfikowanych faktów z Vaultu` : 'brak wykrytych rozbieżności z MasterVault'})`
     : `⚠️ Wykryto ${alertCount} ${pluralPl(alertCount, 'rozbieżność', 'rozbieżności', 'rozbieżności')} lub sprzeczności danych względem MasterVault`;
 
   if (variant === 'icon-only') {
