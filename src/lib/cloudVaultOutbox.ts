@@ -123,7 +123,8 @@ export function flushPendingCloudVault(
       try {
         await sender(pending.vault, ownerId);
       } catch {
-        // Brak potwierdzenia = nadal oczekuje. Niczego nie kasujemy.
+        // Brak potwierdzenia = nadal oczekuje. Niczego nie kasujemy. Kolejna
+        // próba nastąpi po nowym zapisie, zdarzeniu online lub ponownym wejściu.
         publish(ownerId, 'pending');
         return 'pending';
       }
@@ -144,16 +145,6 @@ export function flushPendingCloudVault(
   })();
 
   inFlight.set(ownerId, task);
-
-  void task.finally(() => {
-    inFlight.delete(ownerId);
-    // Domyka bardzo wąski wyścig: nowa wersja może zostać zakolejkowana między
-    // ostatnim odczytem outboxu a zakończeniem taska. Nie zostawiamy jej wtedy
-    // do następnego restartu lub zdarzenia online.
-    if (getPendingCloudVault(ownerId) && networkLooksAvailable()) {
-      void flushPendingCloudVault(ownerId, sender);
-    }
-  });
-
+  void task.finally(() => inFlight.delete(ownerId));
   return task;
 }
