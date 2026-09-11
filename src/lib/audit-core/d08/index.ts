@@ -14,6 +14,22 @@ export type {
   D08TextLayerSignals,
 } from './types';
 
+export type {
+  D08EncodingAnalysis,
+  D08EncodingAnomaly,
+  D08EncodingAnomalyType,
+  D08OrderStats,
+  D08TokenAgreement,
+} from './extractor';
+
+export {
+  analyzeD08Encoding,
+  computeD08TokenAgreement,
+  computeD08WeightedOrderStats,
+  normalizeD08Text,
+  tokenizeD08Text,
+} from './extractor';
+
 export {
   D08_BASE_WEIGHTS,
   D08_CONFIG,
