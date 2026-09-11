@@ -44,16 +44,18 @@ function cleanLine(line: string): string {
 }
 
 function priorityForLine(line: string, section: D10RequirementPriority | null): D10RequirementPriority | null {
-  if (PREFERRED_MARKER.test(line)) return 'PREFERRED';
-  if (CORE_MARKER.test(line)) return 'CORE_MUST';
-  if (MUST_MARKER.test(line)) return 'MUST';
+  const normalized = normalizeFormalTerm(line);
+  if (PREFERRED_MARKER.test(normalized)) return 'PREFERRED';
+  if (CORE_MARKER.test(normalized)) return 'CORE_MUST';
+  if (MUST_MARKER.test(normalized)) return 'MUST';
   return section;
 }
 
 function baseExtractionConfidence(line: string, priority: D10RequirementPriority): number {
-  if (CORE_MARKER.test(line)) return 0.98;
-  if (PREFERRED_MARKER.test(line)) return 0.94;
-  if (MUST_MARKER.test(line)) return 0.93;
+  const normalized = normalizeFormalTerm(line);
+  if (CORE_MARKER.test(normalized)) return 0.98;
+  if (PREFERRED_MARKER.test(normalized)) return 0.94;
+  if (MUST_MARKER.test(normalized)) return 0.93;
   if (priority === 'PREFERRED') return 0.86;
   return 0.84;
 }
@@ -149,21 +151,22 @@ export async function extractD10Requirements(
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    if (MUST_SECTION.test(line)) {
+    const normalizedLine = normalizeFormalTerm(line);
+    if (MUST_SECTION.test(normalizedLine)) {
       section = 'MUST';
       continue;
     }
-    if (PREFERRED_SECTION.test(line)) {
+    if (PREFERRED_SECTION.test(normalizedLine)) {
       section = 'PREFERRED';
       continue;
     }
-    if (NEUTRAL_SECTION.test(line)) {
+    if (NEUTRAL_SECTION.test(normalizedLine)) {
       section = null;
       continue;
     }
 
-    const priority = priorityForLine(line, section);
-    const looksFormal = FORMAL_HINT.test(normalizeFormalTerm(line));
+    const priority = priorityForLine(normalizedLine, section);
+    const looksFormal = FORMAL_HINT.test(normalizedLine);
     if (looksFormal && priority) requirementLikeLines += 1;
     if (!priority || !looksFormal) continue;
 
@@ -174,7 +177,7 @@ export async function extractD10Requirements(
     for (const entity of entities) {
       const adaptiveDelta = boundedAdaptiveAdjustment(adaptiveSignal);
       const confidence = Math.max(0, Math.min(1,
-        baseExtractionConfidence(line, priority) + adaptiveDelta,
+        baseExtractionConfidence(normalizedLine, priority) + adaptiveDelta,
       ));
       const evidenceId = await buildEvidenceId(
         SCHEMA_VERSION,
