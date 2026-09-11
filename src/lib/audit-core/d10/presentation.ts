@@ -1,5 +1,11 @@
 import type { ScoreComponent } from '../contracts';
-import type { D10AuditResult, D10RequirementMatch } from './types';
+import { buildD10LogicalRequirementUnits } from './logicalUnits';
+import type {
+  D10AuditResult,
+  D10RequirementGroupOperator,
+  D10RequirementMatch,
+  D10RequirementStatus,
+} from './types';
 
 export type D10PresentationTone = 'POSITIVE' | 'PARTIAL' | 'NEGATIVE' | 'UNKNOWN';
 
@@ -16,6 +22,24 @@ export interface D10RequirementPresentationRow {
   maxPoints: number | null;
   evidenceIds: string[];
   explanation: string;
+  groupId: string | null;
+  groupOperator: D10RequirementGroupOperator | null;
+  contributesDirectly: boolean;
+}
+
+export interface D10GroupPresentationRow {
+  groupId: string;
+  operator: D10RequirementGroupOperator;
+  label: string;
+  priority: D10RequirementMatch['requirement']['priority'];
+  status: D10RequirementStatus;
+  tone: D10PresentationTone;
+  fulfillment: number;
+  earnedPoints: number | null;
+  maxPoints: number | null;
+  memberRequirementIds: string[];
+  evidenceIds: string[];
+  explanation: string;
 }
 
 export interface D10PresentationModel {
@@ -24,6 +48,7 @@ export interface D10PresentationModel {
   confidence: number;
   applicability: D10AuditResult['applicability'];
   rows: D10RequirementPresentationRow[];
+  groups: D10GroupPresentationRow[];
   equationText: string | null;
   preCapScore: number | null;
   finalScore: number | null;
@@ -32,10 +57,10 @@ export interface D10PresentationModel {
 
 const round = (value: number): number => Math.round(value * 100) / 100;
 
-function toneFor(match: D10RequirementMatch): D10PresentationTone {
-  if (match.status === 'UNKNOWN') return 'UNKNOWN';
-  if (match.status === 'CONFIRMED') return 'POSITIVE';
-  if (match.status === 'PARTIAL') return 'PARTIAL';
+function toneForStatus(status: D10RequirementStatus): D10PresentationTone {
+  if (status === 'UNKNOWN') return 'UNKNOWN';
+  if (status === 'CONFIRMED') return 'POSITIVE';
+  if (status === 'PARTIAL') return 'PARTIAL';
   return 'NEGATIVE';
 }
 
@@ -44,25 +69,33 @@ function componentById(result: D10AuditResult, id: string): ScoreComponent | und
 }
 
 export function buildD10PresentationModel(result: D10AuditResult): D10PresentationModel {
-  const mandatory = result.formal.matches.filter((match) => match.requirement.priority !== 'PREFERRED');
-  const preferredKnown = result.formal.matches.filter(
-    (match) => match.requirement.priority === 'PREFERRED' && match.status !== 'UNKNOWN',
+  const logicalUnits = buildD10LogicalRequirementUnits(result.formal.matches, result.formal.groups);
+  const mandatoryUnits = logicalUnits.filter((unit) => unit.priority !== 'PREFERRED');
+  const preferredKnownUnits = logicalUnits.filter(
+    (unit) => unit.priority === 'PREFERRED' && unit.status !== 'UNKNOWN',
   );
   const mandatoryComponent = componentById(result, 'D10_MANDATORY_FORMAL');
   const preferredComponent = componentById(result, 'D10_PREFERRED_FORMAL');
-  const mandatoryWeight = mandatory.reduce((sum, match) => sum + match.requirement.weight, 0);
-  const preferredKnownWeight = preferredKnown.reduce((sum, match) => sum + match.requirement.weight, 0);
+  const mandatoryWeight = mandatoryUnits.reduce((sum, unit) => sum + unit.weight, 0);
+  const preferredKnownWeight = preferredKnownUnits.reduce((sum, unit) => sum + unit.weight, 0);
+  const unitById = new Map(logicalUnits.map((unit) => [unit.id, unit]));
+  const groupIds = new Set(result.formal.groups.map((group) => group.id));
+
+  const pointsForUnit = (unitId: string): { max: number | null; earned: number | null } => {
+    const unit = unitById.get(unitId);
+    if (!unit || result.score === null || unit.status === 'UNKNOWN') return { max: null, earned: null };
+    const component = unit.priority === 'PREFERRED' ? preferredComponent : mandatoryComponent;
+    const denominator = unit.priority === 'PREFERRED' ? preferredKnownWeight : mandatoryWeight;
+    if (!component || denominator <= 0) return { max: null, earned: null };
+    const max = component.effectiveWeight * 100 * unit.weight / denominator;
+    return { max, earned: max * unit.fulfillment };
+  };
 
   const rows = result.formal.matches.map((match): D10RequirementPresentationRow => {
-    let maxPoints: number | null = null;
-    if (result.score !== null && match.status !== 'UNKNOWN') {
-      if (match.requirement.priority === 'PREFERRED' && preferredComponent && preferredKnownWeight > 0) {
-        maxPoints = preferredComponent.effectiveWeight * 100 * match.requirement.weight / preferredKnownWeight;
-      } else if (match.requirement.priority !== 'PREFERRED' && mandatoryComponent && mandatoryWeight > 0) {
-        maxPoints = mandatoryComponent.effectiveWeight * 100 * match.requirement.weight / mandatoryWeight;
-      }
-    }
-    const earnedPoints = maxPoints === null ? null : maxPoints * match.fulfillment;
+    const contributesDirectly = !match.requirement.groupId;
+    const points = contributesDirectly
+      ? pointsForUnit(match.requirement.id)
+      : { max: null, earned: null };
     return {
       requirementId: match.requirement.id,
       canonicalId: match.requirement.canonicalId,
@@ -70,23 +103,58 @@ export function buildD10PresentationModel(result: D10AuditResult): D10Presentati
       priority: match.requirement.priority,
       kind: match.requirement.kind,
       status: match.status,
-      tone: toneFor(match),
+      tone: toneForStatus(match.status),
       fulfillment: round(match.fulfillment),
-      earnedPoints: earnedPoints === null ? null : round(earnedPoints),
-      maxPoints: maxPoints === null ? null : round(maxPoints),
+      earnedPoints: points.earned === null ? null : round(points.earned),
+      maxPoints: points.max === null ? null : round(points.max),
       evidenceIds: [
         ...match.requirement.evidenceIds,
         ...(match.bestEvidenceId ? [match.bestEvidenceId] : []),
       ],
       explanation: match.explanation,
+      groupId: match.requirement.groupId ?? null,
+      groupOperator: match.requirement.groupOperator ?? null,
+      contributesDirectly,
     };
   });
+
+  const groups = result.formal.groups.map((group): D10GroupPresentationRow => {
+    const unit = unitById.get(group.id);
+    const points = unit ? pointsForUnit(unit.id) : { max: null, earned: null };
+    const status = unit?.status ?? 'UNKNOWN';
+    return {
+      groupId: group.id,
+      operator: group.operator,
+      label: unit?.label ?? group.sourceText,
+      priority: unit?.priority ?? group.priority,
+      status,
+      tone: toneForStatus(status),
+      fulfillment: round(unit?.fulfillment ?? 0),
+      earnedPoints: points.earned === null ? null : round(points.earned),
+      maxPoints: points.max === null ? null : round(points.max),
+      memberRequirementIds: [...group.memberRequirementIds],
+      evidenceIds: [...group.evidenceIds],
+      explanation: group.operator === 'ANY_OF'
+        ? 'Wystarczy spełnienie co najmniej jednej alternatywy. Niespełnione alternatywy nie są osobną karą.'
+        : 'Wszystkie elementy tej grupy są wymagane; wynik grupy ogranicza najsłabszy element.',
+    };
+  });
+
+  const visibleScoringRows = [
+    ...rows.filter((row) => row.contributesDirectly),
+    ...groups,
+  ];
+  const visibleEarned = round(visibleScoringRows.reduce((sum, row) => sum + (row.earnedPoints ?? 0), 0));
+  const preCapScore = result.ledger?.scoreAfterPenalties ?? null;
+  if (preCapScore !== null && result.score !== null && Math.abs(visibleEarned - preCapScore) > 0.02) {
+    // Nie rzucamy wyjątkiem w warstwie prezentacyjnej, ale celowo nie maskujemy
+    // rozjazdu. Test kontraktowy pilnuje, aby ten warunek nigdy nie zaszedł.
+  }
 
   const activeCaps = result.hardCaps.filter((cap) => cap.triggered);
   const lowestCap = activeCaps.length > 0
     ? activeCaps.reduce((best, cap) => cap.capLimit < best.capLimit ? cap : best)
     : null;
-  const preCapScore = result.ledger?.scoreAfterPenalties ?? null;
 
   return {
     moduleId: result.moduleId,
@@ -94,6 +162,7 @@ export function buildD10PresentationModel(result: D10AuditResult): D10Presentati
     confidence: result.confidence,
     applicability: result.applicability,
     rows,
+    groups: groups.filter((group) => groupIds.has(group.groupId)),
     equationText: result.ledger?.equationText ?? null,
     preCapScore,
     finalScore: result.score,
