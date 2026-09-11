@@ -8,6 +8,17 @@
 
 ## 🆕 Nowe
 
+- Publiczne wydanie testowe ma nazwę **CVelocity Public Pre-Beta** i kod
+  **`PB-2026.09`**. Kod wersji nie oznacza procentu ukończenia produktu; służy
+  tylko do jednoznacznego rozpoznania przedpremierowego builda pokazywanego
+  testerom i w materiałach zewnętrznych.
+- Publiczna witryna ma stale widoczną wstążkę: `Public Pre-Beta · PB-2026.09 ·
+  otwarte testy · premiera wkrótce · 0 zł`.
+- Nie dodajemy obowiązkowego watermarku do eksportowanego CV. Oznaczenie etapu
+  produktu ma być widoczne w aplikacji, ale gotowy dokument kandydata pozostaje
+  profesjonalny i bez stempla wersji testowej.
+- Doradca regułowy został przeniesiony z samego dołu sidebara do grupy głównych
+  narzędzi obok Porad i Audytu, bo w realnym teście był zbyt łatwy do przeoczenia.
 - Suita podpakietu `semantic-work-graph` potrafi zakończyć proces na Node 22 / Windows
   natywnym błędem `better-sqlite3` podczas teardownu. Testy jednostkowe kończą
   właściwe asercje; osobno do sprawdzenia pozostaje kompatybilność ABI / sposób
@@ -19,9 +30,9 @@
 
 ---
 
-## Stan bezpłatnej bety · 2026-09-11
+## Stan Public Pre-Beta · 2026-09-11
 
-- **Cena bety: 0 zł.** Zakupy, plan Pro, trial, pojedyncze szablony i Karnet
+- **Cena: 0 zł.** Zakupy, plan Pro, trial, pojedyncze szablony i Karnet
   Aplikacyjny nie są obecnie sprzedawane.
 - Checkout jest blokowany także po stronie serwera. Sama obecność konfiguracji
   Stripe nie uruchamia sprzedaży.
@@ -50,6 +61,8 @@
 - D02: tożsamość, sesja i separacja właściciela.
 - D03: trwały zapis/outbox, kolejność zapisów, bezpieczny import i owner scope.
 - D04: PASSWORD_RECOVERY, usunięcie konta, RLS, granty i izolowany pełny cykl Auth.
+- D05: uczciwy zakres bezpłatnej bety, neutralne profile ATS, wyłączony checkout
+  i formalny browser acceptance.
 - Szczegółowe dowody odbioru są w `docs/historia/` i przy odpowiadających PR-ach.
 - Dawne eksperymenty z gamifikacją, rabatami rangowymi, trialem i komercyjnymi
   pakietami należy traktować jako historię implementacji, nie aktualny zakres bety.
