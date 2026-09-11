@@ -5,24 +5,21 @@
 [![CI](https://github.com/krymszuch-stack/cvelocity/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](tsconfig.json)
 
-[**🌐 Testuj Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
+[**🌐 Otwórz Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
 
 ## Status produktu
 
-CVelocity jest obecnie publiczną wersją testową **Public Pre-Beta `PB-2026.09`**. Można już wejść, korzystać z podstawowego przepływu i zgłaszać uwagi przed właściwą premierą.
+CVelocity Public Pre-Beta `PB-2026.09` jest **bezpłatna, cena: 0 zł**. To publiczna wersja testowa przed właściwą premierą: można już korzystać z podstawowego przepływu, sprawdzać zachowanie produktu i zgłaszać uwagi, ale nie opisujemy jej jako wydania finalnego.
 
-Public Pre-Beta jest **bezpłatna, cena: 0 zł**.
-
-W tej wersji:
+W Public Pre-Beta:
 
 - nie ma aktywnego checkoutu, subskrypcji Pro ani płatnego okresu próbnego;
 - nie można kupić pojedynczych szablonów ani Karnetu Aplikacyjnego;
 - podstawowy przepływ testera nie wymaga płatności;
 - operacje wykorzystujące modele po stronie serwera nadal podlegają limitom technicznym egzekwowanym przez backend;
-- funkcje poza zakresem są oznaczane jako niedostępne zamiast prowadzić do martwej kasy;
-- interfejs pokazuje globalną wstążkę wersji, żeby publiczny tester od razu wiedział, że korzysta z wydania przedpremierowego.
+- funkcje poza zakresem są oznaczane jako niedostępne zamiast prowadzić do martwej kasy.
 
-Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas Public Pre-Beta**.
+Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas tej Public Pre-Beta**.
 
 ## Co Public Pre-Beta rzeczywiście robi
 
@@ -47,8 +44,6 @@ Aplikacje można zapisywać i prowadzić przez własne statusy procesu. Snapshot
 ### Doradca regułowy
 
 Widoczny w interfejsie Doradca jest obecnie **lokalnym modułem regułowym**, a nie czatem LLM. Otrzymuje wyłącznie pytanie wpisane przez użytkownika albo wybrany szybki prompt. Nie czyta automatycznie Master Vaultu ani zapisanych aplikacji i nie wysyła historii tej rozmowy do modelu AI.
-
-W Public Pre-Beta wejście do Doradcy znajduje się bezpośrednio w grupie głównych narzędzi, obok Porad i Audytu, zamiast na samym dole sidebara.
 
 ## Dane lokalne i chmura
 
