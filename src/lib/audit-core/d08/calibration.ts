@@ -1,4 +1,9 @@
-import type { CalibrationRelation, CalibrationSnapshotCase } from '../drift';
+import {
+  calibrationDriftGate,
+  type CalibrationDriftReport,
+  type CalibrationRelation,
+  type CalibrationSnapshotCase,
+} from '../drift';
 import { D08_GOLDEN_CORPUS } from './goldenCorpus';
 import { scoreStructuralReadability } from './strictScorer';
 
@@ -22,6 +27,14 @@ export const D08_EXPECTED_RELATIONS: CalibrationRelation[] = [
   { betterCaseId: 'D08_01_CLEAN_SINGLE_COLUMN', worseCaseId: 'D08_19_DUPLICATE_TEXT_LAYER_CONFIRMED' },
 ];
 
+export const D08_SYNTHETIC_DRIFT_POLICY = {
+  maxMedianAbsoluteDelta: 0.25,
+  maxP95AbsoluteDelta: 1,
+  maxAbsoluteDelta: 2,
+  maxConfidenceP95AbsoluteDelta: 0.02,
+  allowRankInversions: false,
+} as const;
+
 export function buildD08CalibrationSnapshot(): CalibrationSnapshotCase[] {
   return D08_GOLDEN_CORPUS.map((testCase) => {
     const result = scoreStructuralReadability(testCase.signals);
@@ -35,4 +48,30 @@ export function buildD08CalibrationSnapshot(): CalibrationSnapshotCase[] {
         .sort(),
     };
   });
+}
+
+/**
+ * D07 raportuje drift hard-capów i confidence, ale bazowy gate skupia się na
+ * score/rankingu. D08 traktuje zmianę hard capa oraz duży drift confidence jako
+ * zmianę semantyki, więc dokłada je do własnej bramki.
+ */
+export function d08SyntheticDriftGate(report: CalibrationDriftReport): string[] {
+  const errors = calibrationDriftGate(report, D08_SYNTHETIC_DRIFT_POLICY);
+
+  if (report.newHardCaps.length > 0) {
+    errors.push(`Nowe hard capy bez jawnej akceptacji: ${report.newHardCaps.join(', ')}.`);
+  }
+  if (report.removedHardCaps.length > 0) {
+    errors.push(`Usunięte hard capy bez jawnej akceptacji: ${report.removedHardCaps.join(', ')}.`);
+  }
+  if (
+    report.confidenceDeltaSummary.p95AbsoluteDelta >
+    D08_SYNTHETIC_DRIFT_POLICY.maxConfidenceP95AbsoluteDelta
+  ) {
+    errors.push(
+      `P95 confidence drift ${report.confidenceDeltaSummary.p95AbsoluteDelta} > ${D08_SYNTHETIC_DRIFT_POLICY.maxConfidenceP95AbsoluteDelta}.`,
+    );
+  }
+
+  return errors;
 }
