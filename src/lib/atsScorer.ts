@@ -1,14 +1,13 @@
 import { MasterVault } from '../types';
-import {
-  getPolishStem,
-  HR_AND_COMMON_STOP_WORDS,
-  extractDynamicJdPhrases,
-} from './atsSimulator';
+import { getPolishStem, extractDynamicJdPhrases } from './atsSimulator';
 import { auditKnockouts } from './knockouts';
+import { renderCvFromClaims } from './consistencyGuard/consistencyEngine';
 import {
-  renderCvFromClaims,
-  calculateYearsDifference,
-} from './consistencyGuard/consistencyEngine';
+  hasPositiveSkillEvidence,
+  containsPhrase,
+  countPhraseOccurrences,
+} from './skillEvidence';
+import { unionExperienceYears } from './experience';
 
 /**
  * Silnik telemetrii ATS — raport śledczy oparty na mierzalnych cechach.
@@ -23,6 +22,9 @@ import {
  * systemów rekrutacyjnych. Są wariantami tej samej lokalnej heurystyki,
  * akcentującymi kolejno strukturę, frazy oraz język/formularz. Ich nazwy mówią
  * wyłącznie o mierzonej cesze, dzięki czemu nie sugerują benchmarku vendora.
+ *
+ * DIAGNOSTYKA ŚLEDCZA, nie wynik kanoniczny: wynikiem do wyświetlania jako
+ * dopasowanie jest `scoreCanonicalAts` (`lib/canonicalAts.ts`).
  */
 
 // ---------------------------------------------------------------------------
@@ -132,10 +134,25 @@ function splitSentences(text: string): string[] {
     .filter((sentence) => sentence.length > 0);
 }
 
+/**
+ * Angielskie odpowiedniki sprawczości — bez nich identyczne CV po angielsku
+ * dostawało 0 w składniku 15% (F8: PL 23 vs EN 0 przy tych samych faktach).
+ * Lista jawna jak polska; heurystyka sufiksowa zostaje tylko dla polszczyzny.
+ */
+const EN_ACTION_VERBS: ReadonlySet<string> = new Set([
+  'implemented', 'delivered', 'built', 'designed', 'optimized', 'automated',
+  'migrated', 'reduced', 'increased', 'launched', 'led', 'achieved', 'developed',
+  'deployed', 'created', 'improved', 'cut', 'saved', 'shipped', 'drove',
+  'owned', 'mentored', 'migrated', 'refactored', 'scaled',
+]);
+
 function hasPerfectiveVerb(sentence: string): boolean {
   const tokens = sentence.toLowerCase().match(/[a-ząćęłńóśźż]+/g) ?? [];
+  if (tokens.some((token) => PERFECTIVE_VERBS.has(token))) return true;
+  const ascii = sentence.toLowerCase().match(/[a-z]+/g) ?? [];
+  if (ascii.some((token) => EN_ACTION_VERBS.has(token))) return true;
   return tokens.some((token) => {
-    if (PERFECTIVE_VERBS.has(token)) return true;
+    // Heurystyka uzupełniająca: forma …łem/…łam plus przedrostek dokonania.
     const stem = token.replace(/(łem|łam)$/, '');
     if (stem !== token && /^(z|wy|za|na|po|do|prze|roz|u|s|w)/.test(stem) && stem.length >= 3) {
       return true;
@@ -156,8 +173,13 @@ export function computeActionVerbRatio(text: string): number {
 // Struktura dokumentu
 // ---------------------------------------------------------------------------
 
+/**
+ * Cyrylica (ukraińskie/rosyjskie CV) nie jest wadą dokumentu — wcześniejszy
+ * zestaw jej nie zawierał, więc każde 5 liter cyrylicy karało strukturę,
+ * a pełne CV dostawało −20 tylko za alfabet (F7).
+ */
 const SUPPORTED_CHARACTERS =
-  /^[a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ\s.,;:!?"'()[\]{}%€$£+\-–—/\\@#&*_=<>|~^°•·»«…]+$/;
+  /^[a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ\u0400-\u052F\s.,;:!?"'()[\]{}%€$£+\-–—/\\@#&*_=<>|~^°•·»«…]+$/;
 
 function countUnsupportedCharacters(...texts: string[]): number {
   let count = 0;
@@ -199,12 +221,17 @@ function auditHeadings(
   sectionTitles: string[],
   cvRawText: string | undefined
 ): boolean {
+  // Surowy tekst z importu: markdown ALBO zwykłe nagłówki sekcji.
+  // Wcześniej czysty TXT bez `#` dostawał −25 z automatu (F7), choć parser
+  // sekcji (`cvUniversalParser`) te same nagłówki rozumie.
   if (cvRawText) {
     const h1Count = (cvRawText.match(/^#\s+/gm) ?? []).length;
     const hasDeeperHeading = /^#{2,6}\s+/m.test(cvRawText);
-    if (h1Count === 0 && !hasDeeperHeading) return false;
+    if (h1Count === 1 || (h1Count === 0 && hasDeeperHeading)) return true;
     if (h1Count > 1) return false;
-    return true;
+    const plainHeaders = ['doświadczenie', 'umiejętności', 'kontakt', 'edukacja', 'education', 'skills', 'experience', 'certyfikaty', 'podsumowanie', 'summary'];
+    const found = plainHeaders.filter((h) => containsPhrase(cvRawText, h)).length;
+    return found >= 2;
   }
 
   if (documentTitleCount !== 1) return false;
@@ -222,24 +249,8 @@ function tokenizeLower(text: string): string[] {
   return (text ?? '').toLowerCase().match(TOKEN_PATTERN) ?? [];
 }
 
-function countStemOccurrences(corpusTokens: string[], phrase: string): number {
-  const words = phrase.split(/\s+/).filter((word) => !HR_AND_COMMON_STOP_WORDS.has(word));
-  if (words.length === 0) return 0;
-  const keyStem = getPolishStem(words[words.length - 1]);
-  if (!keyStem) return 0;
-  return corpusTokens.filter((token) => getPolishStem(token) === keyStem).length;
-}
-
-function countLiteralOccurrences(haystackLower: string, phrase: string): number {
-  if (!phrase) return 0;
-  let count = 0;
-  let index = haystackLower.indexOf(phrase);
-  while (index !== -1) {
-    count++;
-    index = haystackLower.indexOf(phrase, index + phrase.length);
-  }
-  return count;
-}
+/** (usunięte) Liczniki podciągowe `indexOf`/rdzeniowe zastąpione granicami słów
+ * z `skillEvidence` (`countPhraseOccurrences`): `cit` nie liczy się w `city` (F2). */
 
 // ---------------------------------------------------------------------------
 // Składnik doświadczenia (waga 25%)
@@ -247,20 +258,19 @@ function countLiteralOccurrences(haystackLower: string, phrase: string): number 
 
 const MAX_COUNTED_YEARS = 15;
 
+/** Staż do testów regresji (unia, bez metryk/głębi). */
+export function computeTenureYears(vault: MasterVault): number {
+  return unionExperienceYears(vault.history);
+}
+
 function computeExperienceScore(vault: MasterVault): number {
   const history = vault.history ?? [];
   if (history.length === 0) return 0;
 
-  let years = 0;
-  for (const job of history) {
-    if (!job?.startDate) continue;
-    const end = job.isCurrent ? job.startDate : job.endDate || job.startDate;
-    try {
-      years += Math.max(0, calculateYearsDifference(job.startDate, end));
-    } catch {
-      // Nieczytelne daty nie wywracają raportu; okres nie jest liczony.
-    }
-  }
+  // Staż z unii przedziałów: nakładające się etaty liczą się raz, bieżące
+  // kończą się dziś (wcześniej: suma naiwna + `isCurrent → 0 lat`, F5).
+  // Nieczytelne/przyszłe/odwrócone daty wypadają w `employmentIntervalForJob`.
+  const years = unionExperienceYears(history);
   const tenurePts = (Math.min(MAX_COUNTED_YEARS, years) / MAX_COUNTED_YEARS) * 50;
 
   const highlights = history.flatMap((job) => job.highlights ?? []);
@@ -540,7 +550,6 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
   );
 
   const corpusTokens = tokenizeLower(analysisCorpus);
-  const jdLower = (jobDescription ?? '').toLowerCase();
   const jdTokenCount = tokenizeLower(jobDescription).length;
 
   const extraction = extractDynamicJdPhrases(jobDescription);
@@ -552,10 +561,15 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
 
   for (const { phrase, weight } of extraction.hardSkills) {
     totalWeighted += weight;
-    const countInCv = countStemOccurrences(corpusTokens, phrase);
-    const countInJd = countLiteralOccurrences(jdLower, phrase);
+    // Pokrycie = pozytywny dowód (negacje/nauka/wyciek nie liczą się, F1),
+    // liczniki = granice słów (wcześniej `indexOf` liczył `cit` w `city`, F2).
+    const hasEvidence = hasPositiveSkillEvidence(analysisCorpus, phrase);
+    const countInCv = countPhraseOccurrences(analysisCorpus, phrase);
+    const countInJd = Math.max(1, countPhraseOccurrences(jobDescription, phrase));
 
-    if (countInCv === 0) {
+    if (!hasEvidence) {
+      // Krytyczne = słownik (waga ≥ 2); sygnały kapitalizacji (1.5) obniżają
+      // pokrycie bez etykiety „krytyczny brak" — to poszlaka, nie wymaganie.
       if (weight >= 2) missingCriticalLemmas.push({ term: phrase, weight });
       continue;
     }
@@ -581,9 +595,12 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
 
   const actionVerbRatio = computeActionVerbRatio(analysisCorpus);
 
+  // Puste ogłoszenie to brak mianownika (0), nie 100 z próżni (F4).
+  // Kanoniczny stan niedostępności raportuje `canonicalAts.ts`; tu liczba
+  // spada do zera, żeby nie udawać pewności.
   const hardSkillsScore =
     totalWeighted === 0
-      ? 100
+      ? 0
       : Math.round((matchedWeighted / totalWeighted) * 100);
 
   const knockoutReport = auditKnockouts(jobDescription, vault);
@@ -592,19 +609,25 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
   const experienceScore = computeExperienceScore(vault);
   const actionVerbsScore = Math.round(actionVerbRatio * 100);
 
-  const overallScore = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(
-        hardSkillsScore * FORMULA_WEIGHTS.hardSkills +
-          experienceScore * FORMULA_WEIGHTS.experience +
-          structureScore * FORMULA_WEIGHTS.structure +
-          actionVerbsScore * FORMULA_WEIGHTS.actionVerbs -
-          knockoutPenalties
-      )
-    )
-  );
+  // Brak wykrytych wymagań = brak mianownika: wynik 0, nie suma stażu
+  // i struktury z niczego (F4; symulator robi tak samo).
+  const noRequirements =
+    totalWeighted === 0 && knockoutReport.requirementCount === 0;
+  const overallScore = noRequirements
+    ? 0
+    : Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            hardSkillsScore * FORMULA_WEIGHTS.hardSkills +
+              experienceScore * FORMULA_WEIGHTS.experience +
+              structureScore * FORMULA_WEIGHTS.structure +
+              actionVerbsScore * FORMULA_WEIGHTS.actionVerbs -
+              knockoutPenalties
+          )
+        )
+      );
 
   const medianDensityRatio = median(matchedLemmas.map((lemma) => lemma.densityRatio));
 

@@ -205,8 +205,9 @@ describe('Zero-Hallucination Contract Suite (BUG-001 Verification)', () => {
     expect(pitch.thirtySeconds).toContain('-45% czasu deploymentu');
     expect(pitch.ninetySeconds).toContain('-45% czasu deploymentu');
 
-    // 3. SkillBridge dla Kafka wykorzystuje istniejący AWS i dowód
-    const bridge = findSkillBridgeForGap('Kafka', richVault);
+    // 3. SkillBridge dla AWS wykorzystuje istniejący Kubernetes z dowodem.
+    // (Kafka ← Kubernetes nie ma definicji — taki most byłby fabrykacją F12.)
+    const bridge = findSkillBridgeForGap('AWS', richVault);
     expect(bridge).toBeDefined();
     expect(bridge?.adjacentSkill).toBe('Kubernetes'); // z realnych hardSkills kandydata
   });

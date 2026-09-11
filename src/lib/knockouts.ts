@@ -55,7 +55,29 @@ export interface KnockoutRule {
  * wystarczyło, że sąsiadowała w tekście. Ogłoszenia to w większości listy
  * punktowane, więc granica pozycji jest tu naturalną granicą znaczenia.
  */
-const CLAUSE_BOUNDARY = /[.!?;\n•·]|(?:^|\s)[-–—]\s/;
+/**
+ * Skróty z kropką nie kończą zdania — kropka w `kat.` dzieliła klauzulę na
+ * pół i fraza łagodząca (`mile widziane`) po niej dotyczyła tylko wymagań
+ * za kropką (F9: `license_b` twardo, `sep_g1` miękko w tym samym zdaniu).
+ */
+const ABBREV_BEFORE_DOT = /(kat|np|tzw|mgr|inż|inz|dr|al|ul|godz|nr|r)$/i;
+
+function isClauseBoundary(text: string, index: number): boolean {
+  const ch = text[index];
+  if (ch === '\n' || ch === ';' || ch === '!' || ch === '?' || ch === '•' || ch === '·') return true;
+  if (ch === '.') {
+    const before = text.slice(Math.max(0, index - 6), index).split(/\s+/).pop() ?? '';
+    if (ABBREV_BEFORE_DOT.test(before)) return false;
+    return true;
+  }
+  // Myślnik punktora (`- `, `– `, `— ` na początku linii lub po spacji).
+  if (ch === '-' || ch === '–' || ch === '—') {
+    const prev = index === 0 ? '\n' : text[index - 1];
+    const next = text[index + 1] ?? '';
+    if ((prev === '\n' || prev === ' ' || prev === '\t') && (next === ' ' || next === '\t')) return true;
+  }
+  return false;
+}
 
 function clauseAround(text: string, matchIndex: number): { before: string; whole: string } {
   let start = 0;
@@ -63,7 +85,7 @@ function clauseAround(text: string, matchIndex: number): { before: string; whole
 
   // Najbliższa granica przed dopasowaniem.
   for (let i = matchIndex - 1; i >= 0; i--) {
-    if (CLAUSE_BOUNDARY.test(text[i])) {
+    if (isClauseBoundary(text, i)) {
       start = i + 1;
       break;
     }
@@ -71,7 +93,7 @@ function clauseAround(text: string, matchIndex: number): { before: string; whole
 
   // Najbliższa granica po dopasowaniu.
   for (let i = matchIndex; i < text.length; i++) {
-    if (CLAUSE_BOUNDARY.test(text[i])) {
+    if (isClauseBoundary(text, i)) {
       end = i;
       break;
     }
@@ -90,7 +112,12 @@ function clauseAround(text: string, matchIndex: number): { before: string; whole
  * wymaganiu, tylko obniżają jego wagę. Trzymanie ich w tym wzorcu kasowało
  * pozycję zamiast ją złagodzić, więc użytkownik nie dowiadywał się o niej wcale.
  */
-const NEGATION_PATTERN = /\b(?:nie\s+(?:jest\s+)?(?:wymagan\w*|konieczn\w*|musisz|wymagamy)|bez\s+(?:konieczno\w*|wymogu|posiadania))\b/i;
+/**
+ * Uzupełnione o 3. os. lp. (`nie wymaga`) i lm. (`nie wymagają`) — wcześniej
+ * tylko `wymagan*` (z `n`) i dosłowne `wymagamy`, więc najczęstsze
+ * `Stanowisko nie wymaga prawa jazdy` dawało fałszywy knock-out (F9).
+ */
+const NEGATION_PATTERN = /\b(?:nie\s+(?:jest\s+)?(?:wymagan\w*|wymaga(?:ją)?\b|konieczn\w*|musisz|wymagamy|trzeba|potrzeb\w*)|bez\s+(?:konieczno\w*|wymogu|posiadania))\b/i;
 
 /**
  * „Mile widziane" zmienia wagę wymagania, a nie jego istnienie. Traktowanie

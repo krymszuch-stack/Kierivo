@@ -28,6 +28,13 @@
   Nie znajduje się w historii tego repo. Jeżeli dawny projekt Stripe nadal jest
   używany, rotacja klucza publishable pozostaje rozsądną ostrożnością.
 
+- Wynik kanoniczny `scoreCanonicalAts` (`src/lib/canonicalAts.ts`, PR #123) nie jest
+  jeszcze podpięty pod UI — `AtsLabView` i `JobMatcher` pokazują medianę silników
+  i telemetrię. Przełączenie głównego wskaźnika na kanon to osobna zmiana
+  produktowa (wymaga decyzji, co pokazać obok: rozbicie na składniki jest gotowe
+  w `components`).
+  _(wpis od agenta po PR #123)_
+
 ---
 
 ## Stan Public Pre-Beta · 2026-09-11

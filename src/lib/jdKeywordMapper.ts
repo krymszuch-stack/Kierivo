@@ -1,5 +1,6 @@
 import { MasterVault, TailoredResume } from '../types';
 import { HR_AND_COMMON_STOP_WORDS, extractDynamicJdPhrases } from './atsSimulator';
+import { countPhraseOccurrences } from './skillEvidence';
 import { auditKnockouts } from './knockouts';
 
 export type KeywordCategory = 'HARD_SKILL' | 'TOOL' | 'SOFT_SKILL' | 'LICENSE';
@@ -144,14 +145,13 @@ function normalizeTerm(str: string): string {
 }
 
 /**
- * Sprawdza wystąpienie frazy w tekście z poprawną obsługą polskich znaków diakrytycznych.
+ * Sprawdza wystąpienie frazy w tekście — deleguje do kanonicznego licznika
+ * (`skillEvidence`), żeby `Java` ≠ `JavaScript` tak samo jak w symulatorze
+ * (F14: jeden graf dopasowań, nie dwa rozjechane).
  */
 function countOccurrences(text: string, term: string): number {
   if (!text || !term) return 0;
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(?:^|[^\\p{L}\\p{N}])(${escaped})(?=[^\\p{L}\\p{N}]|$)`, 'giu');
-  const matches = [...text.matchAll(regex)];
-  return matches ? matches.length : 0;
+  return countPhraseOccurrences(text, term);
 }
 
 /**

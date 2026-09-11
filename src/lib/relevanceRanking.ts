@@ -1,4 +1,10 @@
 import { WorkExperience, HighlightMetric } from '../types';
+import { HR_AND_COMMON_STOP_WORDS } from './atsSimulator';
+import {
+  hasPositiveSkillEvidence,
+  hasPositiveSkillEvidenceNormalized,
+  normalizeHaystackText,
+} from './skillEvidence';
 
 /**
  * 0-Token relevance scoring & reordering.
@@ -9,7 +15,20 @@ import { WorkExperience, HighlightMetric } from '../types';
  */
 
 function toKeywordSet(jdKeywords: string[]): Set<string> {
-  return new Set(jdKeywords.map((k) => k.toLowerCase()).filter(Boolean));
+  // Słowa kluczowe z samych spacji (`' '`) też są „truthy" — bez trima każde
+  // CV by do nich pasowało przez `String.includes`, jak kiedyś w atsSimulator.
+  // Dodatkowo odrzucamy śmieci interpunkcyjne, 1-znakowe resztki i słowa
+  // funkcyjne (`the` w JD nie może tasować rankingu — F10).
+  return new Set(
+    jdKeywords
+      .map((k) => (k ?? '').toLowerCase().trim())
+      .filter(
+        (k) =>
+          k.length >= 2 &&
+          /[\p{L}\p{N}]/u.test(k) &&
+          !HR_AND_COMMON_STOP_WORDS.has(k)
+      )
+  );
 }
 
 function highlightText(highlight: HighlightMetric | string): string {
@@ -18,10 +37,13 @@ function highlightText(highlight: HighlightMetric | string): string {
 
 function scoreTextAgainstKeywords(text: string, jdKeywordSet: Set<string>): { score: number; matchedKeywords: string[] } {
   if (jdKeywordSet.size === 0) return { score: 0, matchedKeywords: [] };
-  const lowerText = text.toLowerCase();
   const matchedKeywords: string[] = [];
+  // Kanoniczny dowód zamiast `includes`: `ai` nie wchodzi w `pain`/`air`,
+  // `java` w `javascript`, a negacje nie punktują (F10/F1).
+  // Korpus normalizowany raz na tekst (test 15 ms przy 250 punktorach).
+  const normalized = normalizeHaystackText(text);
   jdKeywordSet.forEach((kw) => {
-    if (lowerText.includes(kw)) matchedKeywords.push(kw);
+    if (hasPositiveSkillEvidenceNormalized(normalized, kw)) matchedKeywords.push(kw);
   });
   return { score: matchedKeywords.length / jdKeywordSet.size, matchedKeywords };
 }
@@ -31,8 +53,15 @@ function titleSimilarity(roleTitle: string, targetJobTitle: string): number {
   if (!roleTitle || !targetJobTitle) return 0;
   const a = roleTitle.toLowerCase().trim();
   const b = targetJobTitle.toLowerCase().trim();
+  // Tytuł z samych spacji trimuje się do pustki, a pustka jest podciągiem
+  // wszystkiego — bez tego `'   '` dostawało 0.8 za samo istnienie drugiego tytułu.
+  // Śmieci interpunkcyjne (`---`) też nie są tytułem (R3).
+  if (!a || !b) return 0;
+  if (!/[\p{L}\p{N}]/u.test(a) || !/[\p{L}\p{N}]/u.test(b)) return 0;
   if (a === b) return 1;
-  if (a.includes(b) || b.includes(a)) return 0.8;
+  // Podciąg tylko z granicami słów — `java` w `javascript` to nie 0.8 (F1).
+  // Używamy kanonicznego matchera zamiast `includes`.
+  if (hasPositiveSkillEvidence(a, b) || hasPositiveSkillEvidence(b, a)) return 0.8;
   const aWords = new Set(a.split(/\s+/));
   const bWords = b.split(/\s+/).filter(Boolean);
   const common = bWords.filter((w) => aWords.has(w));

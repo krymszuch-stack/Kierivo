@@ -873,6 +873,28 @@ function parseProjects(sectionLines: string[]): Project[] {
 /**
  * Dzieli listę umiejętności na pojedyncze wpisy (po przecinku, średniku, slashu lub punktorach).
  */
+/**
+ * Zaprzeczenia i puste znaczniki to nie umiejętności: `Brak` w sekcji skills
+ * lądował w `hardSkills` i krążył dalej jako „kompetencja" (F13).
+ * Porównanie na formie znormalizowanej (bez diakrytyków, `ł` → `l`).
+ */
+const NON_SKILL_MARKERS = new Set(
+  [
+    'brak', 'brak danych', 'brak doswiadczenia', 'brak umiejetnosci', 'brak kompetencji',
+    'nie dotyczy', 'nd', 'n/a', 'none', 'brak opisu',
+  ].map((s) => s.toLowerCase())
+);
+
+function isNonSkillMarker(item: string): boolean {
+  const norm = item
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l')
+    .trim();
+  return NON_SKILL_MARKERS.has(norm);
+}
+
 function parseSkillList(sectionLines: string[]): string[] {
   if (!sectionLines || sectionLines.length === 0) return [];
 
@@ -886,7 +908,7 @@ function parseSkillList(sectionLines: string[]): string[] {
     const items = content.split(/[,;/|•►▪●\n]/).map((s) => s.trim()).filter(Boolean);
 
     for (const item of items) {
-      if (item.length >= 2 && item.length <= 60 && !item.toLowerCase().startsWith('np.')) {
+      if (item.length >= 2 && item.length <= 60 && !item.toLowerCase().startsWith('np.') && !isNonSkillMarker(item)) {
         skills.push(item);
       }
     }
@@ -1047,6 +1069,23 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
 
   // 5. Ekstrakcja Historii, Edukacji, Certyfikatów, Języków, Projektów
   const history = parseExperienceEntries(sections.experience ?? []);
+  // Kwarantanna dat: odwrócone i przyszłe zakresy zostają we wpisie (żeby nic
+  // nie ginęło po cichu), ale z ostrzeżeniem i poza stażem — liczenie stażu
+  // (`lib/experience.ts`, telemetria, HUD) takie wpisy pomija (F5/F13).
+  const currentYear = new Date().getFullYear();
+  for (const exp of history) {
+    const startYear = /((?:19|20)\d{2})/.exec(exp.startDate || '')?.[1];
+    const endYear = /((?:19|20)\d{2})/.exec(exp.endDate || '')?.[1];
+    if (startYear && endYear && Number(startYear) > Number(endYear)) {
+      warnings.push(
+        `Odwrócony zakres dat w "${exp.company}": ${exp.startDate} – ${exp.endDate}. Wpis wykluczony ze stażu.`
+      );
+    } else if (startYear && Number(startYear) > currentYear) {
+      warnings.push(
+        `Przyszła data początkowa w "${exp.company}": ${exp.startDate}. Wpis wykluczony ze stażu.`
+      );
+    }
+  }
   const education = parseEducationEntries(sections.education ?? []);
   const certLines = [...(sections.certifications ?? [])];
 

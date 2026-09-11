@@ -228,11 +228,19 @@ describe('MasterVault Relational Data Integrity & Multi-Module Interoperability'
   });
 
   // Test 3: Relacje z silnikiem Skill Bridge Matrix
-  it('3. SkillBridgeEngine: zamiana luk technologicznych na mosty z dowodami z MasterVault', () => {
+  it('3. SkillBridgeEngine: most tylko z jawnej definicji i dowodu (brak fabrykacji)', () => {
     const vault = createFullRelationalVault();
-    const missingSkills = ['Schneider EcoStruxure', 'BMS Desigo'];
+    // Luki bez definicji w `BRIDGE_DEFINITIONS` nie dostają mostu-generyka
+    // (`Excel → Kafka 75%`): brak mostu to poprawna odpowiedź, nie luka (F12).
+    expect(generateSkillBridges(['Schneider EcoStruxure', 'BMS Desigo'], vault)).toEqual([]);
 
-    const bridges = generateSkillBridges(missingSkills, vault);
+    // Kontrola pozytywna: luka z definicją i dowodem (Kubernetes ← Docker).
+    const dockerVault = createFullRelationalVault();
+    dockerVault.skillsMatrix.hardSkills = [...dockerVault.skillsMatrix.hardSkills, 'Docker'];
+    dockerVault.history[0].highlights[0].keywords = [
+      ...(dockerVault.history[0].highlights[0].keywords ?? []), 'Docker',
+    ];
+    const bridges = generateSkillBridges(['Kubernetes'], dockerVault);
     expect(bridges.length).toBeGreaterThan(0);
 
     for (const bridge of bridges) {

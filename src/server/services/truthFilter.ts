@@ -17,32 +17,68 @@ import { MasterVault } from '../../types';
  * bo każda z osobna bywa omijana.
  */
 
-/** Słowa klejące, które nigdy nie są lematem technologicznym. */
-const GLUE_WORDS = new Set([
-  'i', 'oraz', 'w', 'we', 'z', 'ze', 'na', 'do', 'od', 'po', 'za', 'o', 'przy',
-  'dla', 'bez', 'pod', 'nad', 'przez', 'jest', 'był', 'byla', 'bylo', 'są',
-  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'projekt', 'projektu',
-  'projekcie', 'roku', 'lata', 'lat', 'miesięcy', 'dni', 'osobowy', 'zespolu',
-]);
+/**
+ * Normalizacja do porównania: małe litery, NFD bez diakrytyków, `ł` → `l`
+ * (bez dekompozycji NFD). Ta sama normalizacja MUSI obowiązywać po obu
+ * stronach — wcześniej `księgowość` (z `ę`) omijała audyt, a `kadr` nie (F11).
+ */
+function normTokenValue(value: string): string {
+  return (value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l');
+}
 
 /**
- * Heurystyka „wygląda jak nazwa technologii".
- *
- * Celowo zawężona do tokenów czysto łacińskich: narracja po polsku niemal
- * zawsze niesie diakrytyki („zrealizowałem", „migrację"), a nazwy stosu
- * technologicznego niemal nigdy („rust", „aws", „k8s"). Filtr ma łapać
- * twierdzenia o technologii, nie każde obce słowo — zbyt szeroki net dawałby
- * fałszywe alarmy na każdym zdaniu i nauczyłby wszystkich ignorować raport.
- * To heurystyka z dokumentowanym ograniczeniem, nie słownik języka polskiego.
+ * Słowa klejące i narracyjne, które nigdy nie są lematem technologicznym.
+ * Rozszerzone o zwykłe słowa opisu pracy (`wynikiem`, `wzrostu`, `wdrozenie`…),
+ * które po normalizacji są łacińskie i poprzednio wpadały jako „nieznane lemy",
+ * ucząc ignorowania raportu (F11). Formy w zapisie znormalizowanym.
+ */
+const GLUE_WORDS = new Set(
+  [
+    'i', 'oraz', 'w', 'we', 'z', 'ze', 'na', 'do', 'od', 'po', 'za', 'o', 'przy',
+    'dla', 'bez', 'pod', 'nad', 'przez', 'jest', 'byl', 'byla', 'bylo', 'sa',
+    'the', 'and', 'for', 'with', 'from', 'that', 'this', 'projekt', 'projektu',
+    'projekcie', 'roku', 'lata', 'lat', 'miesiecy', 'dni', 'osobowy', 'zespolu',
+    'wynik', 'wynikiem', 'wyniki', 'wynikow', 'wzrost', 'wzrostu', 'wzrostem',
+    'spadek', 'spadku', 'poprawa', 'poprawe', 'praca', 'pracy', 'doswiadczenie',
+    'doswiadczenia', 'umiejetnosc', 'umiejetnosci', 'realizacja', 'realizacji',
+    'wdrozenie', 'wdrozenia', 'system', 'systemu', 'rozwiazanie', 'rozwiazania',
+    'klient', 'klienta', 'firma', 'firmy', 'zespol', 'roku', 'latach', 'zakres',
+    'obowiazki', 'obowiazkow', 'zadanie', 'zadan', 'sposob', 'ramach', 'ramy',
+    'kluczowy', 'kluczowych', 'wskaznik', 'wskaznikow', 'wydajnosc', 'jakosc',
+    'migracja', 'migracje', 'migracji', 'serwis', 'serwisy', 'serwisow',
+    'klaster', 'klastry', 'klastrow', 'kontener', 'kontenery', 'kontenerowe',
+    'konwersja', 'konwersje', 'konwersji', 'formularz', 'formularza',
+    'utrzymanie', 'utrzymywaniu',
+  ].map(normTokenValue)
+);
+
+/**
+ * Końcówki polskiej odmiany czasownika (`-łem`/`-łam` → `-lem`/`-lam`):
+ * `podnioslem`, `zrealizowalem`, `wdrozylem` to narracja, nigdy nazwa
+ * technologii. Próg długości chroni krótkie słowa (`problem`, `helm`).
+ */
+const POLISH_VERB_TAIL = /lem$|lam$|lismy$|lysmy$/;
+
+/**
+ * Heurystyka „wygląda jak nazwa technologii" — operuje na tokenie
+ * ZNORMALIZOWANYM, więc diakrytyki nie otwierają furtki. Zawężona słownikiem
+ * narracyjnym powyżej, nie alfabetem.
  */
 function looksLikeTechToken(token: string): boolean {
-  return token.length >= 2 && /^[a-z0-9+#.]+$/.test(token) && !GLUE_WORDS.has(token);
+  const norm = normTokenValue(token);
+  if (norm.length < 2 || !/^[a-z0-9+#.]+$/.test(norm) || GLUE_WORDS.has(norm)) return false;
+  if (norm.length >= 8 && POLISH_VERB_TAIL.test(norm)) return false;
+  return true;
 }
 
 /**
  * Tokenizacja techniczna: litery z polskimi znakami, cyfry oraz typowe
- * znaczniki stosu (`c#`, `c++`, `node.js`). Wielkość liter i diakrytyki
- * zostają znormalizowane do porównania, nie do wyświetlenia.
+ * znaczniki stosu (`c#`, `c++`, `node.js`). Zwraca formy ZNORMALIZOWANE do
+ * porównania (wyświetlanie korzysta z oryginału u wywołującego).
  */
 function tokenize(text: string): string[] {
   return (text ?? '')
@@ -51,6 +87,7 @@ function tokenize(text: string): string[] {
     // Kropki na brzegach to interpunkcja zdania („k8s."), w środku — część
     // nazwy („node.js"). Interpunkcję zdejmujemy, nazwę zostawiamy.
     .map((token) => token.replace(/^\.+|\.+$/g, ''))
+    .map(normTokenValue)
     .filter((token) => token.length > 1 && !GLUE_WORDS.has(token));
 }
 
@@ -136,7 +173,7 @@ export function auditGeneratedLemmas(input: AuditInput): LemmaAudit {
     if (known.has(token)) continue;
 
     const canonical = input.resolveSynonym?.(token) ?? null;
-    if (canonical && known.has(canonical.toLowerCase())) continue;
+    if (canonical && known.has(normTokenValue(canonical))) continue;
 
     unknownLemmas.push(token);
   }
@@ -155,19 +192,29 @@ export interface MetricAudit {
  * źródle, jest podejrzana. Model nie dostaje prawa „zaokrąglać" 40% wzrostu,
  * którego nikt nigdy nie zmierzył.
  */
-export function auditGeneratedMetrics(generatedText: string, sourceText: string): MetricAudit {
-  const metricPattern = /\b\d+(?:[.,]\d+)?\s?(?:%|procent|mln|tys\.?|k\b|godzin|dni|osób)?/g;
+/**
+ * Kanonizacja metryki: `40%` ≡ `40 %` ≡ `40 procent`, wielkość liter i spacje
+ * nie zmieniają faktu (wcześniej `40%` przy źródłowym `40 %` wychodziło jako
+ * fabrykacja — F11). Przecinek dziesiętny ≡ kropce.
+ */
+function canonMetric(raw: string): string {
+  return normTokenValue(raw)
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+    .replace(/procent/g, '%')
+    .replace(/\.$/, '');
+}
 
-  // Jednostki bywają zapisane różną wielkością liter („40%", „40 %", „5 MLN"),
-  // więc porównujemy wyłącznie w niższej rejestrze — wielkość liter nie zmienia
-  // faktu, że liczba istniała (lub nie) u kandydata.
+export function auditGeneratedMetrics(generatedText: string, sourceText: string): MetricAudit {
+  const metricPattern = /\b\d+(?:[.,]\d+)?\s?(?:%|procent|mln|tys\.?|k\b|godzin|dni|osob)?/gi;
+
   const sourceNumbers = new Set(
-    ((sourceText ?? '').toLowerCase().match(metricPattern) ?? []).map((m) => m.trim())
+    ((sourceText ?? '').match(metricPattern) ?? []).map(canonMetric)
   );
-  const generated = (generatedText ?? '').toLowerCase().match(metricPattern) ?? [];
+  const generated = (generatedText ?? '').match(metricPattern) ?? [];
 
   const fabricatedMetrics = generated.filter(
-    (metric) => !sourceNumbers.has(metric.trim())
+    (metric) => !sourceNumbers.has(canonMetric(metric))
   );
 
   return { fabricatedMetrics: [...new Set(fabricatedMetrics)] };
