@@ -2,8 +2,9 @@
 /**
  * D04 end-to-end acceptance for an ISOLATED local Supabase stack.
  *
- * Proves: signup -> confirmation email -> login -> recovery email -> updateUser
- * -> login with new password -> account deletion -> old token cannot restore data.
+ * Proves: public password-check channel -> signup -> confirmation email -> login
+ * -> recovery email -> updateUser -> login with new password -> account deletion
+ * -> old token cannot restore data.
  *
  * The script never prints passwords, access tokens, refresh tokens or full links.
  */
@@ -114,6 +115,19 @@ async function cleanup() {
 
 try {
   console.log('\nD04: pełny cykl konta na lokalnym Supabase\n');
+
+  // Funkcja jest publiczna celowo: działa przed rejestracją i otrzymuje tylko
+  // 5 znaków prefiksu SHA-1, nigdy hasło. Odbiór potwierdza, że trasa nie jest
+  // martwa i nie wymaga sesji użytkownika.
+  const publicClient = createClient(url, anonKey, { auth: { persistSession: false } });
+  const passwordCheck = await publicClient.functions.invoke('sprawdz-haslo', {
+    body: { prefix: '5BAA6' },
+  });
+  if (passwordCheck.error) fail('Edge Function sprawdz-haslo', passwordCheck.error);
+  if (typeof passwordCheck.data?.suffixes !== 'string' && passwordCheck.data?.unavailable !== true) {
+    fail('Edge Function sprawdz-haslo', 'nieoczekiwany format odpowiedzi');
+  }
+  ok('sprawdz-haslo działa przed logowaniem bez wysyłania hasła');
 
   const signupStarted = Date.now();
   const signupClient = createClient(url, anonKey, { auth: { persistSession: false } });
