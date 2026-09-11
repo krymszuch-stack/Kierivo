@@ -94,7 +94,8 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(advisor).toContain('Nie czytam automatycznie Master Vaultu ani aplikacji');
     expect(advisor).toContain('zewnętrznego modelu językowego');
     expect(advisor).not.toContain('Doradca AI');
-    expect(sidebar).toContain('Zapytaj Doradcę regułowego');
+    expect(sidebar).toContain('Doradca regułowy');
+    expect(sidebar).toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('Doradcy AI');
     expect(host).toContain('Doradca regułowy');
   });
@@ -103,7 +104,8 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     const readme = source('README.md');
     expect(readme).not.toContain('813');
     expect(readme).not.toContain('100% Client-Side');
-    expect(readme).toContain('bezpłatną betą, cena: 0 zł');
+    expect(readme).toContain('Public Pre-Beta');
+    expect(readme).toContain('bezpłatna, cena: 0 zł');
     expect(readme).toContain('nie gwarantuje przejścia filtra');
   });
 });
