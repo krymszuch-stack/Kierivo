@@ -56,7 +56,6 @@ export const D08_CONFIG = {
 } as const;
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
-
 const safeRatio = (numerator: number, denominator: number): number =>
   denominator > 0 ? clamp01(numerator / denominator) : 0;
 
@@ -73,6 +72,11 @@ interface TextLayerMeasurement {
   quality: number;
   precision: number | null;
   recall: number | null;
+}
+
+interface OrderMeasurement {
+  quality: number;
+  discordance: number;
 }
 
 function textLayerMeasurement(signals: D08Signals): TextLayerMeasurement | null {
@@ -110,15 +114,17 @@ function textLayerMeasurement(signals: D08Signals): TextLayerMeasurement | null 
   return null;
 }
 
-function readingOrderQuality(signals: D08Signals): { quality: number; discordance: number } | null {
+function readingOrderQuality(signals: D08Signals): OrderMeasurement | null {
   if (signals.readingOrder.comparablePairWeight <= 0) return null;
   const discordance = clamp01(
     signals.readingOrder.discordantPairWeight / signals.readingOrder.comparablePairWeight,
   );
-  const quality = Math.exp(
-    (-Math.log(2) * discordance) / D08_CONFIG.orderHalfLife,
-  );
-  return { quality: clamp01(quality), discordance };
+  return {
+    discordance,
+    quality: clamp01(
+      Math.exp((-Math.log(2) * discordance) / D08_CONFIG.orderHalfLife),
+    ),
+  };
 }
 
 function sectionQuality(signals: D08Signals): number | null {
@@ -147,17 +153,25 @@ function sectionQuality(signals: D08Signals): number | null {
   );
 }
 
-function layoutQuality(signals: D08Signals): number {
-  const qOverlap = Math.exp(-D08_CONFIG.layoutDecay.overlap * clamp01(signals.layout.overlapRatio));
-  const qClipping = Math.exp(-D08_CONFIG.layoutDecay.clipping * clamp01(signals.layout.clippingRatio));
-  const qZOrder = Math.exp(-D08_CONFIG.layoutDecay.zOrder * clamp01(signals.layout.ambiguousZOrderRatio));
-  const qNested = Math.exp(-D08_CONFIG.layoutDecay.nested * clamp01(signals.layout.nestedComplexityRatio));
+function layoutQuality(signals: D08Signals): number | null {
+  const dimensions: Array<{ ratio: number; decay: number; weight: number }> = [];
+  const add = (ratio: number | undefined, decay: number, weight: number): void => {
+    if (ratio !== undefined) dimensions.push({ ratio: clamp01(ratio), decay, weight });
+  };
 
-  const quality =
-    Math.pow(qOverlap, D08_CONFIG.layoutWeights.overlap) *
-    Math.pow(qClipping, D08_CONFIG.layoutWeights.clipping) *
-    Math.pow(qZOrder, D08_CONFIG.layoutWeights.zOrder) *
-    Math.pow(qNested, D08_CONFIG.layoutWeights.nested);
+  add(signals.layout.overlapRatio, D08_CONFIG.layoutDecay.overlap, D08_CONFIG.layoutWeights.overlap);
+  add(signals.layout.clippingRatio, D08_CONFIG.layoutDecay.clipping, D08_CONFIG.layoutWeights.clipping);
+  add(signals.layout.ambiguousZOrderRatio, D08_CONFIG.layoutDecay.zOrder, D08_CONFIG.layoutWeights.zOrder);
+  add(signals.layout.nestedComplexityRatio, D08_CONFIG.layoutDecay.nested, D08_CONFIG.layoutWeights.nested);
+
+  if (dimensions.length === 0) return null;
+
+  const activeWeight = dimensions.reduce((sum, dimension) => sum + dimension.weight, 0);
+  const quality = dimensions.reduce((product, dimension) => {
+    const normalizedWeight = dimension.weight / activeWeight;
+    const q = Math.exp(-dimension.decay * dimension.ratio);
+    return product * Math.pow(q, normalizedWeight);
+  }, 1);
 
   return clamp01(quality);
 }
@@ -209,7 +223,7 @@ function listQuality(signals: D08Signals): number | null {
 function buildComponents(
   signals: D08Signals,
   text: TextLayerMeasurement | null,
-  order: { quality: number; discordance: number } | null,
+  order: OrderMeasurement | null,
 ): { breakdown: ScoreComponent[]; missingEvidence: MissingEvidence[] } {
   const missingEvidence: MissingEvidence[] = [];
   const components: InternalComponent[] = [];
@@ -280,8 +294,9 @@ function buildComponents(
     'LAYOUT_TOPOLOGY',
     'Bezpieczeństwo topologii layoutu',
     layout,
-    layout,
+    layout ?? 0,
     signals.layout.evidenceIds,
+    true,
   );
 
   const encoding = encodingQuality(signals);
@@ -356,44 +371,48 @@ function continuousPenalty(max: number, ratio: number, scale: number): number {
 function buildPenalties(signals: D08Signals): Penalty[] {
   const penalties: Penalty[] = [];
 
-  const hiddenRatio = clamp01(signals.adversarial.hiddenTextRatio);
-  if (hiddenRatio > 0) {
-    const deduction = continuousPenalty(
-      D08_CONFIG.hiddenTextPenaltyMax,
-      hiddenRatio,
-      D08_CONFIG.hiddenTextPenaltyScale,
-    );
-    penalties.push({
-      id: 'PEN_D08_HIDDEN_TEXT',
-      ruleCode: 'PEN_D08_HIDDEN_TEXT',
-      defectFingerprint: 'D08:HIDDEN_TEXT:VISIBLE_DOCUMENT',
-      targetModuleId: D08_MODULE_ID,
-      severity: hiddenRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
-      requestedDeduction: deduction,
-      appliedDeduction: deduction,
-      evidenceIds: signals.adversarial.hiddenTextEvidenceIds,
-      explanation: 'Wykryto tekst niewidoczny lub praktycznie niewidoczny dla człowieka.',
-    });
+  if (signals.adversarial.hiddenTextMeasured) {
+    const hiddenRatio = clamp01(signals.adversarial.hiddenTextRatio ?? 0);
+    if (hiddenRatio > 0) {
+      const deduction = continuousPenalty(
+        D08_CONFIG.hiddenTextPenaltyMax,
+        hiddenRatio,
+        D08_CONFIG.hiddenTextPenaltyScale,
+      );
+      penalties.push({
+        id: 'PEN_D08_HIDDEN_TEXT',
+        ruleCode: 'PEN_D08_HIDDEN_TEXT',
+        defectFingerprint: 'D08:HIDDEN_TEXT:VISIBLE_DOCUMENT',
+        targetModuleId: D08_MODULE_ID,
+        severity: hiddenRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
+        requestedDeduction: deduction,
+        appliedDeduction: deduction,
+        evidenceIds: signals.adversarial.hiddenTextEvidenceIds,
+        explanation: 'Wykryto tekst niewidoczny lub praktycznie niewidoczny dla człowieka.',
+      });
+    }
   }
 
-  const duplicateRatio = clamp01(signals.adversarial.duplicateInvisibleLayerRatio);
-  if (duplicateRatio > 0) {
-    const deduction = continuousPenalty(
-      D08_CONFIG.duplicateLayerPenaltyMax,
-      duplicateRatio,
-      D08_CONFIG.duplicateLayerPenaltyScale,
-    );
-    penalties.push({
-      id: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
-      ruleCode: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
-      defectFingerprint: 'D08:DUPLICATE_INVISIBLE_LAYER:DOCUMENT',
-      targetModuleId: D08_MODULE_ID,
-      severity: duplicateRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
-      requestedDeduction: deduction,
-      appliedDeduction: deduction,
-      evidenceIds: signals.adversarial.duplicateLayerEvidenceIds,
-      explanation: 'Wykryto niewidoczną zduplikowaną warstwę tekstową.',
-    });
+  if (signals.adversarial.duplicateInvisibleLayerMeasured) {
+    const duplicateRatio = clamp01(signals.adversarial.duplicateInvisibleLayerRatio ?? 0);
+    if (duplicateRatio > 0) {
+      const deduction = continuousPenalty(
+        D08_CONFIG.duplicateLayerPenaltyMax,
+        duplicateRatio,
+        D08_CONFIG.duplicateLayerPenaltyScale,
+      );
+      penalties.push({
+        id: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
+        ruleCode: 'PEN_D08_DUPLICATE_INVISIBLE_LAYER',
+        defectFingerprint: 'D08:DUPLICATE_INVISIBLE_LAYER:DOCUMENT',
+        targetModuleId: D08_MODULE_ID,
+        severity: duplicateRatio >= 0.10 ? 'HIGH' : 'MEDIUM',
+        requestedDeduction: deduction,
+        appliedDeduction: deduction,
+        evidenceIds: signals.adversarial.duplicateLayerEvidenceIds,
+        explanation: 'Wykryto niewidoczną zduplikowaną warstwę tekstową.',
+      });
+    }
   }
 
   return penalties;
@@ -402,7 +421,7 @@ function buildPenalties(signals: D08Signals): Penalty[] {
 function buildHardCaps(
   signals: D08Signals,
   text: TextLayerMeasurement | null,
-  order: { quality: number; discordance: number } | null,
+  order: OrderMeasurement | null,
 ): HardCap[] {
   const caps: HardCap[] = [];
 
@@ -450,7 +469,11 @@ function buildHardCaps(
     });
   }
 
-  if (signals.adversarial.hiddenTextRatio > D08_CONFIG.hardCaps.hiddenTextThreshold) {
+  if (
+    signals.adversarial.hiddenTextMeasured &&
+    (signals.adversarial.hiddenTextRatio ?? 0) > D08_CONFIG.hardCaps.hiddenTextThreshold
+  ) {
+    const hiddenRatio = signals.adversarial.hiddenTextRatio ?? 0;
     caps.push({
       id: 'HC_D08_HIDDEN_TEXT_MASSIVE',
       ruleCode: 'HC_D08_HIDDEN_TEXT_MASSIVE',
@@ -458,7 +481,7 @@ function buildHardCaps(
       targetId: D08_MODULE_ID,
       capLimit: D08_CONFIG.hardCaps.hiddenTextCap,
       triggered: true,
-      reason: `Znaczna część dokumentu (${(signals.adversarial.hiddenTextRatio * 100).toFixed(1)}%) jest niewidoczna dla człowieka.`,
+      reason: `Znaczna część dokumentu (${(hiddenRatio * 100).toFixed(1)}%) jest niewidoczna dla człowieka.`,
       evidenceIds: signals.adversarial.hiddenTextEvidenceIds,
     });
   }
@@ -466,10 +489,7 @@ function buildHardCaps(
   return caps;
 }
 
-function buildRecommendations(
-  hardCaps: HardCap[],
-  penalties: Penalty[],
-): Recommendation[] {
+function buildRecommendations(hardCaps: HardCap[], penalties: Penalty[]): Recommendation[] {
   const recommendations: Recommendation[] = [];
 
   if (hardCaps.some((cap) => cap.ruleCode === 'HC_D08_READING_ORDER_CRITICAL')) {
@@ -527,17 +547,15 @@ function buildLedger(
     ? afterPenalties
     : Math.min(afterPenalties, effectiveCap);
 
-  const equation = effectiveCap === null
-    ? `${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)} = ${finalScore.toFixed(4)}`
-    : `min(${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)}, ${effectiveCap.toFixed(4)}) = ${finalScore.toFixed(4)}`;
-
   return {
     componentScore,
     penaltyTotal,
     afterPenalties,
     effectiveCap,
     finalScore,
-    equation,
+    equation: effectiveCap === null
+      ? `${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)} = ${finalScore.toFixed(4)}`
+      : `min(${componentScore.toFixed(4)} - ${penaltyTotal.toFixed(4)}, ${effectiveCap.toFixed(4)}) = ${finalScore.toFixed(4)}`,
   };
 }
 
@@ -612,11 +630,9 @@ export function scoreStructuralReadability(signals: D08Signals): AuditModuleResu
   const hardCaps = buildHardCaps(signals, text, order);
   const ledger = buildLedger(breakdown, penalties, hardCaps);
   const confidenceBreakdown = computeAuditConfidence(signals.confidenceInput);
-
   const hasHardNegativeEvidence = hardCaps.some((cap) => cap.triggered);
-  const insufficientByConfidence = confidenceBreakdown.combined < 0.35 && !hasHardNegativeEvidence;
 
-  if (insufficientByConfidence) {
+  if (confidenceBreakdown.combined < 0.35 && !hasHardNegativeEvidence) {
     return {
       moduleId: D08_MODULE_ID,
       moduleName: D08_MODULE_NAME,
