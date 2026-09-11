@@ -1,27 +1,30 @@
-# CVelocity — bezpłatna beta ⚡
+# CVelocity — Public Pre-Beta `PB-2026.09` ⚡
 
 > Narzędzie do porządkowania profilu zawodowego, dopasowania CV do konkretnego ogłoszenia i prowadzenia własnego procesu aplikacyjnego.
 
 [![CI](https://github.com/krymszuch-stack/cvelocity/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](tsconfig.json)
 
-[**🌐 Otwórz bezpłatną betę**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
+[**🌐 Testuj Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
 
 ## Status produktu
 
-CVelocity jest obecnie **bezpłatną betą, cena: 0 zł**.
+CVelocity jest obecnie publiczną wersją testową **Public Pre-Beta `PB-2026.09`**. Można już wejść, korzystać z podstawowego przepływu i zgłaszać uwagi przed właściwą premierą.
 
-W becie:
+Public Pre-Beta jest **bezpłatna, cena: 0 zł**.
+
+W tej wersji:
 
 - nie ma aktywnego checkoutu, subskrypcji Pro ani płatnego okresu próbnego;
 - nie można kupić pojedynczych szablonów ani Karnetu Aplikacyjnego;
 - podstawowy przepływ testera nie wymaga płatności;
 - operacje wykorzystujące modele po stronie serwera nadal podlegają limitom technicznym egzekwowanym przez backend;
-- funkcje poza zakresem są oznaczane jako niedostępne zamiast prowadzić do martwej kasy.
+- funkcje poza zakresem są oznaczane jako niedostępne zamiast prowadzić do martwej kasy;
+- interfejs pokazuje globalną wstążkę wersji, żeby publiczny tester od razu wiedział, że korzysta z wydania przedpremierowego.
 
-Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas tej bety**.
+Kod płatności pozostaje w repo jako infrastruktura na przyszłość i dla zgodności ze starszymi danymi, ale **sprzedaż jest twardo wyłączona podczas Public Pre-Beta**.
 
-## Co beta rzeczywiście robi
+## Co Public Pre-Beta rzeczywiście robi
 
 ### Profil i CV
 
@@ -45,6 +48,8 @@ Aplikacje można zapisywać i prowadzić przez własne statusy procesu. Snapshot
 
 Widoczny w interfejsie Doradca jest obecnie **lokalnym modułem regułowym**, a nie czatem LLM. Otrzymuje wyłącznie pytanie wpisane przez użytkownika albo wybrany szybki prompt. Nie czyta automatycznie Master Vaultu ani zapisanych aplikacji i nie wysyła historii tej rozmowy do modelu AI.
 
+W Public Pre-Beta wejście do Doradcy znajduje się bezpośrednio w grupie głównych narzędzi, obok Porad i Audytu, zamiast na samym dole sidebara.
+
 ## Dane lokalne i chmura
 
 CVelocity ma dwa istotne tryby:
@@ -54,9 +59,9 @@ CVelocity ma dwa istotne tryby:
 
 Dlatego nie opisujemy całego produktu jako „100% client-side”. To prawda dla lokalnego przepływu danych, ale nie dla świadomie włączonej synchronizacji konta.
 
-## Ograniczenia bety
+## Ograniczenia Public Pre-Beta
 
-Obecna beta nie obiecuje:
+Obecna wersja nie obiecuje:
 
 - zgodności z prywatną konfiguracją konkretnego systemu ATS pracodawcy;
 - przewidywania decyzji rekrutera;
