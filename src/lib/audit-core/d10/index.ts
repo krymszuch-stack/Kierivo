@@ -5,4 +5,5 @@ export * from './candidateEvidence';
 export * from './matching';
 export * from './scorer';
 export * from './presentation';
+export * from './calibration';
 export * from './engine';
