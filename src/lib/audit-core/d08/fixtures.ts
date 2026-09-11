@@ -32,6 +32,7 @@ export function createCleanD08Signals(): D08Signals {
     readingOrder: {
       comparablePairWeight: 100,
       discordantPairWeight: 0,
+      measurementConfidence: 1,
       evidenceIds: ['EV_READING_ORDER'],
     },
     sections: {
