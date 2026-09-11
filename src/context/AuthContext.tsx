@@ -325,10 +325,12 @@ export const AuthProvider: React.FC<{
         ? { ...vault, personalInfo: { ...personalInfo, ...cleaned } }
         : vault;
 
-      saveProfileVault(ownerId, sanitizedVault);
       setUserVault((prev) => (prev === sanitizedVault ? prev : sanitizedVault));
 
       if (mode === 'cloud') {
+        // W trybie chmurowym owner-scoped outbox jest jedyną trwałą kopią
+        // lokalną. Dzięki temu deferred flush po logout nie odtworzy zwykłego
+        // klucza profilu, który mógłby zostać znaleziony na wspólnym komputerze.
         enqueueCloudVaultSave(ownerId, sanitizedVault);
         void flushPendingCloudVault(ownerId).then((status) => {
           if (status === 'pending') {
@@ -339,6 +341,7 @@ export const AuthProvider: React.FC<{
           }
         });
       } else {
+        saveProfileVault(ownerId, sanitizedVault);
         setVaultSyncStatus('local');
       }
     },
