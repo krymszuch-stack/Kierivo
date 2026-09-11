@@ -32,7 +32,7 @@ function absoluteSpan(segment: D10FormalLineSegment, localStart = 0, localEnd = 
   };
 }
 
-function educationFieldConstraint(text: string): string | null {
+export function extractEducationFieldConstraint(text: string): string | null {
   const normalized = normalizeFormalTerm(text);
   const patterns = [
     /(?:kierunek|specjalnosc|field(?: of study)?)\s*[:-]?\s*([a-z0-9 +.#/-]{3,80})$/,
@@ -123,11 +123,14 @@ export function detectD10Entities(segment: D10FormalLineSegment): DetectedD10Ent
       sourceSpan: absoluteSpan(segment),
       specificity: 0.9,
       educationLevel: education,
-      fieldConstraint: educationFieldConstraint(segment.text),
+      fieldConstraint: extractEducationFieldConstraint(segment.text),
     });
   }
 
-  if (segment.contextHint === 'CERTIFICATION' && !out.some((item) => item.kind === 'CERTIFICATION')) {
+  // Prefix listy (np. "Certyfikaty:") jest tylko hintem. Nie wolno mu
+  // przepisywać segmentu na certyfikat, jeżeli równoległy detektor znalazł
+  // w nim już konkretną encję innego typu, np. język angielski C1.
+  if (segment.contextHint === 'CERTIFICATION' && out.length === 0) {
     out.push({
       canonicalId: genericCredentialCanonicalId(segment.text, 'CERTIFICATION'),
       kind: 'CERTIFICATION',
@@ -138,7 +141,7 @@ export function detectD10Entities(segment: D10FormalLineSegment): DetectedD10Ent
     });
   }
 
-  if (segment.contextHint === 'LICENSE' && !out.some((item) => item.kind === 'LICENSE')) {
+  if (segment.contextHint === 'LICENSE' && out.length === 0) {
     out.push({
       canonicalId: genericCredentialCanonicalId(segment.text, 'LICENSE'),
       kind: 'LICENSE',
