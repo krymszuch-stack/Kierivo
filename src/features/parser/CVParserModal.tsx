@@ -13,16 +13,10 @@ import { Tabs } from '../../components/ui/Tabs';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { PremiumBadge } from '../../components/ui/PremiumBadge';
 import { useEntitlements } from '../../store/useEntitlements';
-import { StripeCheckoutModal } from '../../components/payments/StripeCheckoutModal';
 import { showToast } from '../../store/useToastStore';
 
 export interface CVParserModalProps {
   currentVault: MasterVault;
-  /**
-   * Otrzymuje **kompletny** vault po scaleniu ze strategiami z diffu.
-   * Wcześniej przekazywał częściowy wynik dalej przez `mergeImportedVault`,
-   * które zawsze dokłada wpisy — strategia „zastąp" była martwa.
-   */
   onApplyVault: (vault: MasterVault) => void;
   className?: string;
 }
@@ -41,13 +35,12 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   const [parseProgress, setParseProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [parsedResult, setParsedResult] = useState<ParsedCVResult | null>(null);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
   const { usage, isPro, consumeImport } = useEntitlements();
 
   const ingestTabs = [
     { id: 'file' as IngestMode, label: 'Plik z dysku (PDF/DOCX)', icon: UploadCloud },
-    { id: 'rawText' as IngestMode, label: 'Wklej surowy tekst (Darmowe)', icon: FileCode },
+    { id: 'rawText' as IngestMode, label: 'Wklej surowy tekst (bezpłatnie)', icon: FileCode },
   ];
 
   const handleStartParsing = async () => {
@@ -59,11 +52,14 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
         return;
       }
 
-      // Sprawdzenie limitu przed pracą, ale odjęcie dopiero po udanym
-      // parsowaniu — wcześniej nieczytelny plik kosztował jeden z darmowych
-      // importów, choć nic z niego nie wyciągnęliśmy.
       if (!isPro && usage.importUses <= 0) {
-        setIsCheckoutOpen(true);
+        // W becie nie ma ścieżki zakupu. Zamiast wysyłać testera do martwego
+        // checkoutu przełączamy go na działający, bezpłatny wariant zadania.
+        setIngestMode('rawText');
+        showToast('Limit importu plików wykorzystany', {
+          message: 'Zakupy są wyłączone w bezpłatnej becie. Wklej treść CV jako tekst i kontynuuj bez płatności.',
+          variant: 'info',
+        });
         return;
       }
 
@@ -74,7 +70,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
       try {
         const extracted = await extractTextFromAnyFile(selectedFile);
         textToParse = extracted.text;
-      } catch (err) {
+      } catch {
         showToast('Nie udało się odczytać pliku', { message: 'Spróbuj wkleić treść CV ręcznie.', variant: 'error' });
         setIsProcessing(false);
         return;
@@ -88,7 +84,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     }
 
     setParseProgress(50);
-    setStatusMessage('Analiza sekcji, ról oraz słów kluczowych ATS...');
+    setStatusMessage('Analiza sekcji, ról oraz słów kluczowych...');
 
     await new Promise((resolve) => setTimeout(resolve, 600));
 
@@ -100,7 +96,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
       consumeImport();
       result.detectedFormat = selectedFile?.name.split('.').pop()?.toUpperCase() || 'Plik';
     } else {
-      result.detectedFormat = 'Wklejony Tekst';
+      result.detectedFormat = 'Wklejony tekst';
     }
 
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -114,12 +110,8 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     if (!parsedResult) return;
 
     const { vault: scalonyVault, added } = applyParsedCVToVault(currentVault, parsedResult, strategies);
-
     onApplyVault(scalonyVault);
 
-    // Komunikat idzie przez globalny toast, nie przez banner w tym komponencie:
-    // rodzic przełącza krok sekcji i odmontowuje parser w tym samym cyklu,
-    // więc lokalny komunikat znikał, zanim cokolwiek widać.
     const części: string[] = [];
     if (added.history) części.push(`${added.history} stanowisk`);
     if (added.education) części.push(`${added.education} szkół`);
@@ -140,14 +132,13 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   return (
     <div className={`space-y-6 ${className}`}>
       <PageHeader
-        title="Wczytywanie & Scalanie Dokumentu CV"
-        description="Zaimportuj dotychczasowe CV w dowolnym formacie (PDF, DOCX, TXT), a silnik automatycznie wyekstrahuje historię, umiejętności i dane kontaktowe do porównania z Master Vault."
-        badge="Uniwersalny parser"
+        title="Wczytywanie i scalanie dokumentu CV"
+        description="Zaimportuj CV z pliku albo wklej jego treść. Parser lokalny wyodrębni historię, umiejętności i dane kontaktowe do porównania z Master Vault."
+        badge="Parser CVelocity"
       />
 
       {!parsedResult ? (
         <div className="space-y-6">
-          {/* Tabs: File vs Raw Text */}
           <div className="flex flex-col items-center gap-2">
             <Tabs<IngestMode>
               items={ingestTabs}
@@ -156,29 +147,24 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
               className="max-w-md"
             />
 
-            {/* Fair Quota Indicator */}
             {ingestMode === 'file' && (
               <div className="flex items-center gap-2 text-[11px] font-mono text-muted">
                 {isPro ? (
                   <>
-                    <PremiumBadge size="chip">Pro</PremiumBadge>
-                    <span className="text-success-fg font-bold">Nielimitowany Instant-Import</span>
+                    <PremiumBadge size="chip">Legacy Pro</PremiumBadge>
+                    <span className="text-success-fg font-bold">Import plików bez limitu dla istniejącego uprawnienia</span>
                   </>
                 ) : usage.importUses > 0 ? (
-                  <span>Pozostało darmowych importów pliku w tym miesiącu: <b className="text-ink">{usage.importUses}</b></span>
+                  <span>Pozostało importów pliku w tym miesiącu: <b className="text-ink">{usage.importUses}</b></span>
                 ) : (
-                  // Liczby nie powtarzamy w tekście — licznik obok już ją pokazuje
-                  // i jest jedynym źródłem prawdy (reguła 3); hardcod rozjeżdżał się
-                  // z realnym limitem przy każdej zmianie konfiguracji.
                   <span className="text-warning-fg font-bold">
-                    Wykorzystano miesięczny limit darmowych importów plików (Wklejanie tekstu nadal darmowe!)
+                    Limit plików wykorzystany. Wklejanie tekstu pozostaje dostępne bez płatności.
                   </span>
                 )}
               </div>
             )}
           </div>
 
-          {/* Ingest Box */}
           <Card tone="raised" className="space-y-4">
             {ingestMode === 'file' ? (
               <DropZone
@@ -192,16 +178,15 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
                   rows={8}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
-                  placeholder="Wklej tutaj pełną treść swojego dokumentu CV (tekst z PDF, LinkedIn lub Notatnika)..."
+                  placeholder="Wklej tutaj pełną treść swojego dokumentu CV..."
                   className="font-mono text-xs"
                 />
                 <p className="font-mono text-[11px] text-muted">
-                  Znaków: {rawText.length} • Słów: {rawText.trim().split(/\s+/).filter(Boolean).length} • Wklejanie tekstu jest w 100% bezpłatne i bez limitu.
+                  Znaków: {rawText.length} • Słów: {rawText.trim().split(/\s+/).filter(Boolean).length} • Wklejanie tekstu jest bezpłatne i bez limitu płatnego.
                 </p>
               </div>
             )}
 
-            {/* Parsing Progress Bar */}
             {isProcessing && (
               <div className="space-y-2 pt-2">
                 <div className="flex items-center justify-between text-xs font-bold text-ink">
@@ -215,7 +200,6 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
               </div>
             )}
 
-            {/* Action Trigger */}
             <div className="flex justify-end pt-2">
               <Button
                 variant="primary"
@@ -225,39 +209,17 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
                 disabled={isProcessing || (ingestMode === 'file' && !selectedFile) || (ingestMode === 'rawText' && rawText.length < 30)}
                 onClick={handleStartParsing}
               >
-                {isProcessing ? 'Parsowanie dokumentu...' : 'Rozpocznij Parsowanie i Przygotuj Diff'}
+                {isProcessing ? 'Parsowanie dokumentu...' : 'Rozpocznij parsowanie i przygotuj Diff'}
               </Button>
             </div>
           </Card>
         </div>
       ) : (
-        /* Diff View Mode */
         <DiffView
           currentVault={currentVault}
           parsedData={parsedResult}
           onApplyMerge={handleApplyMerge}
           onCancel={() => setParsedResult(null)}
-        />
-      )}
-
-      {/* Stripe Checkout Modal for Instant Import Upgrade */}
-      {isCheckoutOpen && (
-        <StripeCheckoutModal
-          isOpen={isCheckoutOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-          product={{
-            sku: 'price_cvelocity_pro_monthly',
-            title: 'CVelocity Pro (Nielimitowany Instant-Import)',
-            price: '49 zł',
-            period: '/ miesiąc brutto',
-            recurring: true,
-            // Cykl musi być jawny — bez `interval` modal wpada w ogólny tekst o odnowieniu.
-            interval: 'month',
-            trialDays: 30,
-          }}
-          onUnlocked={() => {
-            showToast('Plan Pro aktywny', { message: 'Importujesz pliki bez limitu.' });
-          }}
         />
       )}
     </div>
