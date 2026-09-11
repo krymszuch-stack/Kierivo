@@ -5,13 +5,13 @@ const URL_RE = /^(?:https?:\/\/|www\.)/i;
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
 const SPECIAL_CANONICAL: Array<[RegExp, string]> = [
-  [/\bc\+\+\b/gi, ' cpp '],
-  [/\bc#\b/gi, ' csharp '],
-  [/\b\.net\b/gi, ' dotnet '],
-  [/\bnode\.js\b/gi, ' nodejs '],
-  [/\breact\.js\b/gi, ' react '],
-  [/\bvue\.js\b/gi, ' vue '],
-  [/\bk8s\b/gi, ' kubernetes '],
+  [/(?:^|[^\p{L}\p{N}])c\+\+(?=$|[^\p{L}\p{N}])/giu, ' cpp '],
+  [/(?:^|[^\p{L}\p{N}])c#(?=$|[^\p{L}\p{N}])/giu, ' csharp '],
+  [/(?:^|[^\p{L}\p{N}])\.net(?=$|[^\p{L}\p{N}])/giu, ' dotnet '],
+  [/(?:^|[^\p{L}\p{N}])node\.js(?=$|[^\p{L}\p{N}])/giu, ' nodejs '],
+  [/(?:^|[^\p{L}\p{N}])react\.js(?=$|[^\p{L}\p{N}])/giu, ' react '],
+  [/(?:^|[^\p{L}\p{N}])vue\.js(?=$|[^\p{L}\p{N}])/giu, ' vue '],
+  [/\bk8s\b/giu, ' kubernetes '],
 ];
 
 export function normalizeAdaptiveText(input: string): string {
