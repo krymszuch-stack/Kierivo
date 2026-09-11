@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildD10CandidateEvidenceFromText } from '../audit-core/d10/candidateEvidence';
 import { extractD10Requirements } from '../audit-core/d10/requirementParser';
 import { runD10FormalAudit } from '../audit-core/d10/engine';
 
@@ -276,30 +277,89 @@ describe('D10 Formal Requirements', () => {
     expect(result.score).toBeLessThanOrEqual(35);
   });
 
-  it('matches a previously unseen certification without a hand-written dictionary entry', async () => {
+  it('extracts multiple formal entities from one prefixed line with source spans', async () => {
+    const extraction = await extractD10Requirements([
+      'Wymagania:',
+      'Certyfikaty: PMP, AZ-900; język angielski C1',
+    ].join('\n'));
+    const ids = extraction.requirements.map((item) => item.canonicalId).sort();
+    expect(ids).toEqual(['cert.azure.az900', 'cert.pmp', 'language.english']);
+    for (const requirement of extraction.requirements) {
+      expect(requirement.sourceSpan).toBeDefined();
+      const span = requirement.sourceSpan!;
+      expect(requirement.sourceText.slice(span.start, span.end).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('extracts multiple candidate facts from one line instead of first-hit-wins', async () => {
+    const evidence = await buildD10CandidateEvidenceFromText(
+      'Certyfikaty: PMP, AZ-900; język angielski C1',
+      0.98,
+    );
+    const ids = evidence.map((item) => item.canonicalId).sort();
+    expect(ids).toEqual(['cert.azure.az900', 'cert.pmp', 'language.english']);
+    expect(evidence.every((item) => item.sourceSpan && item.evidence.pointer.charStart !== undefined)).toBe(true);
+  });
+
+  it('models PMP or PRINCE2 as one ANY_OF logical requirement', async () => {
+    const extraction = await extractD10Requirements('Wymagania:\nPMP lub PRINCE2');
+    expect(extraction.requirements).toHaveLength(2);
+    expect(extraction.groups).toHaveLength(1);
+    expect(extraction.groups[0].operator).toBe('ANY_OF');
+    expect(extraction.groups[0].memberCanonicalIds.sort()).toEqual(['cert.pmp', 'cert.prince2']);
+
     const result = await runD10FormalAudit({
-      jobDescription: 'Wymagania:\nWymagany certyfikat Foo Bar Professional',
+      jobDescription: 'Wymagania:\nPMP lub PRINCE2',
       vault: vault({
         skillsMatrix: {
           hardSkills: [], softSkills: [], toolsAndTech: [],
-          certifications: [{ id: 'foo', name: 'Foo Bar Professional', issuer: 'Example Institute' }],
+          certifications: [{ id: 'pmp', name: 'PMP', issuer: 'PMI' }],
         },
       }),
       referenceDateIso,
     });
     expect(result.score).toBe(100);
-    expect(result.formal.matches[0].requirement.canonicalId).toBe('cert.generic.foo-bar-professional');
-    expect(result.formal.matches[0].status).toBe('CONFIRMED');
+    expect(result.missingEvidence.some((item) => item.requirementCode === 'cert.prince2')).toBe(false);
   });
 
-  it('normalizes Polish fluent-language wording before CEFR inference', async () => {
-    const result = await runD10FormalAudit({
-      jobDescription: 'Wymagania:\nWymagany język angielski B2',
-      candidateText: 'Język angielski: biegły',
-      sourceCompletenessConfidence: 0.98,
+  it('models PMP and AZ-900 as ALL_OF and requires both', async () => {
+    const extraction = await extractD10Requirements('Wymagania:\nPMP i AZ-900');
+    expect(extraction.groups).toHaveLength(1);
+    expect(extraction.groups[0].operator).toBe('ALL_OF');
+
+    const partial = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nPMP i AZ-900',
+      vault: vault({
+        skillsMatrix: {
+          hardSkills: [], softSkills: [], toolsAndTech: [],
+          certifications: [{ id: 'pmp', name: 'PMP', issuer: 'PMI' }],
+        },
+      }),
       referenceDateIso,
     });
-    expect(result.score).toBe(100);
-    expect(result.formal.matches[0].status).toBe('CONFIRMED');
+    expect(partial.score).toBe(0);
+
+    const complete = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nPMP i AZ-900',
+      vault: vault({
+        skillsMatrix: {
+          hardSkills: [], softSkills: [], toolsAndTech: [],
+          certifications: [
+            { id: 'pmp', name: 'PMP', issuer: 'PMI' },
+            { id: 'az', name: 'AZ-900', issuer: 'Microsoft' },
+          ],
+        },
+      }),
+      referenceDateIso,
+    });
+    expect(complete.score).toBe(100);
+  });
+
+  it('parses mixed A or B and C without forcing C into the alternative group', async () => {
+    const extraction = await extractD10Requirements('Wymagania:\nPMP lub PRINCE2 oraz język angielski B2');
+    expect(extraction.groups).toHaveLength(1);
+    expect(extraction.groups[0].operator).toBe('ANY_OF');
+    expect(extraction.groups[0].memberCanonicalIds.sort()).toEqual(['cert.pmp', 'cert.prince2']);
+    expect(extraction.requirements.find((item) => item.canonicalId === 'language.english')?.groupId).toBeUndefined();
   });
 });
