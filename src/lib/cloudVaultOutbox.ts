@@ -1,6 +1,9 @@
 import type { MasterVault } from '../types';
 import { saveCloudVault } from './cloudVault';
+import { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
 import { readJson, removeRaw, writeJson } from './storage';
+
+export { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
 
 /** Stan pokazywany użytkownikowi przy utrwalaniu Master Vaultu. */
 export type VaultSyncStatus = 'local' | 'pending' | 'cloud';
@@ -19,14 +22,9 @@ type CloudVaultSender = (
 
 type StatusListener = (status: VaultSyncStatus) => void;
 
-const OUTBOX_PREFIX = 'cvelocity:cloud-vault-outbox';
 const inFlight = new Map<string, Promise<VaultSyncStatus>>();
 const runtimeStatus = new Map<string, VaultSyncStatus>();
 const listeners = new Map<string, Set<StatusListener>>();
-
-export function cloudVaultOutboxKeyFor(ownerId: string): string {
-  return `${OUTBOX_PREFIX}:${ownerId}`;
-}
 
 function isPendingSave(value: unknown, ownerId: string): value is PendingCloudVaultSave {
   if (!value || typeof value !== 'object') return false;
