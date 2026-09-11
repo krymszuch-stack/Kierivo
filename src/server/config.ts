@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BETA_PURCHASES_ENABLED, FREE_BETA_ACTIVE } from '../lib/beta';
 
 /**
  * Server configuration, validated once at boot.
@@ -59,7 +60,7 @@ export type ServerConfig = z.infer<typeof configSchema> & {
   allowedOrigins: string[];
   /** `true`, gdy da się rozmawiać z bazą — czyli gdy trasy kont mają sens. */
   backendEnabled: boolean;
-  /** `true`, gdy komplet kluczy Stripe'a jest na miejscu. */
+  /** `true`, gdy sprzedaż jest świadomie włączona i komplet kluczy Stripe'a jest na miejscu. */
   paymentsEnabled: boolean;
 };
 
@@ -100,7 +101,7 @@ export function loadConfig(): ServerConfig {
     }
   }
 
-  const paymentsEnabled = Boolean(data.STRIPE_SECRET_KEY && data.STRIPE_WEBHOOK_SECRET);
+  const stripeConfigured = Boolean(data.STRIPE_SECRET_KEY && data.STRIPE_WEBHOOK_SECRET);
 
   // Sam klucz sekretny bez sekretu webhooka to konfiguracja, w której da się
   // przyjąć płatność i nie da się jej potwierdzić — użytkownik płaci i nie
@@ -112,13 +113,20 @@ export function loadConfig(): ServerConfig {
     );
   }
 
+  if (FREE_BETA_ACTIVE && stripeConfigured) {
+    console.info(
+      '[konfiguracja] Bezpłatna beta jest aktywna. Klucze Stripe mogą być skonfigurowane, ale checkout pozostaje wyłączony decyzją produktową.'
+    );
+  }
+
   cached = {
     ...data,
     allowedOrigins: data.ALLOWED_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
     backendEnabled: data.BACKEND_MODE === 'cloud',
-    paymentsEnabled: data.BACKEND_MODE === 'cloud' && paymentsEnabled,
+    paymentsEnabled:
+      BETA_PURCHASES_ENABLED && data.BACKEND_MODE === 'cloud' && stripeConfigured,
   };
 
   return cached;
