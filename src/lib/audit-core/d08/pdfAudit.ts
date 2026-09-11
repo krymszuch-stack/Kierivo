@@ -1,5 +1,5 @@
 import type { AuditModuleResult } from '../contracts';
-import { scoreStructuralReadability } from './scorer';
+import { scoreStructuralReadability } from './strictScorer';
 import type { D08Signals } from './types';
 import {
   extractD08SignalsFromPdf as extractRawD08SignalsFromPdf,
@@ -12,8 +12,9 @@ import {
  * jest niewidzialna. D08 nie może zamieniać "duplicate" w
  * "duplicate invisible" bez evidence.
  *
- * Ta bramka celowo zachowuje sam ratio diagnostyczny, ale wyłącza możliwość
- * nałożenia kary/capu do czasu pojawienia się niezależnego dowodu widoczności.
+ * Geometryczna hipoteza reading-order z zewnętrznego PDF także pozostaje
+ * diagnostyczna, dopóki corpus nie potwierdzi jej kalibracji. Brak jawnego
+ * `measurementConfidence` powoduje odrzucenie tego wymiaru przez strict scorer.
  */
 export function hardenD08PdfSignals(rawSignals: D08Signals): D08Signals {
   const signals = structuredClone(rawSignals);
