@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ALL_AUDIT_DOMAINS,
+  AUDIT_CORE_CORPUS_JSON_PATH,
   AUDIT_CORE_CORPUS_VERSION,
-  D07_GOLDEN_CORPUS,
   DEFAULT_AUDIT_CORE_CONFIG,
   DEFAULT_SIGNAL_OWNERSHIP,
   aggregateDomain,
@@ -32,6 +32,7 @@ import {
   type AuditModuleResult,
   type ConfidenceBreakdown,
   type Evidence,
+  type GoldenCorpusDocument,
   type ScoreComponent,
 } from '../audit-core';
 
@@ -197,7 +198,7 @@ describe('D07 penalty registry', () => {
       severity: 'HIGH' as const,
       requestedDeduction: 15,
       appliedDeduction: 0,
-      evidenceIds: ['EV_test000000000000000'],
+      evidenceIds: ['EV_TEST'],
       explanation: 'test',
     };
     const result = applyPenaltyBudget([
@@ -220,7 +221,7 @@ describe('D07 penalty registry', () => {
       severity: 'CRITICAL',
       requestedDeduction: 50,
       appliedDeduction: 0,
-      evidenceIds: ['EV_test000000000000000'],
+      evidenceIds: ['EV_TEST'],
       explanation: 'test',
     }], { components });
     expect(result.appliedTotal).toBe(10);
@@ -233,11 +234,11 @@ describe('D07 Score Ledger', () => {
     const penalties = [{
       id: 'P1', ruleCode: 'P1', defectFingerprint: 'DF1', targetModuleId: 'M1',
       severity: 'LOW' as const, requestedDeduction: 5, appliedDeduction: 5,
-      evidenceIds: ['EV_pen0000000000000000'], explanation: 'test',
+      evidenceIds: ['EV_PEN'], explanation: 'test',
     }];
     const hardCaps = [{
       id: 'HC1', ruleCode: 'HC1', scope: 'MODULE' as const, targetId: 'M1', capLimit: 60,
-      triggered: true, reason: 'test', evidenceIds: ['EV_cap0000000000000000'],
+      triggered: true, reason: 'test', evidenceIds: ['EV_CAP'],
     }];
     const ledger = buildScoreLedger({
       moduleId: 'M1', components, penalties, hardCaps, confidenceBreakdown: confidenceHigh,
@@ -310,7 +311,7 @@ describe('D07 aggregation', () => {
 });
 
 describe('D07 integrity signature', () => {
-  it('jest deterministyczna i ignoruje auditRunId z definicji', async () => {
+  it('jest deterministyczna i nie zawiera auditRunId', async () => {
     const input = {
       engineVersion: '1', auditMode: 'GENERAL_CV' as const, referenceMonth: 24320,
       canonicalSignals: { b: 2, a: 1 }, moduleConfigVersions: { D08: '1' }, corpusSchemaVersion: '2',
@@ -328,10 +329,12 @@ describe('D07 configuration and corpus', () => {
     expect(config.aggregation.baselineP).toBe(0);
   });
 
-  it('golden corpus jest wersjonowany, ma pełny zestaw archetypów i poprawne tryby', () => {
-    expect(AUDIT_CORE_CORPUS_VERSION).toContain('v2');
-    expect(D07_GOLDEN_CORPUS.length).toBeGreaterThanOrEqual(34);
-    expect(validateGoldenCorpus()).toEqual([]);
+  it('golden corpus jest wersjonowanym JSON-em, ma pełny zestaw archetypów i poprawne tryby', () => {
+    const raw = readFileSync(resolve(process.cwd(), AUDIT_CORE_CORPUS_JSON_PATH), 'utf8');
+    const corpus = JSON.parse(raw) as GoldenCorpusDocument;
+    expect(corpus.version).toBe(AUDIT_CORE_CORPUS_VERSION);
+    expect(corpus.cases.length).toBeGreaterThanOrEqual(34);
+    expect(validateGoldenCorpus(corpus)).toEqual([]);
   });
 });
 
