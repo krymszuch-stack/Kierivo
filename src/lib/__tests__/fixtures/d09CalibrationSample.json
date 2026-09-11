@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "d09-private-calibration-v1",
+  "jobs": [
+    {
+      "id": "JD_SYNTH_001",
+      "text": "Requirements:\n- Java\n- PostgreSQL\nNice to have:\n- AWS",
+      "expectedRequirements": [
+        { "canonicalId": "java", "priority": "MUST", "kind": "SKILL" },
+        { "canonicalId": "postgresql", "priority": "MUST", "kind": "SKILL" },
+        { "canonicalId": "aws", "priority": "NICE", "kind": "SKILL" }
+      ]
+    }
+  ],
+  "rankings": [
+    {
+      "jobId": "JD_SYNTH_001",
+      "observations": [
+        { "id": "CV_A", "score": 88 },
+        { "id": "CV_B", "score": 61 }
+      ],
+      "expectedPairs": [
+        { "betterId": "CV_A", "worseId": "CV_B" }
+      ]
+    }
+  ],
+  "uncertainty": [
+    { "low": 70, "high": 90, "referenceScore": 82 }
+  ]
+}
