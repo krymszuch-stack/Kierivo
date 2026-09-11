@@ -34,7 +34,7 @@ function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
-    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Odpowiadam z wbudowanych zasad i dostaję tylko treść pytania, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam tej rozmowy do modelu AI.',
+    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Odpowiadam z wbudowanych zasad i dostaję tylko treść pytania, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam tej rozmowy do zewnętrznego modelu językowego.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
 }
@@ -70,7 +70,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
     if (!textToSend) setInputVal('');
     setIsTyping(true);
 
-    // Odpowiedzi są lokalnymi regułami, nie wywołaniem modelu językowego.
+    // Odpowiedzi są lokalnymi regułami, nie wywołaniem zewnętrznego modelu językowego.
     setTimeout(() => {
       let replyText = 'W CV warto używać konkretnych fraz z ogłoszenia tylko wtedy, gdy opisują Twoje prawdziwe doświadczenie. Wynik CVelocity jest wskazówką do redakcji dokumentu, nie przewidywaniem decyzji rekrutera.';
 
