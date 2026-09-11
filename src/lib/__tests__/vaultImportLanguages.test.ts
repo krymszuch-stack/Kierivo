@@ -6,7 +6,7 @@ describe('mergeImportedVault languages', () => {
   it('pusta lista z importu nie usuwa wcześniej zapisanych języków', () => {
     const prev = createEmptyVault();
     prev.profiler.languages = [
-      { id: 'lang-en', language: 'Angielski', level: 'B2' },
+      { id: 'lang-en', language: 'Angielski', level: 'B2', context: '' },
     ];
 
     const merged = mergeImportedVault(prev, {
@@ -19,15 +19,15 @@ describe('mergeImportedVault languages', () => {
   it('powtórny język nie tworzy duplikatu mimo różnic w wielkości liter i spacjach', () => {
     const prev = createEmptyVault();
     prev.profiler.languages = [
-      { id: 'lang-en-old', language: 'Angielski', level: 'B2' },
+      { id: 'lang-en-old', language: 'Angielski', level: 'B2', context: '' },
     ];
 
     const merged = mergeImportedVault(prev, {
       profiler: {
         ...prev.profiler,
         languages: [
-          { id: 'lang-en-new', language: '  angielski ', level: 'C1' },
-          { id: 'lang-es', language: 'Hiszpański', level: 'B1' },
+          { id: 'lang-en-new', language: '  angielski ', level: 'C1', context: '' },
+          { id: 'lang-es', language: 'Hiszpański', level: 'B1', context: '' },
         ],
       },
     });
