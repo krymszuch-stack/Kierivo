@@ -46,13 +46,17 @@ function client() {
   return supabase;
 }
 
+function pendingFor(ownerId: string): MasterVault | null {
+  const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
+  return pending?.ownerId === ownerId && pending.vault ? pending.vault : null;
+}
+
 /**
  * Vault zalogowanego użytkownika albo `null`, gdy konto jest świeże.
  *
  * Jeżeli dla tego samego właściciela istnieje trwały, jeszcze niepotwierdzony
- * zapis, odczyt uwzględnia go jako najnowszą lokalną warstwę. Dzięki temu po
- * logout/reload nie pokazujemy przez moment starszej chmury i nie ryzykujemy
- * nadpisania niedostarczonej pracy. Outbox nadal znika wyłącznie po ACK zapisu.
+ * zapis, odczyt uwzględnia go jako najnowszą lokalną warstwę. Przy braku sieci
+ * sama ta wersja wystarcza do odtworzenia pracy po ponownym otwarciu aplikacji.
  */
 export async function fetchCloudVault(): Promise<MasterVault | null> {
   const supabase = client();
@@ -61,18 +65,23 @@ export async function fetchCloudVault(): Promise<MasterVault | null> {
 
   if (!ownerId) throw new CloudVaultError('Brak aktywnej sesji — zaloguj się ponownie.');
 
+  const pending = pendingFor(ownerId);
   const { data, error } = await supabase.from(TABELA).select('data').maybeSingle();
-  if (error) throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
+
+  // Brak sieci nie odbiera dostępu do ostatniej niedostarczonej wersji. Jeśli
+  // pending nie istnieje, błąd pozostaje błędem i wywołujący pokaże komunikat.
+  if (error) {
+    if (pending) return pending;
+    throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
+  }
 
   const remote = (data?.data as MasterVault | undefined) ?? null;
-  const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
-
-  if (!pending || pending.ownerId !== ownerId || !pending.vault) return remote;
-  if (!remote) return pending.vault;
+  if (!pending) return remote;
+  if (!remote) return pending;
 
   // Chmura jest podstawą, bo może zawierać wpisy z innego urządzenia. Pending
   // jest warstwą świeższą dla pól bieżącego urządzenia; merge nie usuwa list.
-  return mergeImportedVault(remote, pending.vault);
+  return mergeImportedVault(remote, pending);
 }
 
 /**
@@ -80,6 +89,10 @@ export async function fetchCloudVault(): Promise<MasterVault | null> {
  * kolejki, która zleciła zapis. To odcina wyścig logout/login: zapis Alicji nie
  * może po zmianie sesji trafić do wiersza Boba tylko dlatego, że Promise ruszył
  * chwilę później.
+ *
+ * Bezpośrednie wywołania spoza outboxu (np. pierwszy merge przy logowaniu) też
+ * nie mogą zgubić danych: przy błędzie tworzą owner-scoped pending. Wywołanie z
+ * samego outboxu przekazuje `expectedOwnerId`, więc nie tworzy kolejnej rewizji.
  */
 export async function saveCloudVault(
   vault: MasterVault,
@@ -104,5 +117,11 @@ export async function saveCloudVault(
     { onConflict: 'user_id' }
   );
 
-  if (error) throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
+  if (error) {
+    if (!expectedOwnerId) {
+      const { enqueueCloudVaultSave } = await import('./cloudVaultOutbox');
+      enqueueCloudVaultSave(userId, vault);
+    }
+    throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
+  }
 }
