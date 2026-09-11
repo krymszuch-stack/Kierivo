@@ -107,6 +107,8 @@ export interface D10ScoringInput {
   candidateEvidence: D10CandidateEvidence[];
   sourceMode: 'VAULT' | 'EXTRACTED_DOCUMENT';
   sourceCompletenessConfidence: number;
+  /** ISO date injected by the audit run. Never use Date.now() in scorer logic. */
+  referenceDateIso: string;
 }
 
 export interface D10AuditResult extends AuditModuleResult {
