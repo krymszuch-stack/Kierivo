@@ -11,7 +11,6 @@ import { Textarea } from '../../components/ui/Field';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { Tabs } from '../../components/ui/Tabs';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { PremiumBadge } from '../../components/ui/PremiumBadge';
 import { useEntitlements } from '../../store/useEntitlements';
 import { showToast } from '../../store/useToastStore';
 
@@ -36,7 +35,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   const [statusMessage, setStatusMessage] = useState('');
   const [parsedResult, setParsedResult] = useState<ParsedCVResult | null>(null);
 
-  const { usage, isPro, consumeImport } = useEntitlements();
+  const { usage, consumeImport } = useEntitlements();
 
   const ingestTabs = [
     { id: 'file' as IngestMode, label: 'Plik z dysku (PDF/DOCX)', icon: UploadCloud },
@@ -52,9 +51,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
         return;
       }
 
-      if (!isPro && usage.importUses <= 0) {
-        // W becie nie ma ścieżki zakupu. Zamiast wysyłać testera do martwego
-        // checkoutu przełączamy go na działający, bezpłatny wariant zadania.
+      if (usage.importUses <= 0) {
         setIngestMode('rawText');
         showToast('Limit importu plików wykorzystany', {
           message: 'Zakupy są wyłączone w bezpłatnej becie. Wklej treść CV jako tekst i kontynuuj bez płatności.',
@@ -149,12 +146,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
 
             {ingestMode === 'file' && (
               <div className="flex items-center gap-2 text-[11px] font-mono text-muted">
-                {isPro ? (
-                  <>
-                    <PremiumBadge size="chip">Legacy Pro</PremiumBadge>
-                    <span className="text-success-fg font-bold">Import plików bez limitu dla istniejącego uprawnienia</span>
-                  </>
-                ) : usage.importUses > 0 ? (
+                {usage.importUses > 0 ? (
                   <span>Pozostało importów pliku w tym miesiącu: <b className="text-ink">{usage.importUses}</b></span>
                 ) : (
                   <span className="text-warning-fg font-bold">
