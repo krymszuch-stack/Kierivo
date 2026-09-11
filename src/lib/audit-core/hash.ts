@@ -1,6 +1,10 @@
 function stableStringify(value: unknown): string {
+  if (value === undefined) return '"__undefined__"';
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    return JSON.stringify(String(value));
+  }
   if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
+    return JSON.stringify(value) ?? 'null';
   }
 
   if (Array.isArray(value)) {
