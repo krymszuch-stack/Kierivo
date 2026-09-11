@@ -23,8 +23,10 @@ try {
   await page.getByTestId('beta-landing').waitFor();
 
   const landingText = await page.locator('body').innerText();
-  if (!landingText.includes('Bezpłatna beta') || !landingText.includes('0 zł')) {
-    throw new Error('Ekran startowy nie komunikuje bezpłatnej bety i ceny 0 zł.');
+  const hasHonestBetaLabel =
+    landingText.includes('Public Pre-Beta') || landingText.includes('Bezpłatna beta');
+  if (!hasHonestBetaLabel || !landingText.includes('0 zł')) {
+    throw new Error('Ekran startowy nie komunikuje publicznego etapu beta/pre-beta i ceny 0 zł.');
   }
   for (const forbidden of forbiddenPurchaseCtas) {
     if (landingText.includes(forbidden)) throw new Error(`Ekran startowy nadal zawiera CTA zakupowe: ${forbidden}`);
