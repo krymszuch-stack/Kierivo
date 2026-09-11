@@ -2,7 +2,7 @@ import type { AdaptiveCalibrationSnapshot } from '../adaptive/types';
 import { evaluateAdaptiveRuntimeSignal, boundedAdaptiveAdjustment } from '../adaptive/runtime';
 import type { Evidence } from '../contracts';
 import { buildEvidenceId } from '../hash';
-import { detectD10Entities } from './detectors';
+import { detectD10Entities, extractEducationFieldConstraint } from './detectors';
 import { buildD10RequirementGroupsForLine } from './relations';
 import { segmentD10FormalLine } from './segmentation';
 import { normalizeFormalTerm } from './taxonomy';
@@ -129,13 +129,17 @@ export async function extractD10Requirements(
     if (!priority || !looksFormal) continue;
 
     const segments = segmentD10FormalLine(line);
+    const wholeLineEducationField = extractEducationFieldConstraint(line);
     const relationSeeds: Parameters<typeof buildD10RequirementGroupsForLine>[2][number][] = [];
     let entitiesOnLine = 0;
 
     for (const segment of segments) {
       const detected = detectD10Entities(segment);
       for (let entityIndex = 0; entityIndex < detected.length; entityIndex += 1) {
-        const entity = detected[entityIndex];
+        const rawEntity = detected[entityIndex];
+        const entity = rawEntity.kind === 'EDUCATION' && !rawEntity.fieldConstraint && wholeLineEducationField
+          ? { ...rawEntity, fieldConstraint: wholeLineEducationField }
+          : rawEntity;
         entitiesOnLine += 1;
         const adaptiveDelta = boundedAdaptiveAdjustment(adaptiveSignal);
         const confidence = Math.max(0, Math.min(1,
@@ -153,6 +157,7 @@ export async function extractD10Requirements(
             line,
             charStart: entity.sourceSpan.start,
             charEnd: entity.sourceSpan.end,
+            fieldConstraint: entity.fieldConstraint ?? null,
           },
           'EXPLICIT_DOCUMENT_FACT',
         );
@@ -171,6 +176,7 @@ export async function extractD10Requirements(
             canonicalId: entity.canonicalId,
             kind: entity.kind,
             priority,
+            fieldConstraint: entity.fieldConstraint ?? null,
             parserConfidence: confidence,
             adaptiveSnapshot: adaptiveSignal.snapshotVersion,
           },
@@ -216,8 +222,6 @@ export async function extractD10Requirements(
 
     const lineGroups = buildD10RequirementGroupsForLine(index, line, relationSeeds);
     for (const group of lineGroups) {
-      // Nie dopuszczamy nakładających się grup logicznych. Jeśli ten sam atom
-      // występuje w kilku konstrukcjach, zachowujemy pierwszą jednoznaczną relację.
       if (group.memberRequirementIds.some((id) => groupedRequirementIds.has(id))) continue;
       groups.push(group);
       group.memberRequirementIds.forEach((id) => groupedRequirementIds.add(id));
