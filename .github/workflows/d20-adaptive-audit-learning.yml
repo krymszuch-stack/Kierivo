@@ -1,0 +1,50 @@
+name: D20 ADAPTIVE AUDIT LEARNING
+
+on:
+  pull_request:
+    branches: [d09-job-alignment, main]
+    paths:
+      - 'src/lib/audit-core/adaptive/**'
+      - 'src/lib/__tests__/d20AdaptiveLearning.test.ts'
+      - 'supabase/migrations/20260911115000_audit_adaptive_learning.sql'
+      - 'docs/audit-core/D20_*'
+      - '.github/workflows/d20-adaptive-audit-learning.yml'
+  push:
+    branches: [d20-adaptive-audit-learning]
+    paths:
+      - 'src/lib/audit-core/adaptive/**'
+      - 'src/lib/__tests__/d20AdaptiveLearning.test.ts'
+      - 'supabase/migrations/20260911115000_audit_adaptive_learning.sql'
+      - 'docs/audit-core/D20_*'
+      - '.github/workflows/d20-adaptive-audit-learning.yml'
+
+jobs:
+  adaptive-audit-learning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check and Lint
+        run: npm run lint
+
+      - name: D20 Focused Tests
+        run: npx vitest run src/lib/__tests__/d20AdaptiveLearning.test.ts
+
+      - name: D08-D09 Regression Tests
+        run: npx vitest run src/lib/__tests__/d08*.test.ts src/lib/__tests__/d09*.test.ts
+
+      - name: Full Unit Test Suite
+        run: npm test
+
+      - name: Build Client and Server
+        run: npm run build
