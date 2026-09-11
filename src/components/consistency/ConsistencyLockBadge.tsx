@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, AlertTriangle, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Lock, AlertTriangle } from 'lucide-react';
 import { pluralPl } from '../../lib/pluralFormat';
 
 export interface ConsistencyLockBadgeProps {
@@ -37,9 +37,15 @@ export const ConsistencyLockBadge: React.FC<ConsistencyLockBadgeProps> = ({
     lg: 'h-4 w-4',
   };
 
-  // „claimy" to żargon wewnętrzny wyciekający do UI — dla użytkownika to fakty z Vaultu.
+  /**
+   * Walidator porównuje tylko fakty, które faktycznie dostał do sprawdzenia.
+   * Brak alarmu nie znaczy „100% zgodności całego CV”, więc fallback opisuje
+   * brak wykrytych rozbieżności w badanym zakresie zamiast absolutnej obietnicy.
+   */
   const defaultTooltip = isVerified
-    ? `🔒 Spójność potwierdzona (${claimsCount ? `${claimsCount} zweryfikowanych faktów z Vaultu` : '100% zgodności z MasterVault'})`
+    ? `🔒 Brak wykrytych rozbieżności (${claimsCount !== undefined
+        ? `${claimsCount} ${pluralPl(claimsCount, 'sprawdzony fakt', 'sprawdzone fakty', 'sprawdzonych faktów')} z Vaultu`
+        : 'w sprawdzanym zakresie'})`
     : `⚠️ Wykryto ${alertCount} ${pluralPl(alertCount, 'rozbieżność', 'rozbieżności', 'rozbieżności')} lub sprzeczności danych względem MasterVault`;
 
   if (variant === 'icon-only') {
@@ -53,7 +59,7 @@ export const ConsistencyLockBadge: React.FC<ConsistencyLockBadgeProps> = ({
         } ${className}`}
       >
         {isVerified ? (
-          <Lock className={iconSizes[size]} aria-label="Spójność potwierdzona" />
+          <Lock className={iconSizes[size]} aria-label="Brak wykrytych rozbieżności" />
         ) : (
           <AlertTriangle className={iconSizes[size]} aria-label="Wykryto niezgodność" />
         )}
@@ -82,7 +88,6 @@ export const ConsistencyLockBadge: React.FC<ConsistencyLockBadgeProps> = ({
         <>
           <AlertTriangle className={`${iconSizes[size]} shrink-0 text-warning-fg animate-pulse`} />
           <span className="font-semibold">
-            {/* „1 rozbieżności" łamało odmianę — liczebnik wymaga doboru formy. */}
             {alertCount > 0 ? `${alertCount} ${pluralPl(alertCount, 'rozbieżność', 'rozbieżności', 'rozbieżności')}` : 'wymaga weryfikacji'}
           </span>
         </>
