@@ -2,21 +2,18 @@ import type { AdaptiveCalibrationSnapshot } from '../adaptive/types';
 import { evaluateAdaptiveRuntimeSignal, boundedAdaptiveAdjustment } from '../adaptive/runtime';
 import type { Evidence } from '../contracts';
 import { buildEvidenceId } from '../hash';
-import {
-  canonicalFormalEntity,
-  canonicalLanguage,
-  normalizeFormalTerm,
-  parseCefrLevel,
-  parseEducationLevel,
-} from './taxonomy';
+import { detectD10Entities } from './detectors';
+import { buildD10RequirementGroupsForLine } from './relations';
+import { segmentD10FormalLine } from './segmentation';
+import { normalizeFormalTerm } from './taxonomy';
 import type {
   D10FormalRequirement,
-  D10FormalRequirementKind,
   D10RequirementExtractionResult,
+  D10RequirementGroup,
   D10RequirementPriority,
 } from './types';
 
-const SCHEMA_VERSION = 'D10.formal-requirements.v1';
+const SCHEMA_VERSION = 'D10.formal-requirements.v2';
 
 const MUST_SECTION = /^(requirements?|wymagania|wymagane|kwalifikacje wymagane|minimum qualifications?)\s*:?[\s-]*$/i;
 const PREFERRED_SECTION = /^(preferred qualifications?|mile widziane|atutem bedzie|dodatkowe atuty|nice to have)\s*:?[\s-]*$/i;
@@ -25,7 +22,7 @@ const NEUTRAL_SECTION = /^(responsibilities|obowiazki|zakres obowiazkow|oferujem
 const CORE_MARKER = /\b(mandatory|required by law|must have|must-have|warunek konieczny|bezwzglednie wymagane|konieczne|niezbedne)\b/i;
 const MUST_MARKER = /\b(required|wymagane|wymagamy|minimum|co najmniej|must|oczekujemy)\b/i;
 const PREFERRED_MARKER = /\b(preferred|mile widziane|atutem|nice to have|dodatkowym atutem|plus)\b/i;
-const FORMAL_HINT = /\b(certyfikat|certification|certificate|uprawnienia|licencja|license|licence|prawo jazdy|jezyk|language|english|angielski|german|niemiecki|wyksztalcenie|education|degree|bachelor|master|magister|inzynier|security clearance|poswiadczenie bezpieczenstwa|work authorization|prawo do pracy|sep\b|ccna|pmp|prince2|itil|az-900|aws certified)/i;
+const FORMAL_HINT = /\b(certyfikat|certyfikaty|certification|certificate|certified|uprawnienia|licencja|license|licence|prawo jazdy|jezyk|language|english|angielski|german|niemiecki|wyksztalcenie|education|degree|bachelor|master|magister|inzynier|security clearance|poswiadczenie bezpieczenstwa|work authorization|prawo do pracy|sep\b|ccna|pmp|prince2|itil|az-900|aws certified)/i;
 
 const priorityRank: Record<D10RequirementPriority, number> = {
   PREFERRED: 1,
@@ -60,64 +57,22 @@ function baseExtractionConfidence(line: string, priority: D10RequirementPriority
   return 0.84;
 }
 
-function educationFieldConstraint(line: string): string | null {
-  const normalized = normalizeFormalTerm(line);
-  const patterns = [
-    /(?:kierunek|specjalnosc|field(?: of study)?)\s*[:-]?\s*([a-z0-9 +.#/-]{3,80})$/,
-    /(?:in|z zakresu|w dziedzinie)\s+([a-z0-9 +.#/-]{3,80})$/,
-  ];
-  for (const pattern of patterns) {
-    const match = normalized.match(pattern);
-    if (match) return match[1].trim();
-  }
-  return null;
-}
-
-interface ParsedLineEntity {
-  canonicalId: string;
-  kind: D10FormalRequirementKind;
-  label: string;
-  languageLevel?: D10FormalRequirement['languageLevel'];
-  educationLevel?: D10FormalRequirement['educationLevel'];
-  fieldConstraint?: string | null;
-  validityRequired?: boolean;
-}
-
-function parseFormalEntities(line: string): ParsedLineEntity[] {
-  const out: ParsedLineEntity[] = [];
-  const formal = canonicalFormalEntity(line);
-  if (formal) {
-    out.push({
-      ...formal,
-      languageLevel: formal.kind === 'LANGUAGE' ? (parseCefrLevel(line) ?? undefined) : undefined,
-      validityRequired: /\b(valid|current|aktualn|wazn)\w*\b/i.test(normalizeFormalTerm(line)),
-    });
-  }
-
-  const language = canonicalLanguage(line);
-  if (language && !out.some((item) => item.canonicalId === `language.${language}`)) {
-    out.push({
-      canonicalId: `language.${language}`,
-      kind: 'LANGUAGE',
-      label: language,
-      languageLevel: parseCefrLevel(line) ?? undefined,
-    });
-  }
-
-  const education = parseEducationLevel(line);
-  if (education) {
-    out.push({
-      canonicalId: `education.${education.toLowerCase()}`,
-      kind: 'EDUCATION',
-      label: education,
-      educationLevel: education,
-      fieldConstraint: educationFieldConstraint(line),
-    });
-  }
-
-  return out.filter((item, index, array) =>
-    array.findIndex((candidate) => candidate.canonicalId === item.canonicalId) === index,
-  );
+function mergeRequirement(
+  current: D10FormalRequirement | undefined,
+  candidate: D10FormalRequirement,
+): D10FormalRequirement {
+  if (!current) return candidate;
+  const stronger = priorityRank[candidate.priority] > priorityRank[current.priority]
+    ? candidate
+    : current;
+  return {
+    ...stronger,
+    extractionConfidence: Math.max(current.extractionConfidence, candidate.extractionConfidence),
+    evidenceIds: [...new Set([...current.evidenceIds, ...candidate.evidenceIds])],
+    sourceText: current.sourceText === candidate.sourceText
+      ? current.sourceText
+      : `${current.sourceText} | ${candidate.sourceText}`,
+  };
 }
 
 export async function extractD10Requirements(
@@ -134,6 +89,7 @@ export async function extractD10Requirements(
   if (!text) {
     return {
       requirements: [],
+      groups: [],
       parserConfidence: 0,
       evidence: [],
       requirementLikeLines: 0,
@@ -147,6 +103,8 @@ export async function extractD10Requirements(
   let parsedRequirementLines = 0;
   const evidence: Evidence[] = [];
   const requirements = new Map<string, D10FormalRequirement>();
+  const groups: D10RequirementGroup[] = [];
+  const groupedRequirementIds = new Set<string>();
   const lines = text.split('\n').map(cleanLine).filter(Boolean);
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -170,78 +128,113 @@ export async function extractD10Requirements(
     if (looksFormal && priority) requirementLikeLines += 1;
     if (!priority || !looksFormal) continue;
 
-    const entities = parseFormalEntities(line);
-    if (entities.length === 0) continue;
-    parsedRequirementLines += 1;
+    const segments = segmentD10FormalLine(line);
+    const relationSeeds: Parameters<typeof buildD10RequirementGroupsForLine>[2][number][] = [];
+    let entitiesOnLine = 0;
 
-    for (const entity of entities) {
-      const adaptiveDelta = boundedAdaptiveAdjustment(adaptiveSignal);
-      const confidence = Math.max(0, Math.min(1,
-        baseExtractionConfidence(normalizedLine, priority) + adaptiveDelta,
-      ));
-      const evidenceId = await buildEvidenceId(
-        SCHEMA_VERSION,
-        'JOB',
-        `job.lines[${index}]`,
-        { canonicalId: entity.canonicalId, kind: entity.kind, priority, line },
-        'EXPLICIT_DOCUMENT_FACT',
-      );
-      const atom: Evidence = {
-        id: evidenceId,
-        provenance: 'EXPLICIT_DOCUMENT_FACT',
-        pointer: { source: 'JOB', jsonPath: `job.lines[${index}]` },
-        description: `Wykryto formalny wymóg ${entity.label} jako ${priority}.`,
-        redactedSnippet: line.slice(0, 220),
-        normalizedPayload: {
-          canonicalId: entity.canonicalId,
+    for (const segment of segments) {
+      const detected = detectD10Entities(segment);
+      for (let entityIndex = 0; entityIndex < detected.length; entityIndex += 1) {
+        const entity = detected[entityIndex];
+        entitiesOnLine += 1;
+        const adaptiveDelta = boundedAdaptiveAdjustment(adaptiveSignal);
+        const confidence = Math.max(0, Math.min(1,
+          baseExtractionConfidence(normalizedLine, priority) + adaptiveDelta,
+        ));
+        const requirementId = `REQ_D10_${entity.canonicalId}`;
+        const evidenceId = await buildEvidenceId(
+          SCHEMA_VERSION,
+          'JOB',
+          `job.lines[${index}]`,
+          {
+            canonicalId: entity.canonicalId,
+            kind: entity.kind,
+            priority,
+            line,
+            charStart: entity.sourceSpan.start,
+            charEnd: entity.sourceSpan.end,
+          },
+          'EXPLICIT_DOCUMENT_FACT',
+        );
+        const atom: Evidence = {
+          id: evidenceId,
+          provenance: 'EXPLICIT_DOCUMENT_FACT',
+          pointer: {
+            source: 'JOB',
+            jsonPath: `job.lines[${index}]`,
+            charStart: entity.sourceSpan.start,
+            charEnd: entity.sourceSpan.end,
+          },
+          description: `Wykryto formalny wymóg ${entity.label} jako ${priority}.`,
+          redactedSnippet: line.slice(entity.sourceSpan.start, entity.sourceSpan.end).slice(0, 220),
+          normalizedPayload: {
+            canonicalId: entity.canonicalId,
+            kind: entity.kind,
+            priority,
+            parserConfidence: confidence,
+            adaptiveSnapshot: adaptiveSignal.snapshotVersion,
+          },
+          extractionConfidence: confidence,
+          correlationKey: `D10:REQ:${entity.canonicalId}`,
+          evidenceImportance: priorityWeight[priority],
+          signalFamily: 'FORMAL_REQUIREMENT',
+        };
+        evidence.push(atom);
+
+        const candidate: D10FormalRequirement = {
+          id: requirementId,
           kind: entity.kind,
           priority,
-          parserConfidence: confidence,
-          adaptiveSnapshot: adaptiveSignal.snapshotVersion,
-        },
-        extractionConfidence: confidence,
-        correlationKey: `D10:REQ:${entity.canonicalId}`,
-        evidenceImportance: priorityWeight[priority],
-        signalFamily: 'FORMAL_REQUIREMENT',
-      };
-      evidence.push(atom);
+          label: entity.label,
+          canonicalId: entity.canonicalId,
+          sourceText: line,
+          sourceSpan: entity.sourceSpan,
+          extractionConfidence: confidence,
+          weight: priorityWeight[priority],
+          evidenceIds: [evidenceId],
+          languageLevel: entity.languageLevel,
+          educationLevel: entity.educationLevel,
+          fieldConstraint: entity.fieldConstraint,
+          validityRequired: entity.validityRequired,
+        };
+        requirements.set(entity.canonicalId, mergeRequirement(requirements.get(entity.canonicalId), candidate));
 
-      const candidate: D10FormalRequirement = {
-        id: `REQ_D10_${entity.canonicalId}`,
-        kind: entity.kind,
-        priority,
-        label: entity.label,
-        canonicalId: entity.canonicalId,
-        sourceText: line,
-        extractionConfidence: confidence,
-        weight: priorityWeight[priority],
-        evidenceIds: [evidenceId],
-        languageLevel: entity.languageLevel,
-        educationLevel: entity.educationLevel,
-        fieldConstraint: entity.fieldConstraint,
-        validityRequired: entity.validityRequired,
-      };
-
-      const current = requirements.get(entity.canonicalId);
-      if (!current) {
-        requirements.set(entity.canonicalId, candidate);
-      } else {
-        const stronger = priorityRank[candidate.priority] > priorityRank[current.priority]
-          ? candidate
-          : current;
-        requirements.set(entity.canonicalId, {
-          ...stronger,
-          extractionConfidence: Math.max(current.extractionConfidence, candidate.extractionConfidence),
-          evidenceIds: [...new Set([...current.evidenceIds, ...candidate.evidenceIds])],
-          sourceText: current.sourceText === candidate.sourceText
-            ? current.sourceText
-            : `${current.sourceText} | ${candidate.sourceText}`,
+        relationSeeds.push({
+          requirementId,
+          canonicalId: entity.canonicalId,
+          priority,
+          extractionConfidence: confidence,
+          evidenceIds: [evidenceId],
+          connectorBefore: entityIndex === 0 ? segment.connectorBefore : 'SEPARATOR',
+          sourceStart: entity.sourceSpan.start,
         });
       }
     }
+
+    if (entitiesOnLine === 0) continue;
+    parsedRequirementLines += 1;
+
+    const lineGroups = buildD10RequirementGroupsForLine(index, line, relationSeeds);
+    for (const group of lineGroups) {
+      // Nie dopuszczamy nakładających się grup logicznych. Jeśli ten sam atom
+      // występuje w kilku konstrukcjach, zachowujemy pierwszą jednoznaczną relację.
+      if (group.memberRequirementIds.some((id) => groupedRequirementIds.has(id))) continue;
+      groups.push(group);
+      group.memberRequirementIds.forEach((id) => groupedRequirementIds.add(id));
+    }
   }
 
-  const list = [...requirements.values()];
+  const groupByRequirementId = new Map<string, D10RequirementGroup>();
+  for (const group of groups) {
+    for (const memberId of group.memberRequirementIds) groupByRequirementId.set(memberId, group);
+  }
+
+  const list = [...requirements.values()].map((requirement) => {
+    const group = groupByRequirementId.get(requirement.id);
+    return group
+      ? { ...requirement, groupId: group.id, groupOperator: group.operator }
+      : requirement;
+  });
   const coverage = requirementLikeLines > 0
     ? Math.min(1, parsedRequirementLines / requirementLikeLines)
     : list.length > 0 ? 1 : 0;
@@ -251,6 +244,7 @@ export async function extractD10Requirements(
 
   return {
     requirements: list,
+    groups,
     parserConfidence: list.length > 0 ? 0.7 * meanConfidence + 0.3 * coverage : 0,
     evidence,
     requirementLikeLines,
