@@ -5,7 +5,7 @@ import { reportChunkError } from '../../lib/errorMonitoring';
 
 export interface ChunkErrorBoundaryProps {
   children: React.ReactNode;
-  /** Nazwa modułu pokazywana użytkownikowi, np. „Doradca AI”. */
+  /** Nazwa modułu pokazywana użytkownikowi, np. „Doradca regułowy”. */
   moduleName: string;
   chunkName: string;
   /** Wywoływane po nieudanym ponowieniu (np. zamknięcie modala). */

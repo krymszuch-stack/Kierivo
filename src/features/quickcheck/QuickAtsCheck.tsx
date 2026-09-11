@@ -19,17 +19,6 @@ import { runQuickAtsCheck, QuickCheckError, type QuickCheckResult } from '../../
 import { showToast } from '../../store/useToastStore';
 import { MasterVault } from '../../types';
 
-/**
- * Klin wejściowy: wynik ATS bez zakładania konta.
- *
- * Ocena liczy się w całości w przeglądarce — komponent nie wykonuje ani jednego
- * żądania sieciowego, więc działa nawet przy zatrzymanym serwerze API. To nie
- * jest szczegół implementacyjny, tylko sedno propozycji: portal pracy nie może
- * zaoferować „sprawdź CV bez konta i bez wysyłania go do nas", bo z tego żyje.
- *
- * Dlatego informacja o lokalnym liczeniu stoi przy przycisku, a nie tylko
- * w sekcji o prywatności na dole strony.
- */
 export interface QuickAtsCheckProps {
   onSaveProfile: (vault: MasterVault) => void;
   onOpenEditor: (vault: MasterVault) => void;
@@ -37,9 +26,9 @@ export interface QuickAtsCheckProps {
 }
 
 function scoreTone(score: number): { text: string; ring: string; label: string } {
-  if (score >= 75) return { text: 'text-success-fg', ring: 'stroke-success-fg', label: 'Dobre dopasowanie' };
-  if (score >= 50) return { text: 'text-warning-fg', ring: 'stroke-warning-fg', label: 'Wymaga poprawek' };
-  return { text: 'text-danger-fg', ring: 'stroke-danger-fg', label: 'Słabe dopasowanie' };
+  if (score >= 75) return { text: 'text-success-fg', ring: 'stroke-success-fg', label: 'Wysokie dopasowanie wg CVelocity' };
+  if (score >= 50) return { text: 'text-warning-fg', ring: 'stroke-warning-fg', label: 'Umiarkowane dopasowanie wg CVelocity' };
+  return { text: 'text-danger-fg', ring: 'stroke-danger-fg', label: 'Niskie dopasowanie wg CVelocity' };
 }
 
 export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
@@ -110,10 +99,10 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-grad text-on-brand">
             <Gauge className="h-4 w-4" aria-hidden="true" />
           </span>
-          <h2 className="text-base font-bold text-ink">Sprawdź, czy Twoje CV przejdzie przez ATS</h2>
+          <h2 className="text-base font-bold text-ink">Sprawdź dopasowanie CV do ogłoszenia</h2>
         </div>
         <p className="text-xs text-muted">
-          Wklej CV i treść ogłoszenia — wynik dostaniesz od razu. Bez konta, bez rejestracji.
+          Wynik liczy CVelocity z treści dokumentu i oferty. Nie jest to wynik zewnętrznego ATS ani gwarancja przejścia rekrutacji.
         </p>
       </div>
 
@@ -124,7 +113,6 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
               <FileText className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
               Twoje CV
             </label>
-
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -142,7 +130,6 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
           </div>
-
           <Textarea
             id="quick-cv"
             rows={8}
@@ -159,7 +146,6 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
             <Briefcase className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
             Ogłoszenie o pracę
           </label>
-
           <Textarea
             id="quick-jd"
             rows={8}
@@ -182,9 +168,8 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-subtle">
           <MonitorSmartphone className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Ocena liczy się w Twojej przeglądarce. CV nie jest nigdzie wysyłane.
+          To szybkie sprawdzenie liczy się w przeglądarce. CV nie jest wysyłane na serwer.
         </p>
-
         <div className="flex items-center gap-2">
           {result && (
             <Button variant="ghost" size="sm" icon={RotateCcw} onClick={handleReset}>
@@ -192,7 +177,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
             </Button>
           )}
           <Button variant="primary" size="md" icon={ArrowRight} iconPosition="right" onClick={handleCheck}>
-            Sprawdź dopasowanie
+            Policz wynik CVelocity
           </Button>
         </div>
       </div>
@@ -203,6 +188,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.24, ease: [0.19, 1, 0.22, 1] }}
           className="space-y-4 border-t border-line pt-5"
+          data-testid="quick-ats-result"
         >
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
             <div className="relative h-[104px] w-[104px] shrink-0">
@@ -226,7 +212,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                 <span className={`font-mono text-2xl font-bold ${tone.text}`}>
                   {result.ats.overallScore}%
                 </span>
-                <span className="text-[9px] uppercase tracking-wide text-subtle">dopasowania</span>
+                <span className="text-[9px] uppercase tracking-wide text-subtle">CVelocity</span>
               </div>
             </div>
 
@@ -234,126 +220,62 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
               <div>
                 <p className={`text-sm font-bold ${tone.text}`}>{tone.label}</p>
                 <p className="mt-0.5 text-xs text-muted">
-                  Pokrycie słów kluczowych {result.ats.keywordCoverageScore}% · struktura{' '}
-                  {result.ats.structureScore}% · formatowanie {result.ats.formattingScore}%
+                  Pokrycie fraz {result.ats.keywordCoverageScore}% · struktura {result.ats.structureScore}% · formatowanie {result.ats.formattingScore}%
                 </p>
               </div>
 
               {result.missingSkills.length > 0 ? (
                 <div>
-                  <p className="text-xs font-semibold text-ink">
-                    Czego brakuje w Twoim CV wobec tej oferty:
-                  </p>
+                  <p className="text-xs font-semibold text-ink">Wykryte braki wobec treści oferty:</p>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {result.missingSkills.slice(0, 12).map((skill) => (
-                      <span
-                        key={skill}
-                        className="rounded-lg border border-danger/30 bg-danger-soft px-2 py-0.5 font-mono text-[10px] font-semibold text-danger-fg"
-                      >
+                      <span key={skill} className="rounded-lg border border-danger/30 bg-danger-soft px-2 py-0.5 font-mono text-[10px] font-semibold text-danger-fg">
                         {skill}
                       </span>
                     ))}
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-success-fg">
-                  Nie znaleźliśmy brakujących umiejętności wymienionych w ofercie.
-                </p>
+                <p className="text-xs text-success-fg">Nie wykryliśmy brakujących umiejętności rozpoznanych w ofercie.</p>
               )}
             </div>
           </div>
 
-          {/*
-            Checklista wymagań formalnych.
-            Dla zawodów technicznych i fizycznych to jest ważniejsze niż wynik
-            procentowy: aplikacja montera nie odpada na gęstości słów
-            kluczowych, tylko na braku SEP-u, UDT albo orzeczenia sanepidu.
-            Liczy się lokalnie, więc jest darmowa bez limitu.
-          */}
           {result.knockouts.requirementCount > 0 && (
             <div className="space-y-2.5 border-t border-line/60 pt-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold text-ink">
-                  Wymagania formalne tej oferty
-                </p>
+                <p className="text-xs font-semibold text-ink">Wymagania formalne rozpoznane w ofercie</p>
                 <span className="font-mono text-[10px] text-subtle">
-                  spełniasz {result.knockouts.satisfiedCount} z {result.knockouts.requirementCount}
+                  potwierdzone w profilu {result.knockouts.satisfiedCount} z {result.knockouts.requirementCount}
                 </span>
               </div>
-
               <ul className="space-y-1.5">
-                {result.knockouts.findings.map((finding) => {
-                  const isBlocking = !finding.satisfied && finding.severity === 'knockout';
-
-                  return (
-                    <li
-                      key={finding.ruleId}
-                      className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs ${
-                        finding.satisfied
-                          ? 'border-success/30 bg-success-soft text-success-fg'
-                          : isBlocking
-                            ? 'border-danger/30 bg-danger-soft text-danger-fg'
-                            : 'border-line bg-sunken text-muted'
-                      }`}
-                    >
-                      {finding.satisfied ? (
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      ) : (
-                        <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      )}
-
-                      <div className="min-w-0 flex-1 space-y-0.5">
-                        <p className="font-semibold leading-tight">
-                          {finding.label}
-                          {!finding.satisfied && !isBlocking && (
-                            <span className="ml-1.5 font-normal text-subtle">(mile widziane)</span>
-                          )}
-                        </p>
-                        {/*
-                          Podpowiedź tylko przy brakach. Przy spełnionym
-                          wymaganiu byłaby szumem — użytkownik nie ma co z nią
-                          zrobić.
-                        */}
-                        {!finding.satisfied && finding.hint && (
-                          <p className="text-[11px] font-normal leading-snug opacity-90">
-                            {finding.hint}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
+                {result.knockouts.findings.map((finding) => (
+                  <li
+                    key={finding.ruleId}
+                    className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs ${
+                      finding.satisfied
+                        ? 'border-success/30 bg-success-soft text-success-fg'
+                        : 'border-line bg-sunken text-muted'
+                    }`}
+                  >
+                    {finding.satisfied ? (
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    )}
+                    <div>
+                      <p className="font-semibold">{finding.label}</p>
+                      {!finding.satisfied && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
+                    </div>
+                  </li>
+                ))}
               </ul>
-
-              {result.knockouts.blocking.length > 0 && (
-                <p className="text-[11px] leading-snug text-subtle">
-                  Czerwone pozycje to warunki, po których rekruter odsiewa aplikacje przed
-                  przeczytaniem CV. Jeśli je masz, a nie ma ich w dokumencie — dopisz je,
-                  zanim wyślesz.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/*
-            Rozpoznana branża służy wyłącznie do podpowiedzi słownictwa.
-            Nic nie jest wpisywane do profilu automatycznie — ten projekt raz
-            już usunął fabrykowane dane i nie wraca do nich tylnymi drzwiami.
-          */}
-          {result.detectedSubRole && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-line/60 pt-4 text-[11px] text-subtle">
-              <span>Rozpoznana specjalizacja:</span>
-              <span className="rounded-lg border border-line bg-sunken px-2 py-0.5 font-mono text-[10px] font-semibold text-ink">
-                {result.detectedSubRole.subRole.title}
-              </span>
-              <span>— w edytorze podpowiemy słownictwo używane w tej branży.</span>
             </div>
           )}
 
           <div className="flex flex-col gap-2 border-t border-line/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[11px] text-subtle">
-              Chcesz poprawić wynik? Zapisz profil i edytuj CV pod tę ofertę.
-            </p>
+            <p className="text-[11px] text-subtle">To wskazówka do redakcji dokumentu, nie prognoza decyzji rekrutera.</p>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => onSaveProfile(result.vault)}>
                 Zapisz profil na tym urządzeniu

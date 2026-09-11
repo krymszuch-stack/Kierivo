@@ -9,10 +9,9 @@ import { createEmptyVault } from '../sampleVault';
 import type { MasterVault } from '../../types';
 
 /**
- * Raport śledczy ma być dowodliwy, więc test pilnuje dokładnie tej matematyki,
- * która jest w opisie formuły: wagi sumują się do jedności, kary zerojedynkowe
- * obniżają wynik końcowy, a werdykty systemów reagują na mierzalne cechy
- * (tabele i wielokolumny bolą legacy najbardziej, gęstość — booleanowe).
+ * Raport śledczy ma być dowodliwy, więc test pilnuje matematyki i reakcji
+ * neutralnych profili cech na mierzalne sygnały. Profile nie reprezentują
+ * zewnętrznych produktów ATS.
  */
 
 const vaultWithContent = {
@@ -98,14 +97,12 @@ describe('formuła wyniku ogólnego', () => {
     expect(zKarami.formulaBreakdown.knockoutPenalties)
       .toBeGreaterThan(bez.formulaBreakdown.knockoutPenalties);
     expect(zKarami.overallScore).toBeLessThanOrEqual(bez.overallScore);
-    // Kary nie mogą ujemnie przewyższyć samej siebie — podłoga zera.
     expect(zKarami.formulaBreakdown.knockoutPenalties).toBeLessThanOrEqual(100);
   });
 });
 
 describe('telemetria językowa', () => {
   it('pokrycie lematów liczy frazy po rdzeniu, nie dosłownie', () => {
-    // CV ma „Sterowanie PLC", ogłoszenie „sterowanie PLC" + odmianę „sterowania".
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
     const matched = report.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.term);
 
@@ -127,9 +124,9 @@ describe('telemetria językowa', () => {
 describe('sprawczość językowa', () => {
   it('ratio liczy wyłącznie zdania z czasownikiem dokonanym', () => {
     const tekst = [
-      'Wdrożyłem system wizyjny.', // tak
-      'Odpowiadałem za serwis.', // nie — niedokonany
-      'Zoptymalizowałem proces.', // tak
+      'Wdrożyłem system wizyjny.',
+      'Odpowiadałem za serwis.',
+      'Zoptymalizowałem proces.',
     ].join('\n');
 
     const ratio = computeActionVerbRatio(tekst);
@@ -174,22 +171,22 @@ describe('telemetria strukturalna', () => {
   });
 });
 
-describe('werdykty per system rekrutacyjny', () => {
-  it('trzy systemy, każdy z własną kategorią', () => {
+describe('neutralne profile mierzalnych cech', () => {
+  it('zwraca trzy profile nazwane cechami, nie vendorami', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
     expect(report.systemVulnerabilities.map((system) => system.systemId)).toEqual([
-      'Taleo_Workday',
-      'Greenhouse_Lever',
-      'eRecruiter_Traffit',
+      'Struktura_Odczyt',
+      'Frazy_Gestosc',
+      'Jezyk_Formularz',
     ]);
     expect(report.systemVulnerabilities.map((system) => system.systemCategory)).toEqual([
-      'Enterprise Legacy',
-      'Modern ATS / Boolean',
-      'Polish Market (MŚP)',
+      'Układ i parsowalność',
+      'Frazy i sygnały tekstowe',
+      'Polska fleksja i formularze',
     ]);
   });
 
-  it('tabele i wielokolumny bolą legacy bardziej niż booleanowe', () => {
+  it('tabele i wielokolumny obniżają profil strukturalny co najmniej tak mocno jak frazowy', () => {
     const bazowy = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
     const zepsuty = buildAtsTelemetryReport({
       vault: vaultWithContent,
@@ -201,13 +198,12 @@ describe('werdykty per system rekrutacyjny', () => {
       bazowy.systemVulnerabilities.find((system) => system.systemId === systemId)!.passProbability -
       zepsuty.systemVulnerabilities.find((system) => system.systemId === systemId)!.passProbability;
 
-    expect(spadek('Taleo_Workday')).toBeGreaterThanOrEqual(spadek('Greenhouse_Lever'));
-    expect(zepsuty.systemVulnerabilities.find((system) => system.systemId === 'Taleo_Workday')!
+    expect(spadek('Struktura_Odczyt')).toBeGreaterThanOrEqual(spadek('Frazy_Gestosc'));
+    expect(zepsuty.systemVulnerabilities.find((system) => system.systemId === 'Struktura_Odczyt')!
       .criticalRisks.length).toBeGreaterThan(0);
   });
 
-  it('upychanie słów kluczowych karze silniki booleanowskie', () => {
-    // Ta sama fraza powtórzona masowo w CV przy krótkim ogłoszeniu.
+  it('upychanie słów kluczowych karze profil fraz i gęstości', () => {
     const upychanyVault = JSON.parse(JSON.stringify(vaultWithContent)) as MasterVault;
     upychanyVault.skillsMatrix.hardSkills.push('PLC Siemens');
     upychanyVault.history[0].highlights[0].text =
@@ -217,19 +213,19 @@ describe('werdykty per system rekrutacyjny', () => {
     const normalny = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: krótkieJd });
     const upychanie = buildAtsTelemetryReport({ vault: upychanyVault, jobDescription: krótkieJd });
 
-    const ghNormalny = normalny.systemVulnerabilities.find((system) => system.systemId === 'Greenhouse_Lever')!;
-    const ghUpychanie = upychanie.systemVulnerabilities.find((system) => system.systemId === 'Greenhouse_Lever')!;
+    const frazyNormalny = normalny.systemVulnerabilities.find((system) => system.systemId === 'Frazy_Gestosc')!;
+    const frazyUpychanie = upychanie.systemVulnerabilities.find((system) => system.systemId === 'Frazy_Gestosc')!;
 
     const maxDensity = Math.max(...upychanie.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.densityRatio));
     if (maxDensity > STUFFING_DENSITY_THRESHOLD) {
-      expect(ghUpychanie.passProbability).toBeLessThan(ghNormalny.passProbability);
+      expect(frazyUpychanie.passProbability).toBeLessThan(frazyNormalny.passProbability);
     }
     expect(maxDensity).toBeGreaterThan(normalny.linguisticTelemetry.matchedLemmas.reduce(
       (max, lemma) => Math.max(max, lemma.densityRatio), 0
     ));
   });
 
-  it('prawdopodobieństwa mieszczą się w przedziale 0–100', () => {
+  it('wyniki profili mieszczą się w przedziale 0–100', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
     for (const system of report.systemVulnerabilities) {
       expect(system.passProbability).toBeGreaterThanOrEqual(0);

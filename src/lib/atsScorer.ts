@@ -1,4 +1,4 @@
-﻿import { MasterVault } from '../types';
+import { MasterVault } from '../types';
 import {
   getPolishStem,
   HR_AND_COMMON_STOP_WORDS,
@@ -11,22 +11,18 @@ import {
 } from './consistencyGuard/consistencyEngine';
 
 /**
- * Silnik telemetrii ATS — raport śledczy zamiast heurystyki.
+ * Silnik telemetrii ATS — raport śledczy oparty na mierzalnych cechach.
  *
- * Poprzednia wersja tego modułu mnożyła wynik ogólny przez stałe współczynniki
- * (taleo = overall razy 1.05), czyli udawała pomiar tam, gdzie go nie było.
- * Tutaj każdy wskaźnik da się wywieść z danych wejściowych i wskazać palcem,
- * skąd pochodzi: pokrycie lematów z ekstrakcji ogłoszenia
- * (`extractDynamicJdPhrases`), dopasowanie po rdzeniach polskich
- * (`getPolishStem` — ta sama funkcja co w symulatorze, jedno źródło prawdy
- * morfologii), kryteria zerojedynkowe z `knockouts.ts`, struktura dokumentu
- * z kanonicznego renderu CV (`renderCvFromClaims`).
+ * Każdy wskaźnik da się wywieść z danych wejściowych i wskazać jego źródło:
+ * pokrycie lematów z ekstrakcji ogłoszenia (`extractDynamicJdPhrases`),
+ * dopasowanie po rdzeniach polskich (`getPolishStem`), kryteria zerojedynkowe
+ * z `knockouts.ts` oraz struktura dokumentu z kanonicznego renderu CV
+ * (`renderCvFromClaims`).
  *
- * Prawdziwość mechanizmów per system (Taleo czyta liniowo i dosłownie,
- * Greenhouse/Lever żyją na booleanach i gęstości, eRecruiter/Traffit pracują
- * na polskiej fleksji) jest zakodowana jako wagi kar na mierzalnych cechach —
- * tabela wag stoi przy `buildSystemVulnerabilities` i każdy jej wiersz ma
- * uzasadnienie w komentarzu.
+ * Trzy profile poniżej nie reprezentują produktów ani wyników zewnętrznych
+ * systemów rekrutacyjnych. Są wariantami tej samej lokalnej heurystyki,
+ * akcentującymi kolejno strukturę, frazy oraz język/formularz. Ich nazwy mówią
+ * wyłącznie o mierzonej cesze, dzięki czemu nie sugerują benchmarku vendora.
  */
 
 // ---------------------------------------------------------------------------
@@ -77,8 +73,8 @@ export interface AtsTelemetryReport {
     unsupportedCharactersCount: number;
   };
   systemVulnerabilities: Array<{
-    systemId: 'Taleo_Workday' | 'Greenhouse_Lever' | 'eRecruiter_Traffit';
-    systemCategory: 'Enterprise Legacy' | 'Modern ATS / Boolean' | 'Polish Market (MŚP)';
+    systemId: 'Struktura_Odczyt' | 'Frazy_Gestosc' | 'Jezyk_Formularz';
+    systemCategory: 'Układ i parsowalność' | 'Frazy i sygnały tekstowe' | 'Polska fleksja i formularze';
     passProbability: number;
     criticalRisks: string[];
     complianceReasons: string[];
@@ -140,7 +136,6 @@ function hasPerfectiveVerb(sentence: string): boolean {
   const tokens = sentence.toLowerCase().match(/[a-ząćęłńóśźż]+/g) ?? [];
   return tokens.some((token) => {
     if (PERFECTIVE_VERBS.has(token)) return true;
-    // Heurystyka uzupełniająca: forma …łem/…łam plus przedrostek dokonania.
     const stem = token.replace(/(łem|łam)$/, '');
     if (stem !== token && /^(z|wy|za|na|po|do|prze|roz|u|s|w)/.test(stem) && stem.length >= 3) {
       return true;
@@ -189,15 +184,12 @@ function detectReadingOrder(cvRawText: string | undefined): 'STABLE' | 'CORRUPTE
   for (const line of lines) {
     if (/\S {3,}\S/.test(line) || /\S\t+\S/.test(line)) suspiciousLines++;
   }
-  // Pojedyncze szerokie odstępy zdarzają się w normalnym tekście; układ
-  // kolumnowy zostawia je systematycznie — próg jednej dziesiątej linii.
   return suspiciousLines / Math.max(1, lines.length) > 0.1 ? 'CORRUPTED' : 'STABLE';
 }
 
 function countTables(cvRawText: string | undefined): number {
   if (!cvRawText) return 0;
   const htmlTables = (cvRawText.match(/<table[\s>]/gi) ?? []).length;
-  // Wiersz tabelki markdownowej albo skopiowanej z arkusza: min. 2 separatory |.
   const pipeRows = (cvRawText.match(/^\s*\|.+\|.+\|\s*$/gm) ?? []).length;
   return htmlTables + pipeRows;
 }
@@ -207,7 +199,6 @@ function auditHeadings(
   sectionTitles: string[],
   cvRawText: string | undefined
 ): boolean {
-  // Surowy tekst z importu: hierarchia markdownowa, jeśli w ogóle istnieje.
   if (cvRawText) {
     const h1Count = (cvRawText.match(/^#\s+/gm) ?? []).length;
     const hasDeeperHeading = /^#{2,6}\s+/m.test(cvRawText);
@@ -216,7 +207,6 @@ function auditHeadings(
     return true;
   }
 
-  // Dokument kanoniczny: dokładnie jeden tytuł główny, każda sekcja z nagłówkiem.
   if (documentTitleCount !== 1) return false;
   if (sectionTitles.length === 0) return false;
   return sectionTitles.every((title) => title.trim().length > 0);
@@ -232,11 +222,6 @@ function tokenizeLower(text: string): string[] {
   return (text ?? '').toLowerCase().match(TOKEN_PATTERN) ?? [];
 }
 
-/**
- * Trafienia frazy w korpusie po rdzeniu ostatniego znaczącego wyrazu.
- * Świadome uproszczenie: licznik służy pomiarowi gęstości i pokrycia, pełne
- * dopasowanie fraz robi symulator (`isLemmatizedMatch`).
- */
 function countStemOccurrences(corpusTokens: string[], phrase: string): number {
   const words = phrase.split(/\s+/).filter((word) => !HR_AND_COMMON_STOP_WORDS.has(word));
   if (words.length === 0) return 0;
@@ -266,8 +251,6 @@ function computeExperienceScore(vault: MasterVault): number {
   const history = vault.history ?? [];
   if (history.length === 0) return 0;
 
-  // Staż z zakresów dat. „Obecnie" oznacza brak daty końcowej — taki okres
-  // liczę od startu do startu (zero lat), zamiast wymyślać mu długość.
   let years = 0;
   for (const job of history) {
     if (!job?.startDate) continue;
@@ -275,8 +258,7 @@ function computeExperienceScore(vault: MasterVault): number {
     try {
       years += Math.max(0, calculateYearsDifference(job.startDate, end));
     } catch {
-      // Nieczytelne daty nie wywracają raportu — ten okres po prostu się nie
-      // liczy, co jest uczciwsze niż wymyślony staż.
+      // Nieczytelne daty nie wywracają raportu; okres nie jest liczony.
     }
   }
   const tenurePts = (Math.min(MAX_COUNTED_YEARS, years) / MAX_COUNTED_YEARS) * 50;
@@ -296,7 +278,7 @@ function computeExperienceScore(vault: MasterVault): number {
 }
 
 // ---------------------------------------------------------------------------
-// Werdykty per system — tabela wag z uzasadnieniami
+// Profile mierzalnych cech — tabela wag z uzasadnieniami
 // ---------------------------------------------------------------------------
 
 interface SystemVerdictInput {
@@ -321,28 +303,21 @@ function buildSystemVulnerabilities(
   input: SystemVerdictInput
 ): AtsTelemetryReport['systemVulnerabilities'] {
   /*
-   * Uzasadnienia wag (mechanizmy parserów):
+   * Profile są lokalnymi perspektywami na te same dane:
    *
-   * Taleo / Workday (Enterprise Legacy): parsowanie liniowe — wielokolumnowy
-   * PDF po ekstrakcji scali kolumny w losową sekwencję zdań; tabele czytane
-   * wierszami mieszają etykiety z wartościami; glify spoza strony kodowej
-   * zamieniają się w krzaczki. Dopasowanie niemal dosłowne, więc struktura
-   * i znaki ważą tu więcej niż gdziekolwiek indziej.
+   * Struktura / Odczyt: mocniej karze wielokolumnowy tekst, tabele, nietypowe
+   * znaki oraz niejasną hierarchię nagłówków.
    *
-   * Greenhouse / Lever (Modern ATS / Boolean): odporność układowa wysoka,
-   * ale rekruter grepuje booleanami — nadmierna gęstość frazy wobec ogłoszenia
-   * wygląda jak upychanie i obniża zaufanie do profilu. Podgląd czyta człowiek,
-   * więc język sprawczy waży zauważalnie.
+   * Frazy / Gęstość: mocniej waży pokrycie treści, język sprawczy i wykrywa
+   * nadmierną gęstość powtarzanych fraz.
    *
-   * eRecruiter / Traffit (Polish Market MŚP): polska fleksja — zgodność
-   * rdzeni ratuje pokrycie (duży udział hardSkills mierzonego stemmerem),
-   * ale prostsze parsery mapują sekcje formularza po nazwach nagłówków,
-   * więc płaska hierarchia karze mocno.
+   * Język / Formularz: łączy pokrycie fraz z czytelnością nagłówków,
+   * doświadczenia i polskiej fleksji. Żaden profil nie jest emulacją vendora.
    */
 
   const results: AtsTelemetryReport['systemVulnerabilities'] = [];
 
-  // --- Taleo / Workday ---
+  // --- Struktura / Odczyt ---
   {
     const criticalRisks: string[] = [];
     const complianceReasons: string[] = [];
@@ -351,11 +326,11 @@ function buildSystemVulnerabilities(
     if (input.readingOrder === 'CORRUPTED') {
       penalty += 20;
       criticalRisks.push(
-        'Kolejność czytania naruszona (układ wielokolumnowy) — parser legacy scali kolumny w losową sekwencję zdań.'
+        'Kolejność czytania naruszona przez układ wielokolumnowy; ekstrakcja liniowa może połączyć kolumny w złej kolejności.'
       );
     } else {
       complianceReasons.push(
-        'Jednokolumnowy porządek dokumentu — ekstrakcja liniowa odtworzy sekcje we właściwej kolejności.'
+        'Jednokolumnowy porządek dokumentu utrzymuje stabilną kolejność ekstrakcji tekstu.'
       );
     }
 
@@ -363,7 +338,7 @@ function buildSystemVulnerabilities(
     if (tablePenalty > 0) {
       penalty += tablePenalty;
       criticalRisks.push(
-        `${input.tableCount} tabel(e) — legacy czyta je wiersz po wierszu, mieszając etykiety z wartościami.`
+        `${input.tableCount} tabel(e) — ekstrakcja wierszowa może mieszać etykiety z wartościami.`
       );
     }
 
@@ -371,15 +346,15 @@ function buildSystemVulnerabilities(
     if (glyphPenalty > 0) {
       penalty += glyphPenalty;
       criticalRisks.push(
-        `${input.unsupportedCharactersCount} znaków spoza bezpiecznego zestawu — ryzyko podmiany na glify przy konwersji kodowej.`
+        `${input.unsupportedCharactersCount} znaków spoza bezpiecznego zestawu — rośnie ryzyko błędów konwersji tekstu.`
       );
     } else {
-      complianceReasons.push('Zestaw znaków bezpieczny dla konwersji stron kodowych.');
+      complianceReasons.push('Zestaw znaków mieści się w konserwatywnym zakresie odczytu tekstowego.');
     }
 
     if (!input.headingValid) {
       penalty += 10;
-      criticalRisks.push('Hierarchia nagłówków bez jasnego tytułu głównego — segmentacja sekcji niedeterministyczna.');
+      criticalRisks.push('Hierarchia nagłówków bez jasnego tytułu głównego utrudnia segmentację sekcji.');
     }
 
     const probability = clampPercent(
@@ -390,15 +365,15 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'Taleo_Workday',
-      systemCategory: 'Enterprise Legacy',
+      systemId: 'Struktura_Odczyt',
+      systemCategory: 'Układ i parsowalność',
       passProbability: probability,
       criticalRisks,
       complianceReasons,
     });
   }
 
-  // --- Greenhouse / Lever ---
+  // --- Frazy / Gęstość ---
   {
     const criticalRisks: string[] = [];
     const complianceReasons: string[] = [];
@@ -407,20 +382,20 @@ function buildSystemVulnerabilities(
     if (input.medianDensityRatio > STUFFING_DENSITY_THRESHOLD) {
       penalty += 12;
       criticalRisks.push(
-        `Gęstość trafionych fraz ${input.medianDensityRatio.toFixed(1)}x względem ogłoszenia — wzorzec upychania słów kluczowych obniża zaufanie do profilu.`
+        `Gęstość trafionych fraz ${input.medianDensityRatio.toFixed(1)}x względem ogłoszenia — wzorzec wygląda na sztuczne upychanie słów kluczowych.`
       );
     } else {
-      complianceReasons.push('Gęstość słów kluczowych w normie wobec treści ogłoszenia.');
+      complianceReasons.push('Gęstość słów kluczowych pozostaje proporcjonalna do treści ogłoszenia.');
     }
 
     if (!input.headingValid) {
       penalty += 6;
-      criticalRisks.push('Brak wyraźnych nagłówków — wyszukiwanie booleanowskie po sekcjach traci kontekst.');
+      criticalRisks.push('Brak wyraźnych nagłówków osłabia kontekst fraz między sekcjami.');
     }
 
     if (input.knockoutPenalties >= 50) {
       penalty += 10;
-      criticalRisks.push('Twarde wymagania formalne niespełnione — filtr Boolean odrzuci profil niezależnie od reszty treści.');
+      criticalRisks.push('Niespełnione twarde wymagania formalne obniżają ocenę niezależnie od dopasowania fraz.');
     }
 
     const probability = clampPercent(
@@ -432,15 +407,15 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'Greenhouse_Lever',
-      systemCategory: 'Modern ATS / Boolean',
+      systemId: 'Frazy_Gestosc',
+      systemCategory: 'Frazy i sygnały tekstowe',
       passProbability: probability,
       criticalRisks,
       complianceReasons,
     });
   }
 
-  // --- eRecruiter / Traffit ---
+  // --- Język / Formularz ---
   {
     const criticalRisks: string[] = [];
     const complianceReasons: string[] = [];
@@ -449,23 +424,23 @@ function buildSystemVulnerabilities(
     if (!input.headingValid) {
       penalty += 18;
       criticalRisks.push(
-        'Płaska hierarchia nagłówków — formularze tych systemów mapują sekcje po ich nazwach i bez nich treść ląduje w złym polu.'
+        'Płaska hierarchia nagłówków zwiększa ryzyko przypisania treści do niewłaściwej sekcji formularza.'
       );
     } else {
-      complianceReasons.push('Nagłówki sekcji rozpoznawalne — mapowanie formularza przebiegnie poprawnie.');
+      complianceReasons.push('Nagłówki sekcji są rozpoznawalne i wspierają poprawne mapowanie treści.');
     }
 
     const glyphPenalty = Math.min(10, Math.floor(input.unsupportedCharactersCount / 5) * 2);
     if (glyphPenalty > 0) {
       penalty += glyphPenalty;
       criticalRisks.push(
-        `${input.unsupportedCharactersCount} nietypowych znaków — prostsze walidatory MŚP potrafią odrzucić rekord w całości.`
+        `${input.unsupportedCharactersCount} nietypowych znaków zwiększa ryzyko błędów walidacji tekstu.`
       );
     }
 
     if (input.experienceScore < 25) {
       penalty += 8;
-      criticalRisks.push('Niska czytelność stażu i metryk — małe firmy HR oceniają ręcznie i szybko odpadają niejasne kandydatury.');
+      criticalRisks.push('Niska czytelność stażu i metryk utrudnia szybkie odczytanie doświadczenia.');
     }
 
     const probability = clampPercent(
@@ -478,8 +453,8 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'eRecruiter_Traffit',
-      systemCategory: 'Polish Market (MŚP)',
+      systemId: 'Jezyk_Formularz',
+      systemCategory: 'Polska fleksja i formularze',
       passProbability: probability,
       criticalRisks,
       complianceReasons,
@@ -516,7 +491,6 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
   const cvRawText = input.cvRawText;
   const { vault, jobDescription } = input;
 
-  // --- Korpus językowy: cała realna treść kandydata + dokument kanoniczny ---
   const canonical = renderCvFromClaims(vault);
   const canonicalSectionTitles = canonical.sections.map((section) => section.title);
 
@@ -545,7 +519,6 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
   ];
   const analysisCorpus = corpusParts.filter(Boolean).join('\n');
 
-  // --- Struktura ---
   const readingOrderIntegrity = detectReadingOrder(cvRawText);
   const tableCount = countTables(cvRawText);
   const headingHierarchyValid = auditHeadings(
@@ -566,7 +539,6 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     )
   );
 
-  // --- Język ---
   const corpusTokens = tokenizeLower(analysisCorpus);
   const jdLower = (jobDescription ?? '').toLowerCase();
   const jdTokenCount = tokenizeLower(jobDescription).length;
@@ -611,10 +583,9 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
 
   const hardSkillsScore =
     totalWeighted === 0
-      ? 100 // Ogłoszenie bez rozpoznanych wymagań niczego nie wymaga — pokrycie próżne.
+      ? 100
       : Math.round((matchedWeighted / totalWeighted) * 100);
 
-  // --- Knockouts ---
   const knockoutReport = auditKnockouts(jobDescription, vault);
   const knockoutPenalties = Math.min(100, knockoutReport.blocking.length * 25);
 

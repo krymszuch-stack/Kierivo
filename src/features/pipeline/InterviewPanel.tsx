@@ -5,23 +5,16 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ReactFloatingPanel } from '../../components/hud/ReactFloatingPanel';
 import { ApplicationPassGate } from '../../components/payments/ApplicationPassGate';
-import { useAppStore } from '../../store/useAppStore';
 import { useEntitlements } from '../../store/useEntitlements';
 import { InterviewLoopModal } from '../loop/InterviewLoopModal';
 
 /**
  * Zasobnik Rozmowy — narzędzia live przy konkretnej rozmowie.
  *
- * To jest miejsce, w którym wylądowały teleprompter (HUD) i pętla rozmowy.
- * Wcześniej były przyciskami w pasku górnym, widocznymi od pierwszego wejścia
- * do aplikacji, z globalnymi skrótami Ctrl+H i Ctrl+L działającymi non stop.
- * Dotyczą jednej sytuacji — rozmowy, która jest umówiona — i nie ma powodu,
- * żeby zajmowały uwagę wcześniej ani żeby trzeba było zgadywać, której
- * rozmowy dotyczą.
- *
- * Panel pokazuje się wyłącznie wtedy, gdy jakaś aplikacja ma status „Rozmowa".
- * Nie ma takiej — nie ma panelu, zamiast pustego stanu tłumaczącego, co by tu
- * mogło być.
+ * Panel pokazuje się wyłącznie wtedy, gdy jakaś aplikacja ma status „Rozmowa”.
+ * Teleprompter pozostaje poza zakresem bezpłatnej bety; pętla rozmowy działa
+ * bez zakupu. Bramka płatna nie zawiera już CTA prowadzącego do martwego
+ * checkoutu.
  */
 
 export interface InterviewPanelProps {
@@ -34,11 +27,6 @@ export interface InterviewPanelProps {
   className?: string;
 }
 
-/**
- * `datetime-local` oczekuje `YYYY-MM-DDTHH:mm` **w czasie lokalnym**, a w bazie
- * trzymamy ISO w UTC. Bez tego przeliczenia pole pokazywałoby godzinę przesuniętą
- * o strefę — latem w Polsce o dwie.
- */
 function toLocalInputValue(iso: string | undefined): string {
   if (!iso) return '';
   const date = new Date(iso);
@@ -80,13 +68,9 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isHUDOpen, setHUDOpen] = useState(false);
-  const { setActiveTab } = useAppStore();
   const [isLoopOpen, setLoopOpen] = useState(false);
-  // Po zalogowaniu stan odświeża `/api/me`; ta bramka pozostaje wskazówką UI,
-  // nie zabezpieczeniem kodu wykonywanego w przeglądarce.
   const { hasActivePass } = useEntitlements();
 
-  // Domyślnie najbliższa rozmowa z terminem; bez terminu — pierwsza z listy.
   const selected = useMemo(() => {
     if (interviews.length === 0) return null;
     const byId = interviews.find((app) => app.id === selectedId);
@@ -99,12 +83,6 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
     return scheduled[0] ?? interviews[0];
   }, [interviews, selectedId]);
 
-  /**
-   * Skróty klawiszowe rejestrowane **tylko wtedy, gdy zasobnik jest na
-   * ekranie**. Wcześniej pięć skrótów wisiało na `window` przez cały czas
-   * życia aplikacji i przechwytywało Ctrl+P użytkownikowi, który chciał po
-   * prostu wydrukować stronę.
-   */
   useEffect(() => {
     if (!selected) return;
 
@@ -145,7 +123,6 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
         </span>
       </div>
 
-      {/* Wybór rozmowy pokazuje się dopiero, gdy jest z czego wybierać. */}
       {interviews.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {interviews.map((app) => (
@@ -182,9 +159,6 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
         </label>
 
         <div className="flex flex-col justify-end gap-2">
-          {/* Odhaczenia napędzają rekomendację na ekranie startowym: dopóki
-              przygotowanie nie jest zrobione, silnik „następnego kroku"
-              podpowiada właśnie je. */}
           <label className="flex items-center gap-2 text-xs font-semibold text-ink">
             <input
               type="checkbox"
@@ -240,15 +214,10 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
         </div>
       )}
 
-      {/* Karnet jest jedyną drogą dostępu do funkcji płatnej. */}
       {isHUDOpen && (
         <ApplicationPassGate
           hasActivePass={hasActivePass}
           pitch="Podpowiedzi z Twojego Vaultu na wierzchu ekranu w trakcie rozmowy — bez przeglądania notatek na oczach rekrutera."
-          onBuyPass={() => {
-            setHUDOpen(false);
-            setActiveTab('pricing');
-          }}
         >
           <ReactFloatingPanel isOpen onClose={() => setHUDOpen(false)} vault={vault} />
         </ApplicationPassGate>

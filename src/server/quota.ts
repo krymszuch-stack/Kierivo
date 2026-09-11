@@ -1,3 +1,4 @@
+import { FREE_BETA_ACTIVE } from '../lib/beta';
 import { getSupabase } from './supabase';
 
 /**
@@ -84,9 +85,8 @@ const dayKey = () => new Date().toISOString().slice(0, 10);
 /**
  * Czy konto ma opłacony plan cykliczny.
  *
- * Tier wyprowadza się z bazy przy każdym wywołaniu, nigdy z parametru trasy —
- * zahardkodowany `'FREE'` w `ai.routes.ts` sprawiłby, że płacący Pro dostawałby
- * darmowy limit dzienny, a gałąź Pro była martwym kodem.
+ * Ta informacja pozostaje w bazie jako historia rozliczeń, ale w bezpłatnej
+ * becie nie daje wyższego limitu ani dostępu do funkcji poza zakresem.
  */
 async function isPaidAccount(userId: string): Promise<boolean> {
   const { data, error } = await getSupabase()
@@ -106,7 +106,7 @@ async function isPaidAccount(userId: string): Promise<boolean> {
 /**
  * Zwraca stan uprawnień do pokazania w interfejsie: status subskrypcji oraz
  * **pozostałe** (nie zużyte) limity, bo to jest liczba, którą użytkownik chce
- * zobaczyć.
+ * zobaczyć. W bezpłatnej becie historyczny status płatny nie omija limitów.
  */
 export async function getEntitlements(userId: string): Promise<Entitlements> {
   const supabase = getSupabase();
@@ -137,7 +137,7 @@ export async function getEntitlements(userId: string): Promise<Entitlements> {
   ]);
 
   const status = (subscriptionResult.data?.status ?? 'free') as Entitlements['subscription']['status'];
-  const isPaid = status === 'active' || status === 'trialing';
+  const isPaid = !FREE_BETA_ACTIVE && (status === 'active' || status === 'trialing');
 
   // Limity planu darmowego czytamy z bazy, a nie ze stałej w kodzie — inaczej
   // zmiana cennika wymagałaby wdrożenia nowej wersji aplikacji.
@@ -159,8 +159,6 @@ export async function getEntitlements(userId: string): Promise<Entitlements> {
       currentPeriodEnd: subscriptionResult.data?.current_period_end ?? undefined,
     },
     usage: {
-      // Plan opłacony nie ma limitu dobowego. `Infinity` nie przechodzi
-      // przez JSON (staje się `null`), więc interfejs i tak pyta o `isPro`.
       aiUses: isPaid
         ? Number.MAX_SAFE_INTEGER
         : Math.max(0, FREE_DAILY_AI_USES - usedTodayAi),
@@ -214,16 +212,16 @@ export async function refundAiQuota(userId: string): Promise<void> {
  * Wykonuje potok wywołania AI z pre-flight rezerwacją pesymistyczną,
  * wykonaniem zadania LLM, księgowaniem tokenów i automatyczną refundacją w razie awarii.
  *
- * Limit dobowy wynika ze statusu subskrypcji odczytanego tutaj — wołający nie
- * ma jak go podstawić, więc żaden plan „na sztywno” w trasie nie zepśnie płacącego
- * użytkownika do darmowego sufitu.
+ * Poza betą limit może wynikać ze statusu subskrypcji. W bezpłatnej becie
+ * wszyscy użytkownicy mają ten sam serwerowy sufit, również konta ze starym
+ * statusem `active` lub `trialing`.
  */
 export async function executeAiOperation<T>(
   userId: string,
   context: string,
   runAiTask: () => Promise<AiTaskResult<T>>
 ): Promise<T> {
-  const paid = await isPaidAccount(userId);
+  const paid = !FREE_BETA_ACTIVE && await isPaidAccount(userId);
   const maxUses = paid ? PRO_DAILY_AI_USES : FREE_DAILY_AI_USES;
 
   const reservation = await reserveAiQuota(userId, maxUses);

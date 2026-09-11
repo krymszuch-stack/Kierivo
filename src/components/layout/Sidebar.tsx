@@ -61,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   lockReasons,
   isAuthenticated = false,
   userEmail,
-  planStatus = 'free',
   className = '',
 }) => {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -165,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label="Audyt ATS"
             badge="360°"
             badgeVariant="warning"
-            hint="Wielosilnikowe laboratorium audytu CV pod kątem Workday, Taleo, Greenhouse i iCIMS."
+            hint="Laboratorium CVelocity mierzące strukturę, frazy, język i wymagania oferty. To nie są wyniki zewnętrznych ATS."
             isActive={activeTab === 'ats-lab'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('ats-lab')}
@@ -205,10 +204,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* Przycisk Doradcy AI */}
+        {/* Lokalny Doradca regułowy, bez zewnętrznego modelu językowego. */}
         <NavItem
           icon={Sparkles}
-          label="Zapytaj Doradcę Kariery"
+          label="Zapytaj Doradcę regułowego"
           isCollapsed={isCollapsed}
           onClick={onOpenAdvisor}
           className="text-brand-fg hover:bg-brand-500/10"
@@ -241,11 +240,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isAuthenticated ? userEmail : 'Logowanie / Konto'}
                 </p>
                 <p className="truncate font-mono text-[10px] text-muted">
-                  {planStatus === 'active'
-                    ? 'Plan Pro aktywny'
-                    : planStatus === 'trialing'
-                    ? 'Plan Pro — okres próbny'
-                    : 'Plan Free'}
+                  Bezpłatna beta · 0 zł
                 </p>
               </div>
             )}

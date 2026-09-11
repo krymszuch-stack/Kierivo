@@ -4,11 +4,10 @@ import {
   Palette,
   User,
   Search,
-  CreditCard,
+  FlaskConical,
   LogIn,
   LogOut,
   Trash2,
-  ExternalLink,
   ChevronDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,10 +16,9 @@ import { AdvisorButton } from '../ui/AdvisorButton';
 import { AccessibilityButton } from '../a11y/AccessibilityButton';
 import { AccessibilityModal } from '../a11y/AccessibilityModal';
 import { NAV_SECTIONS, NavTabId } from '../../lib/navigation';
-import { useEntitlements } from '../../store/useEntitlements';
 import { useAuth } from '../../context/AuthContext';
-import { api, ApiError } from '../../lib/apiClient';
 import { showToast } from '../../store/useToastStore';
+import { FREE_BETA_LABEL } from '../../lib/beta';
 
 export interface TopbarProps {
   activeTab: NavTabId;
@@ -34,15 +32,10 @@ export interface TopbarProps {
   className?: string;
 }
 
-/**
- * Nazwy sekcji biorą się z `NAV_SECTIONS`, a nie z drugiej ręcznej mapy —
- * poprzednia wersja miała osiem wpisów wypisanych obok listy w pasku bocznym
- * i przy każdej zmianie trzeba było trafić w oba miejsca.
- */
 const TAB_NAMES: Record<NavTabId, string> = {
   home: 'Panel Główny',
-  pricing: 'Cennik i pakiety',
-  'ats-lab': 'Laboratorium Audytu ATS 360°',
+  pricing: 'Zakres bezpłatnej bety',
+  'ats-lab': 'Laboratorium audytu CVelocity',
   porady: 'Porady & Baza Wiedzy',
   ...Object.fromEntries(NAV_SECTIONS.map((section) => [section.id, section.label])),
 } as Record<NavTabId, string>;
@@ -58,15 +51,11 @@ export const Topbar: React.FC<TopbarProps> = ({
   userEmail,
   className = '',
 }) => {
-  const { isPro } = useEntitlements();
   const { logout, user, mode, deleteAccount } = useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isA11yModalOpen, setIsA11yModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-
-
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -77,45 +66,10 @@ export const Topbar: React.FC<TopbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Trasa istnieje od dawna (`POST /api/billing/portal-session`) — przycisk
-  // wcześniej tylko o niej opowiadał, zamiast ją wywoływać (reguła 5).
-  // Instalacja bez kluczy Stripe odpowie 501 i wtedy dopiero mówi o tym toast.
-  const handleOpenCustomerPortal = async () => {
-    setIsDropdownOpen(false);
-    // Endpoint wymaga sesji (token z konta w chmurze). Bez tego sprawdzenia
-    // niezalogowany dostawałby komunikat o błędzie serwera zamiast informacji,
-    // że najpierw trzeba się zalogować — ten sam wzór co `isCloudAccount`
-    // w `StripeCheckoutModal`.
-    if (!(mode === 'cloud' && !!user)) {
-      showToast('Panel subskrypcji', {
-        message: 'Panel subskrypcji jest dostępny po zalogowaniu na konto.',
-        variant: 'info',
-      });
-      return;
-    }
-    try {
-      const { url } = await api.post<{ url: string }>('/api/billing/portal-session', {});
-      window.location.assign(url);
-    } catch (err) {
-      showToast('Panel klienta Stripe', {
-        message:
-          err instanceof ApiError
-            ? err.message
-            : 'Nie udało się otworzyć panelu Stripe. Spróbuj ponownie.',
-        variant: 'info',
-      });
-    }
-  };
-
   return (
-    /* Pasek pływa nad treścią zamiast dzielić ją kreską: odklejony od górnej
-       krawędzi, zaokrąglony i półprzezroczysty, żeby poświata tła przechodziła
-       pod spodem. Kreska pod paskiem cięłaby ją na pół i spłaszczała kadr.
-       `sticky` z odstępem robi resztę — pigułka jedzie z przewijaniem. */
     <header
       className={`glass-panel sticky top-3 z-20 mx-3 flex h-14 items-center justify-between rounded-2xl px-3 shadow-raised sm:mx-4 sm:px-4 lg:mx-6 ${className}`}
     >
-      {/* Left: Mobile Toggle & Section Name */}
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -133,9 +87,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Actions matching prototyp-monetyzacji.html */}
       <div className="flex items-center gap-2 sm:gap-2.5">
-        {/* Search Hint (Cmd+K trigger) */}
         <button
           type="button"
           onClick={() => {
@@ -151,18 +103,8 @@ export const Topbar: React.FC<TopbarProps> = ({
           </span>
         </button>
 
-
-        {/* Nie ma tu już przycisków HUD, Pitch i Practice.
-            Były widoczne od pierwszej sekundy, każdy z własnym skrótem
-            klawiszowym, a dotyczą wyłącznie rozmowy, która została umówiona.
-            Przeniesione do Zasobnika Rozmowy na karcie aplikacji w Pipeline —
-            pojawiają się tam, gdzie mają sens, i wtedy, gdy mają sens. */}
-
-        {/* Advisor Button with Ping Indicator */}
         <AdvisorButton onClick={onOpenAdvisor} />
 
-        {/* Design Tokens Showcase — narzędzie deweloperskie, nie funkcja
-            produktu; w buildzie produkcyjnym przycisk w ogóle nie powstaje. */}
         {import.meta.env.DEV && onOpenDesignTokens && (
           <motion.button
             type="button"
@@ -178,25 +120,16 @@ export const Topbar: React.FC<TopbarProps> = ({
           </motion.button>
         )}
 
-        {/* Accessibility & High Contrast */}
         <AccessibilityButton onClick={() => setIsA11yModalOpen(true)} />
-
-        {/* Theme Toggle */}
         <ThemeToggle />
-
-        {/* Accessibility Modal */}
         <AccessibilityModal
           isOpen={isA11yModalOpen}
           onClose={() => setIsA11yModalOpen(false)}
         />
 
-        {/* Profile Avatar with embedded PRO badge */}
         <div className="relative" ref={dropdownRef}>
           <motion.button
             type="button"
-            // Menu otwiera się także bez konta: siedzi w nim cennik i
-            // logowanie, więc odsyłanie niezalogowanego prosto do modala
-            // zamykało mu jedyną drogę do informacji o pakietach.
             onClick={() => setIsDropdownOpen((prev) => !prev)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -208,15 +141,8 @@ export const Topbar: React.FC<TopbarProps> = ({
               <>
                 <div className="relative flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-indigo-600 font-bold text-white shadow-xs text-[10px]">
                   {(user?.name || userEmail || 'U').slice(0, 2).toUpperCase()}
-                  {/* Badge PRO nałożony bezpośrednio na róg avatara */}
-                  <span
-                    className={`absolute -bottom-1 -right-1 flex items-center justify-center rounded-full px-1 py-px font-mono text-[7px] font-black uppercase tracking-tighter shadow-xs border ${
-                      isPro
-                        ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 border-surface'
-                        : 'bg-sunken text-muted border-line'
-                    }`}
-                  >
-                    {isPro ? 'PRO' : 'FREE'}
+                  <span className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full border border-surface bg-brand-50 px-1 py-px font-mono text-[7px] font-black uppercase tracking-tighter text-brand-fg shadow-xs">
+                    BETA
                   </span>
                 </div>
 
@@ -247,7 +173,6 @@ export const Topbar: React.FC<TopbarProps> = ({
             )}
           </motion.button>
 
-          {/* Profile & Stripe Customer Portal Dropdown */}
           <AnimatePresence>
             {isDropdownOpen && (
               <motion.div
@@ -265,20 +190,14 @@ export const Topbar: React.FC<TopbarProps> = ({
                     {isAuthenticated ? userEmail : 'Dane trzymane w tej przeglądarce'}
                   </div>
                   <div className="mt-1.5">
-                    <span
-                      className={`inline-block rounded-md px-1.5 py-px font-mono text-[9px] font-bold uppercase ${
-                        isPro ? 'bg-brand-50 text-brand-fg border border-brand-200' : 'bg-sunken text-muted'
-                      }`}
-                    >
-                      Plan: {isPro ? 'CVelocity Pro' : 'CVelocity Free'}
+                    <span className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-brand-fg">
+                      <FlaskConical className="h-2.5 w-2.5" aria-hidden="true" />
+                      {FREE_BETA_LABEL} · 0 zł
                     </span>
                   </div>
                 </div>
 
                 <div className="py-1">
-                  {/* Cennik zszedł z paska bocznego tutaj: nie jest krokiem
-                      w podróży kandydata, więc nie ma czego robić obok
-                      czterech sekcji, które nimi są. */}
                   {onSelectTab && (
                     <button
                       type="button"
@@ -288,22 +207,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                       }}
                       className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-ink hover:bg-brand-50 hover:text-brand-fg transition-colors"
                     >
-                      <CreditCard className="h-3.5 w-3.5 text-muted" />
-                      <span>Cennik i pakiety</span>
+                      <FlaskConical className="h-3.5 w-3.5 text-muted" />
+                      <span>Zakres bezpłatnej bety</span>
                     </button>
                   )}
-
-                  {/* Jedna pozycja menu, bo Customer Portal obsługuje i plan,
-                      i faktury — dwa wpisy wołały dokładnie tę samą trasę. */}
-                  <button
-                    type="button"
-                    onClick={handleOpenCustomerPortal}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-ink hover:bg-brand-50 hover:text-brand-fg transition-colors"
-                  >
-                    <CreditCard className="h-3.5 w-3.5 text-muted" />
-                    <span>Zarządzaj subskrypcją (Stripe Portal)</span>
-                    <ExternalLink className="h-3 w-3 ml-auto text-subtle" />
-                  </button>
                 </div>
 
                 <div className="border-t border-line/60 pt-1">
@@ -321,12 +228,6 @@ export const Topbar: React.FC<TopbarProps> = ({
                         <span>{mode === 'cloud' ? 'Wyloguj się' : 'Zamknij profil'}</span>
                       </button>
 
-                      {/*
-                        Usuwanie konta musi być osiągalne z interfejsu, a nie
-                        tylko istnieć w kodzie — bez tego „prawo do usunięcia"
-                        (RODO art. 17) jest deklaracją, nie funkcją. Podwójne
-                        potwierdzenie, bo operacja jest nieodwracalna.
-                      */}
                       <button
                         type="button"
                         onClick={() => {

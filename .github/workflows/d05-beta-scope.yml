@@ -1,0 +1,79 @@
+name: D05 BETA SCOPE
+
+on:
+  push:
+    branches: [d05-beta-scope]
+  pull_request:
+    branches: [main, master, d04-auth-rls]
+  workflow_dispatch:
+
+jobs:
+  beta-scope-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint and Type Check
+        run: npm run lint
+
+      - name: Unit Tests
+        run: npm test
+
+      - name: Build Client and Server
+        run: npm run build
+
+      # Playwright jest narzędziem odbiorowym, nie zależnością produktu. Instalujemy
+      # go w osobnym prefixie, bo npm 10 potrafi wywalić Arborist `edgesOut`, gdy
+      # po `npm ci` próbuje domontować pakiet --no-save do istniejącego drzewa.
+      - name: Install browser for acceptance proof
+        run: |
+          rm -rf /tmp/d05-playwright
+          mkdir -p /tmp/d05-playwright
+          npm install --prefix /tmp/d05-playwright --no-save --package-lock=false playwright@1.55.0
+          /tmp/d05-playwright/node_modules/.bin/playwright install --with-deps chromium
+          cp scripts/d05-beta-proof.mjs /tmp/d05-playwright/d05-beta-proof.mjs
+
+      - name: Browser acceptance — result and beta scope without payment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/d05-beta
+          npx vite preview --host 127.0.0.1 --port 4173 > /tmp/d05-vite.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill "$PREVIEW_PID" >/dev/null 2>&1 || true' EXIT
+
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -sf -m 2 http://127.0.0.1:4173/ >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat /tmp/d05-vite.log >&2 || true
+            exit 1
+          fi
+
+          node /tmp/d05-playwright/d05-beta-proof.mjs | tee artifacts/d05-beta/proof.txt
+
+      - name: Upload D05 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d05-beta-proof
+          path: artifacts/d05-beta/
+          if-no-files-found: warn
+          retention-days: 30
