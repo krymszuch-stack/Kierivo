@@ -16,6 +16,37 @@ export function normalizeFormalTerm(value: string): string {
     .trim();
 }
 
+function slug(value: string): string {
+  return value
+    .replace(/[^a-z0-9+#.]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 72);
+}
+
+/**
+ * Normalizuje nazwę nieznanego jeszcze certyfikatu/licencji tak samo po stronie
+ * JD i kandydata. Dzięki temu nowy credential nie wymaga wcześniejszego wpisu
+ * do ręcznej taksonomii, a D20 może później jedynie nauczyć się jego aliasów.
+ */
+export function genericCredentialCanonicalId(
+  value: string,
+  kind: 'CERTIFICATION' | 'LICENSE',
+): string {
+  let core = normalizeFormalTerm(value)
+    .replace(/\b(mandatory|required by law|required|must have|must-have|must|minimum|warunek konieczny|wymagany|wymagana|wymagane|wymagamy|konieczny|konieczna|konieczne|niezbedny|niezbedna|niezbedne|posiadanie|posiada)\b/g, ' ')
+    .replace(/\b(valid|current|aktualny|aktualna|aktualne|wazny|wazna|wazne)\b/g, ' ');
+
+  if (kind === 'CERTIFICATION') {
+    core = core.replace(/\b(certyfikat|certyfikacja|certification|certificate|certified|certyfikowany|certyfikowana)\b/g, ' ');
+  } else {
+    core = core.replace(/\b(uprawnienia|uprawnienie|licencja|license|licence|prawo wykonywania zawodu|kwalifikacje formalne)\b/g, ' ');
+  }
+
+  core = core.replace(/\s+/g, ' ').trim();
+  const fallback = core || normalizeFormalTerm(value);
+  return `${kind === 'CERTIFICATION' ? 'cert' : 'license'}.generic.${slug(fallback)}`;
+}
+
 const LANGUAGE_ALIASES: Record<string, string[]> = {
   english: ['english', 'angielski', 'jezyk angielski', 'english language'],
   german: ['german', 'niemiecki', 'jezyk niemiecki', 'deutsch'],
@@ -123,14 +154,15 @@ export function canonicalLanguage(value: string): string | null {
 }
 
 export function parseCefrLevel(value: string): CefrLevel | null {
-  const normalized = normalizeFormalTerm(value).toUpperCase();
-  const direct = normalized.match(/\b(A1|A2|B1|B2|C1|C2)\b/);
+  const normalized = normalizeFormalTerm(value);
+  const upper = normalized.toUpperCase();
+  const direct = upper.match(/\b(A1|A2|B1|B2|C1|C2)\b/);
   if (direct) return direct[1] as CefrLevel;
-  if (/\b(native|ojczysty|mother tongue)\b/i.test(value)) return 'NATIVE';
-  if (/\b(fluent|biegly|biegla|proficient)\b/i.test(value)) return 'C1';
-  if (/\b(advanced|zaawansowany|zaawansowana)\b/i.test(value)) return 'B2';
-  if (/\b(intermediate|srednio zaawansowany|komunikatywny|communicative)\b/i.test(normalized)) return 'B1';
-  if (/\b(basic|podstawowy|podstawowa)\b/i.test(normalized)) return 'A2';
+  if (/\b(native|ojczysty|mother tongue)\b/.test(normalized)) return 'NATIVE';
+  if (/\b(fluent|biegly|biegla|proficient)\b/.test(normalized)) return 'C1';
+  if (/\b(advanced|zaawansowany|zaawansowana)\b/.test(normalized)) return 'B2';
+  if (/\b(intermediate|srednio zaawansowany|komunikatywny|communicative)\b/.test(normalized)) return 'B1';
+  if (/\b(basic|podstawowy|podstawowa)\b/.test(normalized)) return 'A2';
   return null;
 }
 
@@ -190,14 +222,14 @@ export function canonicalFormalEntity(value: string): {
 
   if (/\b(certyfikat|certification|certificate)\b/.test(normalized)) {
     return {
-      canonicalId: `cert.generic.${normalized.replace(/[^a-z0-9]+/g, '-').slice(0, 72)}`,
+      canonicalId: genericCredentialCanonicalId(value, 'CERTIFICATION'),
       kind: 'CERTIFICATION',
       label: value.trim(),
     };
   }
   if (/\b(uprawnienia|licencja|license|licence|prawo wykonywania zawodu)\b/.test(normalized)) {
     return {
-      canonicalId: `license.generic.${normalized.replace(/[^a-z0-9]+/g, '-').slice(0, 72)}`,
+      canonicalId: genericCredentialCanonicalId(value, 'LICENSE'),
       kind: 'LICENSE',
       label: value.trim(),
     };
