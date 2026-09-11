@@ -1,5 +1,6 @@
 import React from 'react';
 import { Shell, ShellProps } from './layout/Shell';
+import { PasswordRecoveryModal } from '../features/auth/PasswordRecoveryModal';
 
 /**
  * Typ zakładek pochodzi z `src/lib/navigation.ts`, razem z etykietami i podpowiedziami
@@ -11,7 +12,12 @@ export type { NavTabId, NavSectionId } from '../lib/navigation';
 export type GlobalShellProps = ShellProps;
 
 export const GlobalShell: React.FC<GlobalShellProps> = (props) => {
-  return <Shell {...props} />;
+  return (
+    <>
+      <Shell {...props} />
+      <PasswordRecoveryModal />
+    </>
+  );
 };
 
 export { Shell } from './layout/Shell';
