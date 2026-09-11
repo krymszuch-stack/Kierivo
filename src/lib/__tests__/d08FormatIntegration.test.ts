@@ -1,15 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { Document, Packer, Paragraph } from 'docx';
 import { jsPDF } from 'jspdf';
-import { extractTextFromAnyFile } from '../cvUniversalParser';
+import { extractD08TextFromDocx } from '../audit-core/d08/docxAdapter';
 import { computeD08TokenAgreement } from '../audit-core/d08/extractor';
 import {
   auditPdfStructuralReadability,
   extractD08SignalsFromPdf,
 } from '../audit-core/d08/pdfAudit';
 
+async function installPdfJsNodeGeometryGlobals(): Promise<void> {
+  if (typeof globalThis.DOMMatrix !== 'undefined') return;
+
+  // pdfjs-dist standard build zakłada przeglądarkowe klasy geometryczne.
+  // W Node/CI dostarczamy ich natywną implementację z opcjonalnej zależności
+  // PDF.js, zamiast atrapować DOMMatrix ręcznym stubem.
+  const canvasSpecifier = '@napi-rs/canvas';
+  const canvas = await import(/* @vite-ignore */ canvasSpecifier);
+  Object.assign(globalThis, {
+    DOMMatrix: canvas.DOMMatrix,
+    ImageData: canvas.ImageData,
+    Path2D: canvas.Path2D,
+  });
+}
+
 describe('D08 — integracja z realnymi binarnymi formatami', () => {
   it('przechodzi przez rzeczywisty PDF: bytes → PDF.js → D08 signals → scorer', async () => {
+    await installPdfJsNodeGeometryGlobals();
+
     const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
     pdf.setFontSize(18);
     pdf.text('JAN KOWALSKI', 48, 54);
@@ -58,12 +75,12 @@ describe('D08 — integracja z realnymi binarnymi formatami', () => {
       { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
     );
 
-    const parsed = await extractTextFromAnyFile(file);
-    const agreement = computeD08TokenAgreement(sourceLines.join('\n'), parsed.text);
+    const extraction = await extractD08TextFromDocx(file);
+    const agreement = computeD08TokenAgreement(sourceLines.join('\n'), extraction.extractedText);
 
-    expect(parsed.format).toBe('DOCX');
-    expect(parsed.text).toContain('JAN KOWALSKI');
-    expect(parsed.text).toContain('Example University');
+    expect(extraction.extractedText).toContain('JAN KOWALSKI');
+    expect(extraction.extractedText).toContain('Example University');
+    expect(['ARRAY_BUFFER', 'NODE_BUFFER']).toContain(extraction.extractionPath);
     expect(agreement.precision).toBeGreaterThan(0.98);
     expect(agreement.recall).toBeGreaterThan(0.98);
     expect(agreement.f1).toBeGreaterThan(0.98);
