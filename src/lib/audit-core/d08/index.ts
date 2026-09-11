@@ -23,6 +23,7 @@ export type {
 } from './extractor';
 
 export type { D08PdfExtractionResult } from './pdfAdapter';
+export type { D08DocxExtractionResult } from './docxAdapter';
 
 export {
   analyzeD08Encoding,
@@ -31,6 +32,8 @@ export {
   normalizeD08Text,
   tokenizeD08Text,
 } from './extractor';
+
+export { extractD08TextFromDocx } from './docxAdapter';
 
 export {
   auditPdfStructuralReadability,
@@ -51,3 +54,13 @@ export {
   hardenD08ScoringSignals,
   scoreStructuralReadability,
 } from './strictScorer';
+
+export {
+  buildD08CalibrationSnapshot,
+  D08_CONFIG_VERSION,
+  D08_ENGINE_VERSION,
+  D08_EXPECTED_RELATIONS,
+  D08_SYNTHETIC_CORPUS_VERSION,
+  D08_SYNTHETIC_DRIFT_POLICY,
+  d08SyntheticDriftGate,
+} from './calibration';
