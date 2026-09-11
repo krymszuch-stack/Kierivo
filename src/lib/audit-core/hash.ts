@@ -1,3 +1,19 @@
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
 export async function sha256Hex(input: string): Promise<string> {
   if (!globalThis.crypto?.subtle) {
     throw new Error('Web Crypto API jest wymagane do deterministycznych Evidence IDs.');
@@ -17,7 +33,7 @@ export async function buildEvidenceId(
   canonicalPayload: unknown,
   provenance: string,
 ): Promise<string> {
-  const canonical = JSON.stringify(canonicalPayload, Object.keys(canonicalPayload as object).sort());
+  const canonical = stableStringify(canonicalPayload);
   const digest = await sha256Hex(
     [schemaVersion, source, jsonPath, canonical, provenance].join('|'),
   );
