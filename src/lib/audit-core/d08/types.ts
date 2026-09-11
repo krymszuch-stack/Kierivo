@@ -26,6 +26,12 @@ export interface D08TextLayerSignals {
 export interface D08ReadingOrderSignals {
   comparablePairWeight: number;
   discordantPairWeight: number;
+  /**
+   * Pewność, że expected order rzeczywiście reprezentuje intencjonalny porządek
+   * dokumentu, a nie tylko heurystykę geometryczną. Brak wartości oznacza, że
+   * sygnał jest diagnostyczny i nie może wpływać na score.
+   */
+  measurementConfidence?: number;
   evidenceIds: string[];
 }
 
