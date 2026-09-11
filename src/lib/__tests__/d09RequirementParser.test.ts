@@ -63,4 +63,20 @@ Wymagania:
 `);
     expect(byId(result.requirements, 'license-driving-c')?.kind).toBe('FORMAL_REFERENCE');
   });
+
+  it('resetuje kontekst MUST po wejściu w Zakres obowiązków', async () => {
+    const result = await extractD09Requirements(`
+Wymagania:
+- Java
+- PostgreSQL
+
+Zakres obowiązków:
+- Utrzymanie infrastruktury AWS i Terraform
+`);
+
+    expect(byId(result.requirements, 'java')?.priority).toBe('MUST');
+    expect(byId(result.requirements, 'postgresql')?.priority).toBe('MUST');
+    expect(byId(result.requirements, 'aws')).toBeUndefined();
+    expect(byId(result.requirements, 'terraform')).toBeUndefined();
+  });
 });
