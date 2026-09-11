@@ -39,7 +39,7 @@ export const ConsistencyLockBadge: React.FC<ConsistencyLockBadgeProps> = ({
 
   /**
    * Walidator porównuje tylko fakty, które faktycznie dostał do sprawdzenia.
-   * Brak alarmu nie znaczy „100% zgodności całego CV”, więc fallback opisuje
+   * Brak alarmu nie znaczy pełnej zgodności całego CV, więc fallback opisuje
    * brak wykrytych rozbieżności w badanym zakresie zamiast absolutnej obietnicy.
    */
   const defaultTooltip = isVerified
