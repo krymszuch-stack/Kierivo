@@ -91,6 +91,9 @@ export interface D10RequirementMatch {
   bestEvidenceId: string | null;
   bestEvidenceLabel: string | null;
   explanation: string;
+  /** Punkty widoczne w UI; null gdy moduł nie może uczciwie wystawić score. */
+  earnedPoints?: number | null;
+  maxPoints?: number | null;
 }
 
 export interface D10FormalDiagnostics {
