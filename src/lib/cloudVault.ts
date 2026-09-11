@@ -54,20 +54,23 @@ export async function fetchCloudVault(): Promise<MasterVault | null> {
 }
 
 /**
- * Zapisuje cały vault. Nadpisanie całości, nie zmiana przyrostowa — tak jak
- * `PUT /api/vault`, bo MasterVault jest jednym dokumentem `jsonb` i rozbijanie
- * go na operacje cząstkowe wymagałoby scalania po stronie bazy.
- *
- * `user_id` podajemy jawnie: polityka `with check (auth.uid() = user_id)`
- * odrzuci wiersz bez niego, a wartość i tak musi zgadzać się z tokenem —
- * baza nie przyjmie cudzego identyfikatora, nawet gdyby ktoś go tu podstawił.
+ * Zapisuje cały vault i potwierdza, że aktywna sesja nadal należy do właściciela
+ * kolejki, która zleciła zapis. To odcina wyścig logout/login: zapis Alicji nie
+ * może po zmianie sesji trafić do wiersza Boba tylko dlatego, że Promise ruszył
+ * chwilę później.
  */
-export async function saveCloudVault(vault: MasterVault): Promise<void> {
+export async function saveCloudVault(
+  vault: MasterVault,
+  expectedOwnerId?: string
+): Promise<void> {
   const supabase = client();
   const { data: sesja } = await supabase.auth.getSession();
   const userId = sesja.session?.user?.id;
 
   if (!userId) throw new CloudVaultError('Brak aktywnej sesji — zaloguj się ponownie.');
+  if (expectedOwnerId && userId !== expectedOwnerId) {
+    throw new CloudVaultError('Sesja zmieniła właściciela przed potwierdzeniem zapisu.');
+  }
 
   const { error } = await supabase.from(TABELA).upsert(
     {
