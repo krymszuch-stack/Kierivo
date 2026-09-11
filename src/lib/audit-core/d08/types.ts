@@ -39,10 +39,10 @@ export interface D08SectionSignals {
 }
 
 export interface D08LayoutSignals {
-  overlapRatio: number;
-  clippingRatio: number;
-  ambiguousZOrderRatio: number;
-  nestedComplexityRatio: number;
+  overlapRatio?: number;
+  clippingRatio?: number;
+  ambiguousZOrderRatio?: number;
+  nestedComplexityRatio?: number;
   evidenceIds: string[];
 }
 
@@ -73,8 +73,10 @@ export interface D08ListSignals {
 }
 
 export interface D08AdversarialSignals {
-  hiddenTextRatio: number;
-  duplicateInvisibleLayerRatio: number;
+  hiddenTextMeasured: boolean;
+  duplicateInvisibleLayerMeasured: boolean;
+  hiddenTextRatio?: number;
+  duplicateInvisibleLayerRatio?: number;
   hiddenTextEvidenceIds: string[];
   duplicateLayerEvidenceIds: string[];
 }
