@@ -2,21 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { StorageKeys, onAppStorageWiped, readJson, writeJson } from '../lib/storage';
 import { clientEnv } from '../lib/clientEnv';
 import { ApiError, api } from '../lib/apiClient';
+import { FREE_BETA_ACTIVE } from '../lib/beta';
 
 /**
  * Uprawnienia i pozostałe limity — **wyłącznie na potrzeby interfejsu**.
  *
  * To jest podpowiedź dla ekranu, a nie kontrola dostępu. Wartości leżą
  * w `localStorage`, więc użytkownik może je sobie przestawić z konsoli
- * przeglądarki i zobaczyć etykietę „Pro". Nic z tego nie wynika: realne
- * uprawnienie sprawdza serwer przy każdym wywołaniu, w `src/server/quota.ts`,
- * na podstawie tabel `subscriptions` i `user_quotas`, których użytkownik nie
- * może zapisać (polityki RLS w `supabase/migrations/0001_init.sql`).
+ * przeglądarki. Nic z tego nie wynika: realne limity sprawdza serwer.
  *
- * Ten podział jest celowy. Licznik w interfejsie musi odpowiadać natychmiast,
- * bez czekania na sieć; decyzja o wydaniu cudzych pieniędzy na wywołanie modelu
- * musi zapaść po stronie serwera. Poprzednia wersja miała wyłącznie tę pierwszą
- * połowę i nazywała ją kontrolą dostępu.
+ * Podczas bezpłatnej bety historyczne statusy Pro/Karnet są zachowywane jako
+ * dane konta, ale nie odblokowują funkcji ani nie omijają limitów.
  */
 
 export type SubscriptionStatus = 'free' | 'trialing' | 'active' | 'cancelled' | 'past_due';
@@ -40,24 +36,15 @@ export interface Usage {
 export interface EntitlementsState {
   subscription: Subscription;
   usage: Usage;
-  /** Karnet Aplikacyjny aktywny (`profiles.plan_expires_at` w przyszłości). */
+  /** Historyczny Karnet Aplikacyjny (`profiles.plan_expires_at` w przyszłości). */
   hasActivePass: boolean;
   /** `server` znaczy: te liczby przyszły z `/api/me` i są prawdziwe. */
   source: 'local' | 'server';
 }
 
-// Te same liczby, które trzyma plan `free` w bazie (`plans.import_quota`,
-// `FREE_DAILY_AI_USES` po stronie serwera). Podpowiedź startowa nie może być
-// hojniejsza niż realny limit — rozjazd 10 kontra 1 obiecał w interfejsie
-// dziewięć importów, których nigdy nie było.
 const FREE_IMPORTS = 1;
 const FREE_AI_USES = 5;
 
-/**
- * Jedno źródło prawdy o darmowym limicie dla tekstów interfejsu (cennik,
- * parser, ekran startowy). Wcześniej każda z tych kopii trzymała własną liczbę
- * i rozjechała się z realnym limitem egzekwowanym tutaj.
- */
 export const FREE_MONTHLY_IMPORTS = FREE_IMPORTS;
 export const FREE_DAILY_AI_USES = FREE_AI_USES;
 
@@ -84,24 +71,19 @@ function loadInitialState(): EntitlementsState {
     return freshState();
   }
 
-  // Serwer zeruje miesiąc po `date_trunc('month', now())`, a dobę po dacie UTC.
-  // Tutaj te same klucze pilnują tylko tego, żeby podpowiedź nie pokazywała
-  // zużytych sztuk do czasu pierwszej odpowiedzi z API po zmianie doby.
   let usage = saved.usage;
   if (!usage.monthKey || usage.monthKey !== getMonthKey()) {
     usage = { ...usage, importUses: FREE_IMPORTS, monthKey: getMonthKey() };
   }
   if (!usage.dayKey || usage.dayKey !== getDayKey()) {
-    // Plan opłacony nie ma dobowego sufitu — serwer zwraca wtedy MAX_SAFE_INTEGER.
-    const paid = isProStatus(saved.subscription?.status);
+    const paidOutsideBeta = !FREE_BETA_ACTIVE && isProStatus(saved.subscription?.status);
     usage = {
       ...usage,
-      aiUses: paid ? Number.MAX_SAFE_INTEGER : FREE_AI_USES,
+      aiUses: paidOutsideBeta ? Number.MAX_SAFE_INTEGER : FREE_AI_USES,
       dayKey: getDayKey(),
     };
   }
 
-  // Starsze wpisy ze schowka mogą nie znać pola karnetu — brak znaczy false.
   return {
     subscription: saved.subscription || { status: 'free' },
     usage,
@@ -119,20 +101,19 @@ function setState(updater: (prev: EntitlementsState) => EntitlementsState): void
   listeners.forEach((notify) => notify());
 }
 
-// Po „usuń moje dane" licznik wraca do stanu wyjściowego w pamięci, ale bez
-// natychmiastowego zapisu — klucz właśnie zniknął ze schowka, a odtworzenie go
-// tuż po wymazaniu byłoby pisaniem danej osobowej w tej samej operacji, która
-// miała ją usunąć. Zapis wróci dopiero przy realnej akcji użytkownika.
 onAppStorageWiped(() => {
   globalState = freshState();
   listeners.forEach((notify) => notify());
 });
 
+/**
+ * Semantyka historycznego statusu subskrypcji. To nie znaczy, że status daje
+ * dostęp w aktualnej becie — faktyczny `isPro` jest niżej bramkowany flagą bety.
+ */
 export function isProStatus(status?: SubscriptionStatus | string | null): boolean {
   return status === 'active' || status === 'trialing';
 }
 
-/** Kształt odpowiedzi `GET /api/me` w części dotyczącej uprawnień. */
 interface MeResponse {
   subscription: Subscription;
   usage: Usage;
@@ -140,7 +121,7 @@ interface MeResponse {
 }
 
 function consumeLocal(kind: 'ai' | 'import'): boolean {
-  if (isProStatus(globalState?.subscription?.status)) return true;
+  if (!FREE_BETA_ACTIVE && isProStatus(globalState?.subscription?.status)) return true;
 
   const field = kind === 'ai' ? 'aiUses' : 'importUses';
   if (!globalState?.usage || typeof globalState.usage[field] !== 'number' || globalState.usage[field] <= 0) return false;
@@ -149,11 +130,6 @@ function consumeLocal(kind: 'ai' | 'import'): boolean {
   return true;
 }
 
-/**
- * Wersje dla modułów bez Reacta (silniki w `src/lib/`, które same wysyłają
- * żądania AI). Ta sama logika co w hooku — dwie implementacje jednego
- * licznika rozjechałyby się przy pierwszej zmianie (reguła 3).
- */
 export function consumeAiLocally(): boolean {
   return consumeLocal('ai');
 }
@@ -170,11 +146,6 @@ export function useEntitlements() {
     };
   }, []);
 
-  /**
-   * Pobiera prawdziwy stan z serwera. Wywoływane po zalogowaniu i po powrocie
-   * z bramki płatności — status subskrypcji potwierdza webhook Stripe'a, a nie
-   * to, że użytkownik wrócił pod adres z `?checkout=success`.
-   */
   const refresh = useCallback(async (): Promise<void> => {
     if (!clientEnv.backendConfigured) return;
 
@@ -194,35 +165,20 @@ export function useEntitlements() {
         }));
       }
     } catch (err) {
-      // Niezalogowany użytkownik dostaje 401 i to jest normalny stan, nie awaria.
       if (err instanceof ApiError && err.isUnauthorized) {
         setState(() => freshState());
         return;
       }
-      // Przy każdym innym błędzie zostajemy przy ostatnich znanych liczbach:
-      // pokazanie „0 pozostałych" z powodu chwilowego problemu z siecią byłoby
-      // gorsze niż lekko nieaktualny licznik.
     }
   }, []);
 
-  const isPro = isProStatus(state?.subscription?.status);
+  const isPro = !FREE_BETA_ACTIVE && isProStatus(state?.subscription?.status);
 
-  /**
-   * Zmniejsza licznik pokazywany w interfejsie i mówi, czy warto w ogóle
-   * wysyłać żądanie. `false` znaczy „pokaż cennik”, nie „odmów dostępu” —
-   * odmawia serwer.
-   */
   const consumeAi = useCallback(() => consumeLocal('ai'), []);
   const consumeImport = useCallback(() => consumeLocal('import'), []);
 
-  /**
-   * Odblokowanie na potrzeby pracy nad interfejsem, bez przechodzenia przez
-   * bramkę płatności. Świadomie nie istnieje w buildzie produkcyjnym: wcześniej
-   * przycisk „Symuluj natychmiastowe odblokowanie" pokazywał się każdemu, kto
-   * wszedł na cennik bez skonfigurowanego klucza Stripe'a.
-   */
   const grantDemoPro = useCallback(() => {
-    if (!import.meta.env.DEV) return;
+    if (FREE_BETA_ACTIVE || !import.meta.env.DEV) return;
     setState((prev) => ({ ...prev, subscription: { status: 'active' }, source: 'local' }));
   }, []);
 
@@ -236,8 +192,7 @@ export function useEntitlements() {
     },
     source: state?.source || 'local',
     isPro,
-    // Karnet jest osobnym, jednorazowym uprawnieniem zwracanym przez backend.
-    hasActivePass: state?.hasActivePass === true,
+    hasActivePass: !FREE_BETA_ACTIVE && state?.hasActivePass === true,
     refresh,
     consumeAi,
     consumeImport,
