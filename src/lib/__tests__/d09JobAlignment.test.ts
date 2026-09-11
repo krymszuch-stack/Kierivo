@@ -42,7 +42,7 @@ const cand = (
   extractionConfidence = 1,
   claimStrength = 1,
 ): D09CandidateEvidence => ({
-  id: `CAND_${canonicalId}_${depth}`,
+  id: `CAND_${canonicalId}_${depth}_${claimStrength}`,
   canonicalId,
   label: canonicalId,
   source: 'VAULT_EXPERIENCE',
@@ -51,8 +51,8 @@ const cand = (
   extractionConfidence,
   claimStrength,
   evidence: {
-    id: `EV_CAND_${canonicalId}_${depth}`,
-    provenance: 'USER_ASSERTED_CANONICAL',
+    id: `EV_CAND_${canonicalId}_${depth}_${claimStrength}`,
+    provenance: claimStrength < 1 ? 'INFERRED_HEURISTIC' : 'USER_ASSERTED_CANONICAL',
     pointer: { source: 'VAULT', jsonPath: `fixture.${canonicalId}` },
     description: `Candidate evidence ${canonicalId}`,
     extractionConfidence,
@@ -173,5 +173,15 @@ describe('D09 Job Alignment — matematyka i izolacja sygnału', () => {
     const result = score([req('aws', 'NICE'), req('terraform', 'NICE')], [cand('aws'), cand('terraform')]);
     expect(result.score).not.toBeNull();
     expect(result.score!).toBeGreaterThan(95);
+  });
+
+  it('wniosek semantyczny o słabszej claimStrength nie punktuje jak literalny fakt', () => {
+    const requirement = [req('key-account-management')];
+    const literal = score(requirement, [cand('key-account-management', 0.90, 1, 1)]);
+    const inferred = score(requirement, [cand('key-account-management', 0.90, 1, 0.70)]);
+
+    expect(literal.score).not.toBeNull();
+    expect(inferred.score).not.toBeNull();
+    expect(inferred.score!).toBeLessThan(literal.score!);
   });
 });
