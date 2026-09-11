@@ -1,4 +1,16 @@
 import { AtsCheckResult, FlagCategory, MasterVault, TailoredResume, LemmatizedMatch } from '../types';
+import {
+  getPolishStem as canonicalPolishStem,
+  hasPositiveSkillEvidence,
+  containsPhrase,
+} from './skillEvidence';
+import { ALL_LICENSES } from '../data/licenses';
+import { auditKnockouts } from './knockouts';
+
+/** Etykiety uprawnień do korpusu tekstowego (F3) — identyfikator `c_license` nic nie znaczy dla matchera. */
+const ALL_LICENSE_LABELS: Record<string, string> = Object.fromEntries(
+  ALL_LICENSES.map((l) => [l.id, l.label])
+);
 
 /**
  * Zalecenia posortowane pod profil kandydata.
@@ -32,48 +44,36 @@ function prioritizeForProfile(recommendations: string[], profile: FlagCategory):
 }
 
 /**
- * Polish Stemming & Lemmatization helper.
- * Strips Polish inflectional suffixes so "zarządzanie", "zarządzałem", "zarządzania" all stem to "zarzą".
- * Works seamlessly for Polish words and English technical terms.
+ * Polish Stemming helper — re-eksport kanonicznej implementacji z `skillEvidence`
+ * (jedno źródło prawdy morfologii, reguła 3). Zachowane dla kompatybilności
+ * importerów (`atsScorer.ts`).
  */
 export function getPolishStem(word: string): string {
-  const w = word.toLowerCase().trim();
-  if (w.length <= 3) return w;
-
-  // Preserve short English tech terms (e.g. sql, aws, gcp, git)
-  if (/^[a-z0-9#+.-]+$/i.test(w) && !/[ąćęłńóśźż]/.test(w) && w.length <= 6) {
-    return w;
-  }
-
-  return w
-    .replace(/(nościami|nościach|nością|ności|stwem|stwach|stwu)$/i, '')
-    .replace(/(eniach|eniom|eniem|enie|enia|eniu)$/i, '')
-    .replace(/(aniach|aniom|aniem|anie|ania|aniu)$/i, '')
-    .replace(/(owałem|owałeś|owaliśmy|owali|ować|uję|ujesz|ują)$/i, '')
-    .replace(/(ałem|ałeś|aliśmy|ałam|ałaś)$/i, '')
-    .replace(/(owali|owały|owało)$/i, '')
-    .replace(/(ami|ach|owi|ego|emu|ich|ych|iej|iem|ym)$/i, '')
-    .replace(/(em|ie|om|ów|ej|ey)$/i, '')
-    .replace(/(a|e|i|o|u|y|ę|ą)$/i, '');
+  return canonicalPolishStem(word);
 }
 
 /**
- * Checks if phraseA matches phraseB taking inflection and Polish stems into account.
+ * Czy fraza z oferty ma POZYTYWNY dowód w tekście kandydata.
+ *
+ * Wcześniej był tu podciąg (`normB.includes(normA)`) i prefiksy rdzeni
+ * (`startsWith` w obie strony), więc `java` pasowało do `javascript`,
+ * `go` do `good`, `ai` do `pain`, a `I do not know Python` do `python`.
+ * Deleguje do kanonicznego `hasPositiveSkillEvidence` (granice Unicode,
+ * jawne aliasy, negacja, nauka, wyciek wymagań).
+ *
+ * Konwencja argumentów bez zmian: `isLemmatizedMatch(fraza z JD, tekst CV)`.
  */
 export function isLemmatizedMatch(phraseA: string, phraseB: string): boolean {
-  const normA = phraseA.toLowerCase().trim();
-  const normB = phraseB.toLowerCase().trim();
+  const normA = (phraseA ?? '').trim();
+  const normB = (phraseB ?? '').trim();
 
-  if (normA === normB || normB.includes(normA) || normA.includes(normB)) {
-    return true;
-  }
+  // Pusty łańcuch jest podciągiem każdego tekstu (`'docker'.includes('')`),
+  // więc bez tego guarda puste CV „pasowało" do każdej frazy z oferty i pusty
+  // profil dostawał 100% pokrycia twardych umiejętności. Śmieci
+  // interpunkcyjne (`---`) też nie są dowodem — pilnuje tego matcher.
+  if (!normA || !normB) return false;
 
-  const wordsA = normA.split(/[\s,./()]+/).filter((w) => w.length > 2).map(getPolishStem);
-  const wordsB = normB.split(/[\s,./()]+/).filter((w) => w.length > 2).map(getPolishStem);
-
-  if (wordsA.length === 0 || wordsB.length === 0) return false;
-
-  return wordsA.every((stemA) => wordsB.some((stemB) => stemB.startsWith(stemA) || stemA.startsWith(stemB)));
+  return hasPositiveSkillEvidence(normB, normA);
 }
 
 /**
@@ -189,6 +189,11 @@ const SOFT_SKILLS_NOISE = [
   'kreatywność', 'dynamiczny', 'samodzielność', 'odpowiedzialność'
 ];
 
+/** Escapuje frazę do zliczania powtórzeń w JD (ekstraktor kapitalizacji). */
+function escapeForCount(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
  * 4-Stage Advanced NLP N-Gram extraction from Job Description:
  * Stage 1: HR Blacklist filtering
@@ -202,23 +207,24 @@ export function extractDynamicJdPhrases(jdText: string): {
   softSkills: { phrase: string; weight: number }[];
   allExtractedCount: number;
 } {
-  const normalized = jdText.toLowerCase();
   const hardSkills: { phrase: string; weight: number }[] = [];
   const formalReqs: { phrase: string; weight: number }[] = [];
   const softSkills: { phrase: string; weight: number }[] = [];
 
   // 1. Stage 3 Compound N-Gram Check (Multi-word skills)
+  // `includes` na surowym tekście mylił `cit` w `city` i `go` w `good` —
+  // strona ogłoszenia też wymaga granic słów (bez oceny intencji).
   for (const compound of KNOWN_COMPOUND_SKILLS) {
-    if (normalized.includes(compound)) {
+    if (containsPhrase(jdText, compound)) {
       hardSkills.push({ phrase: compound, weight: 3.0 });
     }
   }
 
   // 2. Stage 4 Known Hard Skills Dictionary Check
   for (const skill of KNOWN_HARD_SKILLS) {
-    if (normalized.includes(skill)) {
+    if (containsPhrase(jdText, skill)) {
       // Avoid adding single word if already covered in a compound
-      if (!hardSkills.some((h) => h.phrase.includes(skill) && h.phrase !== skill)) {
+      if (!hardSkills.some((h) => h.phrase !== skill && containsPhrase(h.phrase, skill))) {
         hardSkills.push({ phrase: skill, weight: 3.0 });
       }
     }
@@ -226,45 +232,92 @@ export function extractDynamicJdPhrases(jdText: string): {
 
   // 3. Stage 4 Formal Requirements Check
   for (const req of FORMAL_REQ_KEYWORDS) {
-    if (normalized.includes(req)) {
+    if (containsPhrase(jdText, req)) {
       formalReqs.push({ phrase: req, weight: 2.0 });
     }
   }
 
   // 4. Soft Skills Check
   for (const soft of SOFT_SKILLS_NOISE) {
-    if (normalized.includes(soft)) {
+    if (containsPhrase(jdText, soft)) {
       softSkills.push({ phrase: soft, weight: 0.5 });
     }
   }
 
   // 5. Stage 2 POS & Capitalized Acronym / Tech Stack Extractor
-  const capitalizedMatches = jdText.match(/\b[A-Z][a-zA-Z0-9#+.-]{1,}(?:\s+[A-Z][a-zA-Z0-9#+.-]{1,})*\b/g) || [];
+  // Poprzedni regex `[A-Z][a-zA-Z...]` ucinał polskie znaki (`Zespół` → `zesp`,
+  // `Łódź` w ogóle), a każda wielka litera na początku zdania (`Need`, `Office`,
+  // `Senior Backend Developer`) stawała się wymaganiem o wadze 3.0 — równej
+  // Pythonowi. Stąd `cit` z `city` i tytuły stanowisk w mianowniku braków.
+  // Teraz: regex w Unicode, słowa generyczne odrzucane, frazy z ekstraktora
+  // niosą wagę 1.5 (sygnał, nie pewnik) i tylko z sygnałem technicznym albo
+  // powtórzeniem — lepiej pominąć nieznane słowo niż wymyślić wymaganie.
+  const GENERIC_ROLE_WORDS = new Set(
+    [
+      'senior', 'junior', 'mid', 'lead', 'principal', 'staff', 'backend', 'frontend',
+      'fullstack', 'full', 'stack', 'developer', 'developers', 'engineer', 'inzynier',
+      'programista', 'firma', 'company', 'team', 'zespol', 'group', 'grupa', 'office',
+      'biuro', 'position', 'stanowisko', 'role', 'rola', 'project', 'projekt',
+      'location', 'lokalizacja', 'offer', 'oferta', 'need', 'needs', 'with', 'and',
+    ].map((w) => w.toLowerCase())
+  );
+  const strippedLower = (s: string): string =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l');
+  const knownPhrases = new Set([
+    ...KNOWN_COMPOUND_SKILLS.map(strippedLower),
+    ...KNOWN_HARD_SKILLS.map(strippedLower),
+    ...FORMAL_REQ_KEYWORDS.map(strippedLower),
+  ]);
+  // Token z kropkami tylko wewnątrz (`Node.js`), nie na granicy zdania
+  // (`XYZ. Zespół` to dwa trafienia, nie fraza `xyz. zesp`); granice w Unicode,
+  // bo ASCII-`\b` łamał słowo przed `ó`/`ł` (`Zespół` → `zesp`).
+  const CAP_TOKEN = '[\\p{Lu}][\\p{L}0-9#+-]*(?:\\.[\\p{L}0-9#+-]+)*';
+  const capitalizedMatches =
+    jdText.match(new RegExp(`(?<![\\p{L}\\p{N}_])${CAP_TOKEN}(?:\\s+${CAP_TOKEN})*(?![\\p{L}\\p{N}_])`, 'gu')) || [];
 
   for (const match of capitalizedMatches) {
-    const lower = match.toLowerCase().trim();
+    const cleaned = match.replace(/[.,;:!?]+$/g, '').trim();
+    const lower = cleaned.toLowerCase().trim();
+    const norm = strippedLower(cleaned);
 
     if (lower.length < 3 || /^\d+$/.test(lower)) continue;
-    if (HR_AND_COMMON_STOP_WORDS.has(lower)) continue;
+    if (HR_AND_COMMON_STOP_WORDS.has(lower) || HR_AND_COMMON_STOP_WORDS.has(norm)) continue;
 
-    const words = lower.split(/\s+/);
-    if (words.every((w) => HR_AND_COMMON_STOP_WORDS.has(w))) continue;
+    const words = norm.split(/\s+/).filter(Boolean);
+    if (words.length === 0 || words.every((w) => HR_AND_COMMON_STOP_WORDS.has(w) || GENERIC_ROLE_WORDS.has(w))) continue;
 
-    // Strip leading and trailing HR stop words from multi-word phrases
+    // Strip leading and trailing HR stop words and generic role words
     const cleanWords = [...words];
-    while (cleanWords.length > 0 && HR_AND_COMMON_STOP_WORDS.has(cleanWords[0])) {
+    while (
+      cleanWords.length > 0 &&
+      (HR_AND_COMMON_STOP_WORDS.has(cleanWords[0]) || GENERIC_ROLE_WORDS.has(cleanWords[0]))
+    ) {
       cleanWords.shift();
     }
-    while (cleanWords.length > 0 && HR_AND_COMMON_STOP_WORDS.has(cleanWords[cleanWords.length - 1])) {
+    while (
+      cleanWords.length > 0 &&
+      (HR_AND_COMMON_STOP_WORDS.has(cleanWords[cleanWords.length - 1]) ||
+        GENERIC_ROLE_WORDS.has(cleanWords[cleanWords.length - 1]))
+    ) {
       cleanWords.pop();
     }
+    if (cleanWords.length === 0) continue;
 
     const cleanPhrase = cleanWords.join(' ');
-    if (cleanPhrase.length >= 3 && !HR_AND_COMMON_STOP_WORDS.has(cleanPhrase)) {
-      if (!hardSkills.some((h) => h.phrase === cleanPhrase)) {
-        hardSkills.push({ phrase: cleanPhrase, weight: 3.0 });
-      }
-    }
+    if (cleanPhrase.length < 3 || HR_AND_COMMON_STOP_WORDS.has(cleanPhrase)) continue;
+    // Duplikat czegoś, co słownik już pokrył (`need python` przy `python`).
+    if ([...knownPhrases].some((k) => cleanPhrase !== k && containsPhrase(cleanPhrase, k))) continue;
+    if (hardSkills.some((h) => strippedLower(h.phrase) === cleanPhrase)) continue;
+
+    // Sygnał techniczny: akronim, cyfra, znak stosu — albo powtórzenie w JD.
+    const tokens = cleaned.split(/\s+/);
+    const hasTechSignal =
+      tokens.some((t) => /^[A-ZĄĆĘŁŃÓŚŹŻ]{2,6}$/.test(t) || /[0-9#+./-]/.test(t)) ||
+      knownPhrases.has(cleanPhrase);
+    const occurrences = (jdText.match(new RegExp(escapeForCount(cleaned), 'gi')) ?? []).length;
+    if (!hasTechSignal && occurrences < 2) continue;
+
+    hardSkills.push({ phrase: cleanPhrase, weight: 1.5 });
   }
 
   // Final Strict Stage 1 Blacklist Purge: Remove any standalone junk word
@@ -293,6 +346,11 @@ export function extractDynamicJdPhrases(jdText: string): {
 
 /**
  * Simulates 3-Layer ATS parser check on the generated CV & Master Vault against Job Description.
+ *
+ * DIAGNOSTYKA SYMULACYJNA, nie wynik kanoniczny: liczba stąd służy podglądom
+ * laboratoryjnym i rozbiciu na warstwy. Wynikiem pokazywanym jako „dopasowanie
+ * do oferty" jest `scoreCanonicalAts` (`lib/canonicalAts.ts`) — on rozstrzyga
+ * przy rozjazdach między silnikami (F6).
  */
 export function simulateAtsCheck(
   resume: TailoredResume,
@@ -309,6 +367,9 @@ export function simulateAtsCheck(
   const dynamicJd = extractDynamicJdPhrases(jobDescription);
 
   // Aggregate full CV text with structural metadata
+  // Formalia typowane (języki, licencje, certyfikaty) też są treścią: wcześniej
+  // `profiler.languages` i `profiler.licenses` nie wchodziły do korpusu, więc
+  // `angielski C1` z profilu dawał `formalReqsCoverage 0` (F3).
   const summaryText = resume.summary || vault.personalInfo.summary || '';
   const highlightTexts = resume.selectedHighlights.map((h) => h.optimizedText);
   const skillsList = [
@@ -318,6 +379,16 @@ export function simulateAtsCheck(
     ...vault.skillsMatrix.hardSkills,
     ...vault.skillsMatrix.toolsAndTech,
   ];
+  const licenseTexts = (vault.profiler?.licenses ?? []).map(
+    (id) => ALL_LICENSE_LABELS[id] ?? id
+  );
+  const languageTexts = (vault.profiler?.languages ?? []).map(
+    (l) => `${l?.language || ''} ${l?.level || ''}`
+  );
+  const certificationTexts = (vault.skillsMatrix?.certifications ?? []).flatMap((c) => [
+    c?.name || '',
+    c?.issuer || '',
+  ]);
 
   const fullCvTextParts = [
     summaryText,
@@ -328,6 +399,9 @@ export function simulateAtsCheck(
     vault.personalInfo.phone,
     vault.personalInfo.location,
     vault.personalInfo.title,
+    ...licenseTexts,
+    ...languageTexts,
+    ...certificationTexts,
     ...vault.history.flatMap((h) => [h.company, h.role, ...h.highlights.map((hl) => hl.text)]),
     ...vault.education.flatMap((e) => [e.institution, e.degree, e.fieldOfStudy]),
     ...vault.projects.flatMap((p) => [p.name, p.description, ...p.techStack]),
@@ -426,15 +500,24 @@ export function simulateAtsCheck(
     }
   }
 
-  // Match Formal Requirements
+  // Match Formal Requirements — tekst LUB typowane rozstrzygnięcie knock-outów.
+  // Sama zgodność tekstowa nie widziała hierarchii (`C` implikuje `B`) ani
+  // identyfikatorów licencji, więc wykwalifikowany profil dostawał 0 (F3).
   let matchedFormalWeight = 0;
   let totalFormalWeight = 0;
+  const knockoutReport = auditKnockouts(jobDescription, vault);
+  const satisfiedKnockoutLabels = knockoutReport.findings
+    .filter((f) => f.satisfied)
+    .map((f) => f.label);
 
   for (const formal of dynamicJd.formalReqs) {
     totalFormalWeight += formal.weight;
-    const isMatched = isLemmatizedMatch(formal.phrase, fullCvText);
+    const byText = isLemmatizedMatch(formal.phrase, fullCvText);
+    const byLicense = satisfiedKnockoutLabels.some(
+      (label) => containsPhrase(label, formal.phrase) || containsPhrase(formal.phrase, label)
+    );
 
-    if (isMatched) {
+    if (byText || byLicense) {
       matchedFormalWeight += formal.weight;
       matchedKeywords.push(formal.phrase);
       lemmatizedMatches.push({
@@ -454,8 +537,10 @@ export function simulateAtsCheck(
     }
   }
 
-  const hardSkillsCoverage = totalHardWeight > 0 ? Math.round((matchedHardWeight / totalHardWeight) * 100) : 100;
-  const formalReqsCoverage = totalFormalWeight > 0 ? Math.round((matchedFormalWeight / totalFormalWeight) * 100) : 100;
+  // Puste ogłoszenie (zero wykrytych wymagań) to brak mianownika, nie 100%
+  // pokrycia — wcześniej puste JD dawało 90/100 pewności z niczego (F4).
+  const hardSkillsCoverage = totalHardWeight > 0 ? Math.round((matchedHardWeight / totalHardWeight) * 100) : 0;
+  const formalReqsCoverage = totalFormalWeight > 0 ? Math.round((matchedFormalWeight / totalFormalWeight) * 100) : 0;
 
   // ==================== LAYER 3: SCORING ALGEBRA (RECENCY & TITLE DENSITY) ====================
   
@@ -487,7 +572,9 @@ export function simulateAtsCheck(
     }
   }
 
-  const recencyScore = recencyCount > 0 ? Math.round(recencyScoreSum / recencyCount) : 80;
+  // Brak dopasowań = brak świeżości (0), nie bonus 80 z sufitu (F4/R1).
+  // Poprzednie 80 pompowało medianę pustego profilu do ~39 (R5).
+  const recencyScore = recencyCount > 0 ? Math.round(recencyScoreSum / recencyCount) : 0;
 
   // Calculate Job Title Match / Density Score (St)
   const targetTitle = resume.targetJobTitle || vault.personalInfo.title || '';
@@ -513,7 +600,10 @@ export function simulateAtsCheck(
 
   // Apply layout / structure penalty
   const structurePenalty = (100 - structureScore) * 0.15 + (100 - formattingScore) * 0.10;
-  const overallScore = Math.max(0, Math.min(100, Math.round(weightedAlgebraScore - structurePenalty)));
+  const noRequirements = totalHardWeight === 0 && totalFormalWeight === 0;
+  const overallScore = noRequirements
+    ? 0
+    : Math.max(0, Math.min(100, Math.round(weightedAlgebraScore - structurePenalty)));
 
   const formulaBreakdown = `Algebra: Score = (3.0 × ${hardSkillScore}% [Hard Skills]) + (1.5 × ${recencyScore}% [Świeżość/Recency]) + (1.5 × ${titleMatchScore}% [Tytuł Stanowiska]) ÷ 6.0 - ${Math.round(structurePenalty)}% (Kara Układu)`;
 
@@ -627,6 +717,8 @@ export function calculateMedian(scores: number[]): number {
 /**
  * Wielosilnikowa symulacja audytu ATS oparta na 10 wewnętrznych modułach i filtrach CVelocity.
  * Oblicza medianę rynkową, indywidualne oceny modułów, konkretne propozycje zmian oraz realistyczną ocenę dopasowania.
+ *
+ * DIAGNOSTYKA SYMULACYJNA, nie wynik kanoniczny (jak `simulateAtsCheck` powyżej).
  */
 export function simulateMultiEngineATS(
   vault: MasterVault | Partial<MasterVault> | undefined | null,

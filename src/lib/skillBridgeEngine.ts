@@ -213,23 +213,13 @@ export function findSkillBridgeForGap(
     }
   }
 
-  // Jeśli kandydat nie posiada żadnych umiejętności w profilu, nie generujemy mostu
-  if (candidateSkills.length === 0) {
-    return undefined;
-  }
-
-  // Most generyczny oparty na rzeczywistej najwyższej umiejętności kandydata
-  const fallbackAdjacent = candidateSkills[0];
-  return {
-    id: `bridge_generic_${skillStr.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    missingSkill: skillStr,
-    adjacentSkill: fallbackAdjacent,
-    conceptualEquivalence: 'Transferowalność fundamentalnych wzorców zawodowych i sprawdzona szybkość adaptacji nowych standardów.',
-    bridgeExplanation: `Doświadczenie w ${fallbackAdjacent} stanowi bazę do szybkiego wdrożenia w specyfikę ${skillStr}.`,
-    talkingPoint: `Chociaż dotychczas skupiałem się na ${fallbackAdjacent}, fundamentalne zasady i logika działania w ${skillStr} są zbliżone. W moich projektach wielokrotnie udowodniłem zdolność szybkiego przyswajania nowych standardów bez kompromisów jakościowych.`,
-    learningCurveDays: 7,
-    confidenceScore: 75,
-  };
+  // Brak jawnej definicji mostu dla tej luki (albo brak udokumentowanej
+  // umiejętności pokrewnej) = brak mostu. Wcześniejszy fallback generyczny
+  // (`Excel → Kafka`, „pewność" 75%) fabrykował równoważność pojęciową dla
+  // dowolnej pary z pierwszej umiejętności z brzegu — liczba 75 nie miała
+  // kalibracji i wprowadzała w błąd (F12, faza 4: usuń fałszywą pewność).
+  // Wywołujący (`generateSkillBridges`) filtruje `undefined`.
+  return undefined;
 }
 
 /**

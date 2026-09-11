@@ -98,6 +98,11 @@ export function parseDateRangeToYears(
 
 /**
  * Oblicza bezwzględną różnicę w latach pomiędzy dwoma zakresami dat.
+ *
+ * @deprecated Nie używać do stażu — pojedyncze daty (`2020-01`) parsuje jako
+ * przedziały (19 lat) i wynik zgadza się tylko przez przypadkowe skasowanie
+ * dwóch błędów. Staż liczy `unionExperienceYears` (`lib/experience.ts`).
+ * Zostaje dla kompatybilności testów spójności rendererów.
  */
 export function calculateYearsDifference(
   rangeA: ClaimDateRange | string | undefined,
@@ -566,7 +571,6 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
 
   const verifiedMetrics: HudMetricItem[] = [];
   const skillCountMap = new Map<string, { count: number; claimIds: string[] }>();
-  let totalYears = 0;
 
   for (const claimId of effectiveClaimIds) {
     const claim = getClaimById(vault, claimId);
@@ -591,12 +595,42 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
       }
       skillCountMap.set(tag, entry);
     }
+  }
 
-    // Lata
-    const parsed = parseDateRangeToYears(claim.dateRange);
-    if (parsed) {
-      totalYears += parsed.durationYears;
+  // Oś czasu = unia przedziałów zatrudnienia (JEDEN przedział na wpis historii).
+  // Wcześniej każdy punktor dokładał pełny czas roli (2 lata × 5 punktorów
+  // + claim główny = 12 lat za 2 lata pracy) — F5. Projekty nie mają dat
+  // zatrudnienia (sztywne `2022-01–Obecnie` w generatorze claimów), więc ich
+  // nie liczymy do stażu. (Unia liczona lokalnie, żeby nie zapętlać importów
+  // z `lib/experience.ts`, który sam korzysta z `parseDateToDecimalYear` stąd.)
+  const employmentSpans: Array<{ start: number; end: number }> = [];
+  for (const exp of vault.history ?? []) {
+    if (!exp?.startDate) continue;
+    // Bezpośrednio na datach dziesiętnych: `parseDateRangeToYears` normalizuje
+    // min/max, więc odwrócenie wykrywamy przed nim (F5/F13).
+    const startYear = parseDateToDecimalYear(exp.startDate);
+    const endYear = parseDateToDecimalYear(exp.isCurrent ? 'Obecnie' : exp.endDate || exp.startDate);
+    if (startYear === null || endYear === null) continue;
+    const nowYear = parseDateToDecimalYear('Obecnie');
+    if (nowYear !== null && startYear > nowYear + 1 / 12) continue;
+    if (startYear > endYear) continue;
+    employmentSpans.push({ start: startYear, end: endYear });
+  }
+  employmentSpans.sort((a, b) => a.start - b.start);
+  let totalYears = 0;
+  if (employmentSpans.length > 0) {
+    let curStart = employmentSpans[0].start;
+    let curEnd = employmentSpans[0].end;
+    for (let k = 1; k < employmentSpans.length; k++) {
+      const next = employmentSpans[k];
+      if (next.start <= curEnd) curEnd = Math.max(curEnd, next.end);
+      else {
+        totalYears += curEnd - curStart;
+        curStart = next.start;
+        curEnd = next.end;
+      }
     }
+    totalYears += curEnd - curStart;
   }
 
   const skillsRadar: HudSkillStat[] = Array.from(skillCountMap.entries())
