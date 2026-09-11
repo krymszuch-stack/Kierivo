@@ -1,16 +1,9 @@
 #!/usr/bin/env node
 /**
- * Test polityk RLS: użytkownik A nie może odczytać danych użytkownika B.
+ * Destrukcyjny test polityk RLS. Tworzy i usuwa konta testowe.
  *
- * To jest jedyny test, który potwierdza, że przeniesienie danych na serwer
- * faktycznie je odgradza. Testy jednostkowe sprawdzają kod aplikacji; polityki
- * RLS egzekwuje baza i tylko baza może potwierdzić, że działają.
- *
- * Wymaga działającego Supabase (`supabase start`) albo projektu zdalnego.
- * Uruchomienie: `npm run test:rls`
- *
- * Zmienne: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
- * (lub VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).
+ * Domyślnie wolno mu działać WYŁĄCZNIE na lokalnym Supabase. Zdalna baza
+ * wymaga jawnego D04_ALLOW_REMOTE_TESTS=I_UNDERSTAND_THIS_CREATES_AND_DELETES_USERS.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -24,12 +17,27 @@ const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_
 if (!url || !serviceKey || !anonKey) {
   console.error(
     'Brak konfiguracji. Wymagane: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY.\n' +
-      'Uruchom `supabase start` i przepisz wypisane wartości do .env.'
+      'Uruchom lokalny Supabase i przekaż wartości z `supabase status -o env`.'
   );
   process.exit(1);
 }
 
-const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+const host = new URL(url).hostname;
+const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+const remoteOptIn =
+  process.env.D04_ALLOW_REMOTE_TESTS === 'I_UNDERSTAND_THIS_CREATES_AND_DELETES_USERS';
+
+if (!isLocal && !remoteOptIn) {
+  console.error(
+    `ODMOWA: test:rls tworzy i usuwa konta, a SUPABASE_URL wskazuje zdalny host (${host}).\n` +
+      'Uruchom go na lokalnym/odrębnym środowisku testowym. Zdalne uruchomienie wymaga jawnego opt-in.'
+  );
+  process.exit(2);
+}
+
+const admin = createClient(url, serviceKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 const failures = [];
 const created = [];
@@ -43,7 +51,6 @@ function check(name, passed, detail = '') {
   }
 }
 
-/** Zakłada konto i zwraca klienta działającego jako ten użytkownik. */
 async function createUser(label) {
   const email = `rls-${label}-${randomUUID()}@example.test`;
   const password = `Test-${randomUUID()}`;
@@ -58,10 +65,12 @@ async function createUser(label) {
   created.push(data.user.id);
 
   const client = createClient(url, anonKey, { auth: { persistSession: false } });
-  const { error: signInError } = await client.auth.signInWithPassword({ email, password });
-  if (signInError) throw new Error(`Nie udało się zalogować ${label}: ${signInError.message}`);
+  const { data: login, error: signInError } = await client.auth.signInWithPassword({ email, password });
+  if (signInError || !login.session) {
+    throw new Error(`Nie udało się zalogować ${label}: ${signInError?.message ?? 'brak sesji'}`);
+  }
 
-  return { id: data.user.id, client };
+  return { id: data.user.id, client, accessToken: login.session.access_token };
 }
 
 async function cleanup() {
@@ -76,12 +85,11 @@ async function cleanup() {
 }
 
 try {
-  console.log('\nTest polityk RLS\n');
+  console.log(`\nTest polityk RLS (${isLocal ? 'lokalne środowisko izolowane' : 'zdalne środowisko z jawnym opt-in'})\n`);
 
   const alice = await createUser('alice');
   const bob = await createUser('bob');
 
-  // Vault Alicji, zapisany kluczem serwisowym (tak jak robi to API).
   await admin.from('vaults').upsert({
     user_id: alice.id,
     data: { sekret: 'CV Alicji' },
@@ -103,7 +111,7 @@ try {
     `zwrócono ${bobReadsVault.data?.length ?? 0} wierszy`
   );
 
-  const bobReadsApps = await bob.client.from('applications').select('*');
+  const bobReadsApps = await bob.client.from('applications').select('*').eq('user_id', alice.id);
   check(
     'Bob nie widzi aplikacji Alicji',
     (bobReadsApps.data ?? []).length === 0,
@@ -117,11 +125,15 @@ try {
     `zwrócono ${aliceReadsOwn.data?.length ?? 0} wierszy`
   );
 
-  console.log('\nIzolacja zapisu między kontami (UPDATE/DELETE):');
+  console.log('\nIzolacja zapisu między kontami:');
 
-  // Odczyt to połowa granicy. Polityka UPDATE bez `with check` albo DELETE
-  // bez polityki usuwania pozwoliłyby drugiej osobie zmazać cudze CV mimo
-  // braku możliwości jego zobaczenia.
+  const bobInsertsAsAlice = await bob.client.from('vaults').upsert({
+    user_id: alice.id,
+    data: { sekret: 'Fałszywy vault' },
+    version: '2',
+  });
+  check('Bob nie może zapisać wiersza jako Alicja', bobInsertsAsAlice.error !== null, 'zapis się powiódł');
+
   const bobOverwrites = await bob.client
     .from('vaults')
     .update({ data: { sekret: 'Podmienione przez Boba' } })
@@ -132,31 +144,28 @@ try {
     .eq('user_id', alice.id)
     .maybeSingle();
   check(
-    "Bob nie może nadpisać vaultu Alicji",
+    'Bob nie może nadpisać vaultu Alicji',
     aliceAfterOverwrite.data?.data?.sekret === 'CV Alicji',
     bobOverwrites.error ? `błąd: ${bobOverwrites.error.message}` : 'aktualizacja dotknęła wiersz'
   );
 
   const bobDeletes = await bob.client.from('vaults').delete().eq('user_id', alice.id);
-  const aliceCountAfterDelete = await admin.from('vaults').select('*', { count: 'exact', head: true }).eq('user_id', alice.id);
+  const aliceCountAfterDelete = await admin
+    .from('vaults')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', alice.id);
   check(
     'Bob nie może usunąć vaultu Alicji',
     (aliceCountAfterDelete.count ?? 0) === 1,
     bobDeletes.error ? `błąd: ${bobDeletes.error.message}` : `wierszy po próbie: ${aliceCountAfterDelete.count ?? 0}`
   );
 
-  console.log('\nOchrona statusu subskrypcji:');
+  console.log('\nOchrona danych serwerowych i kwot:');
 
-  // Sedno sprawy: gdyby to przeszło, plan Pro byłby darmowy dla każdego, kto
-  // otworzy konsolę przeglądarki.
   const selfUpgrade = await bob.client
     .from('subscriptions')
     .upsert({ user_id: bob.id, status: 'active' });
-  check(
-    'Bob nie może nadać sobie statusu active',
-    selfUpgrade.error !== null,
-    'zapis się powiódł'
-  );
+  check('Bob nie może nadać sobie statusu active', selfUpgrade.error !== null, 'zapis się powiódł');
 
   const quotaTamper = await bob.client
     .from('usage_counters')
@@ -164,15 +173,10 @@ try {
   check('Bob nie może wyzerować własnych liczników', quotaTamper.error !== null, 'zapis się powiódł');
 
   const rpcTamper = await bob.client.rpc('consume_quota', { p_user: alice.id, p_kind: 'ai' });
-  check(
-    'Bob nie może wywołać consume_quota bezpośrednio',
-    rpcTamper.error !== null,
-    'wywołanie się powiodło'
-  );
+  check('Bob nie może wywołać consume_quota bezpośrednio', rpcTamper.error !== null, 'RPC się powiodło');
 
-  console.log('\nLimity:');
+  console.log('\nLimity i race condition:');
 
-  // Plan darmowy ma 5 wywołań AI. Szóste musi zostać odrzucone.
   const results = [];
   for (let i = 0; i < 6; i++) {
     const { data } = await admin.rpc('consume_quota', { p_user: bob.id, p_kind: 'ai' });
@@ -184,12 +188,6 @@ try {
     `wyniki: ${results.join(', ')}`
   );
 
-  console.log('\nWyścig o limit AI (blokada pesymistyczna):');
-
-  // Dziesięć równoległych rezerwacji z limitem 5. Bez `SELECT ... FOR UPDATE`
-  // w procedurze wszystkie dziesięć zdążyłoby odczytać licznik przed jakimkolwiek
-  // zapisem i każda przeszłaby — to jest dokładnie klasa wyścigu, którą test
-  // ma wyłapać, zanim trafi na produkcję.
   const race = await Promise.all(
     Array.from({ length: 10 }, () =>
       admin.rpc('reserve_ai_quota', { p_user_id: alice.id, p_max_daily_uses: 5 })
@@ -203,7 +201,7 @@ try {
     `dopuszczono: ${allowedCount}, odrzucono: ${deniedCount}`
   );
 
-  console.log('\nUsunięcie konta:');
+  console.log('\nUsunięcie konta i stary token:');
 
   await admin.rpc('delete_user_data', { p_user: alice.id });
   const leftovers = await admin.from('vaults').select('*').eq('user_id', alice.id);
@@ -211,8 +209,32 @@ try {
 
   const leftoverApps = await admin.from('applications').select('*').eq('user_id', alice.id);
   check('delete_user_data usuwa aplikacje', (leftoverApps.data ?? []).length === 0);
+
+  const deleted = await admin.auth.admin.deleteUser(alice.id);
+  check('konto Auth Alicji zostało usunięte', deleted.error === null, deleted.error?.message ?? '');
+
+  const oldTokenClient = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${alice.accessToken}` } },
+  });
+
+  const oldTokenUser = await oldTokenClient.auth.getUser(alice.accessToken);
+  check('stary token nie potwierdza już istnienia użytkownika', oldTokenUser.error !== null);
+
+  const oldTokenReads = await oldTokenClient.from('vaults').select('*').eq('user_id', alice.id);
+  check('stary token nie odzyskuje usuniętego vaultu', (oldTokenReads.data ?? []).length === 0);
+
+  const oldTokenRecreates = await oldTokenClient.from('vaults').insert({
+    user_id: alice.id,
+    data: { sekret: 'Próba po usunięciu' },
+    version: '1',
+  });
+  check('stary token nie może odtworzyć danych usuniętego konta', oldTokenRecreates.error !== null);
+
+  const aliceIndex = created.indexOf(alice.id);
+  if (aliceIndex >= 0) created.splice(aliceIndex, 1);
 } catch (err) {
-  console.error('\nTest przerwany:', err.message);
+  console.error('\nTest przerwany:', err instanceof Error ? err.message : String(err));
   failures.push('wyjątek');
 } finally {
   await cleanup();
@@ -223,4 +245,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('\n✓ Wszystkie polityki działają.\n');
+console.log('\n✓ Wszystkie polityki i granice po usunięciu konta działają.\n');

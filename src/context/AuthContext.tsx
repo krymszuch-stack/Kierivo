@@ -20,6 +20,7 @@ import {
 import { MasterVault } from '../types';
 import { getSupabaseBrowserClient } from '../lib/supabaseClient';
 import { authErrorMessage } from '../lib/authErrors';
+import { passwordRecoveryRedirectError, stripAuthErrorParams } from '../lib/authRecovery';
 import { removeRaw, vaultKeyFor } from '../lib/storage';
 import { showToast } from '../store/useToastStore';
 import { setAccessTokenProvider } from '../lib/apiClient';
@@ -49,12 +50,18 @@ interface AuthContextType {
   userVault: MasterVault | null;
   /** Rzeczywisty stan trwałości bieżącego CV. */
   vaultSyncStatus: VaultSyncStatus;
+  /** Supabase ustanowił sesję z prawidłowego linku PASSWORD_RECOVERY. */
+  passwordRecoveryActive: boolean;
+  /** Polski komunikat dla wygasłego lub nieprawidłowego linku recovery. */
+  passwordRecoveryError: string | null;
 
   signInLocally: (name: string, email?: string) => MasterVault;
   signUpCloud: (email: string, password: string, displayName: string) => Promise<AuthActionResult>;
   signInCloud: (email: string, password: string) => Promise<AuthActionResult>;
   signInWithGoogle: () => Promise<AuthActionResult>;
   requestPasswordReset: (email: string) => Promise<AuthActionResult>;
+  updateRecoveredPassword: (password: string) => Promise<AuthActionResult>;
+  clearPasswordRecoveryError: () => void;
   resendConfirmation: (email: string) => Promise<AuthActionResult>;
 
   logout: () => Promise<void>;
@@ -66,6 +73,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const CHMURA_NIESKONFIGUROWANA = 'Konta w chmurze nie są tu skonfigurowane.';
 
+/**
+ * Powrót zawsze prowadzi na bieżący origin. Na produkcji daje to domenę,
+ * z której użytkownik faktycznie korzysta (np. domenę własną zamiast technicznej
+ * domeny hostingu), a lokalnie ten sam kod wraca do localhosta.
+ */
 function redirectTarget(): string {
   return `${window.location.origin}/`;
 }
@@ -93,6 +105,8 @@ export const AuthProvider: React.FC<{
     return active ? loadProfileVault(active.id) : null;
   });
   const [vaultSyncStatus, setVaultSyncStatus] = useState<VaultSyncStatus>('local');
+  const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
+  const [passwordRecoveryError, setPasswordRecoveryError] = useState<string | null>(null);
 
   const supabase = getSupabaseBrowserClient();
   const cloudAvailable = supabase !== null;
@@ -113,6 +127,16 @@ export const AuthProvider: React.FC<{
 
     let active = true;
 
+    // Gdy jednorazowy link już wygasł, Supabase nie ustanowi sesji i nie wyśle
+    // PASSWORD_RECOVERY. Błąd wraca wtedy w URL — przechwytujemy wyłącznie
+    // błędy tokenu, tłumaczymy je i usuwamy techniczne parametry z adresu.
+    const redirectError = passwordRecoveryRedirectError(window.location.search, window.location.hash);
+    if (redirectError) {
+      setPasswordRecoveryActive(false);
+      setPasswordRecoveryError(redirectError);
+      window.history.replaceState(null, '', stripAuthErrorParams(window.location.href));
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       if (!active || !data.session) return;
       const profile = profileFromSession(data.session);
@@ -131,8 +155,17 @@ export const AuthProvider: React.FC<{
         setUser(profile);
         setMode('cloud');
         setVaultSyncStatus(getCloudVaultSyncStatus(profile.id));
-        if (event === 'SIGNED_IN' && window.location.hash.includes('access_token')) {
-          window.history.replaceState(null, '', window.location.pathname);
+
+        if (event === 'PASSWORD_RECOVERY') {
+          setPasswordRecoveryActive(true);
+          setPasswordRecoveryError(null);
+        }
+
+        if (
+          (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY') &&
+          window.location.hash.includes('access_token')
+        ) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
         }
         return;
       }
@@ -143,6 +176,7 @@ export const AuthProvider: React.FC<{
         setMode(null);
         setUserVault(null);
         setVaultSyncStatus('local');
+        setPasswordRecoveryActive(false);
       }
     });
 
@@ -245,6 +279,27 @@ export const AuthProvider: React.FC<{
     [supabase]
   );
 
+  const updateRecoveredPassword = useCallback(
+    async (password: string): Promise<AuthActionResult> => {
+      if (!supabase) return { ok: false, message: CHMURA_NIESKONFIGUROWANA };
+      if (!passwordRecoveryActive) {
+        return { ok: false, message: 'Link do zmiany hasła nie jest już aktywny. Poproś o nowy.' };
+      }
+
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) return { ok: false, message: authErrorMessage(error) };
+
+      setPasswordRecoveryActive(false);
+      setPasswordRecoveryError(null);
+      return { ok: true, message: '' };
+    },
+    [supabase, passwordRecoveryActive]
+  );
+
+  const clearPasswordRecoveryError = useCallback(() => {
+    setPasswordRecoveryError(null);
+  }, []);
+
   const resendConfirmation = useCallback(
     async (email: string): Promise<AuthActionResult> => {
       if (!supabase) return { ok: false, message: CHMURA_NIESKONFIGUROWANA };
@@ -272,6 +327,8 @@ export const AuthProvider: React.FC<{
     setMode(null);
     setUserVault(null);
     setVaultSyncStatus('local');
+    setPasswordRecoveryActive(false);
+    setPasswordRecoveryError(null);
   }, [mode, supabase, user]);
 
   const deleteAccount = useCallback(async (): Promise<AuthActionResult> => {
@@ -289,6 +346,8 @@ export const AuthProvider: React.FC<{
       setMode(null);
       setUserVault(null);
       setVaultSyncStatus('local');
+      setPasswordRecoveryActive(false);
+      setPasswordRecoveryError(null);
       return { ok: true, message: '' };
     }
 
@@ -297,6 +356,8 @@ export const AuthProvider: React.FC<{
     setMode(null);
     setUserVault(null);
     setVaultSyncStatus('local');
+    setPasswordRecoveryActive(false);
+    setPasswordRecoveryError(null);
     return { ok: true, message: '' };
   }, [mode, supabase, user?.id]);
 
@@ -357,11 +418,15 @@ export const AuthProvider: React.FC<{
       cloudAvailable,
       userVault,
       vaultSyncStatus,
+      passwordRecoveryActive,
+      passwordRecoveryError,
       signInLocally,
       signUpCloud,
       signInCloud,
       signInWithGoogle,
       requestPasswordReset,
+      updateRecoveredPassword,
+      clearPasswordRecoveryError,
       resendConfirmation,
       logout,
       deleteAccount,
@@ -375,11 +440,15 @@ export const AuthProvider: React.FC<{
       cloudAvailable,
       userVault,
       vaultSyncStatus,
+      passwordRecoveryActive,
+      passwordRecoveryError,
       signInLocally,
       signUpCloud,
       signInCloud,
       signInWithGoogle,
       requestPasswordReset,
+      updateRecoveredPassword,
+      clearPasswordRecoveryError,
       resendConfirmation,
       logout,
       deleteAccount,
