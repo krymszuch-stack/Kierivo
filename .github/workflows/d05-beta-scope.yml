@@ -34,10 +34,16 @@ jobs:
       - name: Build Client and Server
         run: npm run build
 
+      # Playwright jest narzędziem odbiorowym, nie zależnością produktu. Instalujemy
+      # go w osobnym prefixie, bo npm 10 potrafi wywalić Arborist `edgesOut`, gdy
+      # po `npm ci` próbuje domontować pakiet --no-save do istniejącego drzewa.
       - name: Install browser for acceptance proof
         run: |
-          npm install --no-save --no-package-lock playwright@1.55.0
-          npx playwright install --with-deps chromium
+          rm -rf /tmp/d05-playwright
+          mkdir -p /tmp/d05-playwright
+          npm install --prefix /tmp/d05-playwright --no-save --package-lock=false playwright@1.55.0
+          /tmp/d05-playwright/node_modules/.bin/playwright install --with-deps chromium
+          cp scripts/d05-beta-proof.mjs /tmp/d05-playwright/d05-beta-proof.mjs
 
       - name: Browser acceptance — result and beta scope without payment
         shell: bash
@@ -61,7 +67,7 @@ jobs:
             exit 1
           fi
 
-          node scripts/d05-beta-proof.mjs | tee artifacts/d05-beta/proof.txt
+          node /tmp/d05-playwright/d05-beta-proof.mjs | tee artifacts/d05-beta/proof.txt
 
       - name: Upload D05 evidence
         if: always()
