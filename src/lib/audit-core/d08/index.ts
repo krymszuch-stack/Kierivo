@@ -43,5 +43,11 @@ export {
   D08_CONFIG,
   D08_MODULE_ID,
   D08_MODULE_NAME,
-  scoreStructuralReadability,
+  scoreStructuralReadability as scoreStructuralReadabilityUnchecked,
 } from './scorer';
+
+export {
+  D08_READING_ORDER_MIN_SCORING_CONFIDENCE,
+  hardenD08ScoringSignals,
+  scoreStructuralReadability,
+} from './strictScorer';
