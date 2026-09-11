@@ -1,5 +1,8 @@
 import { MasterVault } from '../types';
+import { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
+import { mergeImportedVault } from './vaultImportMerge';
 import { getSupabaseBrowserClient } from './supabaseClient';
+import { readJson } from './storage';
 
 /**
  * Vault w chmurze — odczyt i zapis wprost z przeglądarki.
@@ -21,8 +24,12 @@ import { getSupabaseBrowserClient } from './supabaseClient';
  * omija i dlatego musi sam pilnować `user_id`.
  */
 
-/** Ta sama tabela, z której korzysta `src/server/routes/vault.routes.ts`. */
 const TABELA = 'vaults';
+
+interface PendingVaultEnvelope {
+  ownerId: string;
+  vault: MasterVault;
+}
 
 export class CloudVaultError extends Error {
   constructor(message: string) {
@@ -42,15 +49,30 @@ function client() {
 /**
  * Vault zalogowanego użytkownika albo `null`, gdy konto jest świeże.
  *
- * Brak wiersza to **normalny stan nowego konta, nie błąd** — tak samo jak
- * w `GET /api/vault`, które z tego samego powodu zwraca 200 z `vault: null`,
- * a nie 404.
+ * Jeżeli dla tego samego właściciela istnieje trwały, jeszcze niepotwierdzony
+ * zapis, odczyt uwzględnia go jako najnowszą lokalną warstwę. Dzięki temu po
+ * logout/reload nie pokazujemy przez moment starszej chmury i nie ryzykujemy
+ * nadpisania niedostarczonej pracy. Outbox nadal znika wyłącznie po ACK zapisu.
  */
 export async function fetchCloudVault(): Promise<MasterVault | null> {
-  const { data, error } = await client().from(TABELA).select('data').maybeSingle();
+  const supabase = client();
+  const { data: sessionData } = await supabase.auth.getSession();
+  const ownerId = sessionData.session?.user?.id;
 
+  if (!ownerId) throw new CloudVaultError('Brak aktywnej sesji — zaloguj się ponownie.');
+
+  const { data, error } = await supabase.from(TABELA).select('data').maybeSingle();
   if (error) throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
-  return (data?.data as MasterVault | undefined) ?? null;
+
+  const remote = (data?.data as MasterVault | undefined) ?? null;
+  const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
+
+  if (!pending || pending.ownerId !== ownerId || !pending.vault) return remote;
+  if (!remote) return pending.vault;
+
+  // Chmura jest podstawą, bo może zawierać wpisy z innego urządzenia. Pending
+  // jest warstwą świeższą dla pól bieżącego urządzenia; merge nie usuwa list.
+  return mergeImportedVault(remote, pending.vault);
 }
 
 /**
