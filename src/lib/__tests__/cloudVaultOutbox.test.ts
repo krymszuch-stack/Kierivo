@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MasterVault } from '../../types';
 import { createEmptyVault } from '../sampleVault';
 import {
   enqueueCloudVaultSave,
@@ -43,7 +44,7 @@ describe('cloudVaultOutbox', () => {
     const b = createEmptyVault('Wersja B', 'b@example.pl');
 
     let confirmA: (() => void) | undefined;
-    const sender = vi.fn((vault) => {
+    const sender = vi.fn((vault: MasterVault) => {
       if (vault.personalInfo.fullName === 'Wersja A') {
         return new Promise<void>((resolve) => {
           confirmA = resolve;
