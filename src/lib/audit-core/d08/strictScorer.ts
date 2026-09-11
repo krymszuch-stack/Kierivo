@@ -31,5 +31,32 @@ export function hardenD08ScoringSignals(rawSignals: D08Signals): D08Signals {
 }
 
 export function scoreStructuralReadability(signals: D08Signals): AuditModuleResult {
-  return scoreUnchecked(hardenD08ScoringSignals(signals));
+  const orderConfidence = clamp01(signals.readingOrder.measurementConfidence ?? 0);
+  const orderIsEvidenceGated = orderConfidence < D08_READING_ORDER_MIN_SCORING_CONFIDENCE;
+  const result = scoreUnchecked(hardenD08ScoringSignals(signals));
+
+  if (
+    !orderIsEvidenceGated ||
+    result.missingEvidence.some(
+      (missing) => missing.requirementCode === 'D08_READING_ORDER_MEASUREMENT',
+    )
+  ) {
+    return result;
+  }
+
+  return {
+    ...result,
+    missingEvidence: [
+      ...result.missingEvidence,
+      {
+        id: 'MISS_D08_READING_ORDER_EVIDENCE_GATE',
+        requirementCode: 'D08_READING_ORDER_MEASUREMENT',
+        targetScope: 'READING_ORDER',
+        description: `Pomiar kolejności odczytu ma confidence ${orderConfidence.toFixed(3)}, poniżej wymaganego progu ${D08_READING_ORDER_MIN_SCORING_CONFIDENCE.toFixed(2)}. Sygnał pozostaje diagnostyczny i nie wpływa na score ani hard cap.`,
+        severity: 'MEDIUM',
+        expectedEvidenceWeight: D08_BASE_WEIGHTS.READING_ORDER,
+        suggestedAction: 'Dostarcz referencyjny porządek bloków lub pomiar kolejności o wystarczająco wysokiej pewności.',
+      },
+    ],
+  };
 }
