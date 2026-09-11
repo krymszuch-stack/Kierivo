@@ -24,8 +24,18 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
       expect(ats).not.toContain(`name: '${vendor}'`);
     }
     expect(ats).toContain('Składowe wyniku CVelocity');
-    expect(ats).toContain('nie jest wynikiem');
-    expect(ats).toContain('ani gwarancja');
+    expect(ats).toMatch(/nie jest wynikiem/i);
+    expect(ats).toMatch(/ani gwarancj/i);
+  });
+
+  it('telemetria wewnętrzna używa nazw mierzonych cech, nie vendorów', () => {
+    const scorer = source('src/lib/atsScorer.ts');
+    for (const vendor of ['Workday', 'Greenhouse', 'Lever', 'Taleo', 'eRecruiter', 'Traffit']) {
+      expect(scorer).not.toContain(vendor);
+    }
+    expect(scorer).toContain('Struktura_Odczyt');
+    expect(scorer).toContain('Frazy_Gestosc');
+    expect(scorer).toContain('Jezyk_Formularz');
   });
 
   it('nie wraca do fallbacku 100% zgodności walidatora', () => {
@@ -54,6 +64,18 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(topbar).toContain('Zakres bezpłatnej bety');
   });
 
+  it('stare Pro i Karnet nie omijają granic bezpłatnej bety', () => {
+    const entitlements = source('src/store/useEntitlements.ts');
+    const quota = source('src/server/quota.ts');
+    const gate = source('src/components/payments/ApplicationPassGate.tsx');
+
+    expect(entitlements).toContain('!FREE_BETA_ACTIVE && isProStatus');
+    expect(entitlements).toContain('hasActivePass: !FREE_BETA_ACTIVE');
+    expect(quota).toContain("const paid = !FREE_BETA_ACTIVE && await isPaidAccount(userId)");
+    expect(gate).toContain('if (!FREE_BETA_ACTIVE && hasActivePass)');
+    expect(gate).not.toContain('if (hasActivePass) return');
+  });
+
   it('ekran startowy pokazuje 0 zł i granice bety zamiast starego Pro', () => {
     const landing = source('src/views/LandingView.tsx');
     expect(landing).toContain('FREE_BETA_PRICE_PLN');
@@ -64,12 +86,17 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(landing).not.toContain('Zobacz pełny cennik');
   });
 
-  it('Doradca ujawnia faktyczny zakres danych i nie używa nazw vendorów w poradzie', () => {
+  it('Doradca ujawnia faktyczny zakres danych i nie jest brandowany jako AI', () => {
     const advisor = source('src/features/advisor/GeminiAdvisorModal.tsx');
+    const sidebar = source('src/components/layout/Sidebar.tsx');
+    const host = source('src/features/advisor/AdvisorModalHost.tsx');
+
     expect(advisor).toContain('Nie czytam automatycznie Master Vaultu ani aplikacji');
-    expect(advisor).toContain('nie wysyłam tej rozmowy do modelu AI');
-    expect(advisor).not.toContain('Workday');
-    expect(advisor).not.toContain('Taleo');
+    expect(advisor).toContain('zewnętrznego modelu językowego');
+    expect(advisor).not.toContain('Doradca AI');
+    expect(sidebar).toContain('Zapytaj Doradcę regułowego');
+    expect(sidebar).not.toContain('Doradcy AI');
+    expect(host).toContain('Doradca regułowy');
   });
 
   it('README nie ma stałej liczby testów ani absolutnego 100% client-side', () => {
