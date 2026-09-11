@@ -57,7 +57,14 @@ export interface D09CandidateEvidence {
   source: D09CandidateSource;
   sourceLabel: string;
   evidenceDepth: number;
+  /** Jakość pomiaru/ekstrakcji. Wpływa na confidence, nie jest karą score. */
   extractionConfidence: number;
+  /**
+   * Siła samego twierdzenia semantycznego. Literalne/kanoniczne evidence = 1.
+   * Wniosek heurystyczny/NLI może mieć np. 0.7. To jest część match strength,
+   * a nie substytut extraction confidence.
+   */
+  claimStrength: number;
   evidence: Evidence;
 }
 
