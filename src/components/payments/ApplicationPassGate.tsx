@@ -1,12 +1,13 @@
 import React from 'react';
+import { FREE_BETA_ACTIVE } from '../../lib/beta';
 
 /**
  * Bramka funkcji, która historycznie należała do Karnetu Aplikacyjnego.
  *
- * W bezpłatnej becie nie ma aktywnej sprzedaży, więc komponent nie może
- * prowadzić do cennika ani checkoutu. Istniejące konto z aktywnym uprawnieniem
- * zachowuje dostęp, ale nowy tester dostaje jednoznaczną informację o granicy
- * zakresu zamiast martwego CTA.
+ * W bezpłatnej becie nie ma aktywnej sprzedaży ani płatnych wyjątków. Stare
+ * uprawnienie pozostaje faktem historycznym konta, ale nie odblokowuje funkcji
+ * wyłączonej z zakresu bieżącej bety. Po zakończeniu bety można ponownie użyć
+ * `hasActivePass` bez zmieniania kontraktu komponentu.
  */
 export interface ApplicationPassGateProps {
   hasActivePass: boolean;
@@ -19,7 +20,7 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
   pitch,
   children,
 }) => {
-  if (hasActivePass) return <>{children}</>;
+  if (!FREE_BETA_ACTIVE && hasActivePass) return <>{children}</>;
 
   return (
     <section
@@ -37,11 +38,12 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
         {pitch}
       </p>
       <p className="mx-auto mt-3 max-w-prose text-sm font-semibold text-ink">
-        Ta funkcja nie jest obecnie udostępniana nowym testerom i nie można dokupić do niej dostępu.
+        Ta funkcja nie jest obecnie udostępniana w becie i nie można dokupić do niej dostępu.
       </p>
       <p className="mx-auto mt-2 max-w-prose text-xs text-muted">
-        Podstawowy przepływ bety, czyli profil, audyt CVelocity, dopasowanie do oferty,
-        przygotowanie dokumentu i pipeline, działa bez Karnetu.
+        Historyczny Karnet nie odblokowuje tej funkcji w tym wydaniu. Podstawowy przepływ bety,
+        czyli profil, audyt CVelocity, dopasowanie do oferty, przygotowanie dokumentu i pipeline,
+        działa bez Karnetu.
       </p>
     </section>
   );
