@@ -4,4 +4,5 @@ export * from './requirementParser';
 export * from './candidateEvidence';
 export * from './matching';
 export * from './scorer';
+export * from './presentation';
 export * from './engine';
