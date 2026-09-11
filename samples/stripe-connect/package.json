@@ -1,0 +1,22 @@
+{
+  "name": "cvelocity-sample-stripe-connect",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Przykładowa integracja Stripe Connect: onboarding sprzedawców, produkty platformy i sklep z opłatą aplikacyjną.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "stripe": "^22.6.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}

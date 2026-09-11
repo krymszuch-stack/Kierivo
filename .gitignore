@@ -62,3 +62,8 @@ semantic-work-graph/data/seed/esco-taxonomy.pl.csv
 bun.lock
 yarn.lock
 pnpm-lock.yaml
+
+# Magazyn próbki Stripe Connect — mapowanie sprzedawców na konta połączone.
+# Powstaje przy pierwszym utworzeniu konta i zawiera identyfikatory kont
+# z konta Stripe osoby uruchamiającej próbkę, więc nie należy do repozytorium.
+samples/stripe-connect/.dane/

@@ -36,5 +36,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["semantic-work-graph", "supabase/functions", "node_modules", "dist"]
+  "exclude": ["semantic-work-graph", "samples", "supabase/functions", "node_modules", "dist"]
 }
