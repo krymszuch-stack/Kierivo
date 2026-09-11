@@ -97,10 +97,16 @@ export const PasswordRecoveryModal: React.FC = () => {
       setBlad('');
       setPracuje(true);
 
-      // Niezależnie od tego, czy adres istnieje, UI kończy tym samym
-      // komunikatem. Nie tworzymy przez reset hasła wyszukiwarki kont.
-      await requestPasswordReset(email.trim());
+      // Supabase nie ujawnia tutaj, czy konto istnieje, więc możemy bezpiecznie
+      // pokazać błąd transportu/rate limitu, nie tworząc wyszukiwarki kont.
+      const wynik = await requestPasswordReset(email.trim());
       setPracuje(false);
+
+      if (!wynik.ok) {
+        setBlad(wynik.message);
+        return;
+      }
+
       setWyslanoPonownie(true);
     },
     [email, requestPasswordReset]
