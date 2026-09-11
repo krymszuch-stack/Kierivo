@@ -16,6 +16,10 @@ export { PERSIST_DELAY_MS };
  * Tutaj zostaje wyłącznie spięcie jej z cyklem życia komponentu, żeby ta część,
  * której nie da się przetestować w Node, była możliwie cienka.
  *
+ * Ważna reguła D02/D03: gdy zmienia się funkcja `persist` (np. po zmianie
+ * profilu), zaległa wartość jest najpierw dosyłana starą funkcją. Inaczej
+ * opóźniony zapis profilu A mógłby po renderze trafić już do kontekstu profilu B.
+ *
  * @param value wartość do utrwalenia
  * @param persist funkcja zapisująca; jej zmiana nie przestawia zegara
  * @returns `flush` do ręcznego dosłania (np. przed wylogowaniem)
@@ -29,15 +33,12 @@ export function useDeferredPersist<T>(
   const writerRef = useRef<DeferredWriter<T> | null>(null);
 
   useEffect(() => {
+    // Najpierw domykamy zapis należący do poprzedniego właściciela/kontekstu.
+    // Dopiero potem podmieniamy callback na nowy.
+    if (persistRef.current !== persist) writerRef.current?.flush();
     persistRef.current = persist;
   }, [persist]);
 
-  // Writer powstaje w efekcie, nie podczas renderowania: konstruowanie go w
-  // ciele komponentu oznaczałoby sięganie do referencji w fazie, w której React
-  // nie gwarantuje jej aktualności.
-  //
-  // Sprzątanie dosyła zaległy zapis — to ono domyka okno utraty danych przy
-  // odmontowaniu komponentu.
   useEffect(() => {
     const writer = createDeferredWriter<T>((v) => persistRef.current(v), delayMs);
     writerRef.current = writer;
@@ -51,8 +52,6 @@ export function useDeferredPersist<T>(
   const flush = useCallback(() => writerRef.current?.flush(), []);
   const cancel = useCallback(() => writerRef.current?.cancel(), []);
 
-  // Efekt zgłaszający wartość jest zadeklarowany po efekcie tworzącym, więc
-  // przy pierwszym renderowaniu writer już istnieje.
   useEffect(() => {
     writerRef.current?.push(value);
   }, [value]);
