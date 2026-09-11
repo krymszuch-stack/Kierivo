@@ -70,6 +70,8 @@ export function createCleanD08Signals(): D08Signals {
       evidenceIds: ['EV_LISTS'],
     },
     adversarial: {
+      hiddenTextMeasured: true,
+      duplicateInvisibleLayerMeasured: true,
       hiddenTextRatio: 0,
       duplicateInvisibleLayerRatio: 0,
       hiddenTextEvidenceIds: [],
