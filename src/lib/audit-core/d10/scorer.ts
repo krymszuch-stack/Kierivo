@@ -6,6 +6,11 @@ import type {
   ScoreComponent,
 } from '../contracts';
 import { buildScoreLedger } from '../ledger';
+import {
+  buildD10LogicalRequirementUnits,
+  satisfiedAnyOfAlternativeIds,
+  type D10LogicalRequirementUnit,
+} from './logicalUnits';
 import { matchD10Requirement } from './matching';
 import type {
   D10AuditResult,
@@ -19,14 +24,18 @@ const MODULE_NAME = 'Wymagania formalne i uprawnienia';
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 const round = (value: number): number => Math.round(value * 1e6) / 1e6;
 
-function weightedCoverage(matches: readonly D10RequirementMatch[]): number | null {
-  if (matches.length === 0) return null;
-  const denominator = matches.reduce((sum, match) => sum + Math.max(0, match.requirement.weight), 0);
+function weightedCoverage(units: readonly D10LogicalRequirementUnit[]): number | null {
+  if (units.length === 0) return null;
+  const denominator = units.reduce((sum, unit) => sum + Math.max(0, unit.weight), 0);
   if (denominator <= Number.EPSILON) return null;
-  return matches.reduce(
-    (sum, match) => sum + match.fulfillment * Math.max(0, match.requirement.weight),
+  return units.reduce(
+    (sum, unit) => sum + unit.fulfillment * Math.max(0, unit.weight),
     0,
   ) / denominator;
+}
+
+function unitExtractionConfidence(unit: D10LogicalRequirementUnit): number {
+  return Math.min(...unit.memberMatches.map((match) => match.requirement.extractionConfidence));
 }
 
 function component(
@@ -94,6 +103,7 @@ function notApplicableResult(input: D10ScoringInput): D10AuditResult {
       preferredCoverage: null,
       unknownMandatoryWeightShare: 0,
       matches: [],
+      groups: input.extraction.groups,
       missingCoreMustIds: [],
       adaptiveSignal: input.extraction.adaptiveSignal,
     },
@@ -110,22 +120,27 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
     input.sourceCompletenessConfidence,
     input.referenceDateIso,
   ));
+  const units = buildD10LogicalRequirementUnits(matches, input.extraction.groups);
+  const satisfiedAlternatives = satisfiedAnyOfAlternativeIds(units);
 
-  const mandatoryMatches = matches.filter((match) => match.requirement.priority !== 'PREFERRED');
-  const preferredMatches = matches.filter((match) => match.requirement.priority === 'PREFERRED');
-  const totalMandatoryWeight = mandatoryMatches.reduce((sum, match) => sum + match.requirement.weight, 0);
-  const unknownMandatoryWeight = mandatoryMatches
-    .filter((match) => match.status === 'UNKNOWN')
-    .reduce((sum, match) => sum + match.requirement.weight, 0);
+  const mandatoryUnits = units.filter((unit) => unit.priority !== 'PREFERRED');
+  const preferredUnits = units.filter((unit) => unit.priority === 'PREFERRED');
+  const totalMandatoryWeight = mandatoryUnits.reduce((sum, unit) => sum + unit.weight, 0);
+  const unknownMandatoryWeight = mandatoryUnits
+    .filter((unit) => unit.status === 'UNKNOWN')
+    .reduce((sum, unit) => sum + unit.weight, 0);
   const unknownMandatoryWeightShare = totalMandatoryWeight > 0
     ? unknownMandatoryWeight / totalMandatoryWeight
     : 0;
-  const unknownCore = mandatoryMatches.some(
-    (match) => match.requirement.priority === 'CORE_MUST' && match.status === 'UNKNOWN',
+  const unknownCore = mandatoryUnits.some(
+    (unit) => unit.priority === 'CORE_MUST' && unit.status === 'UNKNOWN',
   );
 
   const missingEvidence: MissingEvidence[] = matches
-    .filter((match) => match.status === 'UNKNOWN' || match.status === 'NOT_FOUND')
+    .filter((match) =>
+      !satisfiedAlternatives.has(match.requirement.id) &&
+      (match.status === 'UNKNOWN' || match.status === 'NOT_FOUND'),
+    )
     .map((match) => ({
       id: `MISS_D10_${match.requirement.id}`,
       requirementCode: match.requirement.canonicalId,
@@ -145,14 +160,16 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
     }));
 
   if (unknownCore || unknownMandatoryWeightShare > 0) {
+    const totalUnitWeight = units.reduce((sum, unit) => sum + unit.weight, 0);
+    const knownUnitWeight = units
+      .filter((unit) => unit.status !== 'UNKNOWN')
+      .reduce((sum, unit) => sum + unit.weight, 0);
     const confidenceBreakdown = computeAuditConfidence({
-      expectedEvidenceWeight: requirements.reduce((sum, item) => sum + item.weight, 0),
-      fulfilledEvidenceWeight: requirements
-        .filter((item) => !matches.some((match) => match.requirement.id === item.id && match.status === 'UNKNOWN'))
-        .reduce((sum, item) => sum + item.weight, 0),
+      expectedEvidenceWeight: totalUnitWeight,
+      fulfilledEvidenceWeight: knownUnitWeight,
       provenanceReliability: input.sourceMode === 'VAULT' ? 0.9 : 0.7,
       extractionQuality: clamp01(input.extraction.parserConfidence * input.sourceCompletenessConfidence),
-      independentEvidenceCount: requirements.length,
+      independentEvidenceCount: units.length,
       sampleScaleK: 3,
     });
     return {
@@ -187,15 +204,16 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
         preferredCoverage: null,
         unknownMandatoryWeightShare: round(unknownMandatoryWeightShare),
         matches,
+        groups: input.extraction.groups,
         missingCoreMustIds: [],
         adaptiveSignal: input.extraction.adaptiveSignal,
       },
     };
   }
 
-  const knownPreferred = preferredMatches.filter((match) => match.status !== 'UNKNOWN');
-  const mandatoryCoverage = weightedCoverage(mandatoryMatches);
-  const preferredCoverage = weightedCoverage(knownPreferred);
+  const knownPreferredUnits = preferredUnits.filter((unit) => unit.status !== 'UNKNOWN');
+  const mandatoryCoverage = weightedCoverage(mandatoryUnits);
+  const preferredCoverage = weightedCoverage(knownPreferredUnits);
 
   const mandatoryPresent = mandatoryCoverage !== null;
   const preferredPresent = preferredCoverage !== null;
@@ -213,7 +231,7 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
       mandatoryCoverage!,
       0.85,
       effectiveMandatory,
-      mandatoryMatches.flatMap((match) => match.requirement.evidenceIds),
+      mandatoryUnits.flatMap((unit) => unit.evidenceIds),
     ));
   }
   if (preferredPresent) {
@@ -223,38 +241,40 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
       preferredCoverage!,
       0.15,
       effectivePreferred,
-      knownPreferred.flatMap((match) => match.requirement.evidenceIds),
+      knownPreferredUnits.flatMap((unit) => unit.evidenceIds),
     ));
   }
 
   const hardCaps: HardCap[] = [];
-  const missingCore = mandatoryMatches.filter(
-    (match) => match.requirement.priority === 'CORE_MUST' &&
-      match.status !== 'UNKNOWN' &&
-      match.fulfillment < 0.5 &&
-      match.requirement.extractionConfidence >= 0.9 &&
+  const missingCoreUnits = mandatoryUnits.filter(
+    (unit) => unit.priority === 'CORE_MUST' &&
+      unit.status !== 'UNKNOWN' &&
+      unit.fulfillment < 0.5 &&
+      unitExtractionConfidence(unit) >= 0.9 &&
       input.sourceCompletenessConfidence >= 0.85,
   );
-  for (const match of missingCore) {
+  for (const unit of missingCoreUnits) {
     hardCaps.push({
-      id: `HC_D10_CORE_${match.requirement.canonicalId}`,
+      id: `HC_D10_CORE_${unit.id}`,
       ruleCode: 'HC_D10_MISSING_CORE_FORMAL_REQUIREMENT',
       scope: 'MODULE',
       targetId: MODULE_ID,
       capLimit: 35,
       triggered: true,
-      reason: `Nie spełniono jednoznacznie oznaczonego CORE_MUST: ${match.requirement.label}.`,
-      evidenceIds: [...match.requirement.evidenceIds, ...(match.bestEvidenceId ? [match.bestEvidenceId] : [])],
-      missingEvidenceIds: [`MISS_D10_${match.requirement.id}`],
+      reason: `Nie spełniono jednoznacznie oznaczonego CORE_MUST: ${unit.label}.`,
+      evidenceIds: unit.evidenceIds,
+      missingEvidenceIds: unit.memberMatches.map((match) => `MISS_D10_${match.requirement.id}`),
     });
   }
 
-  const knownWeight = matches
-    .filter((match) => match.status !== 'UNKNOWN')
-    .reduce((sum, match) => sum + match.requirement.weight, 0);
-  const totalWeight = requirements.reduce((sum, item) => sum + item.weight, 0);
-  const meanRequirementConfidence = requirements.reduce((sum, item) => sum + item.extractionConfidence * item.weight, 0) /
-    Math.max(Number.EPSILON, totalWeight);
+  const knownWeight = units
+    .filter((unit) => unit.status !== 'UNKNOWN')
+    .reduce((sum, unit) => sum + unit.weight, 0);
+  const totalWeight = units.reduce((sum, unit) => sum + unit.weight, 0);
+  const meanRequirementConfidence = units.reduce(
+    (sum, unit) => sum + unitExtractionConfidence(unit) * unit.weight,
+    0,
+  ) / Math.max(Number.EPSILON, totalWeight);
   const confidenceBreakdown = computeAuditConfidence({
     expectedEvidenceWeight: totalWeight,
     fulfilledEvidenceWeight: knownWeight,
@@ -262,7 +282,7 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
     extractionQuality: clamp01(
       meanRequirementConfidence * input.sourceCompletenessConfidence,
     ),
-    independentEvidenceCount: requirements.length,
+    independentEvidenceCount: units.length,
     sampleScaleK: 3,
   });
 
@@ -276,7 +296,10 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
   const score = ledger.finalScore;
 
   const recommendations: Recommendation[] = matches
-    .filter((match) => match.status === 'NOT_FOUND' || match.status === 'PARTIAL')
+    .filter((match) =>
+      !satisfiedAlternatives.has(match.requirement.id) &&
+      (match.status === 'NOT_FOUND' || match.status === 'PARTIAL'),
+    )
     .map((match) => ({
       id: `REC_D10_${match.requirement.id}`,
       targetModuleId: MODULE_ID,
@@ -291,7 +314,7 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
       potentialScoreGainRange: { min: 0, max: round(match.requirement.weight / Math.max(totalWeight, 1) * 100) },
     }));
 
-  const partialPreferred = preferredMatches.some((match) => match.status === 'UNKNOWN');
+  const partialPreferred = preferredUnits.some((unit) => unit.status === 'UNKNOWN');
   const applicability = partialPreferred ? 'PARTIALLY_APPLICABLE' : 'APPLICABLE';
   const verdictCode = hardCaps.length > 0
     ? 'D10_CORE_FORMAL_MISSING'
@@ -332,7 +355,8 @@ export function scoreD10FormalRequirements(input: D10ScoringInput): D10AuditResu
       preferredCoverage: preferredCoverage === null ? null : round(preferredCoverage),
       unknownMandatoryWeightShare: 0,
       matches,
-      missingCoreMustIds: missingCore.map((match) => match.requirement.id),
+      groups: input.extraction.groups,
+      missingCoreMustIds: missingCoreUnits.map((unit) => unit.id),
       adaptiveSignal: input.extraction.adaptiveSignal,
     },
   };
