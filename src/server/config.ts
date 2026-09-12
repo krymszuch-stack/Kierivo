@@ -12,8 +12,14 @@ const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY jest wymagany do działania funkcji AI.'),
+  AI_PROVIDER: z.enum(['gemini', 'ollama']).default('gemini'),
+  GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash-lite'),
+
+  // Domyślnie tylko proces lokalny. Adres urządzenia w LAN operator podaje
+  // jawnie w środowisku; nie może być ukrytym zachowaniem wdrożenia chmurowego.
+  OLLAMA_BASE_URL: z.string().url().default('http://127.0.0.1:11434'),
+  OLLAMA_MODEL: z.string().min(1).default('qwen-chat:latest'),
 
   /**
    * `local`  — bez bazy i bez kont; dane zostają w przeglądarce. Tryb pracy nad
@@ -83,6 +89,20 @@ export function loadConfig(): ServerConfig {
 
   const data = parsed.data;
 
+  // Walidacja warunkowa providera AI: przy domyślnym providerze `gemini`
+  // GEMINI_API_KEY jest wymagany (poza środowiskiem testowym). Przy `ollama` autoryzacja kluczem
+  // nie jest potrzebna (lokalna instancja Ollamy).
+  if (
+    data.NODE_ENV !== 'test' &&
+    data.AI_PROVIDER === 'gemini' &&
+    (!data.GEMINI_API_KEY || data.GEMINI_API_KEY.trim().length === 0)
+  ) {
+    throw new Error(
+      'Nieprawidłowa konfiguracja serwera:\n  - GEMINI_API_KEY: GEMINI_API_KEY jest wymagany do działania funkcji AI przy AI_PROVIDER=gemini.\n\n' +
+        'Uzupełnij plik .env na podstawie .env.example.'
+    );
+  }
+
   // Walidacja warunkowa: w trybie `cloud` klucze Supabase przestają być
   // opcjonalne. Zatrzymanie procesu tutaj jest tą samą decyzją co przy
   // GEMINI_API_KEY — brak konfiguracji ma być widoczny dla operatora przy
@@ -134,4 +154,9 @@ export function loadConfig(): ServerConfig {
 
 export function isProduction(): boolean {
   return loadConfig().NODE_ENV === 'production';
+}
+
+/** Resetuje pamięć podręczną konfiguracji — wyłącznie na potrzeby testów jednostkowych. */
+export function resetConfigCacheForTesting(): void {
+  cached = null;
 }

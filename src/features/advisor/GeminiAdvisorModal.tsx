@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, Send, User, RotateCcw } from 'lucide-react';
+import { Sparkles, Send, User, RotateCcw, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
+import { api } from '../../lib/apiClient';
+import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
 
 import type { MasterVault } from '../../types';
 import {
@@ -23,6 +25,22 @@ export interface GeminiAdvisorModalProps {
   vault?: MasterVault;
 }
 
+interface OllamaHealthResponse {
+  success: boolean;
+  provider?: string;
+  connected?: boolean;
+  models?: Array<{ name: string; size?: number }>;
+  activeModel?: string;
+  error?: string;
+}
+
+interface AdvisorChatResponse {
+  success: boolean;
+  reply: string;
+  provider: string;
+  model: string;
+}
+
 const QUICK_PROMPTS = [
   'Jak opisać sukcesy w metodzie STAR?',
   'Jak przygotować CV czytelne dla parserów rekrutacyjnych?',
@@ -30,12 +48,30 @@ const QUICK_PROMPTS = [
   'Jak unikać sztucznego upychania słów kluczowych?',
 ];
 
+function getRuleBasedReply(query: string): string {
+  const qLower = query.toLowerCase();
+  if (qLower.includes('star')) {
+    return 'Metoda STAR porządkuje opis na Situation, Task, Action i Result. Podawaj wyłącznie metryki, które możesz obronić na rozmowie. Zamiast „odpowiedzialny za rozwój API” możesz użyć wzoru: „Zoptymalizowałem [co zrobiłeś] przez [narzędzie lub działanie], co zmieniło [Twój realny, weryfikowalny rezultat]”.';
+  }
+  if (qLower.includes('kolumn') || qLower.includes('pdf') || qLower.includes('parser')) {
+    return 'Układ wielokolumnowy, tekst w grafikach i niestandardowe nagłówki mogą utrudniać automatyczny odczyt dokumentu. Jednokolumnowy układ, zwykła warstwa tekstowa i standardowe sekcje są konserwatywnym wyborem. CVelocity nie testuje jednak dokumentu wewnątrz konkretnego zewnętrznego ATS.';
+  }
+  if (qLower.includes('senior')) {
+    return 'Przy roli Senior pokaż zakres odpowiedzialności, decyzje techniczne, mentoring i wpływ na wynik zespołu tylko tam, gdzie faktycznie należały do Twojej pracy. Zamiast dopisywać modne frazy, powiąż technologie i decyzje z konkretnymi projektami oraz własnymi rezultatami.';
+  }
+  if (qLower.includes('słów') || qLower.includes('keyword') || qLower.includes('upychan')) {
+    return 'Frazy z ogłoszenia powinny występować w naturalnym kontekście. Dodaj narzędzie lub kompetencję do opisu projektu tylko wtedy, gdy naprawdę z niej korzystałeś. Powtarzanie słowa bez kontekstu może pogorszyć czytelność dla człowieka, a CVelocity nie obiecuje, że zwiększy to wynik dowolnego zewnętrznego ATS.';
+  }
+  return 'W CV warto używać konkretnych fraz z ogłoszenia tylko wtedy, gdy opisują Twoje prawdziwe doświadczenie. Wynik CVelocity jest wskazówką do redakcji dokumentu, nie przewidywaniem decyzji rekrutera.';
+}
+
 function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
     text: 'Jestem lokalnym Doradcą regułowym CVelocity. Odpowiadam z wbudowanych zasad i dostaję tylko treść pytania, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam tej rozmowy do zewnętrznego modelu językowego.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    source: 'rules',
   };
 }
 
@@ -52,50 +88,152 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
   const [inputVal, setInputVal] = useState(() => initialCache.draft);
   const [isTyping, setIsTyping] = useState(false);
+  const [isCheckingOllama, setIsCheckingOllama] = useState(false);
+
+  const [ollamaStatus, setOllamaStatus] = useState<{
+    checked: boolean;
+    connected: boolean;
+    models: Array<{ name: string }>;
+    activeModel: string;
+    error?: string;
+  }>({
+    checked: false,
+    connected: false,
+    models: [],
+    activeModel: '',
+  });
+
+  const [ollamaEnabled, setOllamaEnabled] = useState<boolean>(() => {
+    const saved = readRaw(StorageKeys.advisorOllamaEnabled);
+    return saved !== 'false';
+  });
+
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return readRaw(StorageKeys.advisorOllamaModel) || '';
+  });
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const handledInitialQuestionRef = useRef<string | undefined>(undefined);
 
-  const handleSend = useCallback((textToSend?: string) => {
-    const query = textToSend || inputVal;
-    if (!query.trim()) return;
-
-    const userMsg: AdvisorChatMessage = {
-      id: `m-${Date.now()}`,
-      sender: 'user',
-      text: query.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
-    if (!textToSend) setInputVal('');
-    setIsTyping(true);
-
-    // Odpowiedzi są lokalnymi regułami, nie wywołaniem zewnętrznego modelu językowego.
-    setTimeout(() => {
-      let replyText = 'W CV warto używać konkretnych fraz z ogłoszenia tylko wtedy, gdy opisują Twoje prawdziwe doświadczenie. Wynik CVelocity jest wskazówką do redakcji dokumentu, nie przewidywaniem decyzji rekrutera.';
-
-      const qLower = query.toLowerCase();
-      if (qLower.includes('star')) {
-        replyText = 'Metoda STAR porządkuje opis na Situation, Task, Action i Result. Podawaj wyłącznie metryki, które możesz obronić na rozmowie. Zamiast „odpowiedzialny za rozwój API” możesz użyć wzoru: „Zoptymalizowałem [co zrobiłeś] przez [narzędzie lub działanie], co zmieniło [Twój realny, weryfikowalny rezultat]”.';
-      } else if (qLower.includes('kolumn') || qLower.includes('pdf') || qLower.includes('parser')) {
-        replyText = 'Układ wielokolumnowy, tekst w grafikach i niestandardowe nagłówki mogą utrudniać automatyczny odczyt dokumentu. Jednokolumnowy układ, zwykła warstwa tekstowa i standardowe sekcje są konserwatywnym wyborem. CVelocity nie testuje jednak dokumentu wewnątrz konkretnego zewnętrznego ATS.';
-      } else if (qLower.includes('senior')) {
-        replyText = 'Przy roli Senior pokaż zakres odpowiedzialności, decyzje techniczne, mentoring i wpływ na wynik zespołu tylko tam, gdzie faktycznie należały do Twojej pracy. Zamiast dopisywać modne frazy, powiąż technologie i decyzje z konkretnymi projektami oraz własnymi rezultatami.';
-      } else if (qLower.includes('słów') || qLower.includes('keyword') || qLower.includes('upychan')) {
-        replyText = 'Frazy z ogłoszenia powinny występować w naturalnym kontekście. Dodaj narzędzie lub kompetencję do opisu projektu tylko wtedy, gdy naprawdę z niej korzystałeś. Powtarzanie słowa bez kontekstu może pogorszyć czytelność dla człowieka, a CVelocity nie obiecuje, że zwiększy to wynik dowolnego zewnętrznego ATS.';
+  const checkOllama = useCallback(async () => {
+    setIsCheckingOllama(true);
+    try {
+      const res = await api.get<OllamaHealthResponse>('/ai/ollama/health');
+      if (res && res.success) {
+        setOllamaStatus({
+          checked: true,
+          connected: Boolean(res.connected),
+          models: res.models || [],
+          activeModel: res.activeModel || '',
+          error: res.error,
+        });
+        if (!selectedModel && res.activeModel) {
+          setSelectedModel(res.activeModel);
+        }
       }
+    } catch (err: unknown) {
+      setOllamaStatus({
+        checked: true,
+        connected: false,
+        models: [],
+        activeModel: '',
+        error: err instanceof Error ? err.message : 'Brak odpowiedzi API',
+      });
+    } finally {
+      setIsCheckingOllama(false);
+    }
+  }, [selectedModel]);
 
-      const aiMsg: AdvisorChatMessage = {
-        id: `m-${Date.now() + 1}`,
-        sender: 'ai',
-        text: replyText,
+  useEffect(() => {
+    if (isOpen) {
+      void checkOllama();
+    }
+  }, [isOpen, checkOllama]);
+
+  const handleToggleOllama = (enabled: boolean) => {
+    setOllamaEnabled(enabled);
+    writeRaw(StorageKeys.advisorOllamaEnabled, String(enabled));
+  };
+
+  const handleModelChange = (modelName: string) => {
+    setSelectedModel(modelName);
+    writeRaw(StorageKeys.advisorOllamaModel, modelName);
+  };
+
+  const handleSend = useCallback(
+    async (textToSend?: string) => {
+      const query = textToSend || inputVal;
+      if (!query.trim()) return;
+
+      const userMsg: AdvisorChatMessage = {
+        id: `m-${Date.now()}`,
+        sender: 'user',
+        text: query.trim(),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setMessages((prev) => [...prev, aiMsg]);
-      setIsTyping(false);
-    }, 700);
-  }, [inputVal]);
+      const nextMessages = [...messages, userMsg];
+      setMessages(nextMessages);
+      if (!textToSend) setInputVal('');
+      setIsTyping(true);
+
+      const canUseOllama = ollamaEnabled && ollamaStatus.connected;
+
+      if (canUseOllama) {
+        try {
+          const res = await api.post<AdvisorChatResponse>('/advisor/chat', {
+            query: query.trim(),
+            history: messages.slice(-10),
+            model: selectedModel || undefined,
+          });
+
+          if (res && res.success && res.reply) {
+            const aiMsg: AdvisorChatMessage = {
+              id: `m-${Date.now() + 1}`,
+              sender: 'ai',
+              text: res.reply,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              source: 'ollama',
+              model: res.model || selectedModel || 'ollama',
+            };
+            setMessages((prev) => [...prev, aiMsg]);
+            setIsTyping(false);
+            return;
+          }
+        } catch (err: unknown) {
+          // Transparent fallback do wbudowanych reguł lokalnych w razie błędu sieci/hosta
+          const fallbackText = getRuleBasedReply(query.trim());
+          const errDetail = err instanceof Error ? err.message : 'brak połączenia';
+          const aiMsg: AdvisorChatMessage = {
+            id: `m-${Date.now() + 1}`,
+            sender: 'ai',
+            text: `${fallbackText}\n\n*(Asysta Ollamy była chwilowo niedostępna: ${errDetail}. Odpowiedź wygenerowano z wbudowanych reguł lokalnych.)*`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            source: 'rules',
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          setIsTyping(false);
+          return;
+        }
+      }
+
+      // Tryb reguł lokalnych
+      setTimeout(() => {
+        const replyText = getRuleBasedReply(query.trim());
+        const aiMsg: AdvisorChatMessage = {
+          id: `m-${Date.now() + 1}`,
+          sender: 'ai',
+          text: replyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          source: 'rules',
+        };
+
+        setMessages((prev) => [...prev, aiMsg]);
+        setIsTyping(false);
+      }, 500);
+    },
+    [inputVal, messages, ollamaEnabled, ollamaStatus.connected, selectedModel]
+  );
 
   useEffect(() => {
     writeAdvisorConversation(messages, inputVal);
@@ -117,13 +255,15 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
     if (initialQuestion && handledInitialQuestionRef.current !== initialQuestion) {
       handledInitialQuestionRef.current = initialQuestion;
-      handleSend(initialQuestion);
+      void handleSend(initialQuestion);
     }
   }, [handleSend, initialQuestion, isOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
+
+  const activeModelDisplay = selectedModel || ollamaStatus.activeModel;
 
   return (
     <Modal
@@ -133,8 +273,66 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       description="Dostaje tylko wpisane pytanie lub szybki prompt. Nie czyta automatycznie Vaultu ani aplikacji; rozmowa zostaje w przeglądarce."
       size="lg"
     >
-      <div className="flex h-[520px] flex-col">
-        <div className="flex justify-end pb-2">
+      <div className="flex h-[540px] flex-col">
+        {/* Pasek statusu asysty Ollamy i narzędzi */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-full border border-line bg-sunken px-2.5 py-1">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  ollamaStatus.connected && ollamaEnabled
+                    ? 'bg-emerald-500 animate-pulse'
+                    : 'bg-muted/40'
+                }`}
+                aria-hidden="true"
+              />
+              <span className="text-[11px] font-medium text-ink">
+                {ollamaStatus.connected
+                  ? `Asysta Ollama: ${ollamaEnabled ? 'włączona' : 'wstrzymana'}`
+                  : 'Asysta Ollama: niedostępna (reguły)'}
+              </span>
+            </div>
+
+            {ollamaStatus.connected ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleToggleOllama(!ollamaEnabled)}
+                  className="cursor-pointer text-[11px] font-medium text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
+                >
+                  {ollamaEnabled ? 'Wyłącz asystę' : 'Włącz asystę'}
+                </button>
+
+                {ollamaStatus.models.length > 1 && (
+                  <select
+                    value={activeModelDisplay}
+                    onChange={(e) => handleModelChange(e.target.value)}
+                    disabled={!ollamaEnabled}
+                    className="rounded border border-line bg-surface px-2 py-0.5 text-[11px] text-ink focus:border-brand-500 focus:outline-none disabled:opacity-50"
+                    aria-label="Wybór modelu lokalnej Ollamy"
+                  >
+                    {ollamaStatus.models.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void checkOllama()}
+                disabled={isCheckingOllama}
+                title="Sprawdź ponownie połączenie z lokalną instancją Ollama"
+                className="flex cursor-pointer items-center gap-1 text-[11px] text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
+              >
+                <RefreshCw className={`h-3 w-3 ${isCheckingOllama ? 'animate-spin' : ''}`} />
+                <span>Sprawdź Ollamę</span>
+              </button>
+            )}
+          </div>
+
           <Button
             type="button"
             variant="ghost"
@@ -147,7 +345,12 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-4 p-2 pr-3" role="log" aria-live="polite" aria-label="Historia rozmowy z Doradcą regułowym">
+        <div
+          className="flex-1 overflow-y-auto space-y-4 p-2 pr-3"
+          role="log"
+          aria-live="polite"
+          aria-label="Historia rozmowy z Doradcą regułowym"
+        >
           <AnimatePresence initial={false}>
             {messages.map((m) => (
               <motion.div
@@ -169,6 +372,21 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                       : 'bg-sunken border border-line text-ink rounded-2xl rounded-tl-none'
                   }`}
                 >
+                  {m.source && m.sender === 'ai' && (
+                    <div className="mb-2 flex items-center gap-1.5">
+                      {m.source === 'ollama' ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[9px] font-medium text-brand-700 border border-brand-200/60">
+                          <Sparkles className="h-2.5 w-2.5 text-brand-600" aria-hidden="true" />
+                          Asysta Ollama {m.model ? `(${m.model})` : ''}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-[9px] font-medium text-muted border border-line">
+                          Wbudowane reguły
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <p className="whitespace-pre-wrap">{m.text}</p>
                   <span
                     className={`mt-1.5 block font-mono text-[9px] ${
@@ -194,7 +412,11 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 className="flex items-center gap-2 text-xs text-muted font-mono"
               >
                 <Sparkles className="h-4 w-4 animate-spin text-brand-600" aria-hidden="true" />
-                <span>Doradca przygotowuje odpowiedź z lokalnych reguł...</span>
+                <span>
+                  {ollamaEnabled && ollamaStatus.connected
+                    ? `Doradca konsultuje lokalną Ollamę (${activeModelDisplay || 'model'})...`
+                    : 'Doradca przygotowuje odpowiedź z lokalnych reguł...'}
+                </span>
               </motion.div>
             )}
           </AnimatePresence>
@@ -207,7 +429,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
               <button
                 key={prompt}
                 type="button"
-                onClick={() => handleSend(prompt)}
+                onClick={() => void handleSend(prompt)}
                 className="cursor-pointer rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-muted transition-colors hover:border-brand-300 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
               >
                 {prompt}
@@ -221,7 +443,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             type="text"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onKeyDown={(e) => e.key === 'Enter' && void handleSend()}
             placeholder="Zadaj pytanie o CV lub przygotowanie do rekrutacji..."
             aria-label="Pytanie do Doradcy regułowego"
             className="flex-1 rounded-2xl border border-line bg-sunken px-4 py-2.5 text-xs text-ink placeholder:text-subtle focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -233,7 +455,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             size="md"
             icon={Send}
             disabled={!inputVal.trim() || isTyping}
-            onClick={() => handleSend()}
+            onClick={() => void handleSend()}
           >
             Wyślij
           </Button>
@@ -241,4 +463,4 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       </div>
     </Modal>
   );
-};
+};

@@ -4,8 +4,28 @@ import { aiEndpointsLimiter } from '../middleware/rateLimiter';
 import { requireAuth } from '../middleware/requireAuth';
 import { executeAiOperation } from '../quota';
 import { MasterVault } from '../../types';
+import { checkOllamaHealth, callOllamaChat, OllamaChatMessage } from '../ollamaClient';
+import { loadConfig } from '../config';
 
 export const aiRouter = Router();
+
+/**
+ * Panel Doradcy korzysta z Ollamy jako opcjonalnego, lokalnego rozszerzenia.
+ * Nie wolno udostępniać takiego modelu jako nieograniczonego endpointu publicznej
+ * instancji. W trybie chmurowym aplikacja używa standardowych tras AI z
+ * autoryzacją i kwotą, a interfejs Doradcy wraca do własnych reguł.
+ */
+function requireLocalOllama(req: Request, res: Response, next: NextFunction): void {
+  if (loadConfig().backendEnabled) {
+    res.status(501).json({
+      success: false,
+      error: 'Lokalna asysta Ollamy nie jest dostępna w instancji chmurowej.',
+    });
+    return;
+  }
+
+  next();
+}
 
 /**
  * POST /api/parse-jd
@@ -102,3 +122,125 @@ aiRouter.post(
     }
   }
 );
+
+/**
+ * GET /api/ai/ollama/health
+ *
+ * Endpoint diagnostyczny sprawdzający łączność z instancją Ollama (/api/tags).
+ * Zwraca status połączenia oraz listę modeli bez ujawniania konfiguracji env/adresów wewnętrznych.
+ */
+aiRouter.get('/ai/ollama/health', requireLocalOllama, async (_req: Request, res: Response) => {
+  const config = loadConfig();
+  try {
+    const health = await checkOllamaHealth();
+    res.json({
+      success: true,
+      provider: config.AI_PROVIDER,
+      connected: health.connected,
+      models: health.models,
+      activeModel: config.OLLAMA_MODEL,
+      checkedAt: health.checkedAt,
+    });
+  } catch (err) {
+    res.json({
+      success: true,
+      provider: config.AI_PROVIDER,
+      connected: false,
+      models: [],
+      activeModel: config.OLLAMA_MODEL,
+      error: err instanceof Error ? err.message : 'Brak połączenia z instancją Ollama.',
+      checkedAt: new Date().toISOString(),
+    });
+  }
+});
+
+const ADVISOR_SYSTEM_PROMPT = `Jesteś życzliwym, precyzyjnym i profesjonalnym Doradcą Kariery oraz ekspertem ds. systemów ATS (Applicant Tracking Systems) w aplikacji CVelocity.
+Twoim celem jest pomoc kandydatowi w przygotowaniu etycznego, skutecznego i czytelnego CV oraz w przygotowaniu do rozmów rekrutacyjnych.
+Kluczowe zasady:
+1. Zero wymyślonych danych: przypominaj, by kandydat wpisywał wyłącznie prawdziwe i weryfikowalne fakty, osiągnięcia oraz metryki. Nigdy nie zachęcaj do fabrykowania liczb ani doświadczenia.
+2. Metoda STAR: rekomenduj opisywanie osiągnięć schematem Sytuacja, Zadanie, Działanie, Rezultat (STAR) z mierzalnymi skutkami.
+3. Standardy ATS: wyjaśniaj, że układ jednokolumnowy, czysty tekst bez tabel czy grafik i standardowe nagłówki gwarantują czytelność dla parserów. CVelocity bada zgodność strukturalną dokumentu, ale nie gwarantuje decyzji zewnętrznych systemów ATS.
+4. Słowa kluczowe: tłumacz, że słowa kluczowe należy umieszczać w naturalnym kontekście realnych zadań, a nie sztucznie upychać.
+Odpowiadaj konkretnie, pomocnie, zwięzłym i sformatowanym tekstem (np. punktorami lub krótkimi akapitami), w języku polskim.`;
+
+/**
+ * POST /api/advisor/chat
+ *
+ * Asysta lokalnej Ollamy w Doradcy regułowym.
+ * Przyjmuje zapytanie i opcjonalną krótką historię, zwraca odpowiedź wygenerowaną
+ * przez lokalny model Ollama z zachowaniem zasad rzetelności CVelocity.
+ */
+aiRouter.post(
+  '/advisor/chat',
+  requireLocalOllama,
+  async (
+    req: Request<
+      unknown,
+      unknown,
+      {
+        query?: string;
+        history?: Array<{ sender: 'user' | 'ai'; text: string }>;
+        model?: string;
+      }
+    >,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { query, history, model } = req.body;
+
+      if (!query || typeof query !== 'string' || query.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Brak treści zapytania do Doradcy.',
+        });
+      }
+
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length > 5000) {
+        return res.status(400).json({
+          success: false,
+          error: 'Zapytanie przekracza maksymalną dozwoloną długość (5000 znaków).',
+        });
+      }
+
+      // Formatowanie historii (ostatnie 10 wiadomości)
+      const formattedHistory: OllamaChatMessage[] = [];
+      if (Array.isArray(history)) {
+        const recent = history.slice(-10);
+        for (const item of recent) {
+          if (typeof item.text === 'string' && item.text.trim()) {
+            formattedHistory.push({
+              role: item.sender === 'user' ? 'user' : 'assistant',
+              content: item.text.trim(),
+            });
+          }
+        }
+      }
+
+      const messages: OllamaChatMessage[] = [
+        { role: 'system', content: ADVISOR_SYSTEM_PROMPT },
+        ...formattedHistory,
+        { role: 'user', content: trimmedQuery },
+      ];
+
+      const result = await callOllamaChat({
+        messages,
+        model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
+        context: 'advisor-chat',
+        timeoutMs: 90_000,
+      });
+
+      res.json({
+        success: true,
+        reply: result.content,
+        provider: 'ollama',
+        model: result.model,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+

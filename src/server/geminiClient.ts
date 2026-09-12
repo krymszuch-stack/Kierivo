@@ -1,8 +1,16 @@
 import { GoogleGenAI } from '@google/genai';
 import { loadConfig } from './config';
 import { recordUsage } from './usageLedger';
+import { callOllamaChat } from './ollamaClient';
 
 let client: GoogleGenAI | null = null;
+
+/**
+ * Zwraca aktualnie skonfigurowanego providera AI ('gemini' lub 'ollama').
+ */
+export function getActiveAiProvider(): 'gemini' | 'ollama' {
+  return loadConfig().AI_PROVIDER;
+}
 
 /**
  * Shared Gemini client. Previously a new instance was constructed on every call,
@@ -13,7 +21,7 @@ export function getGeminiClient(): GoogleGenAI {
 
   const { GEMINI_API_KEY } = loadConfig();
   client = new GoogleGenAI({
-    apiKey: GEMINI_API_KEY,
+    apiKey: GEMINI_API_KEY || '',
     httpOptions: { headers: { 'User-Agent': 'cvelocity-server' } },
   });
   return client;
@@ -21,7 +29,8 @@ export function getGeminiClient(): GoogleGenAI {
 
 /** Model id, overridable per environment. */
 export function getGeminiModel(): string {
-  return loadConfig().GEMINI_MODEL;
+  const config = loadConfig();
+  return config.AI_PROVIDER === 'ollama' ? config.OLLAMA_MODEL : config.GEMINI_MODEL;
 }
 
 /** Caps a single request so one oversized document cannot blow up the bill. */
@@ -115,6 +124,43 @@ export async function generateWithUsage(
   params: Record<string, unknown>,
   context: string
 ): Promise<ModelResponse> {
+  const config = loadConfig();
+
+  // Ścieżka dla alternatywnego providera Ollama
+  if (config.AI_PROVIDER === 'ollama') {
+    let rawPrompt = '';
+    if (typeof params.contents === 'string') {
+      rawPrompt = params.contents;
+    } else if (Array.isArray(params.contents)) {
+      rawPrompt = params.contents
+        .map((c) => (typeof c === 'string' ? c : JSON.stringify(c)))
+        .join('\n');
+    } else if (params.contents && typeof params.contents === 'object') {
+      rawPrompt = JSON.stringify(params.contents);
+    }
+
+    const cfg = (params.config as { responseMimeType?: string }) || {};
+    const isJson = cfg.responseMimeType === 'application/json';
+
+    const systemInstruction = isJson
+      ? 'Jesteś precyzyjnym asystentem przetwarzającym dane rekrutacyjne. Odpowiadaj wyłącznie w poprawnym formacie JSON bez znaczników markdown.'
+      : 'Jesteś pomocnym asystentem rekrutacyjnym wspierającym kandydata.';
+
+    const ollamaRes = await callOllamaChat({
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: rawPrompt },
+      ],
+      format: isJson ? 'json' : undefined,
+      context,
+    });
+
+    return {
+      text: ollamaRes.content,
+    };
+  }
+
+  // Domyślna ścieżka dla providera Gemini (produkcyjna)
   const ai = getGeminiClient();
   const model = (params.model as string) ?? getGeminiModel();
 
