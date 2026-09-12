@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Star,
   Plus,
   Trash2,
   Globe,
@@ -16,15 +15,17 @@ import {
   Wind,
   Sliders,
   X,
+  ExternalLink,
+  FileCheck,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { SkillsMatrix as SkillsMatrixType, LanguageProficiency } from '../../types';
+import { motion } from 'motion/react';
+import { SkillsMatrix as SkillsMatrixType, LanguageProficiency, Certification } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/Field';
 import { Combobox } from '../../components/ui/Combobox';
+import { MonthYearPicker } from '../../components/ui/MonthYearPicker';
 import type { SuggestFn } from '../../hooks/useFieldSuggestions';
-import { Chip } from '../../components/ui/Chip';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { ALL_LICENSES } from '../../data/licenses';
 
@@ -97,6 +98,38 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
   const [softSkillInput, setSoftSkillInput] = useState('');
   const [newLangName, setNewLangName] = useState('');
   const [newLangLevel, setNewLangLevel] = useState<LanguageProficiency['level']>('B2');
+
+  // Stan formularza nowego certyfikatu
+  const [certName, setCertName] = useState('');
+  const [certIssuer, setCertIssuer] = useState('');
+  const [certDate, setCertDate] = useState<string | null>('');
+  const [certUrl, setCertUrl] = useState('');
+
+  const handleAddCertification = () => {
+    if (!certName.trim()) return;
+    const newCert: Certification = {
+      id: `cert-${Date.now()}`,
+      name: certName.trim(),
+      issuer: certIssuer.trim() || 'Nieokreślony wystawca',
+      date: certDate || undefined,
+      url: certUrl.trim() || undefined,
+    };
+    onUpdateSkillsMatrix({
+      ...skillsMatrix,
+      certifications: [...(skillsMatrix.certifications || []), newCert],
+    });
+    setCertName('');
+    setCertIssuer('');
+    setCertDate('');
+    setCertUrl('');
+  };
+
+  const handleRemoveCertification = (id: string) => {
+    onUpdateSkillsMatrix({
+      ...skillsMatrix,
+      certifications: (skillsMatrix.certifications || []).filter((c) => c.id !== id),
+    });
+  };
 
   // Add Hard Skill
   //
@@ -421,6 +454,124 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
               </motion.button>
             );
           })}
+        </div>
+      </Card>
+
+      {/* Certyfikaty Użytkownika */}
+      <Card tone="raised" className="space-y-4">
+        <div>
+          <h3 className="text-base font-bold text-ink flex items-center gap-2">
+            <Award className="h-4 w-4 text-brand-600" />
+            Certyfikaty, Szkolenia i Uprawnienia Imienne
+          </h3>
+          <p className="text-xs text-muted">
+            Dodaj zdobyte certyfikaty branżowe, szkolenia specjalistyczne i uprawnienia z datą uzyskania.
+          </p>
+        </div>
+
+        {/* Formularz dodawania certyfikatu */}
+        <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+            <Combobox
+              label="Nazwa Certyfikatu"
+              icon={FileCheck}
+              value={certName}
+              onChange={setCertName}
+              suggestions={suggest?.('certificateName', certName) ?? []}
+              placeholder="np. Certyfikat F-Gaz / AWS Architect"
+              required
+            />
+
+            <Combobox
+              label="Instytucja / Wystawca"
+              icon={ShieldCheck}
+              value={certIssuer}
+              onChange={setCertIssuer}
+              suggestions={suggest?.('certificateIssuer', certIssuer) ?? []}
+              placeholder="np. UDT / SEP / Cisco / Microsoft"
+            />
+
+            <MonthYearPicker
+              label="Data Uzyskania"
+              value={certDate}
+              onChange={setCertDate}
+              placeholder="np. 05.2023"
+            />
+
+            <Input
+              label="Link weryfikacyjny (opcjonalnie)"
+              icon={ExternalLink}
+              value={certUrl}
+              onChange={(e) => setCertUrl(e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={Plus}
+              onClick={handleAddCertification}
+              disabled={!certName.trim()}
+            >
+              Dodaj Certyfikat
+            </Button>
+          </div>
+        </div>
+
+        {/* Lista certyfikatów */}
+        <div className="space-y-2 pt-1">
+          {(skillsMatrix.certifications || []).length === 0 ? (
+            <p className="text-xs text-muted italic text-center py-2">
+              Brak dodanych certyfikatów imiennych. Wpisz certyfikat powyżej, aby wzmocnić profil pod kryteria formalne.
+            </p>
+          ) : (
+            (skillsMatrix.certifications || []).map((cert) => (
+              <div
+                key={cert.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 shadow-2xs"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                    <Award className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block text-xs font-bold text-ink truncate">
+                      {cert.name}
+                    </span>
+                    <span className="block text-[11px] text-muted">
+                      {cert.issuer} {cert.date ? `• ${cert.date}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {cert.url && (
+                    <a
+                      href={cert.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1 text-muted hover:text-brand-fg transition-colors"
+                      title="Otwórz link do certyfikatu"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCertification(cert.id)}
+                    className="p-1 text-muted hover:text-danger-fg transition-colors rounded-md cursor-pointer"
+                    title="Usuń certyfikat"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </Card>
     </div>

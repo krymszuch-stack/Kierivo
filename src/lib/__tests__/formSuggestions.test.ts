@@ -170,4 +170,76 @@ describe('podpowiedzi w formularzach', () => {
     const b = suggestForField('jobTitle', 'monter', context(vault)).map((item) => item.value);
     expect(a).toEqual(b);
   });
+
+  it('podpowiada uczelnie z własnej historii i słownika', () => {
+    const vault: MasterVault = {
+      ...createEmptyVault(),
+      education: [
+        {
+          id: 'edu-1',
+          institution: 'Akademia Górniczo-Hutnicza w Krakowie',
+          degree: 'Inżynier',
+          fieldOfStudy: 'Automatyka i Robotyka',
+          startDate: '2016-10',
+          endDate: '2020-02',
+        },
+      ],
+    };
+
+    const wlasna = suggestForField('institution', 'Akademia', context(vault));
+    expect(wlasna[0].value).toBe('Akademia Górniczo-Hutnicza w Krakowie');
+    expect(wlasna[0].source).toBe('own');
+
+    const slownik = suggestForField('institution', 'Politechnika', context(createEmptyVault()));
+    expect(slownik.length).toBeGreaterThan(0);
+    expect(slownik[0].source).toBe('dictionary');
+  });
+
+  it('podpowiada wystawców certyfikatów z własnych wpisów i słownika', () => {
+    const vault: MasterVault = {
+      ...createEmptyVault(),
+      skillsMatrix: {
+        ...createEmptyVault().skillsMatrix,
+        certifications: [
+          {
+            id: 'c-1',
+            name: 'SEP G1 do 1 kV',
+            issuer: 'Oddział Krakowski SEP',
+          },
+        ],
+      },
+    };
+
+    const wlasny = suggestForField('certificateIssuer', 'Oddział', context(vault));
+    expect(wlasny[0].value).toBe('Oddział Krakowski SEP');
+    expect(wlasny[0].source).toBe('own');
+
+    const slownik = suggestForField('certificateIssuer', 'UDT', context(createEmptyVault()));
+    expect(slownik.some((s) => s.value.includes('UDT'))).toBe(true);
+  });
+
+  it('podpowiada technologie dla projektów ze Skills Matrix i istniejących projektów', () => {
+    const vault: MasterVault = {
+      ...createEmptyVault(),
+      skillsMatrix: {
+        ...createEmptyVault().skillsMatrix,
+        hardSkills: ['Next.js', 'PostgreSQL'],
+        toolsAndTech: ['Docker', 'Git'],
+      },
+      projects: [
+        {
+          id: 'p-1',
+          name: 'Portal E-commerce',
+          role: 'Lead',
+          description: '',
+          techStack: ['Tailwind CSS', 'Next.js'],
+        },
+      ],
+    };
+
+    const wynik = suggestForField('projectTech', 'Next', context(vault));
+    expect(wynik[0].value).toBe('Next.js');
+    expect(wynik[0].source).toBe('own');
+  });
 });
+
