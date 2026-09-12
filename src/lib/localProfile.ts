@@ -5,6 +5,7 @@ import {
   readJson,
   readRaw,
   removeRaw,
+  applicationsKeyFor,
   vaultKeyFor,
   wipeAppStorage,
   writeJson,
@@ -75,6 +76,18 @@ export function createLocalProfile(
   if (carriedOver) {
     saveProfileVault(profile.id, carriedOver);
     removeRaw(vaultKeyFor(ANONYMOUS_PROFILE_ID));
+  }
+
+  // Historia utworzona przed podaniem imienia należy do osoby, która właśnie
+  // zakłada profil. Przenosimy wyłącznie klucz anonimowy, nigdy dawną wspólną
+  // historię — automatyczne przypisanie jej mogłoby ujawnić cudze aplikacje.
+  const anonymousApplications = readRaw(applicationsKeyFor(ANONYMOUS_PROFILE_ID));
+  if (anonymousApplications !== null) {
+    writeJson(applicationsKeyFor(profile.id), readJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), []));
+    removeRaw(applicationsKeyFor(ANONYMOUS_PROFILE_ID));
+  }
+
+  if (carriedOver) {
     return { profile, vault: carriedOver };
   }
 

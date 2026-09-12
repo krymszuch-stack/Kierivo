@@ -1,0 +1,45 @@
+name: D09 JOB ALIGNMENT
+
+on:
+  pull_request:
+    branches: [d08-structural-readability, main]
+    paths:
+      - 'src/lib/audit-core/**'
+      - 'src/lib/__tests__/d09*.test.ts'
+      - 'src/lib/__tests__/fixtures/d09*'
+      - 'docs/audit-core/D09_*'
+      - 'scripts/d09-calibration-report.ts'
+      - 'package.json'
+      - '.github/workflows/d09-job-alignment.yml'
+
+jobs:
+  d09-job-alignment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Type Check and Lint
+        run: npm run lint
+
+      - name: D09 Focused Tests
+        run: npx vitest run src/lib/__tests__/d09*.test.ts
+
+      - name: D09 Calibration CLI Smoke
+        run: npm run audit:d09:calibrate -- src/lib/__tests__/fixtures/d09CalibrationSample.json --output=/tmp/d09-calibration-report.json
+
+      - name: Full Unit Test Suite
+        run: npm test
+
+      - name: Build Client and Server
+        run: npm run build

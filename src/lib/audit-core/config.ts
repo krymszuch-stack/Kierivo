@@ -65,7 +65,7 @@ const equalDomainWeights: Record<AuditDomainId, number> = {
  * jest częścią schema i nie da się go przypadkiem wyłączyć w tej wersji.
  */
 export const DEFAULT_AUDIT_CORE_CONFIG: AuditCoreConfig = {
-  configVersion: 'audit-core-config-v2.0.0-precalibration',
+  configVersion: 'audit-core-config-v2.0.1-precalibration',
   engineVersion: 'audit-core-1.0.0-precalibration',
   corpusSchemaVersion: 'audit-core-corpus-v2',
   calibrationRequired: true,
@@ -102,7 +102,7 @@ export const DEFAULT_AUDIT_CORE_CONFIG: AuditCoreConfig = {
     {
       domainId: 'JOB_FIT',
       moduleWeights: {
-        MOD_KEYWORDS_REQUIREMENTS: 1,
+        MOD_JOB_ALIGNMENT: 1,
         MOD_SKILL_RECENCY: 1,
         MOD_ROLE_SENIORITY: 1,
       },
