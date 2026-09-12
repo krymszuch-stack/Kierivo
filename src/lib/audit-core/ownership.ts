@@ -18,13 +18,13 @@ export const DEFAULT_SIGNAL_OWNERSHIP: readonly SignalOwnership[] = [
   },
   {
     family: 'SKILL_PRESENCE',
-    primaryModuleId: 'MOD_KEYWORDS_REQUIREMENTS',
+    primaryModuleId: 'MOD_JOB_ALIGNMENT',
     secondaryConsumers: ['MOD_SKILL_RECENCY', 'MOD_ROLE_SENIORITY'],
   },
   {
     family: 'SKILL_CONTEXT',
-    primaryModuleId: 'MOD_SKILL_RECENCY',
-    secondaryConsumers: ['MOD_KEYWORDS_REQUIREMENTS', 'MOD_ROLE_SENIORITY'],
+    primaryModuleId: 'MOD_JOB_ALIGNMENT',
+    secondaryConsumers: ['MOD_SKILL_RECENCY', 'MOD_ROLE_SENIORITY'],
   },
   {
     family: 'FORMAL_REQUIREMENT',
@@ -34,7 +34,7 @@ export const DEFAULT_SIGNAL_OWNERSHIP: readonly SignalOwnership[] = [
   {
     family: 'ROLE_ALIGNMENT',
     primaryModuleId: 'MOD_ROLE_SENIORITY',
-    secondaryConsumers: ['MOD_KEYWORDS_REQUIREMENTS'],
+    secondaryConsumers: ['MOD_APPLICATION_READINESS'],
   },
   {
     family: 'METRIC_IMPACT',

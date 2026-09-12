@@ -17,6 +17,7 @@
     "test:e2e": "node scripts/e2e-doradca.mjs",
     "test:rls": "node scripts/test-rls.mjs",
     "test:auth-lifecycle": "node scripts/test-auth-lifecycle.mjs",
+    "audit:d09:calibrate": "tsx scripts/d09-calibration-report.ts",
     "bledy": "tsx scripts/bledy-klienta.ts",
     "bledy:lista": "tsx scripts/bledy-klienta.ts lista",
     "bledy:czysc": "tsx scripts/bledy-klienta.ts czysc",
