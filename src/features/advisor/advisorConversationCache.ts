@@ -5,6 +5,8 @@ export interface AdvisorChatMessage {
   sender: 'ai' | 'user';
   text: string;
   timestamp: string;
+  source?: 'rules' | 'ollama';
+  model?: string;
 }
 
 export interface AdvisorConversationCache {
@@ -25,7 +27,9 @@ function isMessage(value: unknown): value is AdvisorChatMessage {
     (message.sender === 'ai' || message.sender === 'user') &&
     typeof message.text === 'string' &&
     message.text.length <= MAX_TEXT_LENGTH &&
-    typeof message.timestamp === 'string'
+    typeof message.timestamp === 'string' &&
+    (message.source === undefined || message.source === 'rules' || message.source === 'ollama') &&
+    (message.model === undefined || typeof message.model === 'string')
   );
 }
 

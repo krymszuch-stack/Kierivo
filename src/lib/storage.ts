@@ -36,6 +36,10 @@ export const StorageKeys = {
   draftAtsLab: `${PREFIX}draft-ats-lab`,
   /** Historia Doradcy tylko na czas bieżącej sesji przeglądarki. */
   advisorConversation: `${PREFIX}advisor-conversation`,
+  /** Stan włączenia asysty lokalnej Ollamy w Doradcy regułowym. */
+  advisorOllamaEnabled: `${PREFIX}advisor-ollama-enabled`,
+  /** Wybrany model lokalnej Ollamy w Doradcy regułowym. */
+  advisorOllamaModel: `${PREFIX}advisor-ollama-model`,
   /**
    * Bufor niedostarczonych zgłoszeń błędów (errorReporter). Treść jest
    * zanonimizowana jeszcze przed zapisem — klucz trafia do tego rejestru nie dla
@@ -80,7 +84,12 @@ export function cheatSheetCacheKeyFor(hash: string): string {
  * nie są danymi osobowymi, a przywitanie słabowidzącego nagłym jasnym motywem
  * lub małym fontem po wyczyszczeniu CV utrudniłoby korzystanie z aplikacji.
  */
-const PRESERVED_ON_WIPE = new Set<string>([StorageKeys.theme, StorageKeys.a11ySettings]);
+const PRESERVED_ON_WIPE = new Set<string>([
+  StorageKeys.theme,
+  StorageKeys.a11ySettings,
+  StorageKeys.advisorOllamaEnabled,
+  StorageKeys.advisorOllamaModel,
+]);
 
 /**
  * Mapa starych kluczy na nowe, uruchamiana raz przy starcie aplikacji.
