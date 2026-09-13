@@ -83,7 +83,15 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
     );
 
     if (existing) {
-      patchApplication(existing.id, { status, notes: notes ?? existing.notes });
+      const candidate = buildApplicationFromPending(pending, status, { notes });
+      patchApplication(existing.id, {
+        status,
+        notes: notes ?? existing.notes,
+        // Ręcznie dodana aplikacja może już istnieć. Nie zastępujemy jej
+        // historią, a tylko dokładamy migawkę dokumentu, jeśli właśnie
+        // powstała przy eksporcie.
+        documentSnapshot: candidate.documentSnapshot ?? existing.documentSnapshot,
+      });
       return;
     }
 

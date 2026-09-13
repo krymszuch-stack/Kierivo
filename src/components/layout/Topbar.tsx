@@ -91,16 +91,13 @@ export const Topbar: React.FC<TopbarProps> = ({
         <button
           type="button"
           onClick={() => {
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+            window.dispatchEvent(new Event('cvelocity:open-command-palette'));
           }}
           className="hidden sm:flex items-center gap-2 rounded-xl border border-line bg-elevated px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-ink transition-colors"
-          title="Otwórz Command Palette (Ctrl+K)"
+          title="Otwórz wyszukiwarkę funkcji"
         >
           <Search className="h-3.5 w-3.5" />
           <span>Szukaj...</span>
-          <span className="rounded border border-line bg-sunken px-1.5 py-px font-mono text-[9px] text-muted">
-            Ctrl+K
-          </span>
         </button>
 
         <AdvisorButton onClick={onOpenAdvisor} />

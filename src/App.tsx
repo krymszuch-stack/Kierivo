@@ -457,12 +457,12 @@ function MainApp() {
       {/* Ankieta po eksporcie: pyta o wysyłkę i sama prowadzi wpis w Pipeline */}
       <ApplicationFeedbackModal onNavigate={navigate} />
 
-      {/* Szybki podgląd i druk CV z paska bocznego */}
+      {/* Generator końcowego dokumentu dostępny z głównej nawigacji. */}
       {isGlobalCvPreviewOpen && (
         <Modal
           isOpen={isGlobalCvPreviewOpen}
           onClose={() => setIsGlobalCvPreviewOpen(false)}
-          title={`Podgląd i Druk CV (A4) • ${vault.personalInfo?.fullName || 'Twój Profil'}`}
+          title={`Generator gotowego CV • ${vault.personalInfo?.fullName || 'Twój Profil'}`}
           size="full"
         >
           <Suspense fallback={<Skeleton className="h-[600px] w-full rounded-2xl" />}>
@@ -480,8 +480,7 @@ function MainApp() {
         </Modal>
       )}
 
-      {/* Paleta poleceń (Cmd+K) — jedyny skrót globalny, jaki został.
-          Dostaje `navigate`, nie `setActiveTab`: wcześniej omijała blokady
+      {/* Wyszukiwarka funkcji otwierana widocznym przyciskiem. Dostaje `navigate`, nie `setActiveTab`: wcześniej omijała blokady
           sekcji, bo jedyny strażnik odblokowań siedzi w `navigate`. */}
       <CommandPalette onNavigate={navigate} />
     </GlobalShell>

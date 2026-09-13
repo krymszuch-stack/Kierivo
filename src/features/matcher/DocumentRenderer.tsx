@@ -18,7 +18,7 @@ import {
   Shuffle,
   LayoutTemplate,
 } from 'lucide-react';
-import { MasterVault, TailoredResume, HighlightMetric } from '../../types';
+import { MasterVault, TailoredResume, HighlightMetric, GeneratedCvExport } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
@@ -48,7 +48,7 @@ export interface DocumentRendererProps {
    * Dokument opuścił aplikację (druk/PDF albo skopiowana treść). Woła to ten,
    * kto wie, o którą ofertę chodzi — renderer sam tego nie wie.
    */
-  onExported?: () => void;
+  onExported?: (exportedCv: GeneratedCvExport) => void;
   className?: string;
 }
 
@@ -90,9 +90,16 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const activeTemplate = findCvTemplate(activeTemplateId);
   const templateAssessment = assessCvTemplate(activeTemplate);
 
+  const buildExportMetadata = (): GeneratedCvExport => ({
+    templateId: activeTemplate.id,
+    templateName: activeTemplate.name,
+    fit: activeTemplate.fit,
+    exportedAt: new Date().toISOString(),
+  });
+
   const handlePrint = () => {
     window.print();
-    onExported?.();
+    onExported?.(buildExportMetadata());
   };
 
   const handleCopyText = () => {
@@ -120,7 +127,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
     `.trim();
 
     navigator.clipboard.writeText(textContent);
-    onExported?.();
+    onExported?.(buildExportMetadata());
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -383,10 +390,14 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         <span className="text-muted">{templateAssessment.explanation}</span>
       </div>
 
-      <details className="rounded-xl border border-line bg-elevated p-3">
-        <summary className="cursor-pointer text-xs font-semibold text-ink">
-          Galeria 82 wariantów — miniatury prezentują układ, nie dane Twojego CV
-        </summary>
+      <section className="rounded-2xl border border-line bg-elevated p-3 sm:p-4" aria-labelledby="template-gallery-title">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="template-gallery-title" className="text-sm font-bold text-ink">Wybierz wygląd gotowego CV</h2>
+            <p className="text-xs text-muted">Miniatury pokazują układ. Treść Twojego CV pozostaje bez zmian.</p>
+          </div>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted">82 warianty</span>
+        </div>
         <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-9">
           {CV_TEMPLATE_CATALOG.map((template) => (
             <button
@@ -413,7 +424,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             </button>
           ))}
         </div>
-      </details>
+      </section>
 
       {/* A4 Sheet Container — responsywny arkusz A4 */}
       <div className="overflow-x-auto p-2 sm:p-6 flex flex-col items-center justify-center bg-sunken/40 rounded-3xl border border-line">

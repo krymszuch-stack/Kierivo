@@ -99,20 +99,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
   const { userVault } = useAuth();
   const { applications } = useApplications();
 
-  // Listen for Cmd+K / Ctrl+K
+  // Paleta jest uruchamiana wyłącznie przez widoczny przycisk. Nie przechwytujemy
+  // skrótów systemowych ani przeglądarkowych, które łatwo kolidują z nawykami.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsOpen((prev) => !prev);
-      } else if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+    const open = () => setIsOpen(true);
+    window.addEventListener('cvelocity:open-command-palette', open);
+    return () => window.removeEventListener('cvelocity:open-command-palette', open);
+  }, []);
 
   const commands: CommandItem[] = useMemo(() => {
     const base: CommandItem[] = [
@@ -418,7 +411,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
                 <span>↑↓ Nawigacja</span>
                 <span>↵ Wybierz</span>
               </div>
-              <span>Cmd+K / Ctrl+K</span>
+              <span>Wyszukiwarka funkcji</span>
             </div>
           </motion.div>
         </div>

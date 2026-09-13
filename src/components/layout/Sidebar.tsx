@@ -16,7 +16,6 @@ import {
 import { NavItem } from './NavItem';
 import { Tooltip } from '../ui/Tooltip';
 import { CVelocityLogo } from '../CVelocityLogo';
-import { SidebarShortcutsWidget } from './SidebarShortcutsWidget';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
@@ -134,10 +133,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="pt-2 border-t border-line/60 space-y-1">
           <NavItem
             icon={Eye}
-            label="Podgląd CV"
-            badge="A4"
+            label="Generator CV"
+            badge="GOTOWE"
             badgeVariant="success"
-            hint="Szybki podgląd i druk Twojego gotowego CV w formacie A4 z wyborem szablonów."
+            hint="Wybierz wygląd gotowego CV, wprowadź ostatnie poprawki i przygotuj plik do wysłania."
             isCollapsed={isCollapsed}
             onClick={() => {
               if (onOpenCvPreview) {
@@ -183,14 +182,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
         </div>
 
-        {/* Mini-ściągawka skrótów klawiszowych dla klientów (pośrodku) */}
-        {!isCollapsed && (
-          <div className="pt-2">
-            <SidebarShortcutsWidget
-              onTriggerCvPreview={onOpenCvPreview}
-            />
-          </div>
-        )}
       </div>
 
       {/* Bottom Footer Section: Polityka & Konto */}

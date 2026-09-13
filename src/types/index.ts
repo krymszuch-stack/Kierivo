@@ -511,6 +511,19 @@ export interface ApplicationDocumentSnapshot {
   };
   /** Niezmienna migawka wyniku symulacji ATS z momentu zapisu */
   atsResultSnapshot?: AtsCheckResult;
+  /**
+   * Wariant wyglądu faktycznie użyty przy eksporcie dokumentu. Nie ma go,
+   * dopóki użytkownik nie wyeksportuje CV i nie potwierdzi wysłania aplikacji.
+   */
+  exportedCv?: GeneratedCvExport;
+}
+
+/** Metadane wyglądu dokumentu, bez treści CV ani deklaracji o skuteczności ATS. */
+export interface GeneratedCvExport {
+  templateId: string;
+  templateName: string;
+  fit: 'ats-friendly' | 'visual-balanced';
+  exportedAt: string;
 }
 
 /**

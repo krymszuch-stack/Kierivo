@@ -101,6 +101,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const totalApps = applications.length;
   const inInterviews = applications.filter((a) => a?.status === 'Rozmowa').length;
   const offersReceived = applications.filter((a) => a?.status === 'Oferta').length;
+  const exportedCvCount = applications.filter((a) => a?.documentSnapshot?.exportedCv).length;
   const responseRate = totalApps > 0 ? Math.round(((inInterviews + offersReceived) / totalApps) * 100) : 0;
 
   // Filtered and Sorted
@@ -238,7 +239,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       )}
 
       {/* KPI Top Stat Tiles */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile
           label="Zgłoszenia"
           value={totalApps}
@@ -265,6 +266,13 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           value={`${responseRate}%`}
           icon={CheckCircle2}
           subtext="Wskaźnik odzewu"
+        />
+
+        <StatTile
+          label="CV przy aplikacji"
+          value={exportedCvCount}
+          icon={FileText}
+          subtext="Wyeksportowane warianty"
         />
       </div>
 

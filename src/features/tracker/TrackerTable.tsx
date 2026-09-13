@@ -113,6 +113,11 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                   <span className="truncate text-xs font-semibold text-ink/90 block">
                     {app.position}
                   </span>
+                  {app.documentSnapshot?.exportedCv && (
+                    <span className="mt-1 inline-flex max-w-full truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
+                      CV: {app.documentSnapshot.exportedCv.templateName}
+                    </span>
+                  )}
                 </div>
 
                 {/* 3. Salary */}

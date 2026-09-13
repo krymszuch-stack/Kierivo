@@ -96,6 +96,35 @@ describe('buildApplicationFromPending', () => {
     expect(app.atsScore).toBeUndefined();
     expect(app.status).toBe('Do wysłania');
   });
+
+  it('zachowuje wybrany wariant tylko jako metadane eksportu dokumentu', () => {
+    const app = buildApplicationFromPending(
+      {
+        ...pending,
+        documentSnapshot: {
+          schemaVersion: 1,
+          createdAt: '2026-09-13T10:00:00.000Z',
+          tailoredResume: {} as never,
+          vaultSnapshot: {} as never,
+          jobOfferSnapshot: { title: pending.title, company: pending.company },
+          exportedCv: {
+            templateId: 'cv-07',
+            templateName: 'Minimal 07',
+            fit: 'ats-friendly',
+            exportedAt: '2026-09-13T10:00:00.000Z',
+          },
+        },
+      },
+      'Wysłana'
+    );
+
+    expect(app.documentSnapshot?.exportedCv).toEqual({
+      templateId: 'cv-07',
+      templateName: 'Minimal 07',
+      fit: 'ats-friendly',
+      exportedAt: '2026-09-13T10:00:00.000Z',
+    });
+  });
 });
 
 describe('noteForFailure', () => {

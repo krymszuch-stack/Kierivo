@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FolderOpen, FileText, Link as LinkIcon, ArrowRight, X } from 'lucide-react';
+import { FolderOpen, FileText, Link as LinkIcon, ArrowRight, X, Linkedin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MasterVault } from '../../types';
 import { NavTabId } from '../../components/GlobalShell';
@@ -69,48 +69,51 @@ export const WelcomeWizard: React.FC<WelcomeWizardProps> = ({
     <AnimatePresence>
       {isVaultEmpty(vault) && !dismissed && (
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, height: 0 }}
-          className={`rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5 ${className}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="welcome-wizard-title"
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12, scale: 0.98 }}
+            className={`relative w-full max-w-3xl rounded-3xl border border-brand-200 bg-surface p-5 shadow-floating sm:p-7 ${className}`}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={X}
+              aria-label="Zamknij przewodnik"
+              onClick={handleDismiss}
+              className="absolute right-4 top-4"
+            />
+            <div className="pr-10">
               <p className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-brand-fg">
-                Przewodnik pierwszego uruchomienia
+                Pierwsze uruchomienie
               </p>
-              <h2 className="mt-2 text-xl font-black tracking-tight text-ink sm:text-2xl">
-                Witaj w CVelocity. Zacznij od najważniejszego kroku.
+              <h2 id="welcome-wizard-title" className="mt-2 text-2xl font-black tracking-tight text-ink sm:text-3xl">
+                Zacznij od własnego CV, nie od pustego formularza.
               </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+                Wgraj istniejące CV albo wklej jego treść. Link do LinkedIn możesz dodać do profilu ręcznie — aplikacja nie pobiera danych z LinkedIn automatycznie.
+              </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                icon={ArrowRight}
-                iconPosition="right"
-                onClick={() => onNavigate('profil')}
-              >
-                Uruchom przewodnik
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={X}
-                aria-label="Zamknij przewodnik"
-                onClick={handleDismiss}
-              />
-            </div>
-          </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
             {steps.map((step) => {
               const Icon = step.icon;
               return (
                 <button
                   key={step.title}
                   type="button"
-                  onClick={() => onNavigate(step.tab)}
+                  onClick={() => {
+                    handleDismiss();
+                    onNavigate(step.tab);
+                  }}
                   className="rounded-xl border border-brand-200 bg-surface/80 p-3 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-500"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -124,7 +127,27 @@ export const WelcomeWizard: React.FC<WelcomeWizardProps> = ({
                 </button>
               );
             })}
-          </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-line bg-sunken/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2 text-xs text-muted">
+                <Linkedin className="mt-0.5 h-4 w-4 shrink-0 text-brand-fg" />
+                <span>Masz LinkedIn? W polu „LinkedIn” w profilu wklej publiczny adres — to wystarczy do kontaktu na CV.</span>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={ArrowRight}
+                iconPosition="right"
+                onClick={() => {
+                  handleDismiss();
+                  onNavigate('profil');
+                }}
+              >
+                Wczytaj CV
+              </Button>
+            </div>
+          </motion.div>
         </motion.div>
       )}
     </AnimatePresence>

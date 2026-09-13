@@ -16,6 +16,7 @@ import {
   AtsCheckResult,
   TailoredResume,
   CoverLetter,
+  GeneratedCvExport,
 } from '../../types';
 import { DocumentRenderer } from './DocumentRenderer';
 import { CVWordBuilder } from './CVWordBuilder';
@@ -29,7 +30,7 @@ import { Button } from '../../components/ui/Button';
 import { requestApplicationConfirmation } from '../../store/usePendingApplication';
 
 export type SubTabId =
-  | 'preview'
+  | 'generator'
   | 'editor'
   | 'report'
   | 'mapper'
@@ -56,14 +57,14 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   onSaveTailoredCV,
   className = '',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<SubTabId>('preview');
+  const [activeSubTab, setActiveSubTab] = useState<SubTabId>('generator');
 
   /**
    * Eksport dokumentu to jedyny moment, w którym wiadomo, że użytkownik
    * naprawdę zamierza aplikować — i jedyny, w którym wypada o to zapytać.
    * Pytanie pokazuje `ApplicationFeedbackModal` podpięty globalnie w `App`.
    */
-  const notifyExported = () =>
+  const notifyExported = (exportedCv?: GeneratedCvExport) =>
     requestApplicationConfirmation({
       jobId: jobOffer.id,
       company: jobOffer.company,
@@ -88,11 +89,12 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
           url: jobOffer.url,
         },
         atsResultSnapshot: atsResult ? JSON.parse(JSON.stringify(atsResult)) : undefined,
+        exportedCv,
       },
     });
 
   const subTabs = [
-    { id: 'preview' as SubTabId, label: 'Podgląd CV (A4)', icon: Eye },
+    { id: 'generator' as SubTabId, label: 'Generator gotowego CV', icon: Eye },
     { id: 'editor' as SubTabId, label: 'Edytor Dokumentu', icon: FileEdit },
     { id: 'report' as SubTabId, label: 'Raport ATS & Wynik', icon: ShieldCheck },
     { id: 'mapper' as SubTabId, label: 'Mapper Słów Kluczowych', icon: Tag },
@@ -134,7 +136,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.22, ease: [0.19, 1, 0.22, 1] }}
         >
-          {activeSubTab === 'preview' && (
+          {activeSubTab === 'generator' && (
             <DocumentRenderer
               vault={vault}
               tailoredResume={tailoredResume}
