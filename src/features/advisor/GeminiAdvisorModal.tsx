@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { api } from '../../lib/apiClient';
 import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
 import { getRuleBasedReply } from './advisorRules';
+import type { AdvisorContext } from './advisorContext';
 
 import type { MasterVault } from '../../types';
 import {
@@ -20,10 +21,11 @@ export interface GeminiAdvisorModalProps {
   onClose: () => void;
   initialQuestion?: string;
   /**
-   * Prop pozostaje dla kompatybilności hosta, ale obecny Doradca regułowy go
-   * nie odczytuje. Nie należy z tego wywodzić personalizacji odpowiedzi.
+   * Profil jest używany lokalnie do wykrywania braków; nie wysyłamy go do
+   * modelu. Do Ollamy może trafić wyłącznie zredukowany kontekst analizy.
    */
   vault?: MasterVault;
+  advisorContext?: AdvisorContext | null;
 }
 
 interface OllamaHealthResponse {
@@ -54,7 +56,7 @@ function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
-    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Jeśli lokalna Ollama jest dostępna, mogę użyć jej do odpowiedzi. Bez niej podaję tylko konkretne wbudowane reguły — nie udaję AI. Dostaję wyłącznie pytanie, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam rozmowy do zewnętrznego modelu językowego.',
+    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Czytam lokalnie aktualny Master Vault oraz ostatni wynik dopasowania, aby wskazać konkretne luki. Jeśli lokalna Ollama jest dostępna, dostaje wyłącznie zredukowany kontekst analizy — bez danych kontaktowych i pełnej treści CV. Bez niej podaję tylko konkretne wbudowane reguły, nie udaję AI.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     source: 'rules',
   };
@@ -64,6 +66,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   isOpen,
   onClose,
   initialQuestion,
+  advisorContext,
 }) => {
   const [initialCache] = useState(readAdvisorConversation);
   const [messages, setMessages] = useState<AdvisorChatMessage[]>(() => {
@@ -170,6 +173,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             query: query.trim(),
             history: messages.slice(-10),
             model: selectedModel || undefined,
+            context: advisorContext ?? undefined,
           });
 
           if (res && res.success && res.reply) {
@@ -187,7 +191,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           }
         } catch (err: unknown) {
           // Transparent fallback do wbudowanych reguł lokalnych w razie błędu sieci/hosta
-          const fallbackText = getRuleBasedReply(query.trim()).text;
+          const fallbackText = getRuleBasedReply(query.trim(), advisorContext ?? undefined).text;
           const errDetail = err instanceof Error ? err.message : 'brak połączenia';
           const aiMsg: AdvisorChatMessage = {
             id: `m-${Date.now() + 1}`,
@@ -204,7 +208,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
       // Tryb reguł lokalnych
       setTimeout(() => {
-        const replyText = getRuleBasedReply(query.trim()).text;
+        const replyText = getRuleBasedReply(query.trim(), advisorContext ?? undefined).text;
         const aiMsg: AdvisorChatMessage = {
           id: `m-${Date.now() + 1}`,
           sender: 'ai',
@@ -217,7 +221,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         setIsTyping(false);
       }, 500);
     },
-    [inputVal, messages, ollamaEnabled, ollamaStatus.connected, selectedModel]
+    [advisorContext, inputVal, messages, ollamaEnabled, ollamaStatus.connected, selectedModel]
   );
 
   useEffect(() => {
@@ -255,7 +259,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Doradca regułowy"
-      description="Dostaje tylko wpisane pytanie lub szybki prompt. Nie czyta automatycznie Vaultu ani aplikacji; rozmowa zostaje w przeglądarce."
+      description="Czyta lokalnie aktualny profil i ostatni wynik dopasowania, aby wykryć konkretne luki. Rozmowa zostaje w przeglądarce; do Ollamy trafia tylko zredukowany kontekst analizy."
       size="lg"
     >
       <div className="flex h-[540px] flex-col">

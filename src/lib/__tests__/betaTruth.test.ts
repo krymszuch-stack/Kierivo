@@ -93,8 +93,8 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     const sidebar = source('src/components/layout/Sidebar.tsx');
     const host = source('src/features/advisor/AdvisorModalHost.tsx');
 
-    expect(advisor).toContain('Nie czytam automatycznie Master Vaultu ani aplikacji');
-    expect(advisor).toContain('zewnętrznego modelu językowego');
+    expect(advisor).toContain('zredukowany kontekst analizy');
+    expect(advisor).toContain('bez danych kontaktowych i pełnej treści CV');
     expect(advisor).not.toContain('Doradca AI');
     expect(sidebar).toContain('Doradca regułowy');
     expect(sidebar).not.toContain('badge="LOCAL"');

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getRuleBasedReply } from './advisorRules';
+import type { AdvisorContext } from './advisorContext';
 
 describe('lokalne reguły Doradcy', () => {
   it.each([
@@ -17,5 +18,25 @@ describe('lokalne reguły Doradcy', () => {
     expect(reply.topic).toBe('brak reguły dla pytania');
     expect(reply.text).toContain('nie będę udawać odpowiedzi AI');
     expect(reply.text).toContain('Gdańsku');
+  });
+
+  it('wyjaśnia słaby wynik przez fakty z ostatniej analizy', () => {
+    const context: AdvisorContext = {
+      offerTitle: 'Specjalista wsparcia IT',
+      score: 50,
+      missingHardSkills: ['Active Directory', 'Jira'],
+      matchedKeywords: [],
+      structuralWarnings: ['Brak standardowej sekcji: Umiejętności.'],
+      formattingWarnings: [],
+      missingProfileSections: ['Umiejętności twarde'],
+      hasLanguages: false,
+      lexicon: [{ term: 'Active Directory', source: 'luka' }],
+    };
+    const reply = getRuleBasedReply('Czy mam dobre CV pod ATS?', context);
+    expect(reply.topic).toBe('aktualna analiza CV');
+    expect(reply.text).toContain('50/100');
+    expect(reply.text).toContain('Active Directory');
+    expect(reply.text).toContain('Umiejętności twarde');
+    expect(reply.text).toContain('zewnętrznego ATS');
   });
 });

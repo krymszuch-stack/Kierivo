@@ -181,13 +181,21 @@ aiRouter.post(
         query?: string;
         history?: Array<{ sender: 'user' | 'ai'; text: string }>;
         model?: string;
+        context?: {
+          offerTitle?: string;
+          score?: number;
+          missingHardSkills?: string[];
+          structuralWarnings?: string[];
+          missingProfileSections?: string[];
+          hasLanguages?: boolean;
+        };
       }
     >,
     res: Response,
     next: NextFunction
   ) => {
     try {
-      const { query, history, model } = req.body;
+      const { query, history, model, context } = req.body;
 
       if (!query || typeof query !== 'string' || query.trim().length === 0) {
         return res.status(400).json({
@@ -220,6 +228,17 @@ aiRouter.post(
 
       const messages: OllamaChatMessage[] = [
         { role: 'system', content: ADVISOR_SYSTEM_PROMPT },
+        ...(context && typeof context === 'object' ? [{
+          role: 'system' as const,
+          content: `Lokalny kontekst aktualnej analizy (nie jest wyrokiem ATS): ${JSON.stringify({
+            oferta: typeof context.offerTitle === 'string' ? context.offerTitle.slice(0, 200) : undefined,
+            wynikWlasny: typeof context.score === 'number' ? context.score : undefined,
+            brakujaceWymagania: Array.isArray(context.missingHardSkills) ? context.missingHardSkills.slice(0, 6) : [],
+            ostrzezeniaStruktury: Array.isArray(context.structuralWarnings) ? context.structuralWarnings.slice(0, 4) : [],
+            brakiProfilu: Array.isArray(context.missingProfileSections) ? context.missingProfileSections.slice(0, 4) : [],
+            jezykiWpisane: context.hasLanguages === true,
+          })}`,
+        }] : []),
         ...formattedHistory,
         { role: 'user', content: trimmedQuery },
       ];

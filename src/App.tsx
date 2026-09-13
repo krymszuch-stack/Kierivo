@@ -37,6 +37,7 @@ import { ElevatorPitchModal } from './features/pitch/ElevatorPitchModal';
 import { DrillModeModal } from './features/drill/DrillModeModal';
 import { RecruiterVoiceLabModal } from './features/recruiter/RecruiterVoiceLabModal';
 import { Modal } from './components/ui/Modal';
+import type { AdvisorContext } from './features/advisor/advisorContext';
 
 // Lazy-loaded heavy views for fast initial bundle & LCP
 const JobMatcher = lazy(() => import('./features/matcher/JobMatcher').then((m) => ({ default: m.JobMatcher })));
@@ -91,6 +92,8 @@ function MainApp() {
   });
 
   const { applications } = useApplications();
+  // Wynik dopasowania jest stanem bieżącej sesji, nie kolejną kopią CV w schowku.
+  const [advisorContext, setAdvisorContext] = useState<AdvisorContext | null>(null);
 
   /**
    * Prawdziwe uprawnienia pobierane raz na sesję konta i po powrocie z bramki.
@@ -380,6 +383,7 @@ function MainApp() {
               <JobMatcher
                 vault={vault}
                 onUpdateVault={setVault}
+                onAdvisorContext={setAdvisorContext}
               />
             )}
 
@@ -421,6 +425,7 @@ function MainApp() {
           isOpen={isAdvisorOpen}
           onClose={() => setAdvisorOpen(false)}
           vault={vault}
+          advisorContext={advisorContext}
           initialQuestion={advisorInitialQuestion}
         />
 

@@ -41,6 +41,7 @@ import { Modal } from '../../components/ui/Modal';
 import { useApplications } from '../../store/useApplications';
 import { JobApplication } from '../../types';
 import { showToast } from '../../store/useToastStore';
+import { buildAdvisorContext, type AdvisorContext } from '../advisor/advisorContext';
 
 interface JobPreset {
   id: string;
@@ -125,12 +126,14 @@ Wymagania:
 export interface JobMatcherProps {
   vault: MasterVault;
   onUpdateVault?: (updated: MasterVault) => void;
+  onAdvisorContext?: (context: AdvisorContext) => void;
   className?: string;
 }
 
 export const JobMatcher: React.FC<JobMatcherProps> = ({
   vault,
   onUpdateVault,
+  onAdvisorContext,
   className = '',
 }) => {
   // ATS Matching State
@@ -197,6 +200,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       const ats = simulateAtsCheck(tailored, vault, jdText);
       tailored.atsScore = ats.overallScore;
       setAtsResult(ats);
+      onAdvisorContext?.(buildAdvisorContext(vault, job, ats));
 
       if (ats.overallScore >= 90) {
         triggerConfetti({ count: 90, durationMs: 3000 });

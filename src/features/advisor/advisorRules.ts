@@ -88,7 +88,9 @@ const RULES: AdvisorRule[] = [
   },
 ];
 
-export function getRuleBasedReply(query: string): AdvisorRuleReply {
+export function getRuleBasedReply(query: string, context?: AdvisorContext): AdvisorRuleReply {
+  const contextual = context ? buildContextualAdvice(query, context) : null;
+  if (contextual) return { topic: 'aktualna analiza CV', text: contextual };
   const normalized = normalize(query);
   const rule = RULES.find((candidate) => candidate.matches(normalized));
 
@@ -100,3 +102,5 @@ export function getRuleBasedReply(query: string): AdvisorRuleReply {
     text: `Nie mam gotowej reguły, która uczciwie odpowie na: „${question}${query.trim().length > question.length ? '…' : ''}”. Gdy lokalna Ollama nie działa, nie będę udawać odpowiedzi AI. Możesz przeformułować pytanie wokół konkretnego elementu CV (np. doświadczenia, umiejętności, ATS, luki, rozmowy lub listu motywacyjnego) albo uruchomić lokalną asystę Ollama.`,
   };
 }
+import type { AdvisorContext } from './advisorContext';
+import { buildContextualAdvice } from './advisorContext';
