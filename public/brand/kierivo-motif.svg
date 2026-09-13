@@ -2,9 +2,9 @@
   <title id="title">Motyw graficzny Kierivo</title>
   <defs>
     <pattern id="motif" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
-      <path fill="#155EEF" fill-opacity=".09" d="M44 28h64v38L76 98q-8 8 0 16l52 70H44q-28 0-28-28V56q0-28 28-28Z"/>
-      <path fill="#19C3E6" fill-opacity=".13" d="M124 28h62L95 119q-7 7-13 0l-8-8q-6-6 0-13l39-62q4-8 11-8Z"/>
-      <path fill="#155EEF" fill-opacity=".09" d="m100 108 86 64q10 12-6 12h-44q-8 0-14-8l-35-46q-7-9 1-16 6-7 12-6Z"/>
+      <path fill="#155EEF" fill-opacity=".09" d="M44 28h58q8 0 8 8v31L74 103q-6 6 0 12l50 66q6 8-4 8H44q-28 0-28-28V56q0-28 28-28Z"/>
+      <path fill="#19C3E6" fill-opacity=".13" d="M132 28h52q11 0 4 8l-77 77q-6 6-12 0l-10-10q-6-6 0-12l35-56q4-7 8-7Z"/>
+      <path fill="#155EEF" fill-opacity=".09" d="M108 107q6-6 12 0l67 68q8 8 0 14h-41q-9 0-15-8l-35-47q-8-10 0-18Z"/>
     </pattern>
   </defs>
   <rect width="1200" height="600" fill="#F7FAFF"/>
