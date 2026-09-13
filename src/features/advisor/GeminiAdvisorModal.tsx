@@ -5,6 +5,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../lib/apiClient';
 import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
+import { getRuleBasedReply } from './advisorRules';
 
 import type { MasterVault } from '../../types';
 import {
@@ -42,34 +43,18 @@ interface AdvisorChatResponse {
 }
 
 const QUICK_PROMPTS = [
-  'Jak opisać sukcesy w metodzie STAR?',
   'Jak przygotować CV czytelne dla parserów rekrutacyjnych?',
-  'Jak opisać doświadczenie przy aplikacji na rolę Senior?',
-  'Jak unikać sztucznego upychania słów kluczowych?',
+  'Jak opisać realne osiągnięcia bez wymyślania liczb?',
+  'Jak pokazać zmianę branży lub lukę w doświadczeniu?',
+  'Czy dodawać zdjęcie do CV?',
+  'Jak napisać krótką wiadomość do rekrutera?',
 ];
-
-function getRuleBasedReply(query: string): string {
-  const qLower = query.toLowerCase();
-  if (qLower.includes('star')) {
-    return 'Metoda STAR porządkuje opis na Situation, Task, Action i Result. Podawaj wyłącznie metryki, które możesz obronić na rozmowie. Zamiast „odpowiedzialny za rozwój API” możesz użyć wzoru: „Zoptymalizowałem [co zrobiłeś] przez [narzędzie lub działanie], co zmieniło [Twój realny, weryfikowalny rezultat]”.';
-  }
-  if (qLower.includes('kolumn') || qLower.includes('pdf') || qLower.includes('parser')) {
-    return 'Układ wielokolumnowy, tekst w grafikach i niestandardowe nagłówki mogą utrudniać automatyczny odczyt dokumentu. Jednokolumnowy układ, zwykła warstwa tekstowa i standardowe sekcje są konserwatywnym wyborem. CVelocity nie testuje jednak dokumentu wewnątrz konkretnego zewnętrznego ATS.';
-  }
-  if (qLower.includes('senior')) {
-    return 'Przy roli Senior pokaż zakres odpowiedzialności, decyzje techniczne, mentoring i wpływ na wynik zespołu tylko tam, gdzie faktycznie należały do Twojej pracy. Zamiast dopisywać modne frazy, powiąż technologie i decyzje z konkretnymi projektami oraz własnymi rezultatami.';
-  }
-  if (qLower.includes('słów') || qLower.includes('keyword') || qLower.includes('upychan')) {
-    return 'Frazy z ogłoszenia powinny występować w naturalnym kontekście. Dodaj narzędzie lub kompetencję do opisu projektu tylko wtedy, gdy naprawdę z niej korzystałeś. Powtarzanie słowa bez kontekstu może pogorszyć czytelność dla człowieka, a CVelocity nie obiecuje, że zwiększy to wynik dowolnego zewnętrznego ATS.';
-  }
-  return 'W CV warto używać konkretnych fraz z ogłoszenia tylko wtedy, gdy opisują Twoje prawdziwe doświadczenie. Wynik CVelocity jest wskazówką do redakcji dokumentu, nie przewidywaniem decyzji rekrutera.';
-}
 
 function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
-    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Odpowiadam z wbudowanych zasad i dostaję tylko treść pytania, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam tej rozmowy do zewnętrznego modelu językowego.',
+    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Jeśli lokalna Ollama jest dostępna, mogę użyć jej do odpowiedzi. Bez niej podaję tylko konkretne wbudowane reguły — nie udaję AI. Dostaję wyłącznie pytanie, które wpiszesz lub wybierzesz. Nie czytam automatycznie Master Vaultu ani aplikacji i nie wysyłam rozmowy do zewnętrznego modelu językowego.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     source: 'rules',
   };
@@ -202,7 +187,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           }
         } catch (err: unknown) {
           // Transparent fallback do wbudowanych reguł lokalnych w razie błędu sieci/hosta
-          const fallbackText = getRuleBasedReply(query.trim());
+          const fallbackText = getRuleBasedReply(query.trim()).text;
           const errDetail = err instanceof Error ? err.message : 'brak połączenia';
           const aiMsg: AdvisorChatMessage = {
             id: `m-${Date.now() + 1}`,
@@ -219,7 +204,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
       // Tryb reguł lokalnych
       setTimeout(() => {
-        const replyText = getRuleBasedReply(query.trim());
+        const replyText = getRuleBasedReply(query.trim()).text;
         const aiMsg: AdvisorChatMessage = {
           id: `m-${Date.now() + 1}`,
           sender: 'ai',
@@ -289,7 +274,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
               <span className="text-[11px] font-medium text-ink">
                 {ollamaStatus.connected
                   ? `Asysta Ollama: ${ollamaEnabled ? 'włączona' : 'wstrzymana'}`
-                  : 'Asysta Ollama: niedostępna (reguły)'}
+                  : 'Lokalna AI: niedostępna — działają reguły'}
               </span>
             </div>
 
@@ -328,7 +313,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 className="flex cursor-pointer items-center gap-1 text-[11px] text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
               >
                 <RefreshCw className={`h-3 w-3 ${isCheckingOllama ? 'animate-spin' : ''}`} />
-                <span>Sprawdź Ollamę</span>
+                <span>Sprawdź lokalne AI</span>
               </button>
             )}
           </div>
@@ -415,7 +400,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 <span>
                   {ollamaEnabled && ollamaStatus.connected
                     ? `Doradca konsultuje lokalną Ollamę (${activeModelDisplay || 'model'})...`
-                    : 'Doradca przygotowuje odpowiedź z lokalnych reguł...'}
+                    : 'Dobieram konkretną regułę lokalną...'}
                 </span>
               </motion.div>
             )}
@@ -463,4 +448,4 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       </div>
     </Modal>
   );
-};
+};
