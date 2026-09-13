@@ -242,7 +242,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
       description: 'Zarządzaj procesami rekrutacyjnymi, terminami rozmów i ofertami.',
       icon: Layers,
       tab: 'pipeline' as NavTabId,
-      badge: 'Pipeline aplikacji',
+      badge: 'Moje aplikacje',
       badgeColor: 'brand',
     },
   ];

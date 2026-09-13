@@ -150,7 +150,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
       },
       {
         id: 'nav-pipeline',
-        label: 'Przejdź do: Pipeline (wysłane aplikacje i rozmowy)',
+        label: 'Przejdź do: Moje aplikacje (wysłane aplikacje i rozmowy)',
         category: 'Nawigacja',
         icon: IconApplications,
         action: () => onNavigate('pipeline'),

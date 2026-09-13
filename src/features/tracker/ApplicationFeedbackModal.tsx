@@ -101,7 +101,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
 
   const handleApplied = () => {
     upsert('Wysłana');
-    showToast('Zapisano w Pipeline', {
+    showToast('Dodano do moich aplikacji', {
       message: `${pending.title} — ${pending.company}. Status: wysłana.`,
     });
     setStep('success');
@@ -125,7 +125,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
     sendApplicationFeedback(
       buildFeedbackPayload(pending, { appliedSuccessfully: false, failureReason: failure })
     );
-    showToast('Oferta czeka w Pipeline', {
+    showToast('Oferta czeka na liście aplikacji', {
       message: 'Zostawiliśmy ją jako „Do wysłania” razem z powodem.',
       variant: 'info',
     });
@@ -193,7 +193,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
         {step === 'success' && (
           <div className="space-y-4">
             <div className="pr-8">
-              <h2 className="text-base font-black tracking-tight">Zapisane w Pipeline 🚀</h2>
+              <h2 className="text-base font-black tracking-tight">Dodane do moich aplikacji 🚀</h2>
               <p className="mt-1.5 text-sm text-slate-300">
                 Dwa kliknięcia i znikamy — anonimowo, bez Twojego konta. Dzięki nim następna osoba
                 wie, gdzie ta rekrutacja naprawdę się toczy.
@@ -254,7 +254,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
                 iconPosition="right"
                 onClick={() => handleFinishSuccess(true)}
               >
-                Przejdź do Pipeline i ściągi
+                Przejdź do aplikacji i ściągi
               </Button>
             </div>
           </div>
@@ -265,7 +265,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
             <div className="pr-8">
               <h2 className="text-base font-black tracking-tight">Co stanęło na przeszkodzie?</h2>
               <p className="mt-1.5 text-sm text-slate-300">
-                Oferta zostaje w Pipeline jako „Do wysłania”, więc nie zginie.
+                Oferta zostaje na liście jako „Do wysłania”, więc nie zginie.
               </p>
             </div>
 

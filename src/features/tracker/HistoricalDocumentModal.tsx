@@ -176,7 +176,7 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
           <EmptyState
             icon={AlertCircle}
             title="Brak zapisanej migawki dokumentu"
-            description="Ta aplikacja została wprowadzona ręcznie do Pipeline lub utworzona przed wprowadzeniem systemu niezmiennych migawek. Dokumenty wygenerowane w sekcji APLIKUJ są automatycznie utrwalane w całości."
+            description="Ta aplikacja została dodana ręcznie do listy albo utworzona przed wprowadzeniem niezmiennych migawek. Dokumenty wygenerowane w sekcji APLIKUJ są automatycznie utrwalane w całości."
           />
         )}
       </div>

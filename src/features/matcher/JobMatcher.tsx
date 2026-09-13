@@ -576,7 +576,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                   };
 
                   saveApplication(application);
-                  showToast('Zapisano w Pipeline', {
+                  showToast('Dodano do moich aplikacji', {
                     message: `${selectedJob.title} — dopasowanie ${atsResult.overallScore}%.`,
                   });
                   setIsAtsModalOpen(false);

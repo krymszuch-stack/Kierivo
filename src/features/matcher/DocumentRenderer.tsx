@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Printer,
   Copy,
@@ -15,8 +15,8 @@ import {
   Plus,
   Trash2,
   X,
-  Shuffle,
   LayoutTemplate,
+  Lightbulb,
 } from 'lucide-react';
 import { MasterVault, TailoredResume, HighlightMetric, GeneratedCvExport } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -24,21 +24,9 @@ import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
 import {
   assessCvTemplate,
-  CV_TEMPLATE_BETA_LIMIT,
   CV_TEMPLATE_CATALOG,
   findCvTemplate,
-  pickCvTemplate,
 } from '../../lib/cvTemplateEngine';
-import { readJson, StorageKeys, writeJson } from '../../lib/storage';
-
-interface TemplateBetaUsage {
-  attempts: number;
-}
-
-function readTemplateBetaUsage(): TemplateBetaUsage {
-  const value = readJson<TemplateBetaUsage>(StorageKeys.cvTemplateBetaUsage, { attempts: 0 });
-  return { attempts: Math.max(0, Math.min(CV_TEMPLATE_BETA_LIMIT, Math.floor(value.attempts || 0))) };
-}
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -69,12 +57,12 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   onExported,
   className = '',
 }) => {
-  const [activeTemplateId, setActiveTemplateId] = useState('cv-01');
+  const [activeTemplateId, setActiveTemplateId] = useState('cv-minimal');
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0].hex);
-  const [betaUsage, setBetaUsage] = useState<TemplateBetaUsage>(readTemplateBetaUsage);
   const [isCopied, setIsCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [hasSynced, setHasSynced] = useState(false);
+  const [showEmptyHints, setShowEmptyHints] = useState(true);
 
   // Lokalna robocza wersja dokumentu z możliwością edycji przed drukiem
   const [docVault, setDocVault] = useState<MasterVault>(() => JSON.parse(JSON.stringify(vault)));
@@ -89,6 +77,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const hardSkills = docVault.skillsMatrix?.hardSkills || [];
   const activeTemplate = findCvTemplate(activeTemplateId);
   const templateAssessment = assessCvTemplate(activeTemplate);
+  const previewValue = (value: string | undefined, hint: string) => value || (showEmptyHints ? `[${hint}]` : '');
 
   const buildExportMetadata = (): GeneratedCvExport => ({
     templateId: activeTemplate.id,
@@ -130,23 +119,6 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
     onExported?.(buildExportMetadata());
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
-  };
-
-  const handleGenerateTemplate = () => {
-    if (betaUsage.attempts >= CV_TEMPLATE_BETA_LIMIT) {
-      showToast('Wykorzystano lokalny limit bety', {
-        message: 'W tej przeglądarce wykorzystano 15 prób losowania wariantu. Wybór istniejącego szablonu nadal nie zmienia danych CV.',
-        variant: 'info',
-      });
-      return;
-    }
-
-    const nextUsage = { attempts: betaUsage.attempts + 1 };
-    const template = pickCvTemplate(Date.now() + nextUsage.attempts);
-    writeJson(StorageKeys.cvTemplateBetaUsage, nextUsage);
-    setBetaUsage(nextUsage);
-    setActiveTemplateId(template.id);
-    setSelectedColor(template.accent);
   };
 
   const handleUpdatePersonalInfo = (field: string, value: string) => {
@@ -279,48 +251,18 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         </div>
       )}
 
-      {/* Controls Bar: Templates, Colors, Edit Mode & Export Buttons */}
+      {/* Pasek narzędzi dokumentu */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-elevated p-3.5 shadow-raised">
-        {/* Wybór szablonu */}
-        <div
-          className="flex flex-wrap items-center gap-1.5"
-          role="group"
-          aria-label="Szablon dokumentu"
-        >
-          <span className="mr-1 text-label font-bold uppercase tracking-wider text-muted text-xs">
-            Szablon
-          </span>
-          {CV_TEMPLATE_CATALOG.slice(0, 6).map((tmpl) => (
-            <Tooltip key={tmpl.id} content={assessCvTemplate(tmpl).explanation}>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTemplateId(tmpl.id);
-                  setSelectedColor(tmpl.accent);
-                }}
-                aria-pressed={activeTemplateId === tmpl.id}
-                className={`cursor-pointer rounded-xl border px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] ease-out focus-visible:outline-none ${
-                  activeTemplateId === tmpl.id
-                    ? 'border-brand-600 bg-brand-600 text-on-brand shadow-xs'
-                    : 'border-line bg-surface text-muted hover:text-ink'
-                }`}
-              >
-                {tmpl.name}
-              </button>
-            </Tooltip>
-          ))}
-          <Tooltip content="Losuje jeden z 82 deterministycznie zdefiniowanych wariantów i zużywa jedną z 15 lokalnych prób beta.">
-            <button
-              type="button"
-              onClick={handleGenerateTemplate}
-              disabled={betaUsage.attempts >= CV_TEMPLATE_BETA_LIMIT}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-line bg-surface px-2.5 py-1 text-xs font-bold text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <Shuffle className="h-3.5 w-3.5" /> Losuj {betaUsage.attempts}/{CV_TEMPLATE_BETA_LIMIT}
-            </button>
-          </Tooltip>
-        </div>
-
+        <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={showEmptyHints}
+            onChange={(event) => setShowEmptyHints(event.target.checked)}
+            className="h-4 w-4 rounded border-line accent-brand-600"
+          />
+          <Lightbulb className="h-4 w-4 text-brand-fg" aria-hidden="true" />
+          <span>Podpowiedzi w pustym CV</span>
+        </label>
         {/* Color Accent Picker */}
         <div className="flex items-center gap-2">
           <Palette className="h-4 w-4 text-muted" />
@@ -390,42 +332,6 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         <span className="text-muted">{templateAssessment.explanation}</span>
       </div>
 
-      <section className="rounded-2xl border border-line bg-elevated p-3 sm:p-4" aria-labelledby="template-gallery-title">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 id="template-gallery-title" className="text-sm font-bold text-ink">Wybierz wygląd gotowego CV</h2>
-            <p className="text-xs text-muted">Miniatury pokazują układ. Treść Twojego CV pozostaje bez zmian.</p>
-          </div>
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted">82 warianty</span>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-9">
-          {CV_TEMPLATE_CATALOG.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              onClick={() => {
-                setActiveTemplateId(template.id);
-                setSelectedColor(template.accent);
-              }}
-              aria-pressed={activeTemplateId === template.id}
-              aria-label={`Wybierz ${template.name}: ${assessCvTemplate(template).label}`}
-              className={`rounded-lg border p-1 text-left transition-colors focus-visible:outline-none ${
-                activeTemplateId === template.id ? 'border-brand-600 ring-2 ring-brand-500/30' : 'border-line hover:border-line-strong'
-              }`}
-            >
-              <span
-                aria-hidden="true"
-                className={`cv-template-thumbnail cv-template-thumbnail-${template.layout}`}
-                style={{ '--cv-thumbnail-accent': template.accent, '--cv-thumbnail-soft': template.accentSoft } as React.CSSProperties}
-              >
-                <i /><i /><i /><i />
-              </span>
-              <span className="mt-1 block truncate font-mono text-[9px] text-muted">{template.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
       {/* A4 Sheet Container — responsywny arkusz A4 */}
       <div className="overflow-x-auto p-2 sm:p-6 flex flex-col items-center justify-center bg-sunken/40 rounded-3xl border border-line">
         <div className="w-full flex justify-center">
@@ -471,10 +377,10 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                     className="text-2xl sm:text-3xl font-extrabold tracking-tight"
                     style={{ color: activeTemplate.family === 'modern' ? selectedColor : undefined }}
                   >
-                    {personal.fullName || 'Imię i Nazwisko'}
+                    {previewValue(personal.fullName, 'Imię i nazwisko')}
                   </h1>
                   <p className="mt-0.5 text-sm font-semibold text-muted">
-                    {tailoredResume?.targetJobTitle || personal.title || 'Twój Tytuł Zawodowy'}
+                    {tailoredResume?.targetJobTitle || previewValue(personal.title, 'Stanowisko')}
                   </p>
                 </>
               )}
@@ -562,7 +468,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 />
               ) : (
                 <p className="text-xs leading-relaxed text-ink/90">
-                  {tailoredResume?.summary || personal.summary || 'Brak podsumowania zawodowego.'}
+                  {tailoredResume?.summary || previewValue(personal.summary, '2–3 zdania o doświadczeniu i mocnych stronach')}
                 </p>
               )}
             </div>
@@ -716,6 +622,43 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
           </div>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-line bg-elevated p-3 sm:p-4" aria-labelledby="template-gallery-title">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="template-gallery-title" className="text-sm font-bold text-ink">Zmień wygląd</h2>
+            <p className="text-xs text-muted">Pięć wariantów — treść Twojego CV pozostaje bez zmian.</p>
+          </div>
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-muted">{activeTemplate.name}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-5 gap-2">
+          {CV_TEMPLATE_CATALOG.map((template) => (
+            <Tooltip key={template.id} content={assessCvTemplate(template).explanation}>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTemplateId(template.id);
+                  setSelectedColor(template.accent);
+                }}
+                aria-pressed={activeTemplateId === template.id}
+                aria-label={`Wybierz ${template.name}: ${assessCvTemplate(template).label}`}
+                className={`rounded-lg border p-1 text-left transition-colors focus-visible:outline-none ${
+                  activeTemplateId === template.id ? 'border-brand-600 ring-2 ring-brand-500/30' : 'border-line hover:border-line-strong'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`cv-template-thumbnail cv-template-thumbnail-${template.layout}`}
+                  style={{ '--cv-thumbnail-accent': template.accent, '--cv-thumbnail-soft': template.accentSoft } as React.CSSProperties}
+                >
+                  <i /><i /><i /><i />
+                </span>
+                <span className="mt-1 block truncate text-center font-mono text-[9px] text-muted">{template.name}</span>
+              </button>
+            </Tooltip>
+          ))}
+        </div>
+      </section>
     </div>
   );
 };

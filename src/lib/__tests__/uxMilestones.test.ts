@@ -44,7 +44,7 @@ describe('Progresywne odblokowania', () => {
     it('mówi wprost, co odblokuje zablokowane sekcje', () => {
       const unlocks = deriveUnlocks({});
 
-      expect(unlocks.reasons.trenuj).toMatch(/Pipeline/);
+      expect(unlocks.reasons.trenuj).toMatch(/liście aplikacji/);
       expect(unlocks.reasons.pipeline).toMatch(/Aplikuj/);
     });
 

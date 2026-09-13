@@ -153,7 +153,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
           </Button>
 
           <Button type="submit" variant="primary" size="md" icon={Check}>
-            {initialData ? 'Zapisz zmiany' : 'Dodaj do Pipeline'}
+            {initialData ? 'Zapisz zmiany' : 'Dodaj do moich aplikacji'}
           </Button>
         </div>
       </form>

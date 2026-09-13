@@ -122,7 +122,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
             icon={CheckCircle2}
             onClick={onSaveTailoredCV}
           >
-            Zapisz w Pipeline Aplikacji
+            Zapisz na liście aplikacji
           </Button>
         )}
       </div>

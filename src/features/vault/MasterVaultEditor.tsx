@@ -80,8 +80,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   }, [vault.profiler?.subRoleId, vault.personalInfo.title, vault.history]);
 
   const storageDescription = mode === 'cloud'
-    ? 'Zmiany są zapisywane na koncie i synchronizowane, gdy połączenie jest dostępne.'
-    : 'Możesz wygenerować CV bez konta — wtedy dane zostają w tej przeglądarce. Konto umożliwia synchronizację między urządzeniami.';
+    ? 'Zmiany zapisują się w tle na koncie i synchronizują, gdy połączenie jest dostępne.'
+    : 'Zmiany zapisują się w tle w tej przeglądarce. Możesz wygenerować CV bez konta, a konto umożliwia synchronizację między urządzeniami.';
 
   const handleSubRoleChange = (subRoleId: string | undefined) => {
     onChange({ ...vault, profiler: { ...vault.profiler, subRoleId } });

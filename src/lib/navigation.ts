@@ -9,7 +9,7 @@
  *
  * Ośmiu pozycji już nie ma. Zostały cztery czasowniki opisujące kolejne kroki
  * jednej podróży: uzupełnij PROFIL → APLIKUJ na ofertę → TRENUJ przed rozmową
- * → prowadź PIPELINE. Moduły, które były osobnymi pozycjami menu (Wczytaj CV,
+ * → śledź APLIKACJE. Moduły, które były osobnymi pozycjami menu (Wczytaj CV,
  * Filtry i Priorytety), stały się krokami wewnątrz sekcji, bo żaden z nich nie
  * jest celem sam w sobie — są sposobem na uzupełnienie profilu.
  */
@@ -63,8 +63,8 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   },
   {
     id: 'pipeline',
-    label: 'Pipeline',
-    hint: 'Wysłane aplikacje i ich statusy. Narzędzia na rozmowę pojawiają się tutaj.',
+    label: 'Moje aplikacje',
+    hint: 'Wysłane aplikacje, ich etapy i notatki z rozmów. Tu nic nie wpada do czarnej dziury.',
   },
 ] as const;
 

@@ -61,7 +61,7 @@ export interface UnlockState {
 }
 
 const LOCK_REASONS: Record<'trenuj' | 'pipeline', string> = {
-  trenuj: 'Odblokuje się, gdy zapiszesz pierwszą ofertę do Pipeline.',
+  trenuj: 'Odblokuje się, gdy zapiszesz pierwszą ofertę na liście aplikacji.',
   pipeline: 'Odblokuje się, gdy zapiszesz pierwszą ofertę z sekcji Aplikuj.',
 };
 

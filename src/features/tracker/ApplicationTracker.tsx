@@ -134,13 +134,13 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
 
   const handleSaveApp = (app: JobApplication) => {
     saveApplication(app);
-    showToast('Pipeline zaktualizowany', {
+    showToast('Lista aplikacji zaktualizowana', {
       message: `${app.company || ''} — ${app.position || ''} (${app.status || ''}).`,
     });
   };
 
   const handleDeleteApp = (id: string) => {
-    if (confirm('Czy na pewno chcesz usunąć to zgłoszenie z pipeline?')) {
+    if (confirm('Czy na pewno chcesz usunąć tę aplikację z listy?')) {
       const removed = applications.find((entry) => entry.id === id);
       removeApplication(id);
       showToast('Zgłoszenie usunięte', {
@@ -164,7 +164,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const handleClaimLegacyApplications = () => {
     if (
       !window.confirm(
-        'Przypisać starszą historię Pipeline do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dane jako swoje.'
+        'Przypisać starszą historię aplikacji do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dane jako swoje.'
       )
     ) {
       return;
@@ -190,9 +190,9 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pipeline Aplikacji (Application Tracker)"
-        description="Zarządzaj swoimi procesami rekrutacyjnymi w stylu Linear. Monitoruj etapy, notatki z rozmów i wskaźnik skuteczności aplikacji w czasie rzeczywistym."
-        badge="Pipeline aplikacji"
+        title="Moje aplikacje"
+        description="Masz tu wysłane CV, etapy rekrutacji i notatki z rozmów — spokojnie, żadna oferta nie wyparuje w kosmos."
+        badge="Lista aplikacji"
         actions={
           <Button
             type="button"
@@ -213,7 +213,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         <Card tone="raised" className="border-l-4 border-l-amber-500">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-semibold text-ink">Wykryto starszą historię Pipeline</h2>
+              <h2 className="font-semibold text-ink">Wykryto starszą historię aplikacji</h2>
               <p className="mt-1 text-sm text-muted">
                 Dane z wcześniejszej wersji nie są automatycznie pokazywane w profilu. Przypisz je tylko, jeśli są Twoje.
               </p>

@@ -58,7 +58,7 @@ const TAB_LABELS: Partial<Record<NavTabId, string>> = {
   profil: 'Profil',
   aplikuj: 'Aplikuj',
   trenuj: 'Trenuj',
-  pipeline: 'Pipeline',
+  pipeline: 'Moje aplikacje',
 };
 
 export const NextActionCard: React.FC<NextActionCardProps> = ({
