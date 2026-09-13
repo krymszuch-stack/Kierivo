@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# scripts/deploy-cloudrun.sh — Wdrożenie CVelocity na Google Cloud Run
+# scripts/deploy-cloudrun.sh — Wdrożenie Kierivo na Google Cloud Run
 # ==============================================================================
 # Jeden kontener serwuje jednocześnie skompilowany frontend React i serwer Express.
 # Zgodnie z wytycznymi architektonicznymi:
@@ -21,7 +21,7 @@ if [ -z "$PROJECT_ID" ]; then
   exit 1
 fi
 
-echo "🚀 Rozpoczynam wdrożenie CVelocity na Cloud Run w projekcie: $PROJECT_ID ($REGION)"
+echo "🚀 Rozpoczynam wdrożenie Kierivo na Cloud Run w projekcie: $PROJECT_ID ($REGION)"
 
 # 1. Sprawdzenie narzędzi
 command -v gcloud >/dev/null 2>&1 || { echo "❌ gcloud CLI nie jest zainstalowane."; exit 1; }
@@ -58,7 +58,7 @@ if ! gcloud artifacts repositories describe "$REPO_NAME" --location="$REGION" >/
   gcloud artifacts repositories create "$REPO_NAME" \
     --repository-format=docker \
     --location="$REGION" \
-    --description="Docker repository for CVelocity"
+    --description="Docker repository for Kierivo"
 fi
 
 IMAGE_TAG="$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/app:latest"
@@ -90,7 +90,7 @@ echo "🩺 Sprawdzam stan wdrożonej usługi pod adresem: $SERVICE_URL..."
 HEALTH_RESP=$(curl -sf "$SERVICE_URL/api/health" || echo "ERROR")
 
 if [[ "$HEALTH_RESP" == *"ok"* ]]; then
-  echo "✅ SUKCES: CVelocity działa poprawnie na Cloud Run!"
+  echo "✅ SUKCES: Kierivo działa poprawnie na Cloud Run!"
   echo "🔗 URL aplikacji: $SERVICE_URL"
 else
   echo "⚠️ Ostrzeżenie: Endpoint zdrowia nie zwrócił 'ok'. Sprawdź logi gcloud:"

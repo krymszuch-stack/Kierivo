@@ -7,7 +7,7 @@ import { FREE_BETA_LABEL, FREE_BETA_PRICE_PLN } from '../lib/beta';
 const included = [
   'Tworzenie i edycja Master Vault',
   'Wklejanie treści CV i lokalne scalanie z profilem',
-  'Audyt CVelocity: słowa/frazy, umiejętności, struktura i formatowanie',
+  'Audyt Kierivo: słowa/frazy, umiejętności, struktura i formatowanie',
   'Dopasowanie CV do konkretnego ogłoszenia i lista wykrytych luk',
   'Podgląd dokumentu oraz podstawowy eksport',
   'Pipeline aplikacji i podstawowe przygotowanie do rozmowy',
@@ -28,7 +28,7 @@ export const PricingView: React.FC = () => {
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-4 sm:p-6 lg:p-8" data-testid="beta-scope-view">
       <PageHeader
-        title="Bezpłatna beta CVelocity"
+        title="Bezpłatna beta Kierivo"
         description="W tej wersji nie sprzedajemy planów, szablonów ani Karnetu. Tester może wykonać podstawowy przepływ bez karty i bez checkoutu."
         badge={FREE_BETA_LABEL.toUpperCase()}
       />
@@ -108,9 +108,9 @@ export const PricingView: React.FC = () => {
       </section>
 
       <section className="rounded-3xl border border-line bg-elevated p-6 text-sm leading-relaxed text-muted">
-        <h2 className="font-bold text-ink">Jak czytać wynik ATS w CVelocity</h2>
+        <h2 className="font-bold text-ink">Jak czytać wynik ATS w Kierivo</h2>
         <p className="mt-2">
-          Wynik 0–100 jest własną oceną CVelocity wyliczaną z cech dokumentu i treści ogłoszenia.
+          Wynik 0–100 jest własną oceną Kierivo wyliczaną z cech dokumentu i treści ogłoszenia.
           Nie pochodzi z Workday, Greenhouse, Lever, Taleo ani innego zewnętrznego ATS. Nie przewiduje
           decyzji rekrutera i nie gwarantuje zaproszenia na rozmowę ani zatrudnienia.
         </p>

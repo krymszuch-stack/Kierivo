@@ -78,7 +78,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               1. Administrator Danych
             </h5>
             <p className="text-muted">
-              Administratorem danych osobowych przetwarzanych w ramach serwisu CVelocity jest CVelocity Sp. z o.o. Kontakt w sprawach ochrony danych: <strong>prywatnosc@cvelocity.pl</strong>.
+              Administratorem danych osobowych przetwarzanych w ramach serwisu jest właściciel Kierivo. Kontakt w sprawach ochrony danych: <strong>prywatnosc@cvelocity.pl</strong>.
             </p>
           </div>
 

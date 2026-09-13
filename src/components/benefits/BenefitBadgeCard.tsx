@@ -40,7 +40,7 @@ export const BenefitBadgeCard: React.FC<BenefitBadgeCardProps> = ({
     <div
       className={`flex min-h-[4.5rem] items-center gap-3 rounded-xl border p-3 transition-all duration-200 ease-out ${
         provided
-          ? 'border-[#F26440]/30 bg-slate-900/80 text-white shadow-[0_0_15px_rgba(242,100,64,0.08)]'
+          ? 'border-[#155EEF]/30 bg-slate-900/80 text-white shadow-[0_0_15px_rgba(242,100,64,0.08)]'
           : 'border-line bg-slate-900/30 text-subtle opacity-60 grayscale hover:opacity-90 hover:grayscale-0'
       }`}
     >

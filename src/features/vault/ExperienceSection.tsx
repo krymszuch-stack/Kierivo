@@ -153,7 +153,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                       disabled={index === 0}
                       onClick={() => handleMove(index, 'up')}
                       aria-label="Przesuń wyżej"
-                      className="cursor-pointer rounded-md p-1 text-muted transition-colors duration-[var(--duration-fast)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="cursor-pointer rounded-md p-1 text-muted transition-colors duration-[var(--duration-fast)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 disabled:cursor-not-allowed disabled:opacity-30"
                     >
                       <ChevronUp className="h-4 w-4" />
                     </button>
@@ -162,7 +162,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                       disabled={index === history.length - 1}
                       onClick={() => handleMove(index, 'down')}
                       aria-label="Przesuń niżej"
-                      className="cursor-pointer rounded-md p-1 text-muted transition-colors duration-[var(--duration-fast)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="cursor-pointer rounded-md p-1 text-muted transition-colors duration-[var(--duration-fast)] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 disabled:cursor-not-allowed disabled:opacity-30"
                     >
                       <ChevronDown className="h-4 w-4" />
                     </button>

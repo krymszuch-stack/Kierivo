@@ -53,7 +53,7 @@ export const WelcomeWizard: React.FC<WelcomeWizardProps> = ({
       tab: 'profil' as const,
       title: '2. Wczytaj CV',
       description:
-        'Zaimportuj PDF lub DOCX albo wklej treść CV, a CVelocity uzupełni brakujące pola profilu.',
+        'Zaimportuj PDF lub DOCX albo wklej treść CV, a Kierivo uzupełni brakujące pola profilu.',
       icon: FileText,
     },
     {

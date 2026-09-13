@@ -114,7 +114,7 @@ const AuthTabs: React.FC<{
 
   const tabClass = (tab: 'logowanie' | 'rejestracja') =>
     [
-      'cursor-pointer rounded-lg py-2 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50',
+      'cursor-pointer rounded-lg py-2 text-label font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50',
       aktywny === tab ? 'bg-surface text-ink shadow-xs' : 'text-muted hover:text-ink',
     ].join(' ');
 
@@ -308,7 +308,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         <button
           type="button"
           onClick={() => idzDo('wybor')}
-          className="mb-3 inline-flex cursor-pointer items-center gap-1.5 text-label font-semibold text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 rounded"
+          className="mb-3 inline-flex cursor-pointer items-center gap-1.5 text-label font-semibold text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 rounded"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
           Wróć do wyboru
@@ -339,7 +339,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <button
             type="button"
             onClick={() => idzDo('logowanie')}
-            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
           >
             <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-brand-fg" aria-hidden="true" />
             <span>
@@ -353,7 +353,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <button
             type="button"
             onClick={() => idzDo('lokalny')}
-            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
           >
             <HardDrive className="mt-0.5 h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
             <span>
@@ -399,7 +399,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               <button
                 type="button"
                 onClick={() => idzDo('reset')}
-                className="cursor-pointer text-label text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 rounded"
+                className="cursor-pointer text-label text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 rounded"
               >
                 Nie pamiętam hasła
               </button>

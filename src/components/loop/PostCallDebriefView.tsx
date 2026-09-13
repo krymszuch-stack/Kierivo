@@ -237,7 +237,7 @@ export const PostCallDebriefView: React.FC<PostCallDebriefViewProps> = ({
               }
             }}
             placeholder="np. Jak rozwiązywałeś konflikt w zespole?"
-            className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:border-brand-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+            className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs text-ink placeholder:text-muted focus:border-brand-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
           />
           <Button
             type="button"

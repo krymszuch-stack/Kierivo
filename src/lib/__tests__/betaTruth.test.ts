@@ -23,7 +23,7 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     for (const vendor of ['Workday', 'Greenhouse', 'Lever', 'Taleo', 'Oracle']) {
       expect(ats).not.toContain(`name: '${vendor}'`);
     }
-    expect(ats).toContain('Składowe wyniku CVelocity');
+    expect(ats).toContain('Składowe wyniku Kierivo');
     expect(ats).toMatch(/nie jest wynikiem/i);
     expect(ats).toMatch(/ani gwarancj/i);
   });
@@ -111,5 +111,22 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(readme).toContain('Public Pre-Beta');
     expect(readme).toContain('bezpłatna, cena: 0 zł');
     expect(readme).toContain('nie gwarantuje przejścia filtra');
+  });
+
+  it('publikuje markę Kierivo bez starego wordmarku w głównym interfejsie', () => {
+    const index = source('index.html');
+    const sidebar = source('src/components/layout/Sidebar.tsx');
+    const logo = source('src/components/brand/KierivoLogo.tsx');
+    const markComponent = source('src/components/brand/KierivoMark.tsx');
+    const mark = source('public/brand/kierivo-mark.svg');
+
+    for (const text of [index, sidebar, logo]) {
+      expect(text).toContain('Kierivo');
+      expect(text).not.toMatch(/\bCVelocity\b/);
+    }
+
+    expect(index).toContain('href="/favicon.svg"');
+    expect(markComponent).toContain('/brand/kierivo-mark.svg');
+    expect(mark).toContain('<title id="title">Sygnet Kierivo</title>');
   });
 });

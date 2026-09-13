@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { NavItem } from './NavItem';
 import { Tooltip } from '../ui/Tooltip';
-import { CVelocityLogo } from '../CVelocityLogo';
+import { KierivoLogo } from '../KierivoLogo';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
@@ -86,19 +86,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab('home')}
-              className="flex cursor-pointer items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+              className="flex cursor-pointer items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               aria-label="Ekran startowy — Panel Główny"
             >
-              <CVelocityLogo />
+              <KierivoLogo />
             </button>
           ) : (
             <button
               type="button"
               onClick={() => onSelectTab('home')}
-              className="mx-auto cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+              className="mx-auto cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               aria-label="Ekran startowy — Panel Główny"
             >
-              <CVelocityLogo collapsed showBadge={false} />
+              <KierivoLogo collapsed />
             </button>
           )}
 
@@ -106,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             onClick={onToggleCollapse}
             aria-label={isCollapsed ? 'Rozwiń pasek boczny' : 'Zwiń pasek boczny'}
-            className="hidden lg:flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors duration-[var(--duration-fast)] ease-out hover:bg-brand-500/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+            className="hidden lg:flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors duration-[var(--duration-fast)] ease-out hover:bg-brand-500/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
           >
             {isCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
@@ -117,7 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={House}
             label="Start"
-            hint="Krótki przewodnik po CVelocity i najbliższy sensowny krok."
+            hint="Krótki przewodnik po Kierivo i najbliższy sensowny krok."
             isActive={activeTab === 'home'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('home')}
@@ -185,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={ShieldCheck}
             label="Audyt ATS"
-            hint="Laboratorium CVelocity mierzące strukturę, frazy, język i wymagania oferty. To nie są wyniki zewnętrznych ATS."
+            hint="Laboratorium Kierivo mierzące strukturę, frazy, język i wymagania oferty. To nie są wyniki zewnętrznych ATS."
             isActive={activeTab === 'ats-lab'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('ats-lab')}
@@ -226,7 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onOpenAuthModal}
-            className={`flex w-full min-h-[2.75rem] cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-surface p-2 text-left transition-colors duration-[var(--duration-fast)] ease-out hover:border-brand-500/30 hover:bg-brand-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+            className={`flex w-full min-h-[2.75rem] cursor-pointer items-center gap-2.5 rounded-xl border border-line bg-surface p-2 text-left transition-colors duration-[var(--duration-fast)] ease-out hover:border-brand-500/30 hover:bg-brand-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
               isCollapsed ? 'justify-center' : ''
             }`}
           >

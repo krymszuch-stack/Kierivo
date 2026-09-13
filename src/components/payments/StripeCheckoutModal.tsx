@@ -194,7 +194,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
                     onClick={handleGoogleAuth}
                     disabled={loading}
                     aria-busy={loading || undefined}
-                    className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-label font-bold text-ink shadow-xs transition-colors hover:border-ink/20 hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-label font-bold text-ink shadow-xs transition-colors hover:border-ink/20 hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <GoogleIcon />
                     <span>Zaloguj się przez Google</span>
@@ -203,7 +203,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAuthModalOpen(true)}
-                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-meta font-semibold text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                    className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-meta font-semibold text-muted transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                   >
                     <Mail className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>albo użyj e-maila i hasła</span>
@@ -236,7 +236,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
                 <button
                   type="button"
                   onClick={handleDemoUnlock}
-                  className="w-full cursor-pointer rounded-lg px-2 py-1.5 text-center font-mono text-[10px] font-bold uppercase tracking-wide text-subtle transition-colors hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                  className="w-full cursor-pointer rounded-lg px-2 py-1.5 text-center font-mono text-[10px] font-bold uppercase tracking-wide text-subtle transition-colors hover:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                 >
                   Dev only: odblokuj lokalnie bez płatności
                 </button>

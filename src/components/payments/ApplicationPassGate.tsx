@@ -42,7 +42,7 @@ export const ApplicationPassGate: React.FC<ApplicationPassGateProps> = ({
       </p>
       <p className="mx-auto mt-2 max-w-prose text-xs text-muted">
         Historyczny Karnet nie odblokowuje tej funkcji w tym wydaniu. Podstawowy przepływ bety,
-        czyli profil, audyt CVelocity, dopasowanie do oferty, przygotowanie dokumentu i pipeline,
+        czyli profil, audyt Kierivo, dopasowanie do oferty, przygotowanie dokumentu i pipeline,
         działa bez Karnetu.
       </p>
     </section>

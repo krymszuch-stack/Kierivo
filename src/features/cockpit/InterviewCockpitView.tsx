@@ -180,7 +180,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 setPitchSeconds(0);
                 setIsPitchTimerRunning(false);
               }}
-              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 pitchVariant === 'oneLiner'
                   ? 'bg-brand-600 text-white shadow-xs'
                   : 'border border-line bg-surface text-ink hover:border-brand-500'
@@ -195,7 +195,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 setPitchSeconds(0);
                 setIsPitchTimerRunning(false);
               }}
-              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 pitchVariant === 'thirtySeconds'
                   ? 'bg-brand-600 text-white shadow-xs'
                   : 'border border-line bg-surface text-ink hover:border-brand-500'
@@ -210,7 +210,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 setPitchSeconds(0);
                 setIsPitchTimerRunning(false);
               }}
-              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-xl px-3.5 py-2 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 pitchVariant === 'ninetySeconds'
                   ? 'bg-brand-600 text-white shadow-xs'
                   : 'border border-line bg-surface text-ink hover:border-brand-500'
@@ -330,7 +330,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                   key={sk}
                   type="button"
                   onClick={() => setMissingSkillInput(sk)}
-                  className={`cursor-pointer rounded-lg px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                  className={`cursor-pointer rounded-lg px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                     missingSkillInput.toLowerCase() === sk.toLowerCase()
                       ? 'bg-brand-600 text-white'
                       : 'border border-line bg-sunken text-ink hover:border-brand-500'

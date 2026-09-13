@@ -124,7 +124,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setPersonalStrategy('replace')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 personalStrategy === 'replace'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -135,7 +135,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setPersonalStrategy('keep')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 personalStrategy === 'keep'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -185,7 +185,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setSkillsStrategy('merge')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 skillsStrategy === 'merge'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -196,7 +196,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setSkillsStrategy('replace')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 skillsStrategy === 'replace'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -207,7 +207,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setSkillsStrategy('keep')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 skillsStrategy === 'keep'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -269,7 +269,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setExpStrategy('merge')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 expStrategy === 'merge'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -280,7 +280,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setExpStrategy('replace')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 expStrategy === 'replace'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -323,7 +323,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setEduStrategy('merge')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 eduStrategy === 'merge'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -334,7 +334,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setEduStrategy('replace')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 eduStrategy === 'replace'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'
@@ -345,7 +345,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
             <button
               type="button"
               onClick={() => setEduStrategy('keep')}
-              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`rounded-lg px-2.5 py-1 cursor-pointer text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 eduStrategy === 'keep'
                   ? 'bg-brand-600 text-on-brand'
                   : 'border border-line bg-surface text-muted hover:text-ink'

@@ -22,7 +22,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
   className = '',
 }) => {
   /**
-   * Pokazujemy wyłącznie cechy, które CVelocity rzeczywiście liczy z CV i
+   * Pokazujemy wyłącznie cechy, które Kierivo rzeczywiście liczy z CV i
    * ogłoszenia. Wcześniej te same liczby były podpisane nazwami zewnętrznych
    * produktów ATS, mimo że nie mieliśmy ani ich API, ani benchmarku na ich
    * produkcyjnych parserach.
@@ -46,7 +46,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
     {
       name: 'Czytelność formatowania',
       score: clampScore(result.formattingScore),
-      desc: 'Format dokumentu oceniany przez reguły CVelocity',
+      desc: 'Format dokumentu oceniany przez reguły Kierivo',
     },
   ];
 
@@ -57,9 +57,9 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <h3 className="text-sm font-bold text-ink">Audyt CVelocity: zgodność z ofertą</h3>
+          <h3 className="text-sm font-bold text-ink">Audyt Kierivo: zgodność z ofertą</h3>
           <p className="text-xs text-muted">
-            Własna ocena regułowa CVelocity na podstawie treści CV i ogłoszenia. Nie jest wynikiem
+            Własna ocena regułowa Kierivo na podstawie treści CV i ogłoszenia. Nie jest wynikiem
             żadnego zewnętrznego systemu ATS ani gwarancją przejścia rekrutacji.
           </p>
         </div>
@@ -82,10 +82,10 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
 
           <Card tone="raised" className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Składowe wyniku CVelocity
+              Składowe wyniku Kierivo
             </h4>
             <p className="text-[11px] text-subtle">
-              Każda liczba poniżej pochodzi z reguł uruchamianych przez CVelocity. Nie podszywamy ich
+              Każda liczba poniżej pochodzi z reguł uruchamianych przez Kierivo. Nie podszywamy ich
               pod ocenę konkretnego produktu ATS.
             </p>
 

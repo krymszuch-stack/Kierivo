@@ -179,7 +179,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveModeTab('PRACTICE')}
-                className={`cursor-pointer flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                className={`cursor-pointer flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                   activeModeTab === 'PRACTICE'
                     ? 'bg-brand-600 text-on-brand shadow-xs'
                     : 'text-muted hover:text-ink'
@@ -191,7 +191,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveModeTab('HISTORY')}
-                className={`cursor-pointer flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                className={`cursor-pointer flex items-center gap-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                   activeModeTab === 'HISTORY'
                     ? 'bg-brand-600 text-on-brand shadow-xs'
                     : 'text-muted hover:text-ink'
@@ -205,7 +205,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="cursor-pointer rounded-xl p-2 text-muted hover:bg-sunken hover:text-ink transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+              className="cursor-pointer rounded-xl p-2 text-muted hover:bg-sunken hover:text-ink transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
             >
               <X className="h-5 w-5" />
             </button>
@@ -223,7 +223,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
                 <button
                   type="button"
                   onClick={handleClearHistory}
-                  className="cursor-pointer flex items-center gap-1 text-xs font-mono text-muted hover:text-error transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                  className="cursor-pointer flex items-center gap-1 text-xs font-mono text-muted hover:text-error transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   <span>Wyczyść historię</span>
@@ -311,7 +311,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
                 <button
                   type="button"
                   onClick={handleNextRandomQuestion}
-                  className="cursor-pointer inline-flex items-center gap-1 font-mono text-meta font-bold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                  className="cursor-pointer inline-flex items-center gap-1 font-mono text-meta font-bold text-brand-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                 >
                   <RotateCw className="h-3 w-3" />
                   <span>Inne pytanie</span>
@@ -365,7 +365,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setResponseMode('TEXT')}
-                  className={`cursor-pointer px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                  className={`cursor-pointer px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                     responseMode === 'TEXT'
                       ? 'bg-brand-600 text-on-brand'
                       : 'text-muted hover:text-ink'
@@ -376,7 +376,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setResponseMode('AUDIO')}
-                  className={`cursor-pointer px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                  className={`cursor-pointer px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                     responseMode === 'AUDIO'
                       ? 'bg-brand-600 text-on-brand'
                       : 'text-muted hover:text-ink'

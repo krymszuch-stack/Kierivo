@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-labelledby="title">
+  <title id="title">Motyw graficzny Kierivo</title>
+  <defs>
+    <pattern id="motif" width="240" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
+      <path fill="#155EEF" fill-opacity=".09" d="M44 28h64v38L76 98q-8 8 0 16l52 70H44q-28 0-28-28V56q0-28 28-28Z"/>
+      <path fill="#19C3E6" fill-opacity=".13" d="M124 28h62L95 119q-7 7-13 0l-8-8q-6-6 0-13l39-62q4-8 11-8Z"/>
+      <path fill="#155EEF" fill-opacity=".09" d="m100 108 86 64q10 12-6 12h-44q-8 0-14-8l-35-46q-7-9 1-16 6-7 12-6Z"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="600" fill="#F7FAFF"/>
+  <rect width="1200" height="600" fill="url(#motif)"/>
+</svg>

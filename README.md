@@ -1,4 +1,4 @@
-# CVelocity — Public Pre-Beta `PB-2026.09` ⚡
+# Kierivo — Public Pre-Beta `PB-2026.09` ⚡
 
 > Narzędzie do porządkowania profilu zawodowego, dopasowania CV do konkretnego ogłoszenia i prowadzenia własnego procesu aplikacyjnego.
 
@@ -9,7 +9,7 @@
 
 ## Status produktu
 
-CVelocity Public Pre-Beta `PB-2026.09` jest **bezpłatna, cena: 0 zł**. To publiczna wersja testowa przed właściwą premierą: można już korzystać z podstawowego przepływu, sprawdzać zachowanie produktu i zgłaszać uwagi, ale nie opisujemy jej jako wydania finalnego.
+Kierivo Public Pre-Beta `PB-2026.09` jest **bezpłatna, cena: 0 zł**. To publiczna wersja testowa przed właściwą premierą: można już korzystać z podstawowego przepływu, sprawdzać zachowanie produktu i zgłaszać uwagi, ale nie opisujemy jej jako wydania finalnego.
 
 W Public Pre-Beta:
 
@@ -29,9 +29,9 @@ Master Vault przechowuje uporządkowane fakty podane przez użytkownika: histori
 
 ### Dopasowanie do oferty
 
-CVelocity porównuje treść profilu/CV z konkretnym ogłoszeniem. Pokazuje m.in. wykryte frazy, brakujące wymagania, pokrycie umiejętności, sygnały strukturalne i rekomendacje redakcyjne.
+Kierivo porównuje treść profilu/CV z konkretnym ogłoszeniem. Pokazuje m.in. wykryte frazy, brakujące wymagania, pokrycie umiejętności, sygnały strukturalne i rekomendacje redakcyjne.
 
-**Wynik CVelocity nie jest wynikiem Workday, Greenhouse, Lever, Taleo ani jakiegokolwiek innego zewnętrznego ATS.** Nie mamy dostępu do ich prywatnych konfiguracji rekrutera. Wynik jest własną, deterministyczną oceną CVelocity i **nie gwarantuje przejścia filtra, zaproszenia na rozmowę ani zatrudnienia**.
+**Wynik Kierivo nie jest wynikiem Workday, Greenhouse, Lever, Taleo ani jakiegokolwiek innego zewnętrznego ATS.** Nie mamy dostępu do ich prywatnych konfiguracji rekrutera. Wynik jest własną, deterministyczną oceną Kierivo i **nie gwarantuje przejścia filtra, zaproszenia na rozmowę ani zatrudnienia**.
 
 ### Spójność faktów
 
@@ -47,7 +47,7 @@ Widoczny w interfejsie Doradca jest obecnie **lokalnym modułem regułowym**, a 
 
 ## Dane lokalne i chmura
 
-CVelocity ma dwa istotne tryby:
+Kierivo ma dwa istotne tryby:
 
 - **lokalny**: profil roboczy jest przechowywany w pamięci przeglądarki;
 - **konto chmurowe**: tam, gdzie Supabase jest skonfigurowany, vault może być synchronizowany z bazą przypisaną do zalogowanego właściciela i chronioną przez RLS.
@@ -104,7 +104,7 @@ Jeśli ekran pokazuje liczbę, nazwę systemu lub obietnicę, musi ona odpowiada
 
 ## Licencja
 
-Projekt CVelocity — Copyright (c) 2026 Adrian Koziński. Wszelkie prawa zastrzeżone.
+Projekt Kierivo — Copyright (c) 2026 Adrian Koziński. Wszelkie prawa zastrzeżone.
 Pełna treść w pliku [LICENSE](./LICENSE): użytek osobisty, niekomercyjny; zakaz
 kopiowania i rozpowszechniania bez pisemnej zgody autora. Nazwy produktów i usług
 stron trzecich należą do ich właścicieli; ewentualne wzmianki służą wyłącznie

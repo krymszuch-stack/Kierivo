@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
-import { CVelocityLogo } from './CVelocityLogo';
+import { KierivoLogo } from './KierivoLogo';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface MobileSidebarProps {
@@ -51,7 +51,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
             {/* Drawer Header */}
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-5">
               <div className="flex items-center gap-2.5">
-                <CVelocityLogo collapsed showBadge={false} />
+                <KierivoLogo collapsed />
                 <span className="font-sans text-sm font-bold text-ink">{title}</span>
               </div>
 

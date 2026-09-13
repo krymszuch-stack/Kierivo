@@ -36,7 +36,7 @@ export interface TopbarProps {
 const TAB_NAMES: Record<NavTabId, string> = {
   home: 'Panel Główny',
   pricing: 'Zakres bezpłatnej bety',
-  'ats-lab': 'Laboratorium audytu CVelocity',
+  'ats-lab': 'Laboratorium audytu Kierivo',
   porady: 'Porady & Baza Wiedzy',
   ...Object.fromEntries(NAV_SECTIONS.map((section) => [section.id, section.label])),
 } as Record<NavTabId, string>;
@@ -84,7 +84,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         <div className="flex items-center gap-2">
           <span className="rounded-lg border border-line bg-elevated px-2.5 py-1 font-mono text-xs font-semibold text-ink">
-            {TAB_NAMES[activeTab] || 'CVelocity'}
+            {TAB_NAMES[activeTab] || 'Kierivo'}
           </span>
         </div>
       </div>

@@ -79,7 +79,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
     >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#F26440]">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#155EEF]">
             Kalkulator opłacalności
           </p>
           <h2 className="text-lg font-black tracking-tight text-ink">
@@ -114,7 +114,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                 value={prefs.salaryAmount || ''}
                 onChange={(event) => patch({ salaryAmount: Number(event.target.value) || 0 })}
                 placeholder={offer.salary || 'np. 10000'}
-                className="w-full rounded-xl border border-line bg-surface px-3 py-2 font-mono text-sm text-ink placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                className="w-full rounded-xl border border-line bg-surface px-3 py-2 font-mono text-sm text-ink placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               />
               {offer.salary && (
                 <p className="mt-1 truncate font-mono text-[10px] text-subtle">
@@ -132,9 +132,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                     type="button"
                     aria-pressed={prefs.contract === contract.id}
                     onClick={() => patch({ contract: contract.id })}
-                    className={`min-h-[2.5rem] flex-1 cursor-pointer rounded-xl border px-2 py-1.5 text-xs font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                    className={`min-h-[2.5rem] flex-1 cursor-pointer rounded-xl border px-2 py-1.5 text-xs font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                       prefs.contract === contract.id
-                        ? 'border-[#F26440] bg-[#F26440]/10 text-ink'
+                        ? 'border-[#155EEF] bg-[#155EEF]/10 text-ink'
                         : 'border-line text-muted hover:text-ink'
                     }`}
                   >
@@ -157,9 +157,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                   type="button"
                   aria-pressed={prefs.workMode === mode.id}
                   onClick={() => patch({ workMode: mode.id })}
-                  className={`min-h-[2.5rem] cursor-pointer rounded-xl border px-2 py-1.5 text-xs font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+                  className={`min-h-[2.5rem] cursor-pointer rounded-xl border px-2 py-1.5 text-xs font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                     prefs.workMode === mode.id
-                      ? 'border-[#F26440] bg-[#F26440]/10 text-ink'
+                      ? 'border-[#155EEF] bg-[#155EEF]/10 text-ink'
                       : 'border-line text-muted hover:text-ink'
                   }`}
                 >
@@ -207,7 +207,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                     strokeLinecap="round"
                   />
                   <circle cx="10" cy="22" r="4" fill="#1E3A5F" />
-                  <circle cx="290" cy="16" r="4" fill="#F26440" />
+                  <circle cx="290" cy="16" r="4" fill="#155EEF" />
                 </svg>
                 <span className="absolute left-0 top-0 font-mono text-[10px] text-subtle">dom</span>
                 <span className="absolute right-0 top-0 font-mono text-[10px] text-subtle">biuro</span>
@@ -240,7 +240,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
 
           {result ? (
             <>
-              <p className="mt-3 font-mono text-4xl font-black leading-none text-[#F26440]">
+              <p className="mt-3 font-mono text-4xl font-black leading-none text-[#155EEF]">
                 {result.realHourlyRate.toFixed(2)}
                 <span className="ml-1 text-base font-bold text-muted">zł/h</span>
               </p>
@@ -286,8 +286,8 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
 
         {/* ---------------- Karta 3: notatka doradcy ---------------- */}
         {note && (
-          <div className="rounded-2xl border border-[#F26440]/30 bg-[#F26440]/5 p-4 lg:col-span-2">
-            <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#F26440]">
+          <div className="rounded-2xl border border-[#155EEF]/30 bg-[#155EEF]/5 p-4 lg:col-span-2">
+            <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#155EEF]">
               Okiem życzliwego doradcy
             </p>
             <h3 className="mt-1 text-sm font-black text-ink">{note.headline}</h3>

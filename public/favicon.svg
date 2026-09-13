@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Kierivo</title>
+  <rect width="64" height="64" rx="15" fill="#0C1828"/>
+  <path fill="#3F67FF" d="M15 10h17v11l-9 9q-2 2 0 4l14 20H15q-7 0-7-8V18q0-8 7-8Z"/>
+  <path fill="#35D0F2" d="M37 10h17L29 36q-2 2-4 0l-2-2q-2-2 0-4l11-17q1-3 3-3Z"/>
+  <path fill="#3F67FF" d="m31 34 23 17q3 3-1 3H40q-3 0-4-2l-10-13q-2-2 0-4 2-2 5-1Z"/>
+</svg>

@@ -112,7 +112,7 @@ export const DesignTokensShowcaseModal: React.FC<DesignTokensShowcaseModalProps>
             {/* Complete Brand Ramp 50-950 */}
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-subtle">
-                Rampa marki CVelocity (50–950)
+                Rampa marki Kierivo (50–950)
               </span>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6">
                 {brandRamp.map((b) => (
@@ -166,7 +166,7 @@ export const DesignTokensShowcaseModal: React.FC<DesignTokensShowcaseModalProps>
                 <h2 className="text-2xl font-bold text-ink mt-1">Tekst 2XL Sekcja (24px)</h2>
                 <h3 className="text-xl font-bold text-ink mt-1">Tekst XL Podtytuł (20px)</h3>
                 <p className="text-sm font-medium text-ink mt-2">
-                  Tekst SM: Szybki brązowy lis przeskakuje nad leniwym psem w nowoczesnym interfejsie CVELOCITY.
+                  Tekst SM: Szybki brązowy lis przeskakuje nad leniwym psem w nowoczesnym interfejsie KIERIVO.
                 </p>
                 <p className="text-xs text-muted mt-1">
                   Tekst XS: Pomocnicze opisy, etykiety formularzy oraz wskazówki rekrutacyjne (12px).
@@ -178,7 +178,7 @@ export const DesignTokensShowcaseModal: React.FC<DesignTokensShowcaseModalProps>
                 {/* Próbki typograficzne bez wymyślonych liczb (reguła 1) —
                     „98.4% ATS" i TOTP udawały pomiar i dane bezpieczeństwa. */}
                 <p className="font-mono text-sm font-bold text-brand-fg mt-1">
-                  Próbka znaków mono: 0123456789 • CVelocity • pl-PL
+                  Próbka znaków mono: 0123456789 • Kierivo • pl-PL
                 </p>
                 <p className="font-mono text-xs text-muted mt-1">
                   Próba tekstu technicznego • pl-PL

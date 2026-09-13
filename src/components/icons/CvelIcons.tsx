@@ -1,12 +1,12 @@
 import React from 'react';
 
 /**
- * Autorski zestaw ikon CVelocity.
+ * Autorski zestaw ikon Kierivo.
  *
  * Po co własne, skoro Lucide jest w projekcie i działa? Bo Lucide rysuje
  * pojęcia ogólne — teczkę, oko, wykres — a te ikony rysują *nasze* pojęcia:
  * skarbiec z pętlą „C", celownik z wektorem prędkości, ścieżkę Kanbanu z
- * koralowym punktem postępu. Znak marki (`public/brand/cvelocity-mark.svg`)
+ * turkusowym punktem postępu. Znak marki (`public/brand/kierivo-mark.svg`)
  * ma dwa niepodważalne elementy: skos -10° i chevron V. Cały zestaw poniżej
  * powtarza je świadomie, żeby ikona w menu i logo nad nią pochodziły z jednego
  * języka rysunkowego.
@@ -15,7 +15,7 @@ import React from 'react';
  * - `viewBox="0 0 24 24"`, `stroke-width="1.75"`, `linecap`/`linejoin="round"`,
  * - kontur idzie `currentColor` (dziedziczy kolor tekstu, więc działa w obu
  *   motywach i w stanie aktywnym menu),
- * - akcent koralowy `#F26440` jest **jedynym** kolorem wpisanym na sztywno.
+ * - akcent turkusowy `#19C3E6` jest **jedynym** kolorem wpisanym na sztywno.
  *   To kolor marki, nie kolor motywu — w trybie ciemnym ma być identyczny,
  *   dlatego nie przechodzi przez token motywu.
  *
@@ -26,11 +26,11 @@ import React from 'react';
 
 export interface CvelIconProps extends React.SVGProps<SVGSVGElement> {
   size?: number | string;
-  /** Kolor akcentu. Domyślnie koral marki; `currentColor` daje wersję mono. */
+  /** Kolor akcentu. Domyślnie turkus marki; `currentColor` daje wersję mono. */
   accent?: string;
 }
 
-const BRAND_ACCENT = '#F26440';
+const BRAND_ACCENT = '#19C3E6';
 
 /** Wspólna obudowa: jedno miejsce na `viewBox`, grubość konturu i domknięcia. */
 const IconBase: React.FC<CvelIconProps & { children: React.ReactNode }> = ({
@@ -58,7 +58,7 @@ const IconBase: React.FC<CvelIconProps & { children: React.ReactNode }> = ({
   </svg>
 );
 
-/** 1. Skarbiec — pętla „C" z koralowym rdzeniem. Profil i dane użytkownika. */
+/** 1. Skarbiec — pętla „C" z turkusowym rdzeniem. Profil i dane użytkownika. */
 export const IconVault: React.FC<CvelIconProps> = ({ accent = BRAND_ACCENT, ...props }) => (
   <IconBase {...props}>
     <g transform="skewX(-10) translate(2 0)">
@@ -92,7 +92,7 @@ export const IconTrainer: React.FC<CvelIconProps> = ({ accent = BRAND_ACCENT, ..
   </IconBase>
 );
 
-/** 4. Pipeline — trzy aerodynamiczne kolumny, koralowy punkt postępu. */
+/** 4. Pipeline — trzy aerodynamiczne kolumny, turkusowy punkt postępu. */
 export const IconPipeline: React.FC<CvelIconProps> = ({ accent = BRAND_ACCENT, ...props }) => (
   <IconBase {...props}>
     <g transform="skewX(-10) translate(2 0)">

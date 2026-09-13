@@ -715,7 +715,7 @@ export function calculateMedian(scores: number[]): number {
 }
 
 /**
- * Wielosilnikowa symulacja audytu ATS oparta na 10 wewnętrznych modułach i filtrach CVelocity.
+ * Wielosilnikowa symulacja audytu ATS oparta na 10 wewnętrznych modułach i filtrach Kierivo.
  * Oblicza medianę rynkową, indywidualne oceny modułów, konkretne propozycje zmian oraz realistyczną ocenę dopasowania.
  *
  * DIAGNOSTYKA SYMULACYJNA, nie wynik kanoniczny (jak `simulateAtsCheck` powyżej).
@@ -1009,13 +1009,13 @@ export function simulateMultiEngineATS(
     ],
   };
 
-  // 10. Główny Konsensus CVelocity (cvelocity_consensus)
+  // 10. Główny Konsensus Kierivo (cvelocity_consensus)
   const cvelocityScore = Math.min(100, Math.max(0, Math.round(
     hardCoverage * 0.35 + recencyScore * 0.25 + structScore * 0.20 + titleScore * 0.10 + (hasMetrics ? 10 : 0)
   )));
   const engine10: AtsEngineResult = {
     id: 'konsensus_cvelocity',
-    name: 'Główny Zrównoważony Konsensus CVelocity',
+    name: 'Główny Zrównoważony Konsensus Kierivo',
     component: 'atsScorer.ts (Zbalansowany Model Końcowy)',
     category: 'Końcowa syntetyczna ocena dopasowania',
     score: cvelocityScore,

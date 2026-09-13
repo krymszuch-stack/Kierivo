@@ -75,7 +75,7 @@ const vault: MasterVault = {
   projects: [],
 };
 
-describe('D08 SOURCE_AWARE — referencja renderera CVelocity', () => {
+describe('D08 SOURCE_AWARE — referencja renderera Kierivo', () => {
   it('buduje deterministyczny porządek bloków odpowiadający dokumentowi', () => {
     const reference = buildD08DocumentReference(vault);
     const ids = reference.blocks.map((block) => block.id);

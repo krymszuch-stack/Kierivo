@@ -1,5 +1,5 @@
 /* ============================================================
-   CVELOCITY DESIGN TOKENS ARCHITECTURE (Tailwind v4 @theme)
+   KIERIVO DESIGN TOKENS ARCHITECTURE (Tailwind v4 @theme)
    ============================================================ */
 
 @theme {
@@ -63,8 +63,7 @@
   --color-violet: var(--violet);
   --color-violet-2: var(--violet-2);
 
-  /* Brand mark (sygnet CVelocity) — granat i pomarańcz z księgi znaku.
-     `ink` zmienia się z motywem: na jasnym tle to granat, w ciemnym biel. */
+  /* Sygnet Kierivo korzysta z błękitu i turkusu. */
   --color-mark-ink: var(--mark-ink);
   --color-mark-accent: var(--mark-accent);
 
@@ -125,35 +124,30 @@
   --line-strong: #d3d3d0;
 
   /* Brand Ramp (Light) */
-  --brand-50: #f0f2fc;
-  --brand-100: #e2e6f9;
-  --brand-200: #c9cff3;
-  --brand-300: #a7b3ec;
-  --brand-400: #8391e4;
-  --brand-500: #6f7ad9;
-  --brand-600: #5e6ad2;
-  --brand-700: #4d57bd;
-  --brand-800: #3f479a;
-  --brand-900: #363c7b;
-  --brand-950: #202449;
-  --brand-fg: #4650a8;
-  /* Foreground for text/icons sitting ON a brand-600 or --brand-grad fill.
-     Light theme: brand-600 (#5e6ad2) is dark, so white reads at ~7:1. */
+  --brand-50: #eff6ff;
+  --brand-100: #dbeafe;
+  --brand-200: #bfdbfe;
+  --brand-300: #93c5fd;
+  --brand-400: #60a5fa;
+  --brand-500: #2563eb;
+  --brand-600: #155eef;
+  --brand-700: #1d4ed8;
+  --brand-800: #1e40af;
+  --brand-900: #1e3a8a;
+  --brand-950: #172554;
+  --brand-fg: #1d4ed8;
+  /* Biały tekst pozostaje czytelny na obu końcach gradientu przycisków. */
   --on-brand: #ffffff;
-  --violet: #8b5cf6;
-  --violet-2: #a855f7;
-  /* The gradient ends on violet-600 rather than --violet (violet-500): white text over
-     violet-500 measures 4.23:1 and misses AA, while this endpoint reaches 5.8:1.
-     --violet itself stays lighter for decorative use (aurora, glows). */
-  --brand-grad: linear-gradient(120deg, #5e6ad2 0%, #7c3aed 100%);
+  /* Nazwy tokenów violet zostają dla zgodności komponentów, wartości są już
+     częścią błękitno-turkusowej palety Kierivo. */
+  --violet: #19c3e6;
+  --violet-2: #35d0f2;
+  --brand-grad: linear-gradient(120deg, #155eef 0%, #0f6f82 100%);
 
-  /* Brand mark (light): granat #1E3A5F i pomarańcz #F26440 prosto z księgi
-     znaku. Kafelek sygnetu ma własny gradient (granat → grafit), a poświata
-     jest pochodną akcentu. */
-  --mark-ink: #1E3A5F;
-  --mark-accent: #F26440;
-  --mark-tile-grad: linear-gradient(135deg, #1E3A5F 0%, #0F172A 100%);
-  --mark-glow: 0 0 12px rgba(242, 100, 64, 0.15);
+  --mark-ink: #155eef;
+  --mark-accent: #19c3e6;
+  --mark-tile-grad: linear-gradient(135deg, #155eef 0%, #2447e8 100%);
+  --mark-glow: 0 0 12px rgba(25, 195, 230, 0.18);
 
   /* Semantics (Light) */
   --success: #16a34a;
@@ -174,15 +168,9 @@
   --ease: cubic-bezier(0.19, 1, 0.22, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* --- Poświata otoczenia ------------------------------------------------
-     Para dopełniająca: chłodny błękit i ciepły bursztyn po przeciwnych
-     stronach kadru. Poprzednia wersja mieszała błękit z fioletem — kolory
-     sąsiadujące na kole barw, więc tło wychodziło jednolicie sine i płaskie.
-     Napięcie między barwami dopełniającymi jest tym, co odróżnia „ciemne tło"
-     od głębi. W jasnym motywie obie schodzą do ułamka mocy, bo na białym
-     te same wartości dają brudną mgłę zamiast światła. */
-  --ambient-cool: #4361ff;
-  --ambient-warm: #f97316;
+  /* Poświata powtarza dwa ramiona sygnetu, ale pozostaje tłem, nie neonem. */
+  --ambient-cool: #155eef;
+  --ambient-warm: #19c3e6;
   --ambient-cool-alpha: 14%;
   --ambient-warm-alpha: 11%;
 
@@ -195,9 +183,8 @@
   --glass-shine: rgba(255, 255, 255, 0.9);
   --glass-blur: 20px;
 
-  /* Wypełnienie nagłówka ekspozycyjnego: chłód → atrament → ciepło.
-     Ten sam ruch barwny co poświata, tylko zamknięty w literach. */
-  --display-grad: linear-gradient(100deg, #3b5bdb 0%, var(--ink) 48%, #c2410c 100%);
+  /* Ten sam ruch co w znaku: błękit → atrament → turkus. */
+  --display-grad: linear-gradient(100deg, #155eef 0%, var(--ink) 48%, #0f8fa9 100%);
 }
 
 /* ============================================================
@@ -231,32 +218,27 @@
   --line-strong: #2b3047;
 
   /* Brand Ramp (Dark) */
-  --brand-50: #1b1d2f;
-  --brand-100: #222541;
-  --brand-200: #2c3060;
-  --brand-300: #42498b;
-  --brand-400: #5b65b6;
-  --brand-500: #7c86e0;
-  --brand-600: #8b93e8;
-  --brand-700: #a3aaf0;
-  --brand-800: #c1c6f7;
-  --brand-900: #dee1fb;
-  --brand-950: #f0f2fd;
-  --brand-fg: #b7bdf5;
-  /* In dark the brand ramp inverts: brand-600 (#8b93e8) and violet (#a78bfa) are
-     LIGHT lavenders. White on them measures ~2.8:1 and fails WCAG AA, so text on a
-     brand fill flips to near-black instead (~6.8:1 across the whole gradient). */
-  --on-brand: #101013;
-  --violet: #a78bfa;
-  --violet-2: #c4b5fd;
-  --brand-grad: linear-gradient(120deg, #8b93e8 0%, #a78bfa 100%);
+  --brand-50: #0b1d3a;
+  --brand-100: #102a56;
+  --brand-200: #153b78;
+  --brand-300: #1d4ed8;
+  --brand-400: #3b82f6;
+  --brand-500: #60a5fa;
+  --brand-600: #7dd3fc;
+  --brand-700: #a5e6fb;
+  --brand-800: #c8f0fb;
+  --brand-900: #e0f7ff;
+  --brand-950: #f0fbff;
+  --brand-fg: #7dd3fc;
+  --on-brand: #07111f;
+  --violet: #35d0f2;
+  --violet-2: #6c7cff;
+  --brand-grad: linear-gradient(120deg, #60a5fa 0%, #22d3ee 100%);
 
-  /* Brand mark (dark): granat kafelka zostaje — czyta się dobrze na ciemnym
-     tle; tekst sygnetu przechodzi na biel, akcent bez zmian. */
-  --mark-ink: #FFFFFF;
-  --mark-accent: #F26440;
-  --mark-tile-grad: linear-gradient(135deg, #1E3A5F 0%, #0F172A 100%);
-  --mark-glow: 0 0 12px rgba(242, 100, 64, 0.2);
+  --mark-ink: #6c7cff;
+  --mark-accent: #35d0f2;
+  --mark-tile-grad: linear-gradient(135deg, #0c1828 0%, #101e33 100%);
+  --mark-glow: 0 0 12px rgba(53, 208, 242, 0.22);
 
   /* Semantics (Dark) */
   --success: #4ade80;
@@ -275,11 +257,9 @@
   --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.5);
   --shadow-floating: 0 8px 32px rgba(0, 0, 0, 0.6), 0 24px 64px rgba(0, 0, 0, 0.7);
 
-  /* --- Poświata otoczenia (patrz komentarz w `:root`) --------------------
-     W ciemnym motywie para dopełniająca pracuje pełną mocą — to ona niesie
-     cały efekt głębi. */
-  --ambient-cool: #4361ff;
-  --ambient-warm: #ff8a3d;
+  /* W ciemnym motywie błękit i turkus mogą pracować mocniej. */
+  --ambient-cool: #155eef;
+  --ambient-warm: #19c3e6;
   --ambient-cool-alpha: 42%;
   --ambient-warm-alpha: 34%;
 
@@ -548,7 +528,7 @@
   .doc-paper[data-cv-layout="sidebar"] [data-cv-section="rodo"] { grid-area: rodo; }
 }
 
-/* Violet glow used under brand-filled surfaces (logo mark, premium badges). */
+/* Chłodna poświata pod powierzchniami w kolorach marki. */
 .shadow-brand-glow {
   box-shadow: 0 2px 12px color-mix(in srgb, var(--violet) 40%, transparent);
 }
@@ -557,9 +537,7 @@
   box-shadow: 0 4px 18px color-mix(in srgb, var(--violet) 45%, transparent);
 }
 
-/* Kafelek i poświata sygnetu CVelocity — patrz `--mark-*` wyżej oraz
-   `CVelocityLogo.tsx`. Osobne od brand-glow, bo pomarańcz akcentu świeci
-   inaczej niż fiolet rampy. */
+/* Kafelek i poświata sygnetu Kierivo — patrz `--mark-*` wyżej. */
 .bg-mark-tile {
   background-image: var(--mark-tile-grad);
 }

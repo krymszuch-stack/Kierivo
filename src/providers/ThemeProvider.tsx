@@ -17,7 +17,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode; defaultTheme?: Theme }> = ({
   children,
-  // CVELOCITY is a dark-first product: the visual reference ships dark and the brand
+  // KIERIVO is a dark-first product: the visual reference ships dark and the brand
   // palette is tuned for it. Light stays fully supported via the toggle.
   defaultTheme = 'dark',
 }) => {

@@ -1,4 +1,4 @@
-# Obraz CVELOCITY dla Google Cloud Run.
+# Obraz KIERIVO dla Google Cloud Run.
 #
 # Jeden kontener serwuje frontend i API. Skutek: jeden URL, więc nie ma ruchu
 # cross-origin, nie ma CORS do skonfigurowania i nie ma osobnego rachunku za

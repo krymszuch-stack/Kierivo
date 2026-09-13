@@ -131,7 +131,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
       <PageHeader
         title="Wczytywanie i scalanie dokumentu CV"
         description="Zaimportuj CV z pliku albo wklej jego treść. Parser lokalny wyodrębni historię, umiejętności i dane kontaktowe do porównania z Master Vault."
-        badge="Parser CVelocity"
+        badge="Parser Kierivo"
       />
 
       {!parsedResult ? (

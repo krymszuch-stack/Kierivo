@@ -26,7 +26,7 @@ async function extractWithNodeBuffer(arrayBuffer: ArrayBuffer): Promise<string> 
 /**
  * D08 potrzebuje deterministycznego strumienia tekstu z realnego DOCX.
  * Adapter nie udaje pomiaru geometrii DOCX. Dostarcza wyłącznie warstwę
- * tekstową, którą SOURCE_AWARE może porównać ze źródłem CVelocity.
+ * tekstową, którą SOURCE_AWARE może porównać ze źródłem Kierivo.
  */
 export async function extractD08TextFromDocx(file: File): Promise<D08DocxExtractionResult> {
   const arrayBuffer = await file.arrayBuffer();

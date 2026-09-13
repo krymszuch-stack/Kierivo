@@ -523,7 +523,7 @@ export function scoreD09JobAlignment(input: D09ScoringInput): D09AuditResult {
     verdictCode,
     verdict: score === null
       ? 'Nie udało się wyznaczyć stabilnego wyniku dopasowania.'
-      : `CVelocity Job Alignment: ${score.toFixed(1)}/100. To wewnętrzny audyt zgodności z wymaganiami JD, nie prawdopodobieństwo zatrudnienia.`,
+      : `Kierivo Job Alignment: ${score.toFixed(1)}/100. To wewnętrzny audyt zgodności z wymaganiami JD, nie prawdopodobieństwo zatrudnienia.`,
     recommendations: recommendations(matches),
     alignment: diagnostics,
   };

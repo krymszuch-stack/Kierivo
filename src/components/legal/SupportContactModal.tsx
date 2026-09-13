@@ -43,7 +43,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
         <div className="rounded-2xl border border-line bg-sunken/40 p-4 space-y-2">
           <div className="flex items-center gap-2 font-bold text-sm text-ink">
             <LifeBuoy className="h-4 w-4 text-brand-600" />
-            Centrum Pomocy CVelocity
+            Centrum Pomocy Kierivo
           </div>
           <p className="text-muted text-[11px] leading-relaxed">
             Masz pytanie, sugestię nowej funkcji lub napotkałeś problem techniczny? Napisz do nas bezpośrednio lub skorzystaj z poniższego formularza.

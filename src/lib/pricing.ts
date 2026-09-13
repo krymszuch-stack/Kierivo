@@ -33,7 +33,7 @@ export interface CatalogEntry {
 export const PRO_MONTHLY: CatalogEntry = {
   priceId: 'pro_monthly',
   planId: 'pro',
-  title: 'CVelocity Pro (miesięcznie)',
+  title: 'Kierivo Pro (miesięcznie)',
   grossAmount: 4900,
   recurring: true,
   // Pro zawiera wszystkie szablony premium — decyzja właściciela produktu.
@@ -44,7 +44,7 @@ export const PRO_MONTHLY: CatalogEntry = {
 export const PRO_YEARLY: CatalogEntry = {
   priceId: 'pro_yearly',
   planId: 'pro_rok',
-  title: 'CVelocity Pro (rocznie)',
+  title: 'Kierivo Pro (rocznie)',
   grossAmount: 46800,
   recurring: true,
   templates: ['executive', 'creative'],

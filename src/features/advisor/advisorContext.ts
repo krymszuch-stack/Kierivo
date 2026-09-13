@@ -128,10 +128,10 @@ export function buildContextualAdvice(query: string, context: AdvisorContext): s
   const facts: string[] = [];
   if (asksForAssessment) {
     const scoreMessage = context.score < 55
-      ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza CVelocity wyniosła ${context.score}/100. To słaby punkt wyjścia do tej konkretnej oferty, nie werdykt o Twojej wartości ani wynik zewnętrznego ATS.`
+      ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. To słaby punkt wyjścia do tej konkretnej oferty, nie werdykt o Twojej wartości ani wynik zewnętrznego ATS.`
       : context.score < 75
-        ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza CVelocity wyniosła ${context.score}/100. Jest materiał do aplikacji, ale przed wysłaniem warto usunąć najważniejsze luki.`
-        : `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza CVelocity wyniosła ${context.score}/100. Dopasowanie wygląda solidnie, ale nadal sprawdź fakty i szczegóły dokumentu przed wysłaniem.`;
+        ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. Jest materiał do aplikacji, ale przed wysłaniem warto usunąć najważniejsze luki.`
+        : `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. Dopasowanie wygląda solidnie, ale nadal sprawdź fakty i szczegóły dokumentu przed wysłaniem.`;
     facts.push(scoreMessage);
   }
 

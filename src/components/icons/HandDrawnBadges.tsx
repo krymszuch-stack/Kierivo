@@ -10,7 +10,7 @@ import React from 'react';
  * Medicover, MyBenefit, Sodexo, Edenred) należą do ich prawnych właścicieli.
  */
 
-const ACCENT = '#F26440';
+const ACCENT = '#155EEF';
 const MEDICAL = '#38BDF8';
 const BRAND_PZU = '#0055A5';
 const BRAND_MEDICOVER = '#007A3D';

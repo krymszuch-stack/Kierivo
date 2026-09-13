@@ -8,7 +8,7 @@
 
 ## 🆕 Nowe
 
-- Publiczne wydanie testowe ma nazwę **CVelocity Public Pre-Beta** i kod
+- Publiczne wydanie testowe ma nazwę **Kierivo Public Pre-Beta** i kod
   **`PB-2026.09`**. Kod wersji nie oznacza procentu ukończenia produktu; służy
   tylko do jednoznacznego rozpoznania przedpremierowego builda pokazywanego
   testerom i w materiałach zewnętrznych.
@@ -56,7 +56,7 @@
 - Doradca widoczny w interfejsie jest **lokalnym modułem regułowym**. Dostaje
   wyłącznie wpisane pytanie / szybki prompt. Nie czyta automatycznie Vaultu ani
   zapisanych aplikacji i nie wywołuje modelu AI.
-- Wyniki CVelocity są ocenami własnych reguł i mierzonych cech dokumentu. Nie są
+- Wyniki Kierivo są ocenami własnych reguł i mierzonych cech dokumentu. Nie są
   wynikami konkretnych zewnętrznych ATS i nie gwarantują decyzji rekrutacyjnej.
 - Walidator spójności raportuje brak wykrytych rozbieżności w sprawdzonym
   zakresie. Nie używamy fallbacku „100% zgodności”, gdy zakres nie jest znany.

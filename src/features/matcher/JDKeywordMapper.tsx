@@ -339,7 +339,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
                 placeholder="Filtruj słowa..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-lg border border-line bg-surface py-1.5 pl-8 pr-3 text-xs font-mono text-ink placeholder:text-muted focus:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                className="w-full rounded-lg border border-line bg-surface py-1.5 pl-8 pr-3 text-xs font-mono text-ink placeholder:text-muted focus:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               />
             </div>
           </div>
@@ -349,7 +349,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
             <button
               type="button"
               onClick={() => setActiveStatus('ALL')}
-              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 activeStatus === 'ALL'
                   ? 'bg-ink text-surface'
                   : 'bg-sunken text-muted hover:text-ink'
@@ -360,7 +360,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
             <button
               type="button"
               onClick={() => setActiveStatus('MATCHED_IN_CV')}
-              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 activeStatus === 'MATCHED_IN_CV'
                   ? 'bg-success-soft text-success-fg border border-success/30'
                   : 'bg-sunken text-muted hover:text-ink'
@@ -371,7 +371,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
             <button
               type="button"
               onClick={() => setActiveStatus('IN_VAULT_NOT_IN_CV')}
-              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 activeStatus === 'IN_VAULT_NOT_IN_CV'
                   ? 'bg-brand-50 text-brand-fg border border-brand-200'
                   : 'bg-sunken text-muted hover:text-ink'
@@ -382,7 +382,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
             <button
               type="button"
               onClick={() => setActiveStatus('MISSING_IN_VAULT')}
-              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50 ${
+              className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50 ${
                 activeStatus === 'MISSING_IN_VAULT'
                   ? 'bg-danger-soft text-danger-fg border border-danger/30'
                   : 'bg-sunken text-muted hover:text-ink'
@@ -447,7 +447,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
                       <button
                         type="button"
                         onClick={() => setBridgeSkillModal(kw.term)}
-                        className="cursor-pointer mt-1 flex w-full items-center justify-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 py-1 font-mono text-[10px] font-bold text-brand-700 hover:bg-brand-500/20 transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                        className="cursor-pointer mt-1 flex w-full items-center justify-center gap-1 rounded-lg border border-brand-500/30 bg-brand-500/10 py-1 font-mono text-[10px] font-bold text-brand-700 hover:bg-brand-500/20 transition-colors duration-[var(--duration-fast)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                       >
                         <Sparkles className="h-3 w-3" />
                         <span>Most kompetencyjny</span>

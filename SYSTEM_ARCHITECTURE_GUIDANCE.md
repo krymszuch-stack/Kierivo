@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════
-# CVELOCITY: ARCHITEKTURA WERSJONOWANIA & EXPORT ENGINE (6 FILARÓW)
+# KIERIVO: ARCHITEKTURA WERSJONOWANIA & EXPORT ENGINE (6 FILARÓW)
 # ═══════════════════════════════════════════════════════════════════
 
 ## 1. EDYCJA POPRZEZ "WARSTWY" (LAYERED EDITING)

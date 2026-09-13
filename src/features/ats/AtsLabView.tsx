@@ -100,10 +100,10 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-fg">
             <Layers className="h-4 w-4" />
-            <span>Laboratorium reguł CVelocity</span>
+            <span>Laboratorium reguł Kierivo</span>
           </div>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
-            Audyt CVelocity i konsensus modułów
+            Audyt Kierivo i konsensus modułów
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-ink-muted">
             {consensus.engines.length} wewnętrznych modułów ocenia mierzalne cechy profilu i ogłoszenia.
@@ -113,7 +113,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-            <ShieldCheck className="h-3.5 w-3.5" /> {consensus.engines.length} modułów CVelocity
+            <ShieldCheck className="h-3.5 w-3.5" /> {consensus.engines.length} modułów Kierivo
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand/20 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand-fg">
             <Zap className="h-3.5 w-3.5" /> reguły deterministyczne
@@ -126,7 +126,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-4 text-center lg:col-span-4">
             <ScoreRing value={consensus.medianScore} label="Mediana modułów" />
             <span className="mt-2 block text-[11px] text-ink-faint">
-              mediana wewnętrznych reguł CVelocity, nie benchmark rynku
+              mediana wewnętrznych reguł Kierivo, nie benchmark rynku
             </span>
             <span className={`mt-4 rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white ${
               consensus.medianScore >= 80 ? 'bg-emerald-500' : consensus.medianScore >= 65 ? 'bg-blue-500' : 'bg-amber-500'
@@ -142,7 +142,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           <div className="space-y-5 lg:col-span-8">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-ink">
-                <Sparkles className="h-5 w-5 text-brand-fg" /> Uzasadnienie oceny CVelocity
+                <Sparkles className="h-5 w-5 text-brand-fg" /> Uzasadnienie oceny Kierivo
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-ink-muted sm:text-base">
                 {consensus.summaryJustification}
@@ -263,7 +263,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         </div>
 
         <div className="mt-6 rounded-2xl border border-line bg-surface/60 p-4">
-          <h3 className="text-sm font-bold text-ink">Trzy profile heurystyczne CVelocity</h3>
+          <h3 className="text-sm font-bold text-ink">Trzy profile heurystyczne Kierivo</h3>
           <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
             Te profile grupują mierzone cechy dokumentu. Ich liczby nie są wynikami ani prawdopodobieństwami z konkretnych zewnętrznych ATS.
           </p>
@@ -271,7 +271,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             {telemetry.systemVulnerabilities.map((profileResult, index) => {
               const label = HEURISTIC_PROFILE_LABELS[index] ?? {
                 name: `Profil regułowy ${index + 1}`,
-                category: 'wewnętrzna kombinacja cech CVelocity',
+                category: 'wewnętrzna kombinacja cech Kierivo',
               };
               return (
                 <div key={profileResult.systemId} className="space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
@@ -311,7 +311,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         <div className="flex items-start gap-4">
           <div className="rounded-2xl bg-brand/10 p-3 text-brand-fg"><Compass className="h-6 w-6" /></div>
           <div className="flex-1 space-y-2">
-            <h2 className="text-base font-bold text-ink">Ocena dopasowania profilu według reguł CVelocity</h2>
+            <h2 className="text-base font-bold text-ink">Ocena dopasowania profilu według reguł Kierivo</h2>
             <p className="text-sm leading-relaxed text-ink-muted">{consensus.careerFitAdvice.verdict}</p>
             <div className="rounded-xl border border-ink/5 bg-surface/80 p-3 text-xs text-ink">
               <strong>Rekomendowany plan działania:</strong> {consensus.careerFitAdvice.actionablePlan}
@@ -332,7 +332,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-ink">
-            <Award className="h-5 w-5 text-brand-fg" /> Oceny modułów CVelocity
+            <Award className="h-5 w-5 text-brand-fg" /> Oceny modułów Kierivo
           </h2>
           <span className="hidden text-xs text-ink-faint sm:inline">Kliknij moduł, aby zobaczyć jego reguły i zastrzeżenia</span>
         </div>
@@ -373,7 +373,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               <p className="mt-1 text-xs text-ink-muted">Kategoria reguły: <strong>{activeEngine.category}</strong></p>
             </div>
             <div className="text-right">
-              <span className="block text-xs text-ink-faint">Wynik modułu CVelocity</span>
+              <span className="block text-xs text-ink-faint">Wynik modułu Kierivo</span>
               <span className="font-mono text-2xl font-black text-brand-fg">{activeEngine.score}%</span>
             </div>
           </div>
@@ -419,7 +419,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-fg"><BookOpen className="h-4 w-4" /><span>Praktyki redakcyjne</span></div>
           <h2 className="mt-1 text-xl font-bold text-ink">Przykłady poprawy czytelności CV</h2>
-          <p className="text-xs text-ink-muted">To wskazówki redakcyjne CVelocity, nie reguły gwarantujące akceptację przez konkretny ATS.</p>
+          <p className="text-xs text-ink-muted">To wskazówki redakcyjne Kierivo, nie reguły gwarantujące akceptację przez konkretny ATS.</p>
         </div>
 
         <div className="space-y-3">

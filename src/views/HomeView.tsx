@@ -57,10 +57,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ vault, onNavigate, onOpenAdv
     <div className="mx-auto max-w-6xl space-y-10 pb-14">
       <section className="overflow-hidden rounded-3xl border border-line bg-elevated">
         <div className="grid items-stretch lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="flex flex-col justify-center p-6 sm:p-10 lg:p-12">
+          <div className="relative isolate flex flex-col justify-center overflow-hidden p-6 sm:p-10 lg:p-12">
+            <img
+              src="/brand/kierivo-motif.svg"
+              alt=""
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover opacity-[0.08] dark:opacity-[0.04]"
+            />
             <p className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-fg"><Heart className="h-3.5 w-3.5" aria-hidden="true" />CV bez zadęcia. I bez bajek.</p>
             <h1 className="max-w-xl text-3xl font-extrabold tracking-tight text-ink sm:text-4xl lg:text-5xl">Wiesz, co umiesz. <span className="text-brand-fg">Pomóżmy to dobrze pokazać.</span></h1>
-            <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted sm:text-base">CVelocity porządkuje Twoje prawdziwe doświadczenie, porównuje CV z ofertą i pomaga przygotować spokojną, czytelną wersję do wysłania. Bez obiecywania pracy za trzy kliknięcia :)</p>
+            <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted sm:text-base">Kierivo porządkuje Twoje prawdziwe doświadczenie, porównuje CV z ofertą i pomaga przygotować spokojną, czytelną wersję do wysłania. Bez obiecywania pracy za trzy kliknięcia :)</p>
             <div className="mt-7 flex flex-wrap gap-3">
               <button type="button" onClick={() => onNavigate(hasStarted ? 'aplikuj' : 'profil')} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-on-brand shadow-raised transition-transform hover:scale-[1.02] hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{hasStarted ? 'Sprawdź ofertę' : 'Dodaj swoje CV'}<ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
               <button type="button" onClick={() => onNavigate('porady')} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><Sparkles className="h-4 w-4 text-brand-600" aria-hidden="true" />Zobacz, jak to działa</button>
@@ -86,8 +92,8 @@ export const HomeView: React.FC<HomeViewProps> = ({ vault, onNavigate, onOpenAdv
         </div>
       </section>
 
-      <section className="rounded-3xl border border-line bg-sunken p-5 sm:p-8" aria-labelledby="why-cvelocity">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div className="max-w-2xl"><p className="text-label font-bold uppercase tracking-[0.14em] text-brand-fg">Po co to wszystko?</p><h2 id="why-cvelocity" className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Żeby mniej zgadywać, a więcej pokazać.</h2><p className="mt-2 text-sm leading-relaxed text-muted">Nie zastępujemy rekrutera, nie wysyłamy aplikacji za Ciebie i nie wpisujemy cudzych umiejętności. Dajemy Ci lepszy porządek, kontekst i chwilę oddechu przed kliknięciem „wyślij”.</p></div><button type="button" onClick={() => onOpenAdvisor()} className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-xs font-semibold text-ink hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><WandSparkles className="h-4 w-4 text-brand-600" aria-hidden="true" />Pytania? Otwórz FAQ Doradcy</button></div>
+      <section className="rounded-3xl border border-line bg-sunken p-5 sm:p-8" aria-labelledby="why-kierivo">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div className="max-w-2xl"><p className="text-label font-bold uppercase tracking-[0.14em] text-brand-fg">Po co to wszystko?</p><h2 id="why-kierivo" className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Żeby mniej zgadywać, a więcej pokazać.</h2><p className="mt-2 text-sm leading-relaxed text-muted">Nie zastępujemy rekrutera, nie wysyłamy aplikacji za Ciebie i nie wpisujemy cudzych umiejętności. Dajemy Ci lepszy porządek, kontekst i chwilę oddechu przed kliknięciem „wyślij”.</p></div><button type="button" onClick={() => onOpenAdvisor()} className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-xs font-semibold text-ink hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><WandSparkles className="h-4 w-4 text-brand-600" aria-hidden="true" />Pytania? Otwórz FAQ Doradcy</button></div>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           {FEATURES.map((feature) => {
             const Icon = feature.icon;
@@ -96,7 +102,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ vault, onNavigate, onOpenAdv
         </div>
       </section>
 
-      <section className="flex flex-wrap items-center gap-x-6 gap-y-3 border-y border-line py-5 text-xs text-muted" aria-label="Zasady działania CVelocity">
+      <section className="flex flex-wrap items-center gap-x-6 gap-y-3 border-y border-line py-5 text-xs text-muted" aria-label="Zasady działania Kierivo">
         <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Twoje fakty zostają Twoimi faktami.</span>
         <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Wynik dopasowania jest własną analizą aplikacji.</span>
         <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Przed eksportem zawsze widzisz dokument.</span>

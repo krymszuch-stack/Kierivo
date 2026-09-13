@@ -34,19 +34,19 @@ try {
   await page.screenshot({ path: `${outputDir}/01-start-bezplatna-beta.png`, fullPage: true });
 
   // Nazwa CTA jest copy produktowym i może się zmieniać. Odbiór sprawdza cel:
-  // użytkownik ma mieć widoczne wejście do bezpłatnego testu CVelocity.
-  await page.getByRole('button', { name: /Testuj CVelocity|Sprawdź CV za darmo/i }).click();
+  // użytkownik ma mieć widoczne wejście do bezpłatnego testu Kierivo.
+  await page.getByRole('button', { name: /Testuj Kierivo|Sprawdź CV za darmo/i }).click();
   await page.locator('#quick-cv').fill(
     'Jan Kowalski. Specjalista wsparcia IT. Obsługa Microsoft 365, Active Directory, Windows 11, PowerShell i zgłoszeń użytkowników. Diagnozowałem problemy, konfigurowałem konta i dokumentowałem rozwiązania. Język angielski B2.'
   );
   await page.locator('#quick-jd').fill(
     'Szukamy specjalisty IT Support. Wymagamy Windows 11, Microsoft 365, Active Directory, PowerShell, obsługi ticketów, dokumentacji technicznej i języka angielskiego B2. Mile widziane doświadczenie w pracy z użytkownikiem.'
   );
-  await page.getByRole('button', { name: 'Policz wynik CVelocity' }).click();
+  await page.getByRole('button', { name: 'Policz wynik Kierivo' }).click();
   await page.getByTestId('quick-ats-result').waitFor();
 
   const resultText = await page.getByTestId('quick-ats-result').innerText();
-  if (!resultText.includes('CVelocity')) throw new Error('Wynik szybkiego sprawdzenia nie jest podpisany jako CVelocity.');
+  if (!resultText.includes('Kierivo')) throw new Error('Wynik szybkiego sprawdzenia nie jest podpisany jako Kierivo.');
   if (!resultText.includes('nie prognoza decyzji rekrutera')) {
     throw new Error('Przy wyniku brakuje ograniczenia obietnicy rekrutacyjnej.');
   }
@@ -63,7 +63,7 @@ try {
   }
   await page.screenshot({ path: `${outputDir}/03-zakres-bety-0-zl.png`, fullPage: true });
 
-  console.log('✓ D05: nowy tester uzyskał wynik CVelocity i dotarł do zakresu bety bez płatności.');
+  console.log('✓ D05: nowy tester uzyskał wynik Kierivo i dotarł do zakresu bety bez płatności.');
   console.log('✓ D05: brak aktywnych CTA zakupowych na sprawdzonych ekranach.');
   console.log(`✓ D05: zrzuty zapisane w ${outputDir}.`);
 } finally {

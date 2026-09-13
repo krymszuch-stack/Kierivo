@@ -97,7 +97,7 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
     });
   });
 
-  // 2. Testy wielosilnikowej symulacji 10 modułów CVelocity
+  // 2. Testy wielosilnikowej symulacji 10 modułów Kierivo
   describe('2. Symulator Konsensusu 10 Modułów Weryfikacji', () => {
     it('zwraca kompletny zestaw 10 zróżnicowanych silników z uzasadnieniem, medianą i propozycjami', () => {
       const result = simulateMultiEngineATS(sampleVault, sampleJobOffer, 'Starszy Inżynier Chmurowy i DevOps');

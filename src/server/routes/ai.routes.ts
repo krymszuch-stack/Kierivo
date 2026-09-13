@@ -154,12 +154,12 @@ aiRouter.get('/ai/ollama/health', requireLocalOllama, async (_req: Request, res:
   }
 });
 
-const ADVISOR_SYSTEM_PROMPT = `Jesteś życzliwym, precyzyjnym i profesjonalnym Doradcą Kariery oraz ekspertem ds. systemów ATS (Applicant Tracking Systems) w aplikacji CVelocity.
+const ADVISOR_SYSTEM_PROMPT = `Jesteś życzliwym, precyzyjnym i profesjonalnym Doradcą Kariery oraz ekspertem ds. systemów ATS (Applicant Tracking Systems) w aplikacji Kierivo.
 Twoim celem jest pomoc kandydatowi w przygotowaniu etycznego, skutecznego i czytelnego CV oraz w przygotowaniu do rozmów rekrutacyjnych.
 Kluczowe zasady:
 1. Zero wymyślonych danych: przypominaj, by kandydat wpisywał wyłącznie prawdziwe i weryfikowalne fakty, osiągnięcia oraz metryki. Nigdy nie zachęcaj do fabrykowania liczb ani doświadczenia.
 2. Metoda STAR: rekomenduj opisywanie osiągnięć schematem Sytuacja, Zadanie, Działanie, Rezultat (STAR) z mierzalnymi skutkami.
-3. Standardy ATS: wyjaśniaj, że układ jednokolumnowy, czysty tekst bez tabel czy grafik i standardowe nagłówki gwarantują czytelność dla parserów. CVelocity bada zgodność strukturalną dokumentu, ale nie gwarantuje decyzji zewnętrznych systemów ATS.
+3. Standardy ATS: wyjaśniaj, że układ jednokolumnowy, czysty tekst bez tabel czy grafik i standardowe nagłówki gwarantują czytelność dla parserów. Kierivo bada zgodność strukturalną dokumentu, ale nie gwarantuje decyzji zewnętrznych systemów ATS.
 4. Słowa kluczowe: tłumacz, że słowa kluczowe należy umieszczać w naturalnym kontekście realnych zadań, a nie sztucznie upychać.
 Odpowiadaj konkretnie, pomocnie, zwięzłym i sformatowanym tekstem (np. punktorami lub krótkimi akapitami), w języku polskim.`;
 
@@ -168,7 +168,7 @@ Odpowiadaj konkretnie, pomocnie, zwięzłym i sformatowanym tekstem (np. punktor
  *
  * Asysta lokalnej Ollamy w Doradcy regułowym.
  * Przyjmuje zapytanie i opcjonalną krótką historię, zwraca odpowiedź wygenerowaną
- * przez lokalny model Ollama z zachowaniem zasad rzetelności CVelocity.
+ * przez lokalny model Ollama z zachowaniem zasad rzetelności Kierivo.
  */
 aiRouter.post(
   '/advisor/chat',

@@ -12,7 +12,7 @@ Dokument opisuje stan na dziś. Sekcja „Znane ograniczenia" jest jego obowiąz
 
 ## Stan obecny: prototyp działający w przeglądarce
 
-CVELOCITY pracuje domyślnie w trybie `BACKEND_MODE=local`: bez kont i bez bazy, cała praca odbywa się lokalnie, poza wyraźnie wskazanymi wywołaniami AI.
+KIERIVO pracuje domyślnie w trybie `BACKEND_MODE=local`: bez kont i bez bazy, cała praca odbywa się lokalnie, poza wyraźnie wskazanymi wywołaniami AI.
 
 Warstwa serwerowa dla kont, trwałych danych i płatności (`BACKEND_MODE=cloud`) jest **zbudowana i pokryta testami granicznymi w CI, ale nie jest jeszcze podpięta do interfejsu**. Znaczy to dokładnie tyle: trasy `/api/me`, `/api/vault`, `/api/applications` i `/api/billing/*` odrzucają żądania bez ważnego tokenu, a `supabase/migrations/0001_init.sql` zakłada polityki RLS — natomiast żaden ekran aplikacji jeszcze z nich nie korzysta. Do czasu podpięcia obowiązują ograniczenia opisane niżej.
 
@@ -76,7 +76,7 @@ Jeśli znajdziesz podatność (np. wektor XSS, obejście walidacji adresów, wyc
 
 * **Kontakt:** Adrian Koziński
 * **E-mail:** `krymszuch00@outlook.com`
-* **Temat:** `[SECURITY] CVELOCITY — <krótki opis>`
+* **Temat:** `[SECURITY] KIERIVO — <krótki opis>`
 
 ### Co warto dołączyć
 

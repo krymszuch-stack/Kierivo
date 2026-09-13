@@ -121,7 +121,7 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({
       status: "ok",
-      service: "CVELOCITY Core Engine API",
+      service: "KIERIVO Core Engine API",
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
@@ -187,7 +187,7 @@ async function startServer() {
   app.use(errorHandler);
 
   app.listen(config.PORT, "0.0.0.0", () => {
-    console.log(`CVELOCITY Engine Server running on http://localhost:${config.PORT}`);
+    console.log(`KIERIVO Engine Server running on http://localhost:${config.PORT}`);
   });
 }
 

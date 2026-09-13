@@ -98,7 +98,7 @@ export const Shell: React.FC<ShellProps> = ({
       <MobileSidebar
         isOpen={isMobileDrawerOpen}
         onClose={() => setIsMobileDrawerOpen(false)}
-        title="CVELOCITY"
+        title="KIERIVO"
       >
         <Sidebar
           activeTab={activeTab}

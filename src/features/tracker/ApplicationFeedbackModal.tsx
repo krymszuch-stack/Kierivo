@@ -46,9 +46,9 @@ export interface ApplicationFeedbackModalProps {
 type Step = 'ask' | 'success' | 'problem';
 
 const CHIP_BASE =
-  'cursor-pointer rounded-xl border px-3 py-1.5 text-left font-mono text-[11px] font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50';
+  'cursor-pointer rounded-xl border px-3 py-1.5 text-left font-mono text-[11px] font-bold transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50';
 const CHIP_OFF = 'border-slate-700 bg-slate-800/70 text-slate-300 hover:bg-slate-700';
-const CHIP_ON = 'border-[#F26440] bg-[#F26440]/15 text-[#F26440]';
+const CHIP_ON = 'border-[#155EEF] bg-[#155EEF]/15 text-[#155EEF]';
 
 export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> = ({
   onNavigate,
@@ -152,7 +152,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
             resetLocal();
           }}
           aria-label="Pomiń, przypomnij później"
-          className="absolute right-3 top-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition-colors duration-200 ease-out hover:bg-slate-800 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+          className="absolute right-3 top-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-400 transition-colors duration-200 ease-out hover:bg-slate-800 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -162,7 +162,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
             <div className="pr-8">
               <h2 className="flex items-center gap-2 text-base font-black tracking-tight">
                 Aplikacja wysłana?
-                <Rocket className="h-4 w-4 text-[#F26440]" />
+                <Rocket className="h-4 w-4 text-[#155EEF]" />
               </h2>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-300">
                 Dopasowaliśmy CV do oferty <span className="font-bold text-slate-100">{pending.title}</span>{' '}
@@ -175,14 +175,14 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
               <button
                 type="button"
                 onClick={handleApplied}
-                className="flex-1 cursor-pointer rounded-xl bg-[#F26440] px-4 py-2.5 text-sm font-bold text-white transition-colors duration-200 ease-out hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                className="flex-1 cursor-pointer rounded-xl bg-[#155EEF] px-4 py-2.5 text-sm font-bold text-white transition-colors duration-200 ease-out hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               >
                 Tak, zaaplikowałem!
               </button>
               <button
                 type="button"
                 onClick={() => setStep('problem')}
-                className="flex-1 cursor-pointer rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-200 transition-colors duration-200 ease-out hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                className="flex-1 cursor-pointer rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-slate-200 transition-colors duration-200 ease-out hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               >
                 Jeszcze nie / Miałem problem
               </button>
@@ -242,7 +242,7 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
               <button
                 type="button"
                 onClick={() => handleFinishSuccess(false)}
-                className="cursor-pointer rounded-xl px-2 py-1.5 text-left font-mono text-[11px] text-slate-400 transition-colors duration-200 ease-out hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#F26440]/50"
+                className="cursor-pointer rounded-xl px-2 py-1.5 text-left font-mono text-[11px] text-slate-400 transition-colors duration-200 ease-out hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
               >
                 Zostaw mnie tutaj
               </button>

@@ -37,7 +37,7 @@ const pushBlock = (
 /**
  * Referencja odpowiada kolejności aktualnego `DocumentRenderer`. Nie jest
  * ogólnym modelem idealnego CV. Jej jedynym celem jest sprawdzenie, czy eksport
- * zachował to, co CVelocity faktycznie próbowało wyrenderować.
+ * zachował to, co Kierivo faktycznie próbowało wyrenderować.
  */
 export function buildD08DocumentReference(
   vault: MasterVault,
@@ -203,7 +203,7 @@ export async function applyD08SourceReference(
     id: evidenceId,
     provenance: 'CROSS_SOURCE_CONSISTENT',
     pointer: { source: 'CV', jsonPath: 'sourceReference.comparison' },
-    description: 'Porównano oczekiwaną treść renderera CVelocity z faktycznie wyekstrahowanym dokumentem.',
+    description: 'Porównano oczekiwaną treść renderera Kierivo z faktycznie wyekstrahowanym dokumentem.',
     normalizedPayload: {
       precision: tokenAgreement.precision,
       recall: tokenAgreement.recall,

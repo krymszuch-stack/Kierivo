@@ -8,7 +8,7 @@ import {
   permissiveRules,
 } from '../robots';
 
-const UA = 'CVELOCITY/1.0 (+https://cvelocity.pl/bot)';
+const UA = 'KIERIVO/1.0 (+https://cvelocity.pl/bot)';
 
 beforeEach(() => {
   clearRobotsCache();
