@@ -467,6 +467,87 @@
   color: var(--paper-ink);
 }
 
+/*
+ * Warianty CV używają tych samych semantycznych węzłów dokumentu. Układ boczny
+ * jest wyłącznie zmianą prezentacji: kolejność DOM zostaje kolejnością czytania.
+ */
+.doc-paper[data-cv-heading="serif"] [data-cv-section="header"] h1,
+.doc-paper[data-cv-heading="serif"] [data-cv-section="experience"] > div > div > span:first-child {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.doc-paper[data-cv-density="compact"] {
+  row-gap: 1rem;
+}
+
+.doc-paper[data-cv-density="compact"] [data-cv-section="experience"] > div {
+  row-gap: 0.75rem;
+}
+
+/* Miniatura nigdy nie zawiera danych Vaultu. To legenda układu, dzięki której
+   użytkownik wybiera strukturę bez wypisywania danych osobowych 82 razy w DOM. */
+.cv-template-thumbnail {
+  display: block;
+  position: relative;
+  min-height: 66px;
+  overflow: hidden;
+  border: 1px solid #d6d8dc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.cv-template-thumbnail::before {
+  content: '';
+  display: block;
+  height: 12px;
+  background: var(--cv-thumbnail-accent);
+}
+
+.cv-template-thumbnail i {
+  display: block;
+  height: 3px;
+  margin: 5px 7px 0;
+  border-radius: 999px;
+  background: #d9dde4;
+}
+
+.cv-template-thumbnail i:nth-child(2) { width: 54%; background: var(--cv-thumbnail-accent); }
+.cv-template-thumbnail i:nth-child(3) { width: 78%; }
+.cv-template-thumbnail i:nth-child(4) { width: 64%; }
+
+.cv-template-thumbnail-sidebar {
+  background: linear-gradient(90deg, var(--cv-thumbnail-soft) 0 29%, #fff 29%);
+}
+
+.cv-template-thumbnail-sidebar::before { margin-left: 29%; }
+.cv-template-thumbnail-sidebar i { margin-left: 36%; }
+
+@media screen and (min-width: 700px) {
+  .doc-paper[data-cv-layout="sidebar"] {
+    display: grid;
+    grid-template-columns: minmax(155px, 27%) minmax(0, 1fr);
+    grid-template-areas:
+      'header header'
+      'summary summary'
+      'skills experience'
+      'skills education'
+      'rodo rodo';
+    column-gap: 1.75rem;
+    align-items: start;
+  }
+
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="header"] { grid-area: header; }
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="summary"] { grid-area: summary; }
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="skills"] {
+    grid-area: skills;
+    border-right: 1px solid var(--paper-line);
+    padding-right: 1rem;
+  }
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="experience"] { grid-area: experience; }
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="education"] { grid-area: education; }
+  .doc-paper[data-cv-layout="sidebar"] [data-cv-section="rodo"] { grid-area: rodo; }
+}
+
 /* Violet glow used under brand-filled surfaces (logo mark, premium badges). */
 .shadow-brand-glow {
   box-shadow: 0 2px 12px color-mix(in srgb, var(--violet) 40%, transparent);

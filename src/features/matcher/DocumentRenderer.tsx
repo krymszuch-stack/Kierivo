@@ -15,20 +15,30 @@ import {
   Plus,
   Trash2,
   X,
+  Shuffle,
+  LayoutTemplate,
 } from 'lucide-react';
 import { MasterVault, TailoredResume, HighlightMetric } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
+import {
+  assessCvTemplate,
+  CV_TEMPLATE_BETA_LIMIT,
+  CV_TEMPLATE_CATALOG,
+  findCvTemplate,
+  pickCvTemplate,
+} from '../../lib/cvTemplateEngine';
+import { readJson, StorageKeys, writeJson } from '../../lib/storage';
 
-export type TemplateId = 'modern' | 'minimal' | 'executive' | 'creative';
+interface TemplateBetaUsage {
+  attempts: number;
+}
 
-const TEMPLATES: { id: TemplateId; label: string; hint: string }[] = [
-  { id: 'modern', label: 'Nowoczesny', hint: 'Czysty układ jednokolumnowy.' },
-  { id: 'minimal', label: 'Minimalny', hint: 'Maksimum treści na kartce.' },
-  { id: 'executive', label: 'Menedżerski', hint: 'Kolor nagłówków i pozioma linia marki.' },
-  { id: 'creative', label: 'Kreatywny', hint: 'Akcent kolorystyczny przy nagłówkach.' },
-];
+function readTemplateBetaUsage(): TemplateBetaUsage {
+  const value = readJson<TemplateBetaUsage>(StorageKeys.cvTemplateBetaUsage, { attempts: 0 });
+  return { attempts: Math.max(0, Math.min(CV_TEMPLATE_BETA_LIMIT, Math.floor(value.attempts || 0))) };
+}
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -59,8 +69,9 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   onExported,
   className = '',
 }) => {
-  const [activeTemplate, setActiveTemplate] = useState<TemplateId>('modern');
+  const [activeTemplateId, setActiveTemplateId] = useState('cv-01');
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0].hex);
+  const [betaUsage, setBetaUsage] = useState<TemplateBetaUsage>(readTemplateBetaUsage);
   const [isCopied, setIsCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [hasSynced, setHasSynced] = useState(false);
@@ -76,6 +87,8 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const history = docVault.history || [];
   const education = docVault.education || [];
   const hardSkills = docVault.skillsMatrix?.hardSkills || [];
+  const activeTemplate = findCvTemplate(activeTemplateId);
+  const templateAssessment = assessCvTemplate(activeTemplate);
 
   const handlePrint = () => {
     window.print();
@@ -110,6 +123,23 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
     onExported?.();
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleGenerateTemplate = () => {
+    if (betaUsage.attempts >= CV_TEMPLATE_BETA_LIMIT) {
+      showToast('Wykorzystano lokalny limit bety', {
+        message: 'W tej przeglądarce wykorzystano 15 prób losowania wariantu. Wybór istniejącego szablonu nadal nie zmienia danych CV.',
+        variant: 'info',
+      });
+      return;
+    }
+
+    const nextUsage = { attempts: betaUsage.attempts + 1 };
+    const template = pickCvTemplate(Date.now() + nextUsage.attempts);
+    writeJson(StorageKeys.cvTemplateBetaUsage, nextUsage);
+    setBetaUsage(nextUsage);
+    setActiveTemplateId(template.id);
+    setSelectedColor(template.accent);
   };
 
   const handleUpdatePersonalInfo = (field: string, value: string) => {
@@ -253,22 +283,35 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
           <span className="mr-1 text-label font-bold uppercase tracking-wider text-muted text-xs">
             Szablon
           </span>
-          {TEMPLATES.map((tmpl) => (
-            <Tooltip key={tmpl.id} content={tmpl.hint}>
+          {CV_TEMPLATE_CATALOG.slice(0, 6).map((tmpl) => (
+            <Tooltip key={tmpl.id} content={assessCvTemplate(tmpl).explanation}>
               <button
                 type="button"
-                onClick={() => setActiveTemplate(tmpl.id)}
-                aria-pressed={activeTemplate === tmpl.id}
+                onClick={() => {
+                  setActiveTemplateId(tmpl.id);
+                  setSelectedColor(tmpl.accent);
+                }}
+                aria-pressed={activeTemplateId === tmpl.id}
                 className={`cursor-pointer rounded-xl border px-2.5 py-1 text-xs font-bold transition-colors duration-[var(--duration-fast)] ease-out focus-visible:outline-none ${
-                  activeTemplate === tmpl.id
+                  activeTemplateId === tmpl.id
                     ? 'border-brand-600 bg-brand-600 text-on-brand shadow-xs'
                     : 'border-line bg-surface text-muted hover:text-ink'
                 }`}
               >
-                {tmpl.label}
+                {tmpl.name}
               </button>
             </Tooltip>
           ))}
+          <Tooltip content="Losuje jeden z 82 deterministycznie zdefiniowanych wariantów i zużywa jedną z 15 lokalnych prób beta.">
+            <button
+              type="button"
+              onClick={handleGenerateTemplate}
+              disabled={betaUsage.attempts >= CV_TEMPLATE_BETA_LIMIT}
+              className="inline-flex cursor-pointer items-center gap-1 rounded-xl border border-line bg-surface px-2.5 py-1 text-xs font-bold text-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Shuffle className="h-3.5 w-3.5" /> Losuj {betaUsage.attempts}/{CV_TEMPLATE_BETA_LIMIT}
+            </button>
+          </Tooltip>
         </div>
 
         {/* Color Accent Picker */}
@@ -331,22 +374,67 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-sunken/40 px-3 py-2 text-xs">
+        <LayoutTemplate className="h-4 w-4 text-muted" />
+        <span className="font-semibold text-ink">{activeTemplate.name}</span>
+        <span className={templateAssessment.fit === 'ats-friendly' ? 'rounded-full bg-success-soft px-2 py-0.5 font-semibold text-success-fg' : 'rounded-full bg-warning-soft px-2 py-0.5 font-semibold text-warning-fg'}>
+          {templateAssessment.label}
+        </span>
+        <span className="text-muted">{templateAssessment.explanation}</span>
+      </div>
+
+      <details className="rounded-xl border border-line bg-elevated p-3">
+        <summary className="cursor-pointer text-xs font-semibold text-ink">
+          Galeria 82 wariantów — miniatury prezentują układ, nie dane Twojego CV
+        </summary>
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-9">
+          {CV_TEMPLATE_CATALOG.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              onClick={() => {
+                setActiveTemplateId(template.id);
+                setSelectedColor(template.accent);
+              }}
+              aria-pressed={activeTemplateId === template.id}
+              aria-label={`Wybierz ${template.name}: ${assessCvTemplate(template).label}`}
+              className={`rounded-lg border p-1 text-left transition-colors focus-visible:outline-none ${
+                activeTemplateId === template.id ? 'border-brand-600 ring-2 ring-brand-500/30' : 'border-line hover:border-line-strong'
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`cv-template-thumbnail cv-template-thumbnail-${template.layout}`}
+                style={{ '--cv-thumbnail-accent': template.accent, '--cv-thumbnail-soft': template.accentSoft } as React.CSSProperties}
+              >
+                <i /><i /><i /><i />
+              </span>
+              <span className="mt-1 block truncate font-mono text-[9px] text-muted">{template.name}</span>
+            </button>
+          ))}
+        </div>
+      </details>
+
       {/* A4 Sheet Container — responsywny arkusz A4 */}
       <div className="overflow-x-auto p-2 sm:p-6 flex flex-col items-center justify-center bg-sunken/40 rounded-3xl border border-line">
         <div className="w-full flex justify-center">
           <div
             id="cv-printable-document"
-            style={{ '--doc-accent': selectedColor } as React.CSSProperties}
+            data-cv-layout={activeTemplate.layout}
+            data-cv-density={activeTemplate.density}
+            data-cv-heading={activeTemplate.headingFont}
+            style={{ '--doc-accent': selectedColor, '--cv-accent-soft': activeTemplate.accentSoft } as React.CSSProperties}
             className="doc-paper relative min-h-[1050px] w-full max-w-[794px] rounded-2xl border border-line p-8 sm:p-12 shadow-floating space-y-6"
           >
             {/* Header Section */}
             <div
+              data-cv-section="header"
               className={`border-b pb-5 ${
-                activeTemplate === 'creative'
+                activeTemplate.family === 'creative'
                   ? 'border-l-4 pl-4'
                   : 'border-line'
               }`}
-              style={{ borderLeftColor: activeTemplate === 'creative' ? selectedColor : undefined }}
+              style={{ borderLeftColor: activeTemplate.family === 'creative' ? selectedColor : undefined }}
             >
               {isEditing ? (
                 <div className="space-y-2">
@@ -356,7 +444,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                     onChange={(e) => handleUpdatePersonalInfo('fullName', e.target.value)}
                     placeholder="Twoje Imię i Nazwisko"
                     className="text-2xl sm:text-3xl font-extrabold tracking-tight w-full bg-transparent border-b border-dashed border-line focus:border-brand-500 focus:outline-none"
-                    style={{ color: activeTemplate === 'modern' ? selectedColor : undefined }}
+                    style={{ color: activeTemplate.family === 'modern' ? selectedColor : undefined }}
                   />
                   <input
                     type="text"
@@ -370,7 +458,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 <>
                   <h1
                     className="text-2xl sm:text-3xl font-extrabold tracking-tight"
-                    style={{ color: activeTemplate === 'modern' ? selectedColor : undefined }}
+                    style={{ color: activeTemplate.family === 'modern' ? selectedColor : undefined }}
                   >
                     {personal.fullName || 'Imię i Nazwisko'}
                   </h1>
@@ -444,11 +532,11 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             </div>
 
             {/* Summary */}
-            <div className="space-y-1.5">
+            <div data-cv-section="summary" className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <h2
                   className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono"
-                  style={{ color: activeTemplate === 'executive' ? selectedColor : undefined }}
+                  style={{ color: activeTemplate.family === 'executive' ? selectedColor : undefined }}
                 >
                   Podsumowanie Zawodowe
                 </h2>
@@ -469,7 +557,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             </div>
 
             {/* Skills Matrix */}
-            <div className="space-y-2">
+            <div data-cv-section="skills" className="space-y-2">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
                   Kluczowe Umiejętności & Narzędzia
@@ -516,7 +604,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             </div>
 
             {/* Work Experience */}
-            <div className="space-y-4">
+            <div data-cv-section="experience" className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
                   Doświadczenie Zawodowe
@@ -586,7 +674,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
 
             {/* Education */}
             {education.length > 0 && (
-              <div className="space-y-2 border-t border-line/60 pt-4">
+              <div data-cv-section="education" className="space-y-2 border-t border-line/60 pt-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
                     Edukacja & Wykształcenie
@@ -611,9 +699,9 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             )}
 
             {/* Footer RODO Clause */}
-            <div className="border-t border-line/50 pt-4 text-[9px] text-subtle leading-tight">
+            <footer data-cv-section="rodo" className="border-t border-line/50 pt-4 text-[9px] text-subtle leading-tight">
               Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 (RODO).
-            </div>
+            </footer>
           </div>
         </div>
       </div>
