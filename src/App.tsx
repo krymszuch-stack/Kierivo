@@ -78,7 +78,7 @@ function MainApp() {
     advisorInitialQuestion,
   } = useAppStore();
 
-  const { userVault, saveUserVault, user, isAuthenticated, mode } = useAuth();
+  const { userVault, saveUserVault, user, isAuthenticated, mode, cloudAvailable } = useAuth();
 
   const [vault, setVault] = useState<MasterVault>(() => {
     const profile = getActiveProfile();
@@ -336,6 +336,7 @@ function MainApp() {
       lockReasons={unlocks.reasons}
       isAuthenticated={isAuthenticated}
       userEmail={user?.email}
+      cloudAvailable={cloudAvailable}
       planStatus={planStatus}
     >
       <AnimatePresence mode="wait">

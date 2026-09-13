@@ -29,6 +29,7 @@ export interface TopbarProps {
   onOpenDesignTokens?: () => void;
   isAuthenticated?: boolean;
   userEmail?: string;
+  cloudAvailable?: boolean;
   className?: string;
 }
 
@@ -49,6 +50,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenDesignTokens,
   isAuthenticated = false,
   userEmail,
+  cloudAvailable = false,
   className = '',
 }) => {
   const { logout, user, mode, deleteAccount } = useAuth();
@@ -132,7 +134,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             whileTap={{ scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
             className="flex h-9 items-center gap-2 rounded-xl border border-line bg-elevated px-2 py-1 text-xs font-semibold text-ink shadow-xs hover:border-brand-500/40 hover:bg-brand-500/5 focus-visible:outline-none cursor-pointer"
-            title={isAuthenticated ? userEmail : 'Zaloguj się / Menu konta'}
+            title={isAuthenticated ? userEmail : cloudAvailable ? 'Zaloguj się lub załóż konto' : 'Utwórz profil lokalny'}
           >
             {isAuthenticated ? (
               <>
@@ -181,10 +183,14 @@ export const Topbar: React.FC<TopbarProps> = ({
               >
                 <div className="border-b border-line/60 p-2.5">
                   <div className="font-bold text-ink truncate">
-                    {isAuthenticated ? user?.name || 'Profil lokalny' : 'Bez profilu'}
+                    {isAuthenticated ? user?.name || 'Profil lokalny' : cloudAvailable ? 'Bez konta' : 'Bez profilu'}
                   </div>
                   <div className="font-mono text-[10px] text-muted truncate">
-                    {isAuthenticated ? userEmail : 'Dane trzymane w tej przeglądarce'}
+                    {isAuthenticated
+                      ? userEmail
+                      : cloudAvailable
+                        ? 'Konto synchronizuje CV między urządzeniami'
+                        : 'Dane zostają w tej przeglądarce'}
                   </div>
                   <div className="mt-1.5">
                     <span className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-1.5 py-px font-mono text-[9px] font-bold uppercase text-brand-fg">
@@ -258,7 +264,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-ink hover:bg-brand-50 hover:text-brand-fg transition-colors"
                     >
                       <LogIn className="h-3.5 w-3.5 text-muted" />
-                      <span>Zaloguj się lub załóż konto</span>
+                      <span>{cloudAvailable ? 'Zaloguj się lub załóż konto' : 'Utwórz profil lokalny'}</span>
                     </button>
                   )}
                 </div>

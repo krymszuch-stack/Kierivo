@@ -45,6 +45,7 @@ export interface SidebarProps {
   lockReasons?: Partial<Record<NavSectionId, string>>;
   isAuthenticated?: boolean;
   userEmail?: string;
+  cloudAvailable?: boolean;
   planStatus?: 'free' | 'trialing' | 'active';
   className?: string;
 }
@@ -61,10 +62,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   lockReasons,
   isAuthenticated = false,
   userEmail,
+  cloudAvailable = false,
   className = '',
 }) => {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const accountLabel = cloudAvailable ? 'Zaloguj lub załóż konto' : 'Utwórz profil lokalny';
+  const accountHint = cloudAvailable
+    ? 'Synchronizacja między urządzeniami'
+    : 'Dane zostają na tym urządzeniu';
 
   return (
     <div
@@ -213,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Pigułka Konta Użytkownika */}
         <Tooltip
-          content={isAuthenticated ? userEmail : 'Załóż konto'}
+          content={isAuthenticated ? userEmail : accountLabel}
           side={isCollapsed ? 'right' : 'top'}
           className="w-full"
         >
@@ -235,9 +241,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-label font-semibold text-ink">
-                  {isAuthenticated ? userEmail : 'Załóż konto'}
+                  {isAuthenticated ? userEmail : accountLabel}
                 </p>
-                {!isAuthenticated && <p className="truncate text-[10px] text-muted">Synchronizacja między urządzeniami</p>}
+                {!isAuthenticated && <p className="truncate text-[10px] text-muted">{accountHint}</p>}
               </div>
             )}
           </button>

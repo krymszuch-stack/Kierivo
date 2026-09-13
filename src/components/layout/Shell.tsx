@@ -19,6 +19,8 @@ export interface ShellProps {
   lockReasons?: Partial<Record<NavSectionId, string>>;
   isAuthenticated?: boolean;
   userEmail?: string;
+  /** Czy w tym buildzie działa konto z synchronizacją. */
+  cloudAvailable?: boolean;
   planStatus?: 'free' | 'trialing' | 'active';
 }
 
@@ -34,6 +36,7 @@ export const Shell: React.FC<ShellProps> = ({
   lockReasons,
   isAuthenticated = false,
   userEmail,
+  cloudAvailable = false,
   planStatus = 'free',
 }) => {
   // Zwinięcie paska żyje w useAppStore z persystencją — wcześniej Shell trzymał
@@ -86,6 +89,7 @@ export const Shell: React.FC<ShellProps> = ({
           lockReasons={lockReasons}
           isAuthenticated={isAuthenticated}
           userEmail={userEmail}
+          cloudAvailable={cloudAvailable}
           planStatus={planStatus}
         />
       </aside>
@@ -117,6 +121,7 @@ export const Shell: React.FC<ShellProps> = ({
           lockReasons={lockReasons}
           isAuthenticated={isAuthenticated}
           userEmail={userEmail}
+          cloudAvailable={cloudAvailable}
           planStatus={planStatus}
         />
       </MobileSidebar>
@@ -133,6 +138,7 @@ export const Shell: React.FC<ShellProps> = ({
           onOpenDesignTokens={onOpenDesignTokens}
           isAuthenticated={isAuthenticated}
           userEmail={userEmail}
+          cloudAvailable={cloudAvailable}
         />
 
         <VaultSyncIndicator />

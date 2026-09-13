@@ -35,7 +35,7 @@ export interface AuthModalProps {
 }
 
 const TYTULY: Record<Widok, string> = {
-  wybor: 'Zacznij pracę',
+  wybor: 'Wybierz sposób zapisu',
   logowanie: 'Zaloguj się',
   rejestracja: 'Załóż konto',
   reset: 'Odzyskaj dostęp',
@@ -46,7 +46,7 @@ const TYTULY: Record<Widok, string> = {
 // Podtytuł prostym językiem — mówi, co się zaraz wydarzy, zanim użytkownik
 // zacznie czytać formularz.
 const OPISY: Partial<Record<Widok, string>> = {
-  wybor: 'Wybierz, jak chcesz zapisywać swoje CV.',
+  wybor: 'Konto synchronizuje CV. Profil lokalny zostaje na tym urządzeniu.',
   logowanie: 'Wpisz e-mail i hasło, żeby wrócić do swojego CV.',
   rejestracja: 'Załóż darmowe konto, żeby mieć dostęp z każdego urządzenia.',
   lokalny: 'Dane zostają wyłącznie w tej przeglądarce — bez konta i bez hasła.',
@@ -331,8 +331,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         <div className="space-y-3">
           {cloudAvailable && (
             <>
-              <GoogleButton onClick={zalogujGoogle} loading={pracuje} text="Zaloguj się przez Google" />
-              <OrDivider text="albo wybierz metodę" />
+              <GoogleButton onClick={zalogujGoogle} loading={pracuje} text="Kontynuuj z Google" />
+              <OrDivider text="lub" />
             </>
           )}
 
@@ -343,9 +343,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           >
             <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-brand-fg" aria-hidden="true" />
             <span>
-              <span className="block text-sm font-bold text-ink">Konto w chmurze (e-mail i hasło)</span>
+              <span className="block text-sm font-bold text-ink">Konto przez e-mail</span>
               <span className="mt-0.5 block text-label text-muted">
-                CV przeżyje wyczyszczenie przeglądarki i wróci na innym urządzeniu.
+                Zaloguj się albo je załóż. CV wróci na innym urządzeniu.
               </span>
             </span>
           </button>
@@ -357,7 +357,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           >
             <HardDrive className="mt-0.5 h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
             <span>
-              <span className="block text-sm font-bold text-ink">Tylko na tym urządzeniu</span>
+              <span className="block text-sm font-bold text-ink">Profil lokalny</span>
               <span className="mt-0.5 block text-label text-muted">
                 Bez konta i bez hasła. Dane nie opuszczają tej przeglądarki.
               </span>
