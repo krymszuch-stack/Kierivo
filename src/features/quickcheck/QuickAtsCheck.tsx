@@ -26,9 +26,9 @@ export interface QuickAtsCheckProps {
 }
 
 function scoreTone(score: number): { text: string; ring: string; label: string } {
-  if (score >= 75) return { text: 'text-success-fg', ring: 'stroke-success-fg', label: 'Wysokie dopasowanie wg CVelocity' };
-  if (score >= 50) return { text: 'text-warning-fg', ring: 'stroke-warning-fg', label: 'Umiarkowane dopasowanie wg CVelocity' };
-  return { text: 'text-danger-fg', ring: 'stroke-danger-fg', label: 'Niskie dopasowanie wg CVelocity' };
+  if (score >= 75) return { text: 'text-success-fg', ring: 'stroke-success-fg', label: 'Wysokie dopasowanie' };
+  if (score >= 50) return { text: 'text-warning-fg', ring: 'stroke-warning-fg', label: 'Umiarkowane dopasowanie' };
+  return { text: 'text-danger-fg', ring: 'stroke-danger-fg', label: 'Niskie dopasowanie' };
 }
 
 export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
@@ -102,7 +102,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
           <h2 className="text-base font-bold text-ink">Sprawdź dopasowanie CV do ogłoszenia</h2>
         </div>
         <p className="text-xs text-muted">
-          Wynik liczy CVelocity z treści dokumentu i oferty. Nie jest to wynik zewnętrznego ATS ani gwarancja przejścia rekrutacji.
+          Wynik opiera się na treści dokumentu i oferty. Nie jest wynikiem zewnętrznego ATS ani gwarancją przejścia rekrutacji.
         </p>
       </div>
 
@@ -177,7 +177,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
             </Button>
           )}
           <Button variant="primary" size="md" icon={ArrowRight} iconPosition="right" onClick={handleCheck}>
-            Policz wynik CVelocity
+            Sprawdź dopasowanie
           </Button>
         </div>
       </div>
@@ -212,7 +212,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                 <span className={`font-mono text-2xl font-bold ${tone.text}`}>
                   {result.ats.overallScore}%
                 </span>
-                <span className="text-[9px] uppercase tracking-wide text-subtle">CVelocity</span>
+                <span className="text-[9px] uppercase tracking-wide text-subtle">Dopasowanie</span>
               </div>
             </div>
 
