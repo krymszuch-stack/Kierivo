@@ -53,8 +53,8 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   },
   {
     id: 'aplikuj',
-    label: 'Aplikuj',
-    hint: 'Wklej ofertę, zobacz dopasowanie, wygeneruj dokumenty.',
+    label: 'Sprawdź dopasowanie',
+    hint: 'Wklej ofertę, zobacz dopasowanie i przygotuj dokument do wysłania.',
   },
   {
     id: 'trenuj',

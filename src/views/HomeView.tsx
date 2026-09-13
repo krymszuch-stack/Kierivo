@@ -499,8 +499,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </>
       ) : null}
 
-      {/* 5. Mikroblog kariery — porady rekrutacyjne */}
-      <div className="space-y-4">
+      {/* Porady należą do osobnej zakładki — na pierwszym ekranie nie dublują instrukcji startu. */}
+      {!isFirstVisit && <div className="space-y-4">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <div className="flex items-center gap-2">
@@ -598,7 +598,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* 6. Okno pojedynczej porady */}
       <AnimatePresence>

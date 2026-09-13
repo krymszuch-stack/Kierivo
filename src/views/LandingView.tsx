@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, SearchCheck, Send } from 'lucide-react';
+import { FileText, SearchCheck, Send, ShieldCheck, Sparkles, FolderCheck } from 'lucide-react';
 import { NavTabId } from '../lib/navigation';
 
 interface LandingViewProps {
@@ -21,7 +21,16 @@ const STEPS = [
  */
 export const LandingView: React.FC<LandingViewProps> = ({ atsSlot }) => (
   <div className="space-y-6 pb-10" data-testid="beta-landing">
-    {atsSlot}
+    <section className="rounded-3xl border border-line bg-elevated p-5 sm:p-7">
+      <p className="text-label font-bold uppercase tracking-wider text-brand-fg">Zacznij od swojego CV</p>
+      <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Jedno miejsce na CV, ofertę i dokument do wysłania.</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">CVelocity porównuje wpisaną treść CV z ofertą, pomaga uporządkować fakty w profilu i przygotować dokument. Nie jest zewnętrznym ATS, nie wysyła aplikacji za Ciebie i nie obiecuje decyzji rekrutera.</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="flex gap-2 text-xs text-muted"><ShieldCheck className="h-4 w-4 shrink-0 text-brand-fg" />Pracujesz na swoich danych — bez wymyślonych doświadczeń.</div>
+        <div className="flex gap-2 text-xs text-muted"><Sparkles className="h-4 w-4 shrink-0 text-brand-fg" />Widzisz CV zanim wybierzesz wygląd i eksport.</div>
+        <div className="flex gap-2 text-xs text-muted"><FolderCheck className="h-4 w-4 shrink-0 text-brand-fg" />Konto jest opcjonalne; służy do synchronizacji między urządzeniami.</div>
+      </div>
+    </section>
 
     <ol className="grid gap-2 rounded-2xl border border-line bg-surface p-3 sm:grid-cols-3 sm:gap-0 sm:p-2" aria-label="Trzy kroki pracy z CV">
       {STEPS.map(({ icon: Icon, label }, index) => (
@@ -34,5 +43,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ atsSlot }) => (
         </li>
       ))}
     </ol>
+
+    {atsSlot}
   </div>
 );
