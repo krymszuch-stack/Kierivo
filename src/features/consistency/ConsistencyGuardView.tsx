@@ -18,7 +18,6 @@ import {
   ConsistencyValidationResult,
   ProjectedClaimItem,
 } from '../../lib/consistencyGuard';
-import { ConsistencyLockBadge } from '../../components/consistency/ConsistencyLockBadge';
 import { ConsistencyAlertBanner } from '../../components/consistency/ConsistencyAlertBanner';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -82,16 +81,9 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-extrabold tracking-tight text-ink">ConsistencyGuard</h2>
-              <ConsistencyLockBadge
-                isConsistent={validationResult.isConsistent}
-                alertCount={validationResult.alerts.length}
-                claimsCount={vaultClaims.length}
-              />
-            </div>
+            <h2 className="text-lg font-extrabold tracking-tight text-ink">Kontrola danych</h2>
             <p className="text-xs text-muted">
-              Gwarancja Single Source of Truth — renderery (CV, HUD, Pitch) zasilane bezpośrednio z MasterVault przez claimId.
+              Wykrywa rozbieżności między faktami zapisanymi w profilu a danymi użytymi w podglądach.
             </p>
           </div>
         </div>
@@ -117,22 +109,17 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
         <EmptyState
           icon={Layers}
           title="Brak zarejestrowanych faktów w MasterVault"
-          description="ConsistencyGuard renderuje CV, HUD i Pitch wyłącznie z potwierdzonych claimów. Uzupełnij doświadczenie i projekty w MasterVault, aby zobaczyć tu wyniki."
+          description="Podglądy korzystają z faktów zapisanych w MasterVault. Uzupełnij doświadczenie i projekty, aby zobaczyć tu wyniki."
         />
       )}
 
       {/* Widok 1: Renderer CV */}
       {vaultClaims.length > 0 && activeTab === 'cv' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="text-label font-bold uppercase tracking-wider text-muted">
               Wygenerowany dokument CV z referencjami claimId
             </span>
-            <ConsistencyLockBadge
-              isConsistent={validationResult.isConsistent}
-              label="spójność CV potwierdzona"
-              claimsCount={cvOutput.sections.flatMap((s) => s.items).length}
-            />
           </div>
 
           <div className="space-y-6 rounded-2xl border border-line bg-surface p-6">
@@ -146,15 +133,10 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
 
             {cvOutput.sections.map((section) => (
               <div key={section.id} className="space-y-3">
-                <div className="flex items-center justify-between border-b border-line/60 pb-1.5">
+                <div className="border-b border-line/60 pb-1.5">
                   <h4 className="text-label font-extrabold uppercase tracking-wider text-ink font-mono">
                     {section.title}
                   </h4>
-                  <ConsistencyLockBadge
-                    isConsistent={validationResult.isConsistent}
-                    size="sm"
-                    label="spójność potwierdzona"
-                  />
                 </div>
 
                 <div className="grid gap-3">
@@ -205,56 +187,35 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       {/* Widok 2: Renderer HUD */}
       {vaultClaims.length > 0 && activeTab === 'hud' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="text-label font-bold uppercase tracking-wider text-muted">
               Career & Competence Head-Up Display (HUD)
             </span>
-            <ConsistencyLockBadge
-              isConsistent={validationResult.isConsistent}
-              label="spójność HUD potwierdzona"
-              claimsCount={hudOutput.activeClaimsCount}
-            />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Card className="p-4 space-y-1">
-              <span className="text-xs text-muted font-semibold">Aktywne Claimy w MasterVault</span>
+              <span className="text-xs text-muted font-semibold">Fakty użyte w podglądzie</span>
               <div className="text-2xl font-black text-ink">{hudOutput.activeClaimsCount}</div>
-              <div className="flex items-center gap-1 text-meta text-success-fg font-mono">
-                <Lock className="h-3 w-3" /> 100% zweryfikowane
-              </div>
+              <div className="text-meta text-muted font-mono">Źródło: MasterVault</div>
             </Card>
 
             <Card className="p-4 space-y-1">
-              <span className="text-xs text-muted font-semibold">Lata Udokumentowanego Doświadczenia</span>
+              <span className="text-xs text-muted font-semibold">Lata doświadczenia z profilu</span>
               <div className="text-2xl font-black text-brand-600 font-mono">
                 {hudOutput.timelineCoverageYears} lat
               </div>
-              <div className="text-meta text-muted font-mono">Ciągłość bez rozbieżności &gt;0.5r</div>
+              <div className="text-meta text-muted font-mono">Zakres wynikający z wpisanych dat</div>
             </Card>
 
-            <Card className="p-4 space-y-1">
-              <span className="text-xs text-muted font-semibold">Wskaźnik Spójności Telemetrii</span>
-              <div className="text-2xl font-black text-ink font-mono">
-                {hudOutput.consistencyScore}%
-              </div>
-              <div className="flex items-center gap-1 text-meta text-muted">
-                {validationResult.isConsistent ? 'Brak sprzeczności w faktach' : 'Wymaga uwagi'}
-              </div>
-            </Card>
           </div>
 
-          {/* Sekcja zweryfikowanych metryk */}
+          {/* Metryki wpisane do profilu */}
           <div className="rounded-2xl border border-line bg-surface p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="border-b border-line pb-2">
               <h4 className="text-label font-extrabold uppercase tracking-wider text-ink font-mono">
-                Zweryfikowane Wskaźniki i Wyniki (Metryki)
+                Wskaźniki i wyniki wpisane do profilu
               </h4>
-              <ConsistencyLockBadge
-                isConsistent={validationResult.isConsistent}
-                size="sm"
-                label="spójność potwierdzona"
-              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -277,15 +238,10 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
 
           {/* Radar kompetencji */}
           <div className="rounded-2xl border border-line bg-surface p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="border-b border-line pb-2">
               <h4 className="text-label font-extrabold uppercase tracking-wider text-ink font-mono">
                 Radar Kompetencji & Tagi Claimów
               </h4>
-              <ConsistencyLockBadge
-                isConsistent={validationResult.isConsistent}
-                size="sm"
-                label="spójność potwierdzona"
-              />
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -308,15 +264,10 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       {/* Widok 3: Renderer Pitch */}
       {vaultClaims.length > 0 && activeTab === 'pitch' && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="text-label font-bold uppercase tracking-wider text-muted">
               30-Second Elevator Pitch & Kluczowe Argumenty
             </span>
-            <ConsistencyLockBadge
-              isConsistent={validationResult.isConsistent}
-              label="spójność Pitch potwierdzona"
-              claimsCount={pitchOutput.coreStrengths.length}
-            />
           </div>
 
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-6">
@@ -330,15 +281,10 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
 
             {/* Core Strengths */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-line pb-1.5">
+              <div className="border-b border-line pb-1.5">
                 <h4 className="text-label font-extrabold uppercase tracking-wider text-ink font-mono">
                   Filary Doświadczenia (Zasilane Claimami)
                 </h4>
-                <ConsistencyLockBadge
-                  isConsistent={validationResult.isConsistent}
-                  size="sm"
-                  label="spójność potwierdzona"
-                />
               </div>
 
               <div className="grid gap-3">
@@ -384,15 +330,10 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       {/* Widok 4: Inspektor Claimów */}
       {vaultClaims.length > 0 && activeTab === 'inspector' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="text-label font-bold uppercase tracking-wider text-muted">
               Wszystkie Claimy zarejestrowane w MasterVault ({vaultClaims.length})
             </span>
-            <ConsistencyLockBadge
-              isConsistent={validationResult.isConsistent}
-              label="spójność potwierdzona"
-              claimsCount={vaultClaims.length}
-            />
           </div>
 
           <div className="grid gap-3">

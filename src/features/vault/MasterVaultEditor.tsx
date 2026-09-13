@@ -34,15 +34,10 @@ import { PreferencesSection } from './PreferencesSection';
 import { Button } from '../../components/ui/Button';
 import { Tabs } from '../../components/ui/Tabs';
 import { PageHeader } from '../../components/ui/PageHeader';
-import { ConsistencyLockBadge } from '../../components/consistency/ConsistencyLockBadge';
 import { showToast } from '../../store/useToastStore';
 import { useFieldSuggestions } from '../../hooks/useFieldSuggestions';
 import { bestSubRoleMatch } from '../../lib/specializationIndex';
-import {
-  extractClaimsFromVault,
-  validateConsistency,
-  ProjectedClaimItem,
-} from '../../lib/consistencyGuard';
+import { useAuth } from '../../context/AuthContext';
 
 export interface MasterVaultEditorProps {
   vault: MasterVault;
@@ -71,6 +66,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('stepper');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
+  const { mode } = useAuth();
 
   // Podpowiedzi liczone raz na cały edytor
   const suggest = useFieldSuggestions(vault);
@@ -83,20 +79,9 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
     return signal.trim() ? bestSubRoleMatch(signal)?.subRole.id : undefined;
   }, [vault.profiler?.subRoleId, vault.personalInfo.title, vault.history]);
 
-  const consistency = useMemo(() => {
-    const claims = extractClaimsFromVault(vault);
-    const projectedItems: ProjectedClaimItem[] = claims.map((claim, index) => ({
-      sectionId: index % 2 === 0 ? 'cv_experience' : 'cv_projects',
-      sectionName: index % 2 === 0 ? 'Doświadczenie Zawodowe' : 'Projekty i Osiągnięcia',
-      claimId: claim.id,
-      claimedDateRange: claim.dateRange,
-      claimedTags: claim.tags,
-    }));
-    return validateConsistency(vault, {
-      claimIdsToCheck: claims.map((c) => c.id),
-      projectedItems,
-    });
-  }, [vault]);
+  const storageDescription = mode === 'cloud'
+    ? 'Zmiany są zapisywane na koncie i synchronizowane, gdy połączenie jest dostępne.'
+    : 'Możesz wygenerować CV bez konta — wtedy dane zostają w tej przeglądarce. Konto umożliwia synchronizację między urządzeniami.';
 
   const handleSubRoleChange = (subRoleId: string | undefined) => {
     onChange({ ...vault, profiler: { ...vault.profiler, subRoleId } });
@@ -170,14 +155,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
       {/* Header with Mode Switcher & Actions */}
       <PageHeader
         title="Master Vault • Profil Główny Kandydata"
-        description="Jedyne źródło danych dokumentów: kompetencje, doświadczenie i preferencje. Zmiany zapisują się automatycznie w Twojej przeglądarce na tym urządzeniu."
-        badge={
-          <ConsistencyLockBadge
-            isConsistent={consistency.isConsistent}
-            size="sm"
-            label="spójność potwierdzona"
-          />
-        }
+        description={`Jedyne źródło danych dokumentów: kompetencje, doświadczenie i preferencje. ${storageDescription}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Tabs<ViewMode>

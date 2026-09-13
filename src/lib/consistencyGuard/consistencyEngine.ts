@@ -515,13 +515,13 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
 
   const experiencesSection: CvRendererSection = {
     id: 'cv_experience',
-    title: 'Doświadczenie Zawodowe (Zweryfikowane)',
+    title: 'Doświadczenie zawodowe',
     items: [],
   };
 
   const projectsSection: CvRendererSection = {
     id: 'cv_projects',
-    title: 'Projekty & Osiągnięcia (Zweryfikowane)',
+    title: 'Projekty i osiągnięcia',
     items: [],
   };
 

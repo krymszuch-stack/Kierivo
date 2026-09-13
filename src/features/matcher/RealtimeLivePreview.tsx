@@ -100,7 +100,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
     { id: 'mapper' as SubTabId, label: 'Mapper Słów Kluczowych', icon: Tag },
     { id: 'coverLetter' as SubTabId, label: 'List Motywacyjny', icon: FileText },
     { id: 'cheatSheet' as SubTabId, label: 'Ściąga na Rozmowę', icon: BookOpen },
-    { id: 'consistency' as SubTabId, label: 'ConsistencyGuard 🔒', icon: ShieldCheck },
+    { id: 'consistency' as SubTabId, label: 'Kontrola danych', icon: ShieldCheck },
   ];
 
   return (

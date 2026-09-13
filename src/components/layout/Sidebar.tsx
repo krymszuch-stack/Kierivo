@@ -19,7 +19,6 @@ import { CVelocityLogo } from '../CVelocityLogo';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
-import { PUBLIC_PREBETA_CODE } from '../../lib/beta';
 
 /**
  * Czytelne, jednoznaczne ikony sekcji z pakietu lucide-react.
@@ -181,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       </div>
 
-      {/* Bottom Footer Section: Polityka & Konto */}
+      {/* Dolny pasek: pomoc i konto. Bez duplikowania etapu wydania. */}
       <div className="space-y-2.5 border-t border-line pt-3">
         {/* Linki prawne i wsparcie na dole paska */}
         {!isCollapsed && (
@@ -206,7 +205,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Pigułka Konta Użytkownika */}
         <Tooltip
-          content={isAuthenticated ? userEmail : 'Zaloguj się'}
+          content={isAuthenticated ? userEmail : 'Załóż konto'}
           side={isCollapsed ? 'right' : 'top'}
           className="w-full"
         >
@@ -228,11 +227,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!isCollapsed && (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-label font-semibold text-ink">
-                  {isAuthenticated ? userEmail : 'Logowanie / Konto'}
+                  {isAuthenticated ? userEmail : 'Załóż konto'}
                 </p>
-                <p className="truncate font-mono text-[10px] text-muted">
-                  Public Pre-Beta · {PUBLIC_PREBETA_CODE} · 0 zł
-                </p>
+                {!isAuthenticated && <p className="truncate text-[10px] text-muted">Synchronizacja między urządzeniami</p>}
               </div>
             )}
           </button>

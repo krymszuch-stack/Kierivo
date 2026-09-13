@@ -38,10 +38,11 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(scorer).toContain('Jezyk_Formularz');
   });
 
-  it('nie wraca do fallbacku 100% zgodności walidatora', () => {
-    const badge = source('src/components/consistency/ConsistencyLockBadge.tsx');
-    expect(badge).not.toContain('100% zgodności');
-    expect(badge).toContain('sprawdzanym zakresie');
+  it('nie przedstawia wewnętrznej kontroli danych jako potwierdzenia faktów', () => {
+    const view = source('src/features/consistency/ConsistencyGuardView.tsx');
+    expect(view).not.toContain('100% zweryfikowane');
+    expect(view).not.toContain('spójność potwierdzona');
+    expect(view).not.toContain('Gwarancja Single Source of Truth');
   });
 
   it('nie ma aktywnych CTA zakupowych w cenniku, parserze, bramce ani menu konta', () => {

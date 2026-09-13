@@ -305,7 +305,7 @@ export const ReactFloatingPanel: React.FC<ReactFloatingPanelProps> = ({
               <div className="flex items-center justify-between border-b border-line pb-2">
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="h-4 w-4 text-success-fg" />
-                  <span className="font-bold text-xs text-ink">Zweryfikowane Liczby i Osiągnięcia</span>
+                  <span className="font-bold text-xs text-ink">Liczby i osiągnięcia z profilu</span>
                 </div>
                 <span className="text-[9px] font-mono font-bold text-success-fg">Z Vaultu</span>
               </div>
