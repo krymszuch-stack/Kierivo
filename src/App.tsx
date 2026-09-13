@@ -349,7 +349,6 @@ function MainApp() {
               vault={vault}
               onNavigate={navigate}
               onOpenAdvisor={handleOpenAdvisor}
-              onAdoptVault={setVault}
               actionSlot={
                 !isFirstVisit ? (
                   <NextActionCard action={nextAction} onNavigate={navigate} />

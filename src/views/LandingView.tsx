@@ -1,13 +1,5 @@
 import React from 'react';
 import { FileText, SearchCheck, Send, ShieldCheck, Sparkles, FolderCheck } from 'lucide-react';
-import { NavTabId } from '../lib/navigation';
-
-interface LandingViewProps {
-  onNavigate: (tab: NavTabId) => void;
-  /** Realne narzędzie QuickAtsCheck, a nie makieta marketingowa. */
-  atsSlot: React.ReactNode;
-}
-
 const STEPS = [
   { icon: FileText, label: 'Dodaj swoje CV' },
   { icon: SearchCheck, label: 'Wklej ofertę' },
@@ -19,7 +11,7 @@ const STEPS = [
  * limitów są dostępne w dedykowanych miejscach, więc nie powtarzamy ich nad
  * narzędziem, które użytkownik przyszedł uruchomić.
  */
-export const LandingView: React.FC<LandingViewProps> = ({ atsSlot }) => (
+export const LandingView: React.FC = () => (
   <div className="space-y-6 pb-10" data-testid="beta-landing">
     <section className="rounded-3xl border border-line bg-elevated p-5 sm:p-7">
       <p className="text-label font-bold uppercase tracking-wider text-brand-fg">Zacznij od swojego CV</p>
@@ -48,14 +40,12 @@ export const LandingView: React.FC<LandingViewProps> = ({ atsSlot }) => (
       <img
         src="/onboarding/cv-start-storyboard.png"
         alt="Trzy kroki: dodanie CV, sprawdzenie oferty i wybór dokumentu do wysłania"
-        className="block w-full"
+        className="landing-storyboard block w-full"
       />
       <figcaption className="flex items-center gap-2 px-4 py-3 text-xs text-muted">
         <span aria-hidden="true">☕</span>
         Trzy ruchy, zero rytuałów korporacyjnych: dodaj CV, sprawdź ofertę, wybierz dokument.
       </figcaption>
     </figure>
-
-    {atsSlot}
   </div>
 );

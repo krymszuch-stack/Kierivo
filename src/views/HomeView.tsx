@@ -23,10 +23,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Card } from '../components/ui/Card';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
-import { QuickAtsCheck } from '../features/quickcheck/QuickAtsCheck';
 import { WelcomeWizard } from '../features/onboarding/WelcomeWizard';
 import { LandingView } from './LandingView';
-import { showToast } from '../store/useToastStore';
 import { FREE_MONTHLY_IMPORTS } from '../store/useEntitlements';
 import { MasterVault } from '../types';
 import { NavTabId } from '../components/GlobalShell';
@@ -159,7 +157,6 @@ interface HomeViewProps {
   onNavigate: (tab: NavTabId) => void;
   onOpenAdvisor: (question?: string) => void;
   /** Zapisuje profil odczytany z CV w szybkim sprawdzeniu. */
-  onAdoptVault: (vault: MasterVault) => void;
   /** Karta rekomendacji kolejnego kroku (NextActionCard) */
   actionSlot?: React.ReactNode;
   /** Karta pytań uzupełniających CV (CvQuestionsCard) */
@@ -175,7 +172,6 @@ export const HomeView: React.FC<HomeViewProps> = ({
   vault,
   onNavigate,
   onOpenAdvisor,
-  onAdoptVault,
   actionSlot,
   questionsSlot,
 }) => {
@@ -278,27 +274,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
    */
   const isFirstVisit = !hasFullName && historyCount === 0;
 
-  /** Klin wejściowy renderują obie ścieżki, więc mieszka w jednym miejscu. */
-  const atsCheck = (
-    <QuickAtsCheck
-      onSaveProfile={(parsedVault) => {
-        onAdoptVault(parsedVault);
-        showToast('Profil zapisany', {
-          message: 'Dane z CV trafiły do profilu w tej przeglądarce.',
-          variant: 'success',
-        });
-      }}
-      onOpenEditor={(parsedVault) => {
-        onAdoptVault(parsedVault);
-        onNavigate('profil');
-      }}
-    />
-  );
-
   return (
     <div className="space-y-8 pb-12">
       {isFirstVisit ? (
-        <LandingView onNavigate={onNavigate} atsSlot={atsCheck} />
+        <LandingView />
       ) : null}
 
       <WelcomeWizard vault={vault} onNavigate={onNavigate} />
@@ -386,12 +365,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </motion.div>
 
-          {/* 2. Klin wejściowy — wynik ATS bez zakładania konta */}
-          <div id="dashboard-modules" className="scroll-mt-6">
-            {atsCheck}
-          </div>
-
-      {/* 3. Liczniki profilu
+      {/* 2. Liczniki profilu
 
           Cztery kafle różniły się wyłącznie ikoną, etykietą i liczbą, a każdy
           powtarzał ten sam układ w JSX. Przy takim powielaniu zmiana wyglądu
