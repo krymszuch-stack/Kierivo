@@ -158,13 +158,6 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
         description={`Jedyne źródło danych dokumentów: kompetencje, doświadczenie i preferencje. ${storageDescription}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Tabs<ViewMode>
-              items={viewModeOptions}
-              active={viewMode}
-              onChange={setViewMode}
-              className="w-auto"
-            />
-
             <Button
               variant="primary"
               size="sm"
@@ -175,47 +168,6 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               Podgląd i Druk CV
             </Button>
 
-            {/* Zintegrowany jeden rozwijalny przycisk kopii zapasowej JSON */}
-            <div className="relative">
-              <Button
-                variant="outline"
-                size="sm"
-                icon={Database}
-                onClick={() => setIsDataMenuOpen(!isDataMenuOpen)}
-                className="flex items-center gap-1"
-                title="Zarządzaj plikiem JSON (Eksport / Import)"
-              >
-                Kopia JSON
-                <ChevronDown className="h-3.5 w-3.5 text-muted ml-0.5" />
-              </Button>
-
-              {isDataMenuOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1.5 w-48 rounded-xl border border-line bg-surface p-1.5 shadow-floating z-50 space-y-1"
-                  onMouseLeave={() => setIsDataMenuOpen(false)}
-                >
-                  <button
-                    type="button"
-                    onClick={handleExportJSON}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-ink hover:bg-brand-500/10 hover:text-brand-fg cursor-pointer transition-colors text-left"
-                  >
-                    <Download className="h-3.5 w-3.5 text-brand-600" />
-                    <span>Eksportuj kopię JSON</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsDataMenuOpen(false);
-                      fileInputRef.current?.click();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-ink hover:bg-brand-500/10 hover:text-brand-fg cursor-pointer transition-colors text-left"
-                  >
-                    <Upload className="h-3.5 w-3.5 text-brand-600" />
-                    <span>Importuj z pliku JSON</span>
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         }
       />

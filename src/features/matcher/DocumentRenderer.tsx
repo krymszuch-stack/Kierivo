@@ -353,6 +353,14 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
               }`}
               style={{ borderLeftColor: activeTemplate.family === 'creative' ? selectedColor : undefined }}
             >
+              {personal.photoUrl && (
+                <img
+                  src={personal.photoUrl}
+                  alt="Zdjęcie kandydata"
+                  className="float-right ml-4 h-20 w-20 rounded-xl border-2 border-white object-cover shadow-sm"
+                  style={{ outline: `2px solid ${selectedColor}` }}
+                />
+              )}
               {isEditing ? (
                 <div className="space-y-2">
                   <input

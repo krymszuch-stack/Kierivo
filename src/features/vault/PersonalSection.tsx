@@ -12,6 +12,7 @@ import {
   Plus,
   X,
   Sparkles,
+  ImagePlus,
 } from 'lucide-react';
 import { PersonalInfo, MasterVault } from '../../types';
 import { Card } from '../../components/ui/Card';
@@ -97,6 +98,13 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
     });
   };
 
+  const handlePhotoChange = (file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange({ ...data, photoUrl: typeof reader.result === 'string' ? reader.result : data.photoUrl });
+    reader.readAsDataURL(file);
+  };
+
   const isEmailValid = !data.email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email);
 
   // Zbudowanie fallbackowego obiektu vault dla asystenta, jeśli prop nie został podany
@@ -142,15 +150,30 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
         {onOpenCvParser && (
           <Button
             type="button"
-            variant="secondary"
-            size="sm"
+            variant="primary"
+            size="md"
             icon={Paperclip}
             onClick={onOpenCvParser}
-            className="shrink-0 border-brand-500/30 bg-brand-500/10 text-brand-fg font-bold hover:bg-brand-500/20 shadow-xs"
+            className="shrink-0 font-bold shadow-xs"
           >
             Wgraj CV (PDF / DOCX)
           </Button>
         )}
+      </div>
+
+      <div className="flex items-center gap-3 rounded-xl border border-dashed border-line bg-sunken/40 p-3">
+        {data.photoUrl ? (
+          <img src={data.photoUrl} alt="Zdjęcie do CV" className="h-14 w-14 rounded-xl border-2 border-surface object-cover shadow-xs" />
+        ) : (
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-line bg-surface text-muted">
+            <ImagePlus className="h-5 w-5" />
+          </div>
+        )}
+        <label className="min-w-0 cursor-pointer">
+          <span className="block text-xs font-bold text-ink">Dodaj zdjęcie do CV</span>
+          <span className="block text-[11px] text-muted">Kwadratowy kadr i obramowanie będą widoczne w podglądzie.</span>
+          <input type="file" accept="image/*" className="sr-only" onChange={(event) => handlePhotoChange(event.target.files?.[0])} />
+        </label>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
