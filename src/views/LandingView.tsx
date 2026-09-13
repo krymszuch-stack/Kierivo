@@ -44,6 +44,18 @@ export const LandingView: React.FC<LandingViewProps> = ({ atsSlot }) => (
       ))}
     </ol>
 
+    <figure className="overflow-hidden rounded-3xl border border-line bg-surface shadow-xs">
+      <img
+        src="/onboarding/cv-start-storyboard.png"
+        alt="Trzy kroki: dodanie CV, sprawdzenie oferty i wybór dokumentu do wysłania"
+        className="block w-full"
+      />
+      <figcaption className="flex items-center gap-2 px-4 py-3 text-xs text-muted">
+        <span aria-hidden="true">☕</span>
+        Trzy ruchy, zero rytuałów korporacyjnych: dodaj CV, sprawdź ofertę, wybierz dokument.
+      </figcaption>
+    </figure>
+
     {atsSlot}
   </div>
 );
