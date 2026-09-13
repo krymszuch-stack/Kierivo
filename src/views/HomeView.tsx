@@ -18,16 +18,11 @@ import {
   TrendingUp,
   X,
   Layers,
-  ShieldCheck,
-  MonitorSmartphone,
-  CookieIcon,
-  EyeOff,
   ChevronDown,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Card } from '../components/ui/Card';
 import { AnimatedNumber } from '../components/ui/AnimatedNumber';
-import { TrustRow } from '../components/ui/TrustChip';
 import { QuickAtsCheck } from '../features/quickcheck/QuickAtsCheck';
 import { WelcomeWizard } from '../features/onboarding/WelcomeWizard';
 import { LandingView } from './LandingView';
@@ -176,29 +171,6 @@ interface HomeViewProps {
  * ma tu obietnic na przyszłość ani słowa „szyfrowanie" — dane w przeglądarce
  * nie są szyfrowane i piszemy o tym wprost w SECURITY.md.
  */
-const PRIVACY_POINTS = [
-  {
-    icon: MonitorSmartphone,
-    title: 'Audyt ATS liczy się lokalnie',
-    body: 'Analiza CV i dopasowanie do oferty wykonują się w Twojej przeglądarce. Dokument nie jest nigdzie wysyłany.',
-  },
-  {
-    icon: CookieIcon,
-    title: 'Zero ciasteczek',
-    body: 'Nie ustawiamy żadnych ciasteczek, więc nie ma też banera zgody. Ustawienia zapisujemy w pamięci przeglądarki.',
-  },
-  {
-    icon: EyeOff,
-    title: 'Zero analityki i reklam',
-    body: 'Żaden skrypt firmy trzeciej się nie ładuje. Nawet fonty serwujemy z własnego serwera, żeby nikt postronny nie widział Twojej wizyty.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Do AI idzie tylko ogłoszenie',
-    body: 'I to po usunięciu danych kontaktowych. Zdjęcie z CV nie trafia do modelu w żadnej postaci.',
-  },
-];
-
 export const HomeView: React.FC<HomeViewProps> = ({
   vault,
   onNavigate,
@@ -628,58 +600,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         )}
       </div>
 
-      {/* 6. Prywatność — twierdzenia weryfikowalne w kodzie, nie hasła marketingowe */}
-      <div>
-        <div className="mb-4">
-          <h2 className="text-base font-bold text-ink">Twoje CV zostaje u Ciebie</h2>
-          <p className="text-xs text-muted">
-            Nie dlatego, że tak mówimy — dlatego, że tak działa aplikacja
-          </p>
-        </div>
-
-        <Card variant="elevated" className="overflow-hidden p-0">
-          <div className="grid grid-cols-1 divide-y divide-line sm:grid-cols-2 sm:divide-y-0 sm:divide-x lg:grid-cols-4">
-            {PRIVACY_POINTS.map(({ icon: Icon, title, body }) => (
-              <div key={title} className="flex flex-col gap-2 p-4">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/10 text-brand-fg">
-                  <Icon className="h-4 w-4" aria-hidden="true" />
-                </div>
-                <h3 className="text-xs font-bold text-ink">{title}</h3>
-                <p className="text-[11px] leading-relaxed text-muted">{body}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-col gap-3 border-t border-line bg-sunken px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <TrustRow
-              items={['BEZ CIASTECZEK', 'BEZ ANALITYKI', 'BEZ REKLAM', 'ATS LOKALNIE']}
-            />
-            <p className="text-[11px] text-subtle">
-              Szczegóły w{' '}
-              <a
-                href="https://github.com/krymszuch-stack/cvelocity/blob/main/docs/polityka-prywatnosci.md"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-brand-fg hover:underline"
-              >
-                polityce prywatności
-              </a>{' '}
-              i{' '}
-              <a
-                href="https://github.com/krymszuch-stack/cvelocity/blob/main/SECURITY.md"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold text-brand-fg hover:underline"
-              >
-                opisie bezpieczeństwa
-              </a>
-              , razem z listą tego, czego jeszcze nie chronimy.
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* 7. Okno pojedynczej porady */}
+      {/* 6. Okno pojedynczej porady */}
       <AnimatePresence>
         {activeTipModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

@@ -129,13 +129,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Narzędzia dodatkowe */}
+        {/* Narzędzia pomocnicze — bez plakietek marketingowych. */}
         <div className="pt-2 border-t border-line/60 space-y-1">
+          {!isCollapsed && (
+            <p className="px-3 pb-1 pt-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+              Narzędzia
+            </p>
+          )}
           <NavItem
             icon={Eye}
             label="Generator CV"
-            badge="GOTOWE"
-            badgeVariant="success"
             hint="Wybierz wygląd gotowego CV, wprowadź ostatnie poprawki i przygotuj plik do wysłania."
             isCollapsed={isCollapsed}
             onClick={() => {
@@ -151,8 +154,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={BookOpen}
             label="Porady"
-            badge="BLOG"
-            badgeVariant="brand"
             hint="Baza wiedzy, strategie rekrutacyjne, algorytmy ATS i wzorce rozmów."
             isActive={activeTab === 'porady'}
             isCollapsed={isCollapsed}
@@ -162,8 +163,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={Sparkles}
             label="Doradca regułowy"
-            badge="LOCAL"
-            badgeVariant="success"
             hint="Lokalny moduł porad oparty na regułach. Nie czyta automatycznie Vaultu i nie wysyła rozmowy do modelu AI."
             isCollapsed={isCollapsed}
             onClick={onOpenAdvisor}
@@ -173,8 +172,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={ShieldCheck}
             label="Audyt ATS"
-            badge="360°"
-            badgeVariant="warning"
             hint="Laboratorium CVelocity mierzące strukturę, frazy, język i wymagania oferty. To nie są wyniki zewnętrznych ATS."
             isActive={activeTab === 'ats-lab'}
             isCollapsed={isCollapsed}

@@ -76,10 +76,11 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(gate).not.toContain('if (hasActivePass) return');
   });
 
-  it('ekran startowy pokazuje 0 zł i granice bety zamiast starego Pro', () => {
+  it('cennik pokazuje 0 zł i granice bety bez zasypywania nimi ekranu startowego', () => {
     const landing = source('src/views/LandingView.tsx');
-    expect(landing).toContain('FREE_BETA_PRICE_PLN');
-    expect(landing).toContain('Bez karty i bez aktywnych zakupów');
+    const pricing = source('src/views/PricingView.tsx');
+    expect(pricing).toContain('FREE_BETA_PRICE_PLN');
+    expect(landing).not.toContain('FREE_BETA_PRICE_PLN');
     expect(landing).not.toContain('49 zł');
     expect(landing).not.toContain('39 zł');
     expect(landing).not.toContain('19 zł');
@@ -95,7 +96,7 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(advisor).toContain('zewnętrznego modelu językowego');
     expect(advisor).not.toContain('Doradca AI');
     expect(sidebar).toContain('Doradca regułowy');
-    expect(sidebar).toContain('badge="LOCAL"');
+    expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('Doradcy AI');
     expect(host).toContain('Doradca regułowy');
   });

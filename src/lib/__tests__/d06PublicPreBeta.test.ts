@@ -20,22 +20,17 @@ describe('D06 — publiczne oznaczenie wersji przedpremierowej', () => {
     expect(FREE_BETA_PRICE_PLN).toBe(0);
   });
 
-  it('pokazuje oznaczenie globalnie, a nie wyłącznie na landingu', () => {
+  it('nie zasypuje użytkownika komunikatami wersji testowej na każdym ekranie', () => {
     const shell = source('src/components/layout/Shell.tsx');
-    expect(shell).toContain('PUBLIC_PREBETA_LABEL');
-    expect(shell).toContain('PUBLIC_PREBETA_CODE');
-    expect(shell).toContain('PUBLIC_PREBETA_MESSAGE');
-    expect(shell).toContain('FREE_BETA_PRICE_PLN');
-  });
-
-  it('landing wyjaśnia etap testowy, a Doradca jest łatwo dostępny w narzędziach', () => {
     const landing = source('src/views/LandingView.tsx');
     const sidebar = source('src/components/layout/Sidebar.tsx');
 
-    expect(landing).toContain('PUBLIC_PREBETA_LABEL');
-    expect(landing).toContain('PUBLIC_PREBETA_CODE');
+    expect(shell).not.toContain('PUBLIC_PREBETA_LABEL');
+    expect(landing).not.toContain('PUBLIC_PREBETA_LABEL');
+    expect(landing).toContain('Trzy kroki pracy z CV');
     expect(sidebar).toContain('Doradca regułowy');
-    expect(sidebar).toContain('badge="LOCAL"');
+    expect(sidebar).not.toContain('badge="LOCAL"');
+    expect(sidebar).not.toContain('badge="GOTOWE"');
   });
 
   it('README identyfikuje dokładnie publiczną wersję, którą ogląda tester', () => {

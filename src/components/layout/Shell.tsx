@@ -5,12 +5,6 @@ import { MobileSidebar } from '../MobileSidebar';
 import { VaultSyncIndicator } from '../ui/VaultSyncIndicator';
 import { NavSectionId, NavTabId } from '../../lib/navigation';
 import { useAppStore } from '../../store/useAppStore';
-import {
-  FREE_BETA_PRICE_PLN,
-  PUBLIC_PREBETA_CODE,
-  PUBLIC_PREBETA_LABEL,
-  PUBLIC_PREBETA_MESSAGE,
-} from '../../lib/beta';
 
 export interface ShellProps {
   children: React.ReactNode;
@@ -140,21 +134,6 @@ export const Shell: React.FC<ShellProps> = ({
           isAuthenticated={isAuthenticated}
           userEmail={userEmail}
         />
-
-        <button
-          type="button"
-          onClick={() => handleSelectTab('pricing')}
-          className="mx-3 mt-2 flex items-center justify-center gap-2 rounded-xl border border-[#F26440]/35 bg-[#F26440]/10 px-3 py-2 text-center font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-[#F6A18C] transition-colors hover:bg-[#F26440]/15 sm:mx-4 lg:mx-6"
-          aria-label="Zobacz informacje o publicznej wersji testowej CVelocity"
-        >
-          <span>{PUBLIC_PREBETA_LABEL}</span>
-          <span aria-hidden="true">·</span>
-          <span>{PUBLIC_PREBETA_CODE}</span>
-          <span className="hidden sm:inline" aria-hidden="true">·</span>
-          <span className="hidden sm:inline">{PUBLIC_PREBETA_MESSAGE}</span>
-          <span aria-hidden="true">·</span>
-          <span>{FREE_BETA_PRICE_PLN} zł</span>
-        </button>
 
         <VaultSyncIndicator />
 
