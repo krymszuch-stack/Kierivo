@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, Send, User, RotateCcw, RefreshCw, ArrowUpRight, Map } from 'lucide-react';
+import { Sparkles, Send, User, RotateCcw, RefreshCw, ArrowUpRight, Map, CircleHelp, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../lib/apiClient';
 import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
 import { trackProductInsight } from '../../lib/productInsights';
-import { getRuleBasedReply } from './advisorRules';
 import type { AdvisorContext } from './advisorContext';
 import type { NavTabId } from '../../lib/navigation';
 
@@ -55,13 +54,44 @@ const QUICK_PROMPTS = [
   'Jak napisać krótką wiadomość do rekrutera?',
 ];
 
+const FAQ_ENTRIES: Array<{
+  question: string;
+  answer: string;
+  action: string;
+  target: NavTabId;
+}> = [
+  {
+    question: 'Od czego zacząć?',
+    answer: 'Najpierw dodaj lub zaimportuj swoje CV. Master Vault będzie wspólnym źródłem faktów dla kolejnych dokumentów.',
+    action: 'Otwórz Profil',
+    target: 'profil',
+  },
+  {
+    question: 'Jak sprawdzić ofertę?',
+    answer: 'Wklej treść ogłoszenia. Zobaczysz własną analizę dopasowania i wymagania, dla których w profilu brakuje potwierdzenia.',
+    action: 'Sprawdź dopasowanie',
+    target: 'aplikuj',
+  },
+  {
+    question: 'Co zrobić z tabelami i układem CV?',
+    answer: 'Otwórz Audyt ATS. Sprawdzisz tam kolejność odczytu, nagłówki, tabele i znaki wymagające uwagi.',
+    action: 'Otwórz Audyt ATS',
+    target: 'ats-lab',
+  },
+  {
+    question: 'Gdzie znajdę gotowe porady?',
+    answer: 'W Poradach są krótkie materiały o strukturze CV, zmianie branży i przygotowaniu do rozmowy.',
+    action: 'Przejdź do Porad',
+    target: 'porady',
+  },
+];
+
 function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
-    text: 'Jestem lokalnym Doradcą regułowym CVelocity. Czytam lokalnie aktualny Master Vault oraz ostatni wynik dopasowania, aby wskazać konkretne luki. Jeśli lokalna Ollama jest dostępna, dostaje wyłącznie zredukowany kontekst analizy — bez danych kontaktowych i pełnej treści CV. Bez niej podaję tylko konkretne wbudowane reguły, nie udaję AI.',
+    text: 'Lokalna Ollama jest gotowa. Mogę pomóc na podstawie zredukowanego kontekstu aktualnej analizy — bez danych kontaktowych i pełnej treści CV.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    source: 'rules',
   };
 }
 
@@ -74,13 +104,16 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 }) => {
   const [initialCache] = useState(readAdvisorConversation);
   const [messages, setMessages] = useState<AdvisorChatMessage[]>(() => {
-    const cached = initialCache.messages;
+    // Wersje sprzed FAQ zapisywały odpowiedzi regułowe jako rozmowę. Po zmianie
+    // kontraktu nie mogą wracać z cache i sprawiać wrażenia działania bez modelu.
+    const cached = initialCache.messages.filter((message) => message.source !== 'rules');
     return cached.length > 0 ? cached : [createWelcomeMessage()];
   });
 
   const [inputVal, setInputVal] = useState(() => initialCache.draft);
   const [isTyping, setIsTyping] = useState(false);
   const [isCheckingOllama, setIsCheckingOllama] = useState(false);
+  const [selectedFaq, setSelectedFaq] = useState(FAQ_ENTRIES[0]);
 
   const [ollamaStatus, setOllamaStatus] = useState<{
     checked: boolean;
@@ -172,59 +205,43 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
       const canUseOllama = ollamaEnabled && ollamaStatus.connected;
 
-      if (canUseOllama) {
-        try {
-          const res = await api.post<AdvisorChatResponse>('/advisor/chat', {
-            query: query.trim(),
-            history: messages.slice(-10),
-            model: selectedModel || undefined,
-            context: advisorContext ?? undefined,
-          });
+      if (!canUseOllama) {
+        setIsTyping(false);
+        return;
+      }
 
-          if (res && res.success && res.reply) {
-            const aiMsg: AdvisorChatMessage = {
-              id: `m-${Date.now() + 1}`,
-              sender: 'ai',
-              text: res.reply,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              source: 'ollama',
-              model: res.model || selectedModel || 'ollama',
-            };
-            setMessages((prev) => [...prev, aiMsg]);
-            setIsTyping(false);
-            return;
-          }
-        } catch (err: unknown) {
-          // Transparent fallback do wbudowanych reguł lokalnych w razie błędu sieci/hosta
-          const fallbackText = getRuleBasedReply(query.trim(), advisorContext ?? undefined).text;
-          const errDetail = err instanceof Error ? err.message : 'brak połączenia';
+      try {
+        const res = await api.post<AdvisorChatResponse>('/advisor/chat', {
+          query: query.trim(),
+          history: messages.slice(-10),
+          model: selectedModel || undefined,
+          context: advisorContext ?? undefined,
+        });
+
+        if (res && res.success && res.reply) {
           const aiMsg: AdvisorChatMessage = {
             id: `m-${Date.now() + 1}`,
             sender: 'ai',
-            text: `${fallbackText}\n\n*(Asysta Ollamy była chwilowo niedostępna: ${errDetail}. Odpowiedź wygenerowano z wbudowanych reguł lokalnych.)*`,
+            text: res.reply,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            source: 'rules',
+            source: 'ollama',
+            model: res.model || selectedModel || 'ollama',
           };
           setMessages((prev) => [...prev, aiMsg]);
-          setIsTyping(false);
           return;
         }
-      }
-
-      // Tryb reguł lokalnych
-      setTimeout(() => {
-        const replyText = getRuleBasedReply(query.trim(), advisorContext ?? undefined).text;
+        throw new Error('Lokalna Ollama nie zwróciła odpowiedzi.');
+      } catch (err: unknown) {
+        const errDetail = err instanceof Error ? err.message : 'brak połączenia';
         const aiMsg: AdvisorChatMessage = {
           id: `m-${Date.now() + 1}`,
           sender: 'ai',
-          text: replyText,
+          text: `Nie udało się uzyskać odpowiedzi z lokalnej Ollamy (${errDetail}). Nie zastępuję jej automatyczną odpowiedzią. Skorzystaj z FAQ albo spróbuj ponownie, gdy model będzie dostępny.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          source: 'rules',
         };
-
         setMessages((prev) => [...prev, aiMsg]);
         setIsTyping(false);
-      }, 500);
+      }
     },
     [advisorContext, inputVal, messages, ollamaEnabled, ollamaStatus.connected, selectedModel]
   );
@@ -247,23 +264,122 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       return;
     }
 
-    if (initialQuestion && handledInitialQuestionRef.current !== initialQuestion) {
+    if (ollamaEnabled && ollamaStatus.connected && initialQuestion && handledInitialQuestionRef.current !== initialQuestion) {
       handledInitialQuestionRef.current = initialQuestion;
       void handleSend(initialQuestion);
     }
-  }, [handleSend, initialQuestion, isOpen]);
+  }, [handleSend, initialQuestion, isOpen, ollamaEnabled, ollamaStatus.connected]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
   const activeModelDisplay = selectedModel || ollamaStatus.activeModel;
+  const advisorAvailable = ollamaEnabled && ollamaStatus.connected;
+
+  if (!advisorAvailable) {
+    return (
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Doradca lokalny"
+        description="Rozmowa działa wyłącznie z dostępną lokalną Ollamą. Gdy model jest wyłączony albo niedostępny, zostają konkretne skróty i FAQ — bez udawanej odpowiedzi AI."
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-sunken p-3">
+            <div>
+              <p className="text-xs font-semibold text-ink">
+                {ollamaStatus.checked ? 'Lokalna Ollama jest teraz niedostępna.' : 'Sprawdzam lokalną Ollamę…'}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted">Do rozmowy potrzebny jest działający model na tym urządzeniu.</p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={RefreshCw}
+              onClick={() => void checkOllama()}
+              disabled={isCheckingOllama}
+            >
+              Sprawdź ponownie
+            </Button>
+          </div>
+
+          {advisorContext?.suggestions.length ? (
+            <section aria-label="Najbliższe kroki po analizie CV">
+              <p className="mb-2 text-xs font-semibold text-ink">Wynik analizy podpowiada:</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {advisorContext.suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    type="button"
+                    onClick={() => {
+                      trackProductInsight('advisor_suggestion_clicked');
+                      onNavigate?.(suggestion.target);
+                      onClose();
+                    }}
+                    className="rounded-xl border border-line bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                  >
+                    <span className="text-xs font-semibold text-ink">{suggestion.label}</span>
+                    <span className="mt-1 block text-[10px] leading-relaxed text-muted">{suggestion.description}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="rounded-2xl border border-line bg-surface p-4" aria-label="Najczęściej zadawane pytania">
+            <div className="mb-3 flex items-center gap-2">
+              <CircleHelp className="h-4 w-4 text-brand-600" aria-hidden="true" />
+              <div>
+                <h3 className="text-sm font-bold text-ink">FAQ: co możesz zrobić teraz?</h3>
+                <p className="text-[11px] text-muted">Kliknij pytanie — pokażę odpowiedź i właściwe miejsce w aplikacji.</p>
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {FAQ_ENTRIES.map((entry) => (
+                <button
+                  key={entry.question}
+                  type="button"
+                  onClick={() => setSelectedFaq(entry)}
+                  className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+                    selectedFaq.question === entry.question
+                      ? 'border-brand-300 bg-brand-50 text-brand-fg'
+                      : 'border-line bg-sunken text-ink hover:border-brand-200'
+                  }`}
+                >
+                  {entry.question}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 rounded-xl border border-line bg-sunken p-3">
+              <p className="text-xs leading-relaxed text-ink">{selectedFaq.answer}</p>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                icon={ExternalLink}
+                onClick={() => {
+                  onNavigate?.(selectedFaq.target);
+                  onClose();
+                }}
+                className="mt-3"
+              >
+                {selectedFaq.action}
+              </Button>
+            </div>
+          </section>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Doradca regułowy"
+      title="Doradca lokalny"
       description="Czyta lokalnie aktualny profil i ostatni wynik dopasowania, aby wykryć konkretne luki. Rozmowa zostaje w przeglądarce; do Ollamy trafia tylko zredukowany kontekst analizy."
       size="lg"
     >

@@ -22,13 +22,13 @@ describe('D06 — publiczne oznaczenie wersji przedpremierowej', () => {
 
   it('nie zasypuje użytkownika komunikatami wersji testowej na każdym ekranie', () => {
     const shell = source('src/components/layout/Shell.tsx');
-    const landing = source('src/views/LandingView.tsx');
+    const home = source('src/views/HomeView.tsx');
     const sidebar = source('src/components/layout/Sidebar.tsx');
 
     expect(shell).not.toContain('PUBLIC_PREBETA_LABEL');
-    expect(landing).not.toContain('PUBLIC_PREBETA_LABEL');
-    expect(landing).toContain('Trzy kroki pracy z CV');
-    expect(sidebar).toContain('Doradca regułowy');
+    expect(home).not.toContain('PUBLIC_PREBETA_LABEL');
+    expect(home).toContain('Trzy ruchy i masz kontrolę nad swoim CV.');
+    expect(sidebar).toContain('Doradca lokalny');
     expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('badge="GOTOWE"');
   });

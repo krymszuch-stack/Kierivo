@@ -11,6 +11,7 @@ import {
   Eye,
   Sparkles,
   BookOpen,
+  House,
   LucideIcon,
 } from 'lucide-react';
 import { NavItem } from './NavItem';
@@ -105,9 +106,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Główne 4 kroki procesu rekrutacji */}
+        {/* Widoczny powrót na start: logo samo w sobie nie mówiło każdemu, że jest nawigacją. */}
         <nav className="flex flex-col gap-1 pt-1" aria-label="Główna nawigacja">
-          {NAV_SECTIONS.map((section, index) => {
+          <NavItem
+            icon={House}
+            label="Start"
+            hint="Krótki przewodnik po CVelocity i najbliższy sensowny krok."
+            isActive={activeTab === 'home'}
+            isCollapsed={isCollapsed}
+            onClick={() => onSelectTab('home')}
+          />
+          {!isCollapsed && <p className="px-3 pb-1 pt-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Twoje CV i aplikacje</p>}
+          {NAV_SECTIONS.map((section) => {
             const isLocked = unlockedSections?.[section.id] === false;
 
             return (
@@ -115,8 +125,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={section.id}
                 icon={SECTION_ICONS[section.id]}
                 label={section.label}
-                badge={String(index + 1)}
-                badgeVariant="brand"
                 hint={section.hint}
                 isLocked={isLocked}
                 lockedReason={lockReasons?.[section.id]}
@@ -161,8 +169,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavItem
             icon={Sparkles}
-            label="Doradca regułowy"
-            hint="Lokalny moduł porad, który łączy aktualny profil z ostatnim wynikiem dopasowania. Do lokalnej Ollamy trafia tylko zredukowany kontekst analizy."
+            label="Doradca lokalny"
+            hint="Rozmowa działa z lokalną Ollamą. Bez dostępnego modelu znajdziesz tu FAQ i skróty do właściwych narzędzi."
             isCollapsed={isCollapsed}
             onClick={onOpenAdvisor}
             className="text-brand-fg hover:bg-brand-500/10"

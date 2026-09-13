@@ -78,14 +78,14 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
   });
 
   it('cennik pokazuje 0 zł i granice bety bez zasypywania nimi ekranu startowego', () => {
-    const landing = source('src/views/LandingView.tsx');
+    const home = source('src/views/HomeView.tsx');
     const pricing = source('src/views/PricingView.tsx');
     expect(pricing).toContain('FREE_BETA_PRICE_PLN');
-    expect(landing).not.toContain('FREE_BETA_PRICE_PLN');
-    expect(landing).not.toContain('49 zł');
-    expect(landing).not.toContain('39 zł');
-    expect(landing).not.toContain('19 zł');
-    expect(landing).not.toContain('Zobacz pełny cennik');
+    expect(home).not.toContain('FREE_BETA_PRICE_PLN');
+    expect(home).not.toContain('49 zł');
+    expect(home).not.toContain('39 zł');
+    expect(home).not.toContain('19 zł');
+    expect(home).not.toContain('Zobacz pełny cennik');
   });
 
   it('Doradca ujawnia faktyczny zakres danych i nie jest brandowany jako AI', () => {
@@ -96,10 +96,12 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(advisor).toContain('zredukowany kontekst analizy');
     expect(advisor).toContain('bez danych kontaktowych i pełnej treści CV');
     expect(advisor).not.toContain('Doradca AI');
-    expect(sidebar).toContain('Doradca regułowy');
+    expect(advisor).toContain('FAQ: co możesz zrobić teraz?');
+    expect(advisor).toContain('Rozmowa działa wyłącznie z dostępną lokalną Ollamą');
+    expect(sidebar).toContain('Doradca lokalny');
     expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('Doradcy AI');
-    expect(host).toContain('Doradca regułowy');
+    expect(host).toContain('Doradca lokalny');
   });
 
   it('README nie ma stałej liczby testów ani absolutnego 100% client-side', () => {
