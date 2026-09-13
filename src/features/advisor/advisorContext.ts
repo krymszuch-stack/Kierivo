@@ -1,5 +1,15 @@
 import type { AtsCheckResult, JobOffer, MasterVault } from '../../types';
+import { buildAtsTelemetryReport } from '../../lib/atsScorer';
 import { measureVaultCompleteness, VAULT_SECTIONS } from '../../lib/vaultCompleteness';
+
+export type AdvisorSuggestionTarget = 'profil' | 'aplikuj' | 'ats-lab';
+
+export interface AdvisorSuggestion {
+  id: string;
+  label: string;
+  description: string;
+  target: AdvisorSuggestionTarget;
+}
 
 export interface AdvisorContext {
   offerTitle: string;
@@ -11,6 +21,7 @@ export interface AdvisorContext {
   missingProfileSections: string[];
   hasLanguages: boolean;
   lexicon: Array<{ term: string; source: 'oferta' | 'profil' | 'luka' }>;
+  suggestions: AdvisorSuggestion[];
 }
 
 const unique = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
@@ -25,6 +36,13 @@ export function buildAdvisorContext(
   ats: AtsCheckResult,
 ): AdvisorContext {
   const completeness = measureVaultCompleteness(vault);
+  // Raport śledczy nie jest drugim „wynikiem ATS”. Używamy go wyłącznie do
+  // nazwania mierzalnych problemów technicznych dokumentu, których symulator
+  // dopasowania oferty nie opisuje (np. tabele lub kolejność odczytu).
+  const telemetry = buildAtsTelemetryReport({
+    vault,
+    jobDescription: offer.rawDescription || offer.description || offer.requirements?.join('\n') || '',
+  });
   const profileTerms = unique([
     ...vault.skillsMatrix.hardSkills,
     ...vault.skillsMatrix.toolsAndTech,
@@ -33,27 +51,66 @@ export function buildAdvisorContext(
   const offerTerms = unique([...(offer.requirements ?? []), ...(offer.techStack ?? [])]).slice(0, 24);
   const missing = unique(ats.missingHardSkills).slice(0, 8);
 
+  const structuralWarnings = unique([
+    ...ats.layer1Structure.missingStandardSections.map((section) => `Brak standardowej sekcji: ${section}.`),
+    ...ats.layer1Structure.unparsableElementsWarnings,
+    ...ats.ocrWarnings,
+    ...ats.badDateFormats,
+    ...(telemetry.structuralTelemetry.readingOrderIntegrity === 'CORRUPTED'
+      ? ['Wykryto niestabilną kolejność odczytu dokumentu.']
+      : []),
+    ...(telemetry.structuralTelemetry.tableCount > 0
+      ? [`Wykryto ${telemetry.structuralTelemetry.tableCount} ${telemetry.structuralTelemetry.tableCount === 1 ? 'tabelę' : 'tabele'} w analizowanym dokumencie.`]
+      : []),
+    ...(telemetry.structuralTelemetry.unsupportedCharactersCount > 0
+      ? [`Wykryto ${telemetry.structuralTelemetry.unsupportedCharactersCount} nietypowych znaków do sprawdzenia.`]
+      : []),
+  ]).slice(0, 8);
+  const missingProfileSections = completeness.missing.map((id) =>
+    VAULT_SECTIONS.find((section) => section.id === id)?.label ?? id
+  );
+  const suggestions: AdvisorSuggestion[] = [];
+
+  if (structuralWarnings.length > 0) {
+    suggestions.push({
+      id: 'audit-structure',
+      label: 'Sprawdź strukturę CV',
+      description: 'W Audycie ATS zobaczysz kolejność odczytu, nagłówki, tabele i znaki do poprawy.',
+      target: 'ats-lab',
+    });
+  }
+  if (missingProfileSections.length > 0 || !vault.profiler.languages.length) {
+    suggestions.push({
+      id: 'complete-profile',
+      label: 'Uzupełnij Master Vault',
+      description: 'W Profilu dopiszesz brakujące fakty, języki i dowody doświadczenia — bez zgadywania.',
+      target: 'profil',
+    });
+  }
+  if (missing.length > 0 || ats.overallScore < 75) {
+    suggestions.push({
+      id: 'review-match',
+      label: 'Wróć do dopasowania',
+      description: 'W „Sprawdź dopasowanie” porównasz wymagania oferty z prawdziwymi dowodami w CV.',
+      target: 'aplikuj',
+    });
+  }
+
   return {
     offerTitle: offer.title || 'aktualna oferta',
     score: ats.overallScore,
     missingHardSkills: missing,
     matchedKeywords: unique(ats.matchedKeywords).slice(0, 12),
-    structuralWarnings: unique([
-      ...ats.layer1Structure.missingStandardSections.map((section) => `Brak standardowej sekcji: ${section}.`),
-      ...ats.layer1Structure.unparsableElementsWarnings,
-      ...ats.ocrWarnings,
-      ...ats.badDateFormats,
-    ]).slice(0, 8),
+    structuralWarnings,
     formattingWarnings: unique(ats.badDateFormats),
-    missingProfileSections: completeness.missing.map((id) =>
-      VAULT_SECTIONS.find((section) => section.id === id)?.label ?? id
-    ),
+    missingProfileSections,
     hasLanguages: vault.profiler.languages.length > 0,
     lexicon: [
       ...offerTerms.map((term) => ({ term, source: 'oferta' as const })),
       ...profileTerms.map((term) => ({ term, source: 'profil' as const })),
       ...missing.map((term) => ({ term, source: 'luka' as const })),
     ],
+    suggestions: suggestions.slice(0, 3),
   };
 }
 

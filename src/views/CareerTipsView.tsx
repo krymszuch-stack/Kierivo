@@ -8,6 +8,7 @@ import {
 import { motion } from 'motion/react';
 import { Button } from '../components/ui/Button';
 import { PageHeader } from '../components/ui/PageHeader';
+import { trackProductInsight } from '../lib/productInsights';
 
 export interface Article {
   id: string;
@@ -16,6 +17,7 @@ export interface Article {
   categoryLabel: string;
   readTime: string;
   snippet: string;
+  imageSrc: string;
   badge?: string;
   content: {
     lead: string;
@@ -30,18 +32,19 @@ export interface Article {
 const ARTICLES: Article[] = [
   {
     id: 'ats-optymalizacja-2026',
-    title: 'Jak przejść filtry ATS w 2026 roku — Kompletny poradnik',
+    title: 'CV czytelne dla parserów: struktura przed ozdobnikami',
     category: 'ats',
     categoryLabel: 'Filtry ATS & Algorytmy',
     readTime: '4 min czytania',
     badge: 'Kluczowe',
-    snippet: 'Ponad 75% aplikacji w dużych firmach jest odrzucanych przez algorytmy ATS zanim trafi do rekrutera. Poznaj zasady formatowania i gęstości słów kluczowych.',
+    imageSrc: '/blog/ats-structure.png',
+    snippet: 'Praktyczna checklista: prosty układ, standardowe sekcje i słownictwo zgodne z Twoim prawdziwym doświadczeniem.',
     content: {
-      lead: 'Systemy Applicant Tracking Systems (ATS) przeszły ewolucję. Dziś nie tylko zliczają słowa kluczowe, ale analizują semantyczny kontekst doświadczenia kandydata.',
+      lead: 'Różne systemy rekrutacyjne odczytują dokumenty inaczej. Nie ma uniwersalnej gwarancji przejścia, ale prosty, logiczny układ ogranicza ryzyko błędnego odczytu.',
       sections: [
         {
           heading: '1. Jednokolumnowy, czysty układ bez tabel i grafik',
-          body: 'Nowoczesne parsery ATS najlepiej radzą sobie ze standardowymi nagłówkami sekcji (Doświadczenie, Umiejętności, Edukacja). Unikaj wielokolumnowych szablonów z Canvy, które gubią kolejność chronologiczną tekstu.',
+          body: 'Standardowe nagłówki sekcji (Doświadczenie, Umiejętności, Edukacja) i jedna czytelna kolejność treści ułatwiają odczyt zarówno człowiekowi, jak i parserowi. Tabele, pola tekstowe oraz układ wielokolumnowy warto najpierw sprawdzić w Audycie ATS.',
           keyTakeaways: [
             'Używaj standardowych czcionek (Inter, Roboto, Arial)',
             'Formatuj daty w układzie MM/RRRR lub RRRR',
@@ -50,11 +53,11 @@ const ARTICLES: Article[] = [
         },
         {
           heading: '2. Twarde dopasowanie terminologii z ogłoszenia',
-          body: 'Jeśli oferta wymaga „Zarządzania magazynem w SAP WMS”, nie pisz jedynie „obsługa komputera w magazynie”. ATS weryfikuje dokładne nazwy technologii, uprawnień i certyfikatów.',
+          body: 'Jeśli oferta wymaga „Zarządzania magazynem w SAP WMS”, nie pisz jedynie „obsługa komputera w magazynie”. Użyj dokładnej nazwy technologii, uprawnienia lub certyfikatu tylko wtedy, gdy możesz go potwierdzić przykładem.',
         },
         {
           heading: '3. Formuła Osiągnięcia zamiast listy obowiązków',
-          body: 'Rekruterzy i zaawansowane parsery AI szukają dowodów sprawczości. Każdy punkt w CV powinien zawierać czasownik sprawczy, narzędzie oraz mierzalny wynik liczbowy (%).',
+          body: 'Punkt doświadczenia jest czytelniejszy, gdy mówi co zrobiłeś, w jakim kontekście i z jakim efektem. Liczba pomaga, ale nie jest obowiązkowa: gdy jej nie masz, opisz zakres odpowiedzialności lub konkretny rezultat jakościowy.',
         },
       ],
     },
@@ -66,13 +69,14 @@ const ARTICLES: Article[] = [
     categoryLabel: 'Rozmowa Kwalifikacyjna',
     readTime: '5 min czytania',
     badge: 'Popularne',
-    snippet: 'Jak odpowiadać na pytania behawioralne w 60–90 sekund, budując autorytet i pokazując twarde metryki sukcesu.',
+    imageSrc: '/blog/interview-star.png',
+    snippet: 'Jak odpowiadać na pytania behawioralne krótko, konkretnie i bez uczenia się sztucznego skryptu.',
     content: {
-      lead: 'Pytania zaczynające się od „Opowiedz o sytuacji, gdy...” to standard na 90% rozmów kwalifikacyjnych. Metoda STAR pozwala uniknąć lania wody i przekazać esencję Twojej wartości.',
+      lead: 'Gdy pada pytanie „opowiedz o sytuacji, gdy…”, STAR pomaga ułożyć odpowiedź w logiczną historię zamiast improwizować w stresie.',
       sections: [
         {
           heading: 'Struktura STAR krok po kroku',
-          body: 'S (Situation) — nakreślenie tła (15s); T (Task) — cel/wyzwanie (15s); A (Action) — konkretne działania podjęte osobiście przez Ciebie (45s); R (Result) — mierzalny efekt i liczby (15s).',
+          body: 'S (Situation) — krótkie tło; T (Task) — cel lub odpowiedzialność; A (Action) — konkretne działania podjęte przez Ciebie; R (Result) — rezultat, który potrafisz uczciwie opisać. Długość dopasuj do pytania i rozmowy.',
           keyTakeaways: [
             'Używaj formy pierwszej osoby („Wdrożyłem”, „Zoptymalizowałem”, a nie „Robiliśmy”)',
             'Podawaj konkretne wskaźniki: czas, koszty, spadek awaryjności, wolumen',
@@ -92,13 +96,14 @@ const ARTICLES: Article[] = [
     category: 'trades',
     categoryLabel: 'Prace Techniczne & Przemysł',
     readTime: '3 min czytania',
-    snippet: 'Dla technika, montera i magazyniera brak wpisanego numeru uprawnienia oznacza natychmiastowe odrzucenie. Jak prawidłowo eksponować kwalifikacje techniczne.',
+    imageSrc: '/blog/ats-structure.png',
+    snippet: 'Jak jasno pokazać wymagane uprawnienia techniczne, bez sugerowania kwalifikacji, których nie masz.',
     content: {
-      lead: 'W branży technicznej i logistycznej rekrutacja zaczyna się od kryteriów zero-jedynkowych. Niezależnie od doświadczenia, brak formalnego uprawnienia blokuje zatrudnienie.',
+      lead: 'W branży technicznej i logistycznej ogłoszenie często wymienia uprawnienia wymagane na danym stanowisku. Jasne wpisanie posiadanych kwalifikacji ułatwia ich rzetelne sprawdzenie.',
       sections: [
         {
           heading: 'Eksponuj uprawnienia na samej górze profilu',
-          body: 'Rekruter techniczny poświęca 6 sekund na przeskanowanie wzrokiem uprawnień takich jak SEP E+D do 1kV/20kV, UDT (WJO I/II), F-Gaz czy certyfikaty spawalnicze TIG 141.',
+          body: 'Umieść posiadane uprawnienia blisko umiejętności lub doświadczenia, podając ich faktyczną kategorię, zakres i — jeżeli ma znaczenie — datę ważności. Nie dopisuj numeru ani zakresu, którego nie możesz potwierdzić.',
           keyTakeaways: [
             'Podawaj dokładne kategorie i zakresy napięć / metod',
             'Wpisuj daty ważności lub adnotację o bezterminowości',
@@ -114,6 +119,7 @@ const ARTICLES: Article[] = [
     category: 'career',
     categoryLabel: 'Sektor Medyczny',
     readTime: '4 min czytania',
+    imageSrc: '/blog/career-change.png',
     snippet: 'Jak strukturyzować doświadczenie kliniczne, staże specjalizacyjne, procedury zabiegowe i dyżury na SOR.',
     content: {
       lead: 'Aplikowanie do szpitali, klinik i centrów medycznych wymaga szczególnego nacisku na samodzielność zabiegową, liczbę wykonanych procedur oraz znajomość procedur NFZ/ISO.',
@@ -126,6 +132,88 @@ const ARTICLES: Article[] = [
             'Określ stopień zaawansowania specjalizacji klinicznej',
             'Podawaj szacunkowy wolumen przyjętych pacjentów i zabiegów',
           ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'dopasowanie-bez-naginania-faktow',
+    title: 'Dopasuj CV do oferty bez naginania faktów',
+    category: 'ats',
+    categoryLabel: 'Filtry ATS & Algorytmy',
+    readTime: '4 min czytania',
+    badge: 'Praktyczne',
+    imageSrc: '/blog/ats-structure.png',
+    snippet: 'Trzy przejścia przez ofertę: wymaganie, dowód w Twojej historii, decyzja „mam / uczę się / brak”.',
+    content: {
+      lead: 'Najskuteczniejsze dopasowanie nie polega na kopiowaniu słów z ogłoszenia. Polega na znalezieniu prawdziwego dowodu, który rekruter może zweryfikować.',
+      sections: [
+        {
+          heading: 'Zrób mapę „wymaganie → dowód”',
+          body: 'Dla każdego ważnego wymagania z oferty znajdź konkretny projekt, zadanie, narzędzie lub uprawnienie z własnej historii. Jeśli nie znajdujesz dowodu, oznacz lukę — nie zamieniaj jej w deklarację.',
+          keyTakeaways: [
+            'Wpisuj dokładną nazwę narzędzia tylko przy prawdziwym doświadczeniu',
+            'Przenieś najlepszy dowód wyżej w opisie roli lub projektu',
+            'Lukę możesz nazwać planem nauki, ale nie doświadczeniem',
+          ],
+        },
+        {
+          heading: 'Nie upychaj słów kluczowych',
+          body: 'Długa lista technologii bez kontekstu nie mówi, gdzie i po co ich używałeś. Jeden konkretny punkt doświadczenia zwykle daje więcej niż powtórzenie tej samej frazy w kilku miejscach.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'zmiana-branzy-most-kompetencji',
+    title: 'Zmiana branży: pokaż most kompetencji, nie nową legendę',
+    category: 'career',
+    categoryLabel: 'Rozwój kariery',
+    readTime: '5 min czytania',
+    imageSrc: '/blog/career-change.png',
+    snippet: 'Jak przełożyć realne doświadczenie z poprzedniej roli na język nowego stanowiska.',
+    content: {
+      lead: 'Przy zmianie branży nie musisz ukrywać przeszłości. Potrzebujesz pokazać, które zadania, narzędzia i efekty są użyteczne w nowej roli.',
+      sections: [
+        {
+          heading: 'Nazwij kompetencję przez działanie',
+          body: 'Zamiast pisać ogólnie „komunikatywność”, opisz sytuację: obsługa zgłoszeń, diagnozowanie problemu, szkolenie klienta, kontrola jakości albo prowadzenie dokumentacji. To są dowody przenoszalne między branżami.',
+          keyTakeaways: [
+            'Zostaw prawdziwą nazwę stanowiska',
+            'Pod spodem użyj języka zbliżonego do nowej oferty, ale nie zmieniaj faktów',
+            'Wskaż jedno uzupełnione szkolenie lub projekt, jeśli naprawdę go zrealizowałeś',
+          ],
+        },
+        {
+          heading: 'Napisz krótkie wyjaśnienie kierunku',
+          body: 'Jedno zdanie w podsumowaniu wystarczy: co zmieniasz, jakie masz pokrewne doświadczenie i dlaczego właśnie ta rola. Rozbudowaną historię zostaw na rozmowę.',
+        },
+      ],
+    },
+  },
+  {
+    id: 'bank-historii-na-rozmowe',
+    title: 'Bank historii przed rozmową: przygotuj 5 przykładów',
+    category: 'interview',
+    categoryLabel: 'Rozmowa Kwalifikacyjna',
+    readTime: '4 min czytania',
+    imageSrc: '/blog/interview-star.png',
+    snippet: 'Zamiast kuć odpowiedzi słowo w słowo, przygotuj pięć prawdziwych historii, które da się dopasować do pytań.',
+    content: {
+      lead: 'Jedna historia o rozwiązaniu problemu, współpracy czy błędzie może odpowiedzieć na kilka różnych pytań — jeżeli pamiętasz fakty, a nie wyuczony monolog.',
+      sections: [
+        {
+          heading: 'Wybierz pięć sytuacji',
+          body: 'Dobry start to: rozwiązany problem, współpraca, trudny klient lub konflikt, usprawnienie oraz sytuacja, w której czegoś się nauczyłeś. Do każdej zapisz po jednym zdaniu dla S, T, A i R.',
+          keyTakeaways: [
+            'Mów o własnym działaniu, nawet gdy pracowałeś w zespole',
+            'Jeśli nie masz liczby, podaj obserwowalny efekt',
+            'Przećwicz głośno, ale zostaw sobie miejsce na naturalną rozmowę',
+          ],
+        },
+        {
+          heading: 'Dopasuj historię do pytania',
+          body: 'Najpierw upewnij się, o co pyta rekruter. Możesz zrobić krótką pauzę, aby wybrać właściwy przykład. STAR jest szkieletem odpowiedzi, a nie obowiązkiem recytacji.',
         },
       ],
     },
@@ -181,6 +269,11 @@ export const CareerTipsView: React.FC = () => {
           </Button>
 
           <article className="rounded-3xl border border-line bg-surface p-6 sm:p-10 shadow-floating space-y-6">
+            <img
+              src={selectedArticle.imageSrc}
+              alt=""
+              className="h-44 w-full rounded-2xl border border-line object-cover sm:h-64"
+            />
             <div className="space-y-3 border-b border-line/60 pb-6">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-md bg-brand-500/10 text-brand-600 px-2.5 py-0.5 text-xs font-bold font-mono">
@@ -284,9 +377,18 @@ export const CareerTipsView: React.FC = () => {
                 whileHover={{ y: -3 }}
                 transition={{ duration: 0.15 }}
                 className="rounded-2xl border border-line bg-surface p-5 shadow-xs flex flex-col justify-between hover:border-brand-500/40 cursor-pointer transition-colors"
-                onClick={() => setSelectedArticle(art)}
+                onClick={() => {
+                  trackProductInsight('career_article_opened');
+                  setSelectedArticle(art);
+                }}
               >
                 <div className="space-y-3">
+                  <img
+                    src={art.imageSrc}
+                    alt=""
+                    className="h-32 w-full rounded-xl border border-line object-cover"
+                    loading="lazy"
+                  />
                   <div className="flex items-center justify-between gap-2">
                     <span className="rounded-md bg-brand-500/10 text-brand-600 px-2 py-0.5 text-[10px] font-bold font-mono">
                       {art.categoryLabel}

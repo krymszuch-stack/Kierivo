@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, Send, User, RotateCcw, RefreshCw } from 'lucide-react';
+import { Sparkles, Send, User, RotateCcw, RefreshCw, ArrowUpRight, Map } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { api } from '../../lib/apiClient';
 import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
+import { trackProductInsight } from '../../lib/productInsights';
 import { getRuleBasedReply } from './advisorRules';
 import type { AdvisorContext } from './advisorContext';
+import type { NavTabId } from '../../lib/navigation';
 
 import type { MasterVault } from '../../types';
 import {
@@ -26,6 +28,7 @@ export interface GeminiAdvisorModalProps {
    */
   vault?: MasterVault;
   advisorContext?: AdvisorContext | null;
+  onNavigate?: (target: NavTabId) => void;
 }
 
 interface OllamaHealthResponse {
@@ -67,6 +70,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   onClose,
   initialQuestion,
   advisorContext,
+  onNavigate,
 }) => {
   const [initialCache] = useState(readAdvisorConversation);
   const [messages, setMessages] = useState<AdvisorChatMessage[]>(() => {
@@ -135,6 +139,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       void checkOllama();
+      trackProductInsight('advisor_opened');
     }
   }, [isOpen, checkOllama]);
 
@@ -333,6 +338,35 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             Nowa rozmowa
           </Button>
         </div>
+
+        {advisorContext?.suggestions.length ? (
+          <section className="border-b border-line py-3" aria-label="Najbliższe kroki po analizie CV">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+              <Map className="h-3.5 w-3.5 text-brand-600" aria-hidden="true" />
+              Najbliższe kroki po analizie
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-3">
+              {advisorContext.suggestions.map((suggestion) => (
+                <button
+                  key={suggestion.id}
+                  type="button"
+                  onClick={() => {
+                    trackProductInsight('advisor_suggestion_clicked');
+                    onNavigate?.(suggestion.target);
+                    onClose();
+                  }}
+                  className="group rounded-xl border border-line bg-sunken px-2.5 py-2 text-left transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                >
+                  <span className="flex items-center justify-between gap-2 text-[11px] font-semibold text-ink">
+                    {suggestion.label}
+                    <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden="true" />
+                  </span>
+                  <span className="mt-1 block text-[10px] leading-relaxed text-muted">{suggestion.description}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div
           className="flex-1 overflow-y-auto space-y-4 p-2 pr-3"

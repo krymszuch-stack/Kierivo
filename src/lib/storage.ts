@@ -40,6 +40,10 @@ export const StorageKeys = {
   advisorOllamaEnabled: `${PREFIX}advisor-ollama-enabled`,
   /** Wybrany model lokalnej Ollamy w Doradcy regułowym. */
   advisorOllamaModel: `${PREFIX}advisor-ollama-model`,
+  /** Dobrowolna zgoda na lokalne, zbiorcze liczniki użycia funkcji. */
+  productInsightsEnabled: `${PREFIX}product-insights-enabled`,
+  /** Lokalne liczniki bez treści CV, pytań, ofert, identyfikatorów ani wysyłki. */
+  productInsights: `${PREFIX}product-insights`,
   /**
    * Bufor niedostarczonych zgłoszeń błędów (errorReporter). Treść jest
    * zanonimizowana jeszcze przed zapisem — klucz trafia do tego rejestru nie dla
@@ -89,6 +93,7 @@ const PRESERVED_ON_WIPE = new Set<string>([
   StorageKeys.a11ySettings,
   StorageKeys.advisorOllamaEnabled,
   StorageKeys.advisorOllamaModel,
+  StorageKeys.productInsightsEnabled,
 ]);
 
 /**

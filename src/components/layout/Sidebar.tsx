@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={Sparkles}
             label="Doradca regułowy"
-            hint="Lokalny moduł porad oparty na regułach. Nie czyta automatycznie Vaultu i nie wysyła rozmowy do modelu AI."
+            hint="Lokalny moduł porad, który łączy aktualny profil z ostatnim wynikiem dopasowania. Do lokalnej Ollamy trafia tylko zredukowany kontekst analizy."
             isCollapsed={isCollapsed}
             onClick={onOpenAdvisor}
             className="text-brand-fg hover:bg-brand-500/10"

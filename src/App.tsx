@@ -427,6 +427,7 @@ function MainApp() {
           vault={vault}
           advisorContext={advisorContext}
           initialQuestion={advisorInitialQuestion}
+          onNavigate={navigate}
         />
 
         <DesignTokensShowcaseModal

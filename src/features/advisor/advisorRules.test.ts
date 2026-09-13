@@ -31,6 +31,7 @@ describe('lokalne reguły Doradcy', () => {
       missingProfileSections: ['Umiejętności twarde'],
       hasLanguages: false,
       lexicon: [{ term: 'Active Directory', source: 'luka' }],
+      suggestions: [],
     };
     const reply = getRuleBasedReply('Czy mam dobre CV pod ATS?', context);
     expect(reply.topic).toBe('aktualna analiza CV');

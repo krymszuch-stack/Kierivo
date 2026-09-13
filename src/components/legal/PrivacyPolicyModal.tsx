@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ShieldCheck, Lock, Database, Trash2, EyeOff } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import {
+  productInsightsEnabled,
+  readProductInsights,
+  setProductInsightsEnabled,
+} from '../../lib/productInsights';
 
 interface PrivacyPolicyModalProps {
   isOpen: boolean;
@@ -12,6 +17,15 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const [insightsEnabled, setInsightsEnabled] = useState(productInsightsEnabled);
+  const [insights, setInsights] = useState(readProductInsights);
+
+  const handleInsightsChange = (enabled: boolean) => {
+    setProductInsightsEnabled(enabled);
+    setInsightsEnabled(enabled);
+    setInsights(readProductInsights());
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -31,6 +45,33 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
         </div>
 
         <div className="space-y-4">
+          <div className="rounded-2xl border border-line bg-sunken p-4 space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h5 className="font-bold text-sm text-ink">Dobrowolne dane o korzystaniu</h5>
+                <p className="mt-1 text-[11px] text-muted">
+                  Pomagają ocenić, które funkcje są używane. Zapisujemy tylko lokalne liczniki otwarć i kliknięć — bez treści CV, ofert, pytań, identyfikatora ani wysyłki na serwer.
+                </p>
+              </div>
+              <label className="inline-flex shrink-0 cursor-pointer items-center gap-2 text-[11px] font-semibold text-ink">
+                <input
+                  type="checkbox"
+                  checked={insightsEnabled}
+                  onChange={(event) => handleInsightsChange(event.target.checked)}
+                  className="h-4 w-4 accent-brand-600"
+                />
+                Włącz
+              </label>
+            </div>
+            {insightsEnabled ? (
+              <p className="rounded-xl border border-line bg-surface px-3 py-2 text-[10px] text-muted">
+                Na tym urządzeniu: Doradca {insights.events.advisor_opened}×, wskazówki {insights.events.advisor_suggestion_clicked}×, artykuły {insights.events.career_article_opened}×.
+              </p>
+            ) : (
+              <p className="text-[10px] text-muted">Domyślnie wyłączone. Możesz włączyć lub wyłączyć w każdej chwili.</p>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <h5 className="font-bold text-sm text-ink flex items-center gap-1.5">
               <Database className="h-4 w-4 text-brand-600" />
