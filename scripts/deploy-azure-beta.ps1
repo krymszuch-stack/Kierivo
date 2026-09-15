@@ -5,7 +5,9 @@ param(
   [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]{3,24}$')][string]$KeyVaultName,
   [Parameter(Mandatory)][string]$AzureOpenAiName,
   [Parameter(Mandatory)][string]$AzureOpenAiDeployment,
-  [ValidateSet('westeurope')][string]$Location = 'westeurope'
+  # West Europe can be unavailable for new resources on some subscriptions.
+  # Keep deployment inside the EU and make the selected location explicit.
+  [ValidateSet('polandcentral','westeurope')][string]$Location = 'polandcentral'
 )
 
 Set-StrictMode -Version Latest

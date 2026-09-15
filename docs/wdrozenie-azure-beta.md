@@ -7,7 +7,7 @@ Nie używamy Firebase, Cloud Run, Gemini ani klucza Azure OpenAI w aplikacji.
 ## Wymagane przed pierwszym wdrożeniem
 
 1. Azure CLI i aktywna subskrypcja w właściwym tenantcie.
-2. Utworzony zasób Azure OpenAI w `westeurope` oraz ręcznie wybrany, dostępny
+2. Utworzony zasób Azure OpenAI w europejskim regionie obsługiwanym przez subskrypcję (dla bieżącego wdrożenia: `polandcentral`) oraz ręcznie wybrany, dostępny
    deployment modelu. Skrypt sprawdza jego istnienie i nie zgaduje nazwy modelu.
 3. Wartości Supabase: URL, anon key oraz service role. Ostatnia wartość trafia
    wyłącznie do Azure Key Vault przez ukryty prompt.
