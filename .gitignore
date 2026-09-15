@@ -35,6 +35,7 @@ yarn-error.log*
 # Lokalny magazyn zgłoszeń błędów klienta (BACKEND_MODE=local) — dane operacyjne
 # serwera, odtwarzane w miarę napływu zgłoszeń; nie należą do historii repo.
 logs/
+work/
 
 # IDE & Tooling caches
 .antigravity/

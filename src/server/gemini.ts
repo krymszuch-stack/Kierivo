@@ -1,7 +1,7 @@
-import { Type } from "@google/genai";
+const Type = { OBJECT: 'object', ARRAY: 'array', STRING: 'string', NUMBER: 'number', BOOLEAN: 'boolean' } as const;
 import {
   generateWithUsage,
-  getGeminiModel,
+  getActiveAiModel,
   parseModelJson,
   truncateForModel,
   MAX_OUTPUT_TOKENS,
@@ -61,7 +61,7 @@ ${truncateForModel(rawText)}
   assertNoPii(prompt, { allowPii: true });
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -274,7 +274,7 @@ INSTRUKCJA (KROK 5 - REFRAMING FAZ):
 `;
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -345,7 +345,7 @@ ${truncateForModel(safeJdText)}
 `;
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -442,7 +442,7 @@ Zwróć odpowiedź WYŁĄCZNIE jako obiekt JSON z polami:
 `;
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -526,7 +526,7 @@ Zwróć odpowiedź WYŁĄCZNIE jako ustrukturyzowany obiekt JSON.
 `;
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
@@ -649,7 +649,7 @@ Zwróć odpowiedź WYŁĄCZNIE jako ustrukturyzowany obiekt JSON.
   assertNoPii(prompt);
 
   const response = await generateWithUsage({
-    model: getGeminiModel(),
+    model: getActiveAiModel(),
     contents: prompt,
     config: {
       maxOutputTokens: MAX_OUTPUT_TOKENS,

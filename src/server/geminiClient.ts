@@ -1,39 +1,49 @@
-import { GoogleGenAI } from '@google/genai';
+import { DefaultAzureCredential, getBearerTokenProvider } from '@azure/identity';
+import { AzureOpenAI } from 'openai';
 import { loadConfig } from './config';
 import { recordUsage } from './usageLedger';
 import { callOllamaChat } from './ollamaClient';
 
-let client: GoogleGenAI | null = null;
+let client: AzureOpenAI | null = null;
 
-/**
- * Zwraca aktualnie skonfigurowanego providera AI ('gemini' lub 'ollama').
- */
-export function getActiveAiProvider(): 'gemini' | 'ollama' {
+/** Dostawca jest jawny: chmura Azure albo lokalna Ollama. */
+export function getActiveAiProvider(): 'azure_openai' | 'ollama' {
   return loadConfig().AI_PROVIDER;
 }
 
+/** Nazwa deploymentu Azure lub modelu lokalnego, bez ujawniania endpointu. */
+export function getActiveAiModel(): string {
+  const config = loadConfig();
+  return config.AI_PROVIDER === 'ollama' ? config.OLLAMA_MODEL : config.AZURE_OPENAI_DEPLOYMENT || '';
+}
+
 /**
- * Shared Gemini client. Previously a new instance was constructed on every call,
- * discarding connection reuse.
+ * Klient Azure OpenAI nie przyjmuje klucza w obrazie ani zmiennych aplikacji.
+ * DefaultAzureCredential używa Managed Identity w Container Apps, a lokalnie
+ * świadomego logowania `az login`; oba tryby zostają pod tą samą granicą.
  */
-export function getGeminiClient(): GoogleGenAI {
+export function getAzureOpenAiClient(): AzureOpenAI {
   if (client) return client;
 
-  const { GEMINI_API_KEY } = loadConfig();
-  client = new GoogleGenAI({
-    apiKey: GEMINI_API_KEY || '',
-    httpOptions: { headers: { 'User-Agent': 'cvelocity-server' } },
+  const config = loadConfig();
+  if (!config.AZURE_OPENAI_ENDPOINT || !config.AZURE_OPENAI_DEPLOYMENT) {
+    throw new Error('Azure OpenAI wymaga AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_DEPLOYMENT.');
+  }
+
+  const tokenProvider = getBearerTokenProvider(
+    new DefaultAzureCredential(),
+    'https://cognitiveservices.azure.com/.default'
+  );
+
+  client = new AzureOpenAI({
+    endpoint: config.AZURE_OPENAI_ENDPOINT,
+    deployment: config.AZURE_OPENAI_DEPLOYMENT,
+    apiVersion: config.AZURE_OPENAI_API_VERSION,
+    azureADTokenProvider: tokenProvider,
   });
   return client;
 }
 
-/** Model id, overridable per environment. */
-export function getGeminiModel(): string {
-  const config = loadConfig();
-  return config.AI_PROVIDER === 'ollama' ? config.OLLAMA_MODEL : config.GEMINI_MODEL;
-}
-
-/** Caps a single request so one oversized document cannot blow up the bill. */
 export const MAX_INPUT_CHARS = 60_000;
 export const MAX_OUTPUT_TOKENS = 8_192;
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -43,147 +53,119 @@ export function truncateForModel(text: string, limit = MAX_INPUT_CHARS): string 
   return text.length <= limit ? text : text.slice(0, limit);
 }
 
-/**
- * Parses a model response as JSON.
- *
- * Only one of the five call sites guarded this; the rest threw a raw SyntaxError
- * that surfaced as a 500. The offending payload is never logged — it is the
- * user's CV, and server logs are not an appropriate place for it.
- */
 export function parseModelJson<T>(raw: string | undefined, context: string): T {
   try {
     return JSON.parse(raw ?? '{}') as T;
   } catch {
-    console.error(
-      `[gemini] Model zwrócił niepoprawny JSON (${context}), długość odpowiedzi: ${raw?.length ?? 0}`
-    );
-    throw Object.assign(new Error('Model zwrócił odpowiedź w nieprawidłowym formacie.'), {
-      status: 502,
-    });
+    console.error(`[ai] Model zwrócił niepoprawny JSON (${context}), długość odpowiedzi: ${raw?.length ?? 0}`);
+    throw Object.assign(new Error('Model zwrócił odpowiedź w nieprawidłowym formacie.'), { status: 502 });
   }
 }
 
 function isRetryable(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
   if (typeof status === 'number') return status === 429 || status >= 500;
-  const message = String((err as Error)?.message ?? '');
-  return /429|deadline|unavailable|timeout|ECONNRESET/i.test(message);
+  return /429|deadline|unavailable|timeout|ECONNRESET/i.test(String((err as Error)?.message ?? ''));
 }
 
-/**
- * Runs a model call with a timeout and two retries, backing off only on rate
- * limits and upstream faults. A bad request is never retried — it would fail
- * identically while costing another call.
- */
 export async function callWithRetry<T>(operation: () => Promise<T>, context: string): Promise<T> {
   let lastError: unknown;
-
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await Promise.race([
         operation(),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(Object.assign(new Error('Przekroczono czas oczekiwania na model.'), { status: 504 })),
-            REQUEST_TIMEOUT_MS
-          )
-        ),
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(Object.assign(new Error('Przekroczono czas oczekiwania na model.'), { status: 504 })),
+          REQUEST_TIMEOUT_MS
+        )),
       ]);
     } catch (err) {
       lastError = err;
       if (attempt === 2 || !isRetryable(err)) break;
-      // Exponential backoff with jitter, so parallel retries do not resynchronise.
       const delay = 500 * 2 ** attempt + Math.random() * 250;
-      console.warn(`[gemini] Ponowienie ${attempt + 1}/2 dla ${context} za ${Math.round(delay)}ms`);
+      console.warn(`[ai] Ponowienie ${attempt + 1}/2 dla ${context} za ${Math.round(delay)}ms`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-
   throw lastError;
 }
 
-/** Fragment odpowiedzi SDK, na którym nam zależy. */
 type ModelResponse = {
   text?: string;
-  usageMetadata?: {
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
-    totalTokenCount?: number;
-  };
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
 };
 
-/**
- * Jedno wejście do modelu dla całego serwera.
- *
- * Łączy trzy rzeczy, które wcześniej były powielone przy każdym z pięciu
- * wywołań albo nie istniały w ogóle: pobranie współdzielonego klienta,
- * ponowienia z timeoutem oraz **odczyt zużycia tokenów**. To ostatnie nie było
- * robione nigdzie, przez co koszt jednego użytkownika pozostawał nieznany.
- */
-export async function generateWithUsage(
-  params: Record<string, unknown>,
-  context: string
-): Promise<ModelResponse> {
+type GenerationConfig = {
+  maxOutputTokens?: number;
+  responseMimeType?: string;
+  responseSchema?: unknown;
+};
+
+function contentToPrompt(contents: unknown): string {
+  if (typeof contents === 'string') return contents;
+  if (Array.isArray(contents)) return contents.map((entry) => typeof entry === 'string' ? entry : JSON.stringify(entry)).join('\n');
+  return contents && typeof contents === 'object' ? JSON.stringify(contents) : '';
+}
+
+/** Wspólny punkt wywołań: zachowuje kontrakt dotychczasowych tras i pomiar tokenów. */
+export async function generateWithUsage(params: Record<string, unknown>, context: string): Promise<ModelResponse> {
   const config = loadConfig();
+  const generation = (params.config as GenerationConfig | undefined) ?? {};
+  const prompt = contentToPrompt(params.contents);
 
-  // Ścieżka dla alternatywnego providera Ollama
   if (config.AI_PROVIDER === 'ollama') {
-    let rawPrompt = '';
-    if (typeof params.contents === 'string') {
-      rawPrompt = params.contents;
-    } else if (Array.isArray(params.contents)) {
-      rawPrompt = params.contents
-        .map((c) => (typeof c === 'string' ? c : JSON.stringify(c)))
-        .join('\n');
-    } else if (params.contents && typeof params.contents === 'object') {
-      rawPrompt = JSON.stringify(params.contents);
-    }
-
-    const cfg = (params.config as { responseMimeType?: string }) || {};
-    const isJson = cfg.responseMimeType === 'application/json';
-
-    const systemInstruction = isJson
-      ? 'Jesteś precyzyjnym asystentem przetwarzającym dane rekrutacyjne. Odpowiadaj wyłącznie w poprawnym formacie JSON bez znaczników markdown.'
-      : 'Jesteś pomocnym asystentem rekrutacyjnym wspierającym kandydata.';
-
+    const isJson = generation.responseMimeType === 'application/json';
     const ollamaRes = await callOllamaChat({
       messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: rawPrompt },
+        { role: 'system', content: isJson
+          ? 'Jesteś precyzyjnym asystentem przetwarzającym dane rekrutacyjne. Odpowiadaj wyłącznie poprawnym JSON bez markdown.'
+          : 'Jesteś pomocnym asystentem rekrutacyjnym wspierającym kandydata.' },
+        { role: 'user', content: prompt },
       ],
       format: isJson ? 'json' : undefined,
       context,
     });
-
-    return {
-      text: ollamaRes.content,
-    };
+    return { text: ollamaRes.content };
   }
 
-  // Domyślna ścieżka dla providera Gemini (produkcyjna)
-  const ai = getGeminiClient();
-  const model = (params.model as string) ?? getGeminiModel();
-
-  const response = (await callWithRetry(
-    () => ai.models.generateContent({ model, ...params } as never),
+  const model = (params.model as string | undefined) ?? getActiveAiModel();
+  const isJson = generation.responseMimeType === 'application/json';
+  const schemaInstruction = isJson && generation.responseSchema
+    ? `\nZachowaj ten schemat JSON: ${JSON.stringify(generation.responseSchema)}`
+    : '';
+  const response = await callWithRetry(
+    () => getAzureOpenAiClient().chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: isJson
+          ? `Odpowiadaj wyłącznie poprawnym JSON, bez markdown.${schemaInstruction}`
+          : 'Jesteś pomocnym asystentem rekrutacyjnym wspierającym kandydata.' },
+        { role: 'user', content: prompt },
+      ],
+      ...(isJson ? { response_format: { type: 'json_object' as const } } : {}),
+      max_completion_tokens: generation.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+    }),
     context
-  )) as ModelResponse;
+  );
 
-  // Brak `usageMetadata` nie może wywrócić żądania — użytkownik dostał wynik,
-  // a niepełna telemetria to problem operatora, nie jego.
-  const usage = response?.usageMetadata;
+  const usage = response.usage;
   if (usage) {
     recordUsage({
       context,
       model,
-      promptTokens: usage.promptTokenCount ?? 0,
-      outputTokens:
-        usage.candidatesTokenCount ??
-        Math.max(0, (usage.totalTokenCount ?? 0) - (usage.promptTokenCount ?? 0)),
+      promptTokens: usage.prompt_tokens ?? 0,
+      outputTokens: usage.completion_tokens ?? 0,
     });
   } else {
-    console.warn(`[gemini] Odpowiedź bez usageMetadata (${context}) — zużycie nieodnotowane.`);
+    console.warn(`[ai] Odpowiedź Azure OpenAI bez metadanych użycia (${context}).`);
   }
 
-  return response;
+  return {
+    text: response.choices[0]?.message?.content ?? undefined,
+    usageMetadata: usage ? {
+      promptTokenCount: usage.prompt_tokens,
+      candidatesTokenCount: usage.completion_tokens,
+      totalTokenCount: usage.total_tokens,
+    } : undefined,
+  };
 }

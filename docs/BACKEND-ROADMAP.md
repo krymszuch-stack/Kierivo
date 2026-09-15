@@ -1,4 +1,8 @@
-# CVELOCITY — droga do działającego backendu
+# ARCHIWUM: poprzednia droga CVELOCITY do działającego backendu
+
+> Ten dokument opisuje wycofaną ścieżkę Google Cloud. Nie wykonuj z niego
+> komend ani nie twórz sekretów Google. Obowiązująca ścieżka Azure jest w
+> [`wdrozenie-azure-beta.md`](./wdrozenie-azure-beta.md).
 
 Ten dokument prowadzi od pustego konta do wdrożonej aplikacji z kontami użytkowników, bazą danych i płatnościami.
 
