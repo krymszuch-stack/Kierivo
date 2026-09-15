@@ -15,7 +15,7 @@ vi.mock('../geminiClient', async () => {
   const actual = await vi.importActual<typeof import('../geminiClient')>('../geminiClient');
   return {
     ...actual,
-    getGeminiModel: () => 'gemini-2.5-flash-lite',
+    getActiveAiModel: () => 'test-azure-deployment',
     generateWithUsage: vi.fn(async (params: Record<string, unknown>) => {
       sentPrompts.push(String(params.contents));
       return {

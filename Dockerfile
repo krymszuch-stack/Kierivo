@@ -1,4 +1,4 @@
-# Obraz KIERIVO dla Google Cloud Run.
+# Obraz KIERIVO dla Azure Container Apps.
 #
 # Jeden kontener serwuje frontend i API. Skutek: jeden URL, więc nie ma ruchu
 # cross-origin, nie ma CORS do skonfigurowania i nie ma osobnego rachunku za
@@ -21,7 +21,7 @@ COPY . .
 
 # Zmienne VITE_ są **wbudowywane w pakiet przeglądarki w trakcie budowania**,
 # a nie odczytywane w czasie działania. Przekazanie ich przez `--set-env-vars`
-# w `gcloud run deploy` nie zadziała — muszą być tutaj.
+# w konfiguracji Container Apps nie zadziała — muszą być tutaj.
 #
 # Obie są publiczne z definicji: `anon` chroni RLS, a klucz publikowalny Stripe'a
 # służy właśnie do umieszczania w kodzie klienta. SUPABASE_SERVICE_ROLE_KEY ani
@@ -45,7 +45,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # Bez devDependencies: bundel wymaga w czasie działania tylko express, helmet,
-# zod, dotenv, cheerio, @google/genai, @supabase/supabase-js i stripe. Vite jest
+# zod, dotenv, cheerio, openai, @azure/identity, @supabase/supabase-js i stripe. Vite jest
 # ładowany dynamicznym importem wyłącznie w gałęzi deweloperskiej.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
@@ -71,7 +71,7 @@ COPY --from=build /app/semantic-work-graph/data ./semantic-work-graph/data
 # nieuprzywilejowanego użytkownika `node` (uid 1000).
 USER node
 
-# Cloud Run wstrzykuje PORT i oczekuje nasłuchu na 0.0.0.0 — `config.ts` czyta
+# Container Apps przekazuje ruch na skonfigurowany port, a `config.ts` czyta
 # PORT ze środowiska, a `server.ts` binduje 0.0.0.0. Ta wartość jest tylko
 # domyślną dla uruchomienia lokalnego.
 ENV PORT=8080

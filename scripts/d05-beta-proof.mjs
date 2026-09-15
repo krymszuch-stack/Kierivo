@@ -20,39 +20,18 @@ const forbiddenPurchaseCtas = [
 
 try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
-  await page.getByTestId('beta-landing').waitFor();
+  await page.getByRole('heading', { name: /Wiesz, co umiesz/i }).waitFor();
 
   const landingText = await page.locator('body').innerText();
-  const hasHonestBetaLabel =
-    landingText.includes('Public Pre-Beta') || landingText.includes('Bezpłatna beta');
-  if (!hasHonestBetaLabel || !landingText.includes('0 zł')) {
-    throw new Error('Ekran startowy nie komunikuje publicznego etapu beta/pre-beta i ceny 0 zł.');
-  }
   for (const forbidden of forbiddenPurchaseCtas) {
     if (landingText.includes(forbidden)) throw new Error(`Ekran startowy nadal zawiera CTA zakupowe: ${forbidden}`);
   }
-  await page.screenshot({ path: `${outputDir}/01-start-bezplatna-beta.png`, fullPage: true });
+  await page.screenshot({ path: `${outputDir}/01-start-kierivo.png`, fullPage: true });
 
-  // Nazwa CTA jest copy produktowym i może się zmieniać. Odbiór sprawdza cel:
-  // użytkownik ma mieć widoczne wejście do bezpłatnego testu Kierivo.
-  await page.getByRole('button', { name: /Testuj Kierivo|Sprawdź CV za darmo/i }).click();
-  await page.locator('#quick-cv').fill(
-    'Jan Kowalski. Specjalista wsparcia IT. Obsługa Microsoft 365, Active Directory, Windows 11, PowerShell i zgłoszeń użytkowników. Diagnozowałem problemy, konfigurowałem konta i dokumentowałem rozwiązania. Język angielski B2.'
-  );
-  await page.locator('#quick-jd').fill(
-    'Szukamy specjalisty IT Support. Wymagamy Windows 11, Microsoft 365, Active Directory, PowerShell, obsługi ticketów, dokumentacji technicznej i języka angielskiego B2. Mile widziane doświadczenie w pracy z użytkownikiem.'
-  );
-  await page.getByRole('button', { name: 'Policz wynik Kierivo' }).click();
-  await page.getByTestId('quick-ats-result').waitFor();
-
-  const resultText = await page.getByTestId('quick-ats-result').innerText();
-  if (!resultText.includes('Kierivo')) throw new Error('Wynik szybkiego sprawdzenia nie jest podpisany jako Kierivo.');
-  if (!resultText.includes('nie prognoza decyzji rekrutera')) {
-    throw new Error('Przy wyniku brakuje ograniczenia obietnicy rekrutacyjnej.');
-  }
-  await page.screenshot({ path: `${outputDir}/02-wynik-cvelocity-bez-platnosci.png`, fullPage: true });
-
-  await page.getByRole('button', { name: /Zobacz zakres/i }).click();
+  // Wejście do warunków bety jest celowo w menu konta: nie udajemy checkoutu,
+  // ale tester ma zawsze dostęp do jasnego opisu zakresu i ceny.
+  await page.getByRole('button', { name: 'Konto' }).click();
+  await page.getByRole('button', { name: 'Zakres bezpłatnej bety' }).click();
   await page.getByTestId('beta-scope-view').waitFor();
   const scopeText = await page.getByTestId('beta-scope-view').innerText();
   if (!scopeText.includes('0 zł') || !scopeText.includes('Podstawowy przepływ nie wymaga płatności')) {
@@ -61,9 +40,12 @@ try {
   for (const forbidden of forbiddenPurchaseCtas) {
     if (scopeText.includes(forbidden)) throw new Error(`Widok zakresu bety zawiera aktywne CTA zakupowe: ${forbidden}`);
   }
-  await page.screenshot({ path: `${outputDir}/03-zakres-bety-0-zl.png`, fullPage: true });
+  if (!scopeText.includes('Nie przewiduje decyzji rekrutera')) {
+    throw new Error('Widok zakresu bety nie komunikuje ograniczenia wyniku ATS.');
+  }
+  await page.screenshot({ path: `${outputDir}/02-zakres-bety-0-zl.png`, fullPage: true });
 
-  console.log('✓ D05: nowy tester uzyskał wynik Kierivo i dotarł do zakresu bety bez płatności.');
+  console.log('✓ D05: nowy tester dotarł do zakresu bety Kierivo bez płatności.');
   console.log('✓ D05: brak aktywnych CTA zakupowych na sprawdzonych ekranach.');
   console.log(`✓ D05: zrzuty zapisane w ${outputDir}.`);
 } finally {

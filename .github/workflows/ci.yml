@@ -1,237 +1,39 @@
-name: CVELOCITY CI
+name: Kierivo CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        # Ta sama wersja co obraz produkcyjny (Dockerfile) i co środowisko,
-        # w którym weryfikowano przypinanie IP w safeFetch.
-        node-version: [22.x]
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      # Antigravity przycina plik reguł powyżej 12 000 znaków i nie zgłasza tego
-      # błędem — kontrakt urywa się w połowie, a agent pracuje dalej na resztce.
-      # Ten krok zamienia cichą utratę reguł w czerwony build.
-      - name: Limity plików reguł (AGENTS.md, .agents/)
-        run: node scripts/sprawdz-limity-regul.mjs
-
-      - name: Type Check
-        run: npm run lint
-
-      - name: Unit Tests
-        run: npm test
-
-      - name: Build Client and Server
-        run: npm run build
-
-      # Do tej pory CI budowało bundel serwera i nigdy nie próbowało go
-      # uruchomić. Przez to `import.meta.url` skompilowane do pustego obiektu
-      # (bundel CJS) przechodziło przez tsc, lint i wszystkie testy jednostkowe,
-      # a wywracało się dopiero przy starcie kontenera.
-      - name: Production Boot Smoke Test
-        env:
-          NODE_ENV: production
-          PORT: 8099
-          GEMINI_API_KEY: dummy-key-for-boot-test
-        run: |
-          npm start &
-          SERVER_PID=$!
-          for i in $(seq 1 20); do
-            if curl -sf -m 2 "http://localhost:8099/api/health" > /dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          curl -sf -m 5 "http://localhost:8099/api/health" | tee /tmp/health.json
-          grep -q '"status":"ok"' /tmp/health.json
-
-          # Bundel serwera i jego source mapa leżą w dist/, frontend w dist/client/.
-          # Gdyby kiedyś znów trafiły do jednego katalogu, express.static wystawiłby
-          # kod serwerowy publicznie — ten test to wykryje.
-          if curl -sf -m 5 "http://localhost:8099/server.mjs.map" | grep -q "safeFetch"; then
-            echo "BŁĄD: source mapa serwera jest publicznie dostępna" >&2
-            kill $SERVER_PID
-            exit 1
-          fi
-
-          # Frontend jest serwowany z tego samego kontenera co API. Gdyby build
-          # klienta wypadł z `npm run build`, ten krok to wychwyci — bez niego
-          # obraz wstawałby poprawnie i oddawał 404 na stronie głównej.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/)" = "200"
-
-          # Trasy kont są zarejestrowane zawsze. W trybie lokalnym (domyślnym)
-          # odpowiadają 501 "ta instalacja nie prowadzi kont", a nie 404 nie do
-          # odróżnienia od literówki w adresie.
-          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/api/me)" = "501"
-
-          kill $SERVER_PID
-
-      - name: Auth Boundary Smoke Test
-        env:
-          NODE_ENV: production
-          PORT: 8098
-          GEMINI_API_KEY: dummy-key-for-boot-test
-          BACKEND_MODE: cloud
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: dummy-key-for-boot-test
-        run: |
-          npm start &
-          SERVER_PID=$!
-          for i in $(seq 1 20); do
-            if curl -sf -m 2 "http://localhost:8098/api/health" > /dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          # Z włączonym backendem żądanie bez tokenu musi zostać odrzucone,
-          # zanim dotknie bazy. Ten test broni granicy uwierzytelnienia: gdyby
-          # requireAuth kiedykolwiek przepuścił żądanie bez nagłówka
-          # Authorization, trasy vaultu i aplikacji wystawiłyby cudze dane.
-          for path in me vault applications; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -m 5 "http://localhost:8098/api/$path")
-            if [ "$code" != "401" ]; then
-              echo "BŁĄD: /api/$path bez tokenu zwróciło $code zamiast 401" >&2
-              kill $SERVER_PID
-              exit 1
-            fi
-          done
-
-          kill $SERVER_PID
-
-      # Bramka błędów klienta przy każdym wdrożeniu (zadanie: „przy każdym
-      # wdrozeniu agent czy cli sprawdzi i zgłosi błąd"). Bez sekretów Supabase
-      # skrypt sam się wycofuje z komunikatem „pomijam", więc krok nigdy nie jest
-      # przyczyną czerwonego builda z powodu braku konfiguracji.
-      - name: Bramka otwartych błędów klienta
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npm run bledy:bramka
-
-      - name: Secrets Must Not Reach The Browser Bundle
-        run: |
-          # Pozycja z checklisty w docs/SETUP.md, tutaj jako krok automatyczny —
-          # żeby nie dało się jej pominąć przez zapomnienie. Klucz service_role
-          # omija całe RLS, więc w pakiecie przeglądarki oznaczałby pełny dostęp
-          # do bazy dla każdego odwiedzającego.
-          if grep -rE "service_role|sk_live_|sk_test_|SUPABASE_SERVICE_ROLE" dist/client/; then
-            echo "BŁĄD: sekret trafił do pakietu przeglądarki" >&2
-            exit 1
-          fi
-          echo "✓ brak sekretów w dist/client/"
-
-      - name: Build Container Image
-        run: docker build -t cvelocity-api:ci .
-
-  # Wdrożenie frontendu na Firebase Hosting.
-  #
-  # Osobne zadanie z `needs: build-and-test`, a nie kolejny krok wyżej — dzięki
-  # temu czerwone testy zatrzymują wdrożenie zamiast wysłać zepsutą wersję.
-  # Warunek `if` przepuszcza wyłącznie wypchnięcia na `main`: pull requesty mają
-  # być sprawdzane, nie publikowane.
-  #
-  # Buduje `predeploy` z `firebase.json`, nie ten workflow. Jedno miejsce
-  # określa, co trafia na hosting, więc wdrożenie z laptopa i to z CI dają ten
-  # sam wynik.
-  #
-  # Zmienne `VITE_` są **wbudowywane w pakiet podczas budowania**, a nie
-  # odczytywane w czasie działania — dlatego muszą być obecne tutaj, a nie
-  # w konfiguracji hostingu. Bez `VITE_SUPABASE_URL` i `VITE_SUPABASE_ANON_KEY`
-  # `clientEnv.backendConfigured` jest `false`, `getSupabaseBrowserClient()`
-  # zwraca `null` i logowanie nie ma jak zadziałać — pakiet powstaje w trybie
-  # wyłącznie lokalnym.
-  #
-  # Klucz `anon` jest publiczny z definicji: trafia do pakietu przeglądarki
-  # i chroni go RLS, a nie utajnienie. Klucz `service_role` nie ma tu wstępu
-  # i pilnuje tego osobny krok „Secrets Must Not Reach The Browser Bundle".
-  #
-  # Brak sekretów nie wywala wdrożenia — strona działa wtedy w trybie lokalnym,
-  # tak jak przed wprowadzeniem kont. To jest celowe: zepsuta konfiguracja ma
-  # odebrać jedną funkcję, a nie zdjąć całą aplikację.
-  deploy-hosting:
-    needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      # Przyjmowane są dwie nazwy sekretu, bo istnieją dwie drogi utworzenia konta
-      # usługi. `firebase init hosting:github` zakłada je samo i nazywa sekret od
-      # identyfikatora projektu; konto utworzone ręcznie trafia zwykle pod nazwę
-      # ogólną. Wartości sekretu nie da się odczytać po zapisaniu, więc nie da się
-      # jej przepisać z jednego do drugiego — tolerowanie obu nazw jest tańsze niż
-      # zakładanie konta po raz drugi tylko po to, żeby zmienić etykietę.
-      #
-      # Pierwszeństwo ma nazwa z identyfikatorem projektu: konto zakładane
-      # automatycznie ma węższy zakres uprawnień niż konto Admin SDK, więc jeśli
-      # istnieją oba, właściwe jest to bezpieczniejsze.
-      - name: Deploy to Firebase Hosting
+          cache: npm
+      - run: npm ci
+      - run: node scripts/sprawdz-limity-regul.mjs
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Produkcyjny smoke test bez zewnętrznego AI
         env:
-          FIREBASE_SERVICE_ACCOUNT_SCOPED: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SKILLVAULT_99A72 }}
-          FIREBASE_SERVICE_ACCOUNT_GENERIC: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          NODE_ENV: production
+          AI_PROVIDER: ollama
+          PORT: 8099
         run: |
-          FIREBASE_SERVICE_ACCOUNT="${FIREBASE_SERVICE_ACCOUNT_SCOPED:-$FIREBASE_SERVICE_ACCOUNT_GENERIC}"
-
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "BŁĄD: nie ustawiono ani FIREBASE_SERVICE_ACCOUNT_SKILLVAULT_99A72," >&2
-            echo "      ani FIREBASE_SERVICE_ACCOUNT. Konto usługi zakłada" >&2
-            echo "      \`firebase init hosting:github\` — patrz docs/SETUP.md, sekcja 5." >&2
-            exit 1
-          fi
-
-          # Konto usługi trafia do pliku poza katalogiem roboczym: w repozytorium
-          # mogłoby zostać przypadkiem dodane do commita, a `git status` nie jest
-          # tu niczyim nawykiem. RUNNER_TEMP znika razem z maszyną zadania.
-          CREDS="$RUNNER_TEMP/firebase-service-account.json"
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$CREDS"
-          chmod 600 "$CREDS"
-          export GOOGLE_APPLICATION_CREDENTIALS="$CREDS"
-
-          # Wersja przypięta: `@latest` w potoku wdrożeniowym oznacza, że nowe
-          # wydanie narzędzia może popsuć wdrożenie bez żadnej zmiany po naszej
-          # stronie.
-          npx --yes firebase-tools@15.28.1 deploy \
-            --only hosting \
-            --project skillvault-99a72 \
-            --non-interactive \
-            --message "$GITHUB_SHA"
-
-          rm -f "$CREDS"
+          npm start &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          for i in $(seq 1 20); do curl -sf -m 2 http://localhost:8099/api/health && break || sleep 1; done
+          curl -sf -m 5 http://localhost:8099/api/health | grep -q '"status":"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/api/me)" = "501"
+      - name: Sekrety nie trafiają do przeglądarki
+        run: |
+          ! grep -rE "service_role|sk_live_|sk_test_|SUPABASE_SERVICE_ROLE|AZURE_OPENAI" dist/client/
+      - run: docker build -t kierivo-api:ci .

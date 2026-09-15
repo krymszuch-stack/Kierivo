@@ -1,73 +1,62 @@
-# CVelocity beta na Azure Container Apps
+# Kierivo na Azure Container Apps
 
-Skrypt uruchamia frontend i Express API pod jednym adresem, zachowuje istniejący
-Supabase oraz tworzy logi w Log Analytics. Obraz jest budowany w Azure Container
-Registry, a aplikacja pobiera go przez tożsamość zarządzaną z rolą AcrPull.
+Frontend React i API Express są jednym kontenerem pod tym samym adresem. Supabase
+pozostaje źródłem danych, a AI działa przez Azure OpenAI po pseudonimizacji.
+Nie używamy Firebase, Cloud Run, Gemini ani klucza Azure OpenAI w aplikacji.
 
-## Stan świadomie ograniczony
+## Wymagane przed pierwszym wdrożeniem
 
-- Stripe jest wyłączony. Włączymy go dopiero po migracjach Supabase i teście
-  webhooka.
-- Kod nie ma jeszcze adaptera Azure AI Foundry. Serwer obecnie wymaga
-  GEMINI_API_KEY; utworzenie zasobu Azure AI samo nie podłączy modelu.
-- Lokalna Ollama nie będzie wystawiana z sieci domowej do Internetu.
+1. Azure CLI i aktywna subskrypcja w właściwym tenantcie.
+2. Utworzony zasób Azure OpenAI w europejskim regionie obsługiwanym przez subskrypcję (dla bieżącego wdrożenia: `polandcentral`) oraz ręcznie wybrany, dostępny
+   deployment modelu. Skrypt sprawdza jego istnienie i nie zgaduje nazwy modelu.
+3. Wartości Supabase: URL, anon key oraz service role. Ostatnia wartość trafia
+   wyłącznie do Azure Key Vault przez ukryty prompt.
+4. Nazwa ACR i Key Vault muszą być globalnie unikalne.
 
-## Przed uruchomieniem
+## Utworzenie infrastruktury
 
-1. Otwórz PowerShell w czystym checkoutie:
+W czystym checkoutie uruchom:
 
-       Set-Location 'C:\Users\Adrian\Desktop\Projekty\cvelocity-release-prep'
+```powershell
+.\scripts\deploy-azure-beta.ps1 `
+  -ProjectName kierivo `
+  -RegistryName kierivoacrunikalna `
+  -KeyVaultName kierivokvunikalny `
+  -AzureOpenAiName kierivo-openai `
+  -AzureOpenAiDeployment wybrany-deployment
+```
 
-2. Jeżeli az version nie działa, zainstaluj Azure CLI, zamknij terminal i
-   otwórz nowy:
+Skrypt tworzy resource group, ACR, Key Vault z Azure RBAC, Log Analytics,
+Container Apps Environment i aplikację z jedną repliką (maksymalnie trzy).
+Przydziela tylko `AcrPull`, `Key Vault Secrets User` i `Cognitive Services OpenAI User`
+tożsamości zarządzanej aplikacji. Po deployu wymaga rzeczywistego JSON-a
+`{"status":"ok"}` z `/api/health`.
 
-       winget install --exact --id Microsoft.AzureCLI
+## Domena Cloudflare
 
-3. Zaloguj się i sprawdź subskrypcję:
+1. W Azure rozpocznij dodanie `cvelocity.oathcry.com` do Container App i pobierz
+   kod weryfikacyjny CNAME/TXT.
+2. Uruchom `prepare-cloudflare-domain.ps1` z FQDN Container App i tym kodem.
+   Skrypt zapisuje aktualne rekordy do lokalnego `work/` przed zmianą i ustawia
+   CNAME w trybie DNS-only oraz `asuid.cvelocity`.
+3. Zwiąż zarządzany certyfikat Azure z domeną, sprawdź HTTPS i `/api/health`.
+4. Dopiero wtedy włącz proxy Cloudflare oraz SSL/TLS **Full (strict)**.
 
-       az login
-       az account show --output table
+## GitHub Actions
 
-4. Przygotuj lokalnie SUPABASE_URL, klucz anon Supabase,
-   SUPABASE_SERVICE_ROLE_KEY i GEMINI_API_KEY. Dwa ostatnie wpisujesz tylko do
-   ukrytych promptów PowerShella; skrypt nie zapisuje ich do pliku.
+Workflow `deploy-azure.yml` używa OIDC. Skonfiguruj jako GitHub Variables:
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+`AZURE_RESOURCE_GROUP`, `AZURE_ACR_NAME`, `AZURE_ACR_LOGIN_SERVER`,
+`AZURE_CONTAINER_APP`, `VITE_SUPABASE_URL` i `VITE_SUPABASE_ANON_KEY`.
+Federated credential i role dla workflow tworzy się po stronie Azure; żadnego
+pliku JSON konta usługi nie wolno zapisywać w GitHub Secrets.
 
-## Uruchomienie
+## Odbiór i wycofanie Google
 
-ProjectName jest rzeczywistą nazwą Twojego projektu, wyłącznie małymi literami,
-cyframi i pojedynczymi myślnikami. RegistryName jest globalnie unikalną nazwą
-rejestru Azure: 5-50 małych liter/cyfr, bez myślników.
+Przed przełączeniem DNS potwierdź działanie strony, `/api/health`, logowania
+Supabase, własnego konta testowego oraz pojedynczej operacji Azure OpenAI bez
+danych prywatnych. Zachowaj snapshot Cloudflare do rollbacku.
 
-       .\scripts\deploy-azure-beta.ps1 -ProjectName 'TWOJA-NAZWA' -RegistryName 'TWOJAUNIKALNANAZWA'
-
-Domyślnie: West Europe, jedna aktywna replika 1 vCPU / 2 GiB, maksimum trzy
-repliki, pełne logi. To profil do rzeczywistych testów bety z budżetem 200 USD,
-bez zimnego startu. Po tygodniu porównamy koszty z ruchem i zmienimy limity na
-podstawie danych.
-
-Udany przebieg kończy się publicznym adresem oraz odpowiedzią JSON success true
-pod adresem z końcówką api/health. Sam komunikat Azure o utworzeniu zasobu nie
-jest dowodem działającej aplikacji.
-
-## Po wdrożeniu
-
-1. Otwórz adres beta w przeglądarce.
-2. Otwórz adres api/health: ma zwrócić JSON, nie HTML.
-3. Wykonaj bezpieczny scenariusz: strona startowa, lokalny profil, Pipeline.
-   Na tym etapie nie wpisuj danych klientów ani danych płatniczych.
-4. W razie błędu śledź logi:
-
-       az containerapp logs show --name TWOJA-NAZWA-beta --resource-group rg-TWOJA-NAZWA --follow
-
-## Po godzinach testów
-
-Wstrzymanie aktywnej repliki:
-
-       az containerapp update --name TWOJA-NAZWA-beta --resource-group rg-TWOJA-NAZWA --min-replicas 0
-
-Wznowienie:
-
-       az containerapp update --name TWOJA-NAZWA-beta --resource-group rg-TWOJA-NAZWA --min-replicas 1
-
-Nie usuwaj grupy zasobów, aby zatrzymać koszt. Usunęłoby to także logi,
-rejestr obrazu i środowisko.
+Po odbiorze usuń workflow i sekrety Firebase/GCP z GitHub, następnie zasoby
+Google związane wyłącznie z `skillvault-99a72`. Usunięcie projektu Google Cloud
+jest nieodwracalne i wymaga osobnego, końcowego potwierdzenia z listą zasobów.

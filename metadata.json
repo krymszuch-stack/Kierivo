@@ -1,1 +1,1 @@
-{"name":"ClumsyVector","description":"System automatyzacji aplikacji o pracę z Master Vault, hybrydowym cache (0-token slot-filling + Gemini Delta) i symulatorem ATS.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}
+{"name":"Kierivo","description":"System wspierania aplikacji o pracę z Master Vault, lokalnym silnikiem reguł i opcjonalnym Azure OpenAI po pseudonimizacji.","requestFramePermissions":[],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_AZURE_OPENAI"]}

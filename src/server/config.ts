@@ -4,7 +4,7 @@ import { BETA_PURCHASES_ENABLED, FREE_BETA_ACTIVE } from '../lib/beta';
 /**
  * Server configuration, validated once at boot.
  *
- * Failing here is deliberate: a missing GEMINI_API_KEY used to surface as a 500
+ * Failing here is deliberate: missing AI configuration must not surface as a 500
  * on the first user request, with the raw error text echoed to the browser.
  * Crashing on startup makes the misconfiguration obvious to the operator instead.
  */
@@ -12,9 +12,10 @@ const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  AI_PROVIDER: z.enum(['gemini', 'ollama']).default('gemini'),
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().min(1).default('gemini-2.5-flash-lite'),
+  AI_PROVIDER: z.enum(['azure_openai', 'ollama']).default('ollama'),
+  AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
+  AZURE_OPENAI_DEPLOYMENT: z.string().min(1).optional(),
+  AZURE_OPENAI_API_VERSION: z.string().min(1).default('2024-10-21'),
 
   // Domyślnie tylko proces lokalny. Adres urządzenia w LAN operator podaje
   // jawnie w środowisku; nie może być ukrytym zachowaniem wdrożenia chmurowego.
@@ -89,17 +90,16 @@ export function loadConfig(): ServerConfig {
 
   const data = parsed.data;
 
-  // Walidacja warunkowa providera AI: przy domyślnym providerze `gemini`
-  // GEMINI_API_KEY jest wymagany (poza środowiskiem testowym). Przy `ollama` autoryzacja kluczem
-  // nie jest potrzebna (lokalna instancja Ollamy).
+  // Azure używa Managed Identity (w chmurze) albo świadomego `az login` lokalnie;
+  // przy Ollamie żaden zewnętrzny sekret nie jest potrzebny.
   if (
     data.NODE_ENV !== 'test' &&
-    data.AI_PROVIDER === 'gemini' &&
-    (!data.GEMINI_API_KEY || data.GEMINI_API_KEY.trim().length === 0)
+    data.AI_PROVIDER === 'azure_openai' &&
+    (!data.AZURE_OPENAI_ENDPOINT || !data.AZURE_OPENAI_DEPLOYMENT)
   ) {
     throw new Error(
-      'Nieprawidłowa konfiguracja serwera:\n  - GEMINI_API_KEY: GEMINI_API_KEY jest wymagany do działania funkcji AI przy AI_PROVIDER=gemini.\n\n' +
-        'Uzupełnij plik .env na podstawie .env.example.'
+      'Nieprawidłowa konfiguracja serwera:\n  - Azure OpenAI wymaga AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_DEPLOYMENT przy AI_PROVIDER=azure_openai.\n\n' +
+      'Uzupełnij plik .env na podstawie .env.example albo wybierz lokalną Ollamę.'
     );
   }
 

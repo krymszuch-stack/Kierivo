@@ -1,0 +1,41 @@
+name: Deploy Kierivo to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci && npm run lint && npm test && npm run build
+      - name: Zaloguj runner do ACR przez OIDC
+        run: az acr login --name "${{ vars.AZURE_ACR_NAME }}"
+      - name: Buduj obraz wyłącznie z publicznymi argumentami
+        run: |
+          docker build --file Dockerfile --tag "${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}" \
+            --build-arg "VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}" \
+            --build-arg "VITE_SUPABASE_ANON_KEY=${{ vars.VITE_SUPABASE_ANON_KEY }}" .
+          docker push "${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
+      - name: Utwórz nową rewizję i sprawdź zdrowie
+        run: |
+          az containerapp update --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
+          FQDN=$(az containerapp show --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query properties.configuration.ingress.fqdn -o tsv)
+          curl --fail --retry 12 --retry-delay 5 "https://${FQDN}/api/health" | grep -q '"status":"ok"'
