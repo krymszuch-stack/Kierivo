@@ -2,8 +2,8 @@
 param(
   [Parameter(Mandatory)][string]$ContainerAppFqdn,
   [Parameter(Mandatory)][string]$AzureValidationCode,
-  [string]$ZoneName = 'oathcry.com',
-  [string]$HostName = 'cvelocity',
+  [string]$ZoneName = 'kierivo.com',
+  [string]$HostName = 'www',
   [string]$RollbackPath = 'work/cloudflare-dns-before-azure.json'
 )
 

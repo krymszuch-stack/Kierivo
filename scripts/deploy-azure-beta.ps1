@@ -35,7 +35,7 @@ $account = az account show -o json | ConvertFrom-Json
 Write-Host "Subskrypcja: $($account.name) ($($account.id))"
 
 $rg = "rg-$ProjectName"
-$app = "$ProjectName-beta"
+$app = "ca-$ProjectName"
 $environment = "cae-$ProjectName"
 $identity = "id-$ProjectName-workload"
 $workspace = ("log" + $ProjectName.Replace('-', '')).Substring(0, [Math]::Min(63, ("log" + $ProjectName.Replace('-', '')).Length))
