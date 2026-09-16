@@ -15,6 +15,12 @@ jobs:
         with:
           node-version: 22.x
           cache: npm
+      - name: Setup Python for Dual-Layer PDF engine
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python dependencies
+        run: pip install -e mastervault-cv
       - run: npm ci
       - run: node scripts/sprawdz-limity-regul.mjs
       - run: npm run lint
