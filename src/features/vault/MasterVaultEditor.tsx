@@ -18,11 +18,13 @@ import {
   Maximize2,
   Sparkles,
   FolderGit2,
+  ShieldAlert,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MasterVault, ProfilerState } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { DocumentRenderer } from '../matcher/DocumentRenderer';
+import { auditExperienceTimelineAndMetrics } from '../../lib/consistencyGuard';
 import { StepIndicator, StepItem } from './StepIndicator';
 import { PersonalSection } from './PersonalSection';
 import { ExperienceSection } from './ExperienceSection';
@@ -86,6 +88,12 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   const handleSubRoleChange = (subRoleId: string | undefined) => {
     onChange({ ...vault, profiler: { ...vault.profiler, subRoleId } });
   };
+
+  const timelineAudit = useMemo(
+    () => auditExperienceTimelineAndMetrics(vault.history || []),
+    [vault.history]
+  );
+
   const [activeStep, setActiveStep] = useState(0);
   const [notification, setNotification] = useState<string | null>(null);
 
@@ -168,6 +176,31 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               Podgląd i Druk CV
             </Button>
 
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStep(1);
+                setViewMode('stepper');
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                timelineAudit.alerts.length > 0
+                  ? 'border-warning/40 bg-warning-soft/60 text-warning-fg hover:bg-warning-soft'
+                  : 'border-success/30 bg-success-soft/50 text-success-fg'
+              }`}
+              title="Sprawdź spójność chronologii, brak przerw i obecność metryk Google X-Y-Z"
+            >
+              {timelineAudit.alerts.length > 0 ? (
+                <>
+                  <ShieldAlert className="h-4 w-4" />
+                  <span>Asystent Logiki: {timelineAudit.alerts.length} {timelineAudit.alerts.length === 1 ? 'uwaga' : timelineAudit.alerts.length < 5 ? 'uwagi' : 'uwag'}</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-success-fg" />
+                  <span>Logika i osie czasu OK</span>
+                </>
+              )}
+            </button>
           </div>
         }
       />

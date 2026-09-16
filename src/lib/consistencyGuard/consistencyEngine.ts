@@ -20,6 +20,7 @@ import {
   getPitchCtaVariations,
   selectVariantIndex,
 } from '../phrasingVariations';
+import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
 
 /**
  * Stała określająca maksymalną dopuszczalną rozbieżność czasu trwania (w latach).
@@ -334,6 +335,7 @@ export function validateConsistency(
   options?: {
     claimIdsToCheck?: string[];
     projectedItems?: ProjectedClaimItem[];
+    skipTimelineAudit?: boolean;
   }
 ): ConsistencyValidationResult {
   const alerts: ConsistencyAlert[] = [];
@@ -490,6 +492,14 @@ export function validateConsistency(
         };
         alerts.push(missingAlert);
       }
+    }
+  }
+
+  // 4. Audyt osi czasu, chronologii i metryk (luki > 6 mies., kolizje miast, brak metryk Google X-Y-Z)
+  if (vault.history && vault.history.length > 0 && options?.skipTimelineAudit !== true) {
+    const timelineAudit = auditExperienceTimelineAndMetrics(vault.history);
+    for (const alert of timelineAudit.alerts) {
+      alerts.push(alert);
     }
   }
 

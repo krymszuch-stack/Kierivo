@@ -21,7 +21,11 @@ export type ConsistencyAlertType =
   | 'DATE_MISMATCH'
   | 'SKILL_CONTRADICTION'
   | 'CLAIM_NOT_FOUND'
-  | 'INVALID_DATE_RANGE';
+  | 'INVALID_DATE_RANGE'
+  | 'CAREER_GAP'
+  | 'LOCATION_CONFLICT'
+  | 'OVERLAPPING_EXPERIENCE'
+  | 'MISSING_METRICS';
 
 export interface ConsistencyAlert {
   id: string;
@@ -38,6 +42,15 @@ export interface ConsistencyAlert {
     claimedTags?: string[];
     conflictingTags?: string[];
     sourceProject?: string;
+    gapMonths?: number;
+    gapStart?: string;
+    gapEnd?: string;
+    previousCompany?: string;
+    nextCompany?: string;
+    conflictingCompany?: string;
+    conflictingLocation?: string;
+    experienceId?: string;
+    suggestedFormula?: string;
   };
 }
 

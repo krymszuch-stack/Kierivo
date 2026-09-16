@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Plus, Trash2, Tag, BookOpen, Lightbulb } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Tag, BookOpen, Lightbulb, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { HighlightMetric } from '../../types';
 import { HR_AND_COMMON_STOP_WORDS } from '../../lib/atsSimulator';
@@ -9,6 +9,7 @@ import { Textarea } from '../../components/ui/Field';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { StarHelperModal } from './StarHelperModal';
 import { getStarContextConfig } from '../../lib/starContextHelper';
+import { hasMeasurableMetric } from '../../lib/consistencyGuard';
 
 export interface AchievementEditorProps {
   highlights: HighlightMetric[];
@@ -277,11 +278,20 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
                     ))}
                   </div>
 
-                  {!hl.metric?.trim() && hl.text.trim() && (
-                    <span className="inline-flex items-center gap-1.5 text-meta text-subtle">
-                      <Sparkles className="h-3 w-3" />
-                      Brakuje mierzalnego efektu — zapytamy o niego na ekranie startowym
-                    </span>
+                  {hl.text.trim() && (
+                    <>
+                      {hasMeasurableMetric(hl.text, hl.metric) ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold text-success-fg border border-success/30">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Mierzalny rezultat wykryty (ATS & Rekruter OK)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-medium text-warning-fg border border-warning/30">
+                          <Sparkles className="h-3 w-3" />
+                          Wskazówka X-Y-Z: dodaj liczbę, %, czas lub skalę
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </motion.div>
