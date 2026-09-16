@@ -1,6 +1,7 @@
 import React from 'react';
-import { ShieldCheck, Lightbulb, Sparkles } from 'lucide-react';
+import { ShieldCheck, Lightbulb, Sparkles, AlertTriangle } from 'lucide-react';
 import { AtsCheckResult } from '../../types';
+import { type CanonicalAtsScore } from '../../lib/canonicalAts';
 import { ScoreRing } from './ScoreRing';
 import { GapAnalysis } from './GapAnalysis';
 import { DealbreakerList } from './DealbreakerList';
@@ -8,6 +9,7 @@ import { Card } from '../../components/ui/Card';
 
 export interface AtsSimulatorViewProps {
   result: AtsCheckResult;
+  canonicalResult?: CanonicalAtsScore;
   onAddToVault?: (item: string) => void;
   className?: string;
 }
@@ -18,6 +20,7 @@ function clampScore(value: number | undefined): number {
 
 export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
   result,
+  canonicalResult,
   onAddToVault,
   className = '',
 }) => {
@@ -50,6 +53,8 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
     },
   ];
 
+  const mainScore = canonicalResult ? canonicalResult.score : clampScore(result.overallScore);
+
   return (
     <div className={`space-y-6 ${className}`}>
       <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-xs">
@@ -68,16 +73,75 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="lg:col-span-5 space-y-4">
           <Card tone="raised" className="flex flex-col items-center justify-center text-center p-6 space-y-4">
-            <ScoreRing score={result.overallScore} size={150} />
+            <ScoreRing
+              score={mainScore}
+              size={150}
+              label={canonicalResult ? 'Wynik kanoniczny' : 'Wynik Kierivo'}
+            />
+
+            {canonicalResult && canonicalResult.state !== 'SCORABLE' && (
+              <div className="w-full rounded-xl bg-amber-500/10 border border-amber-500/20 p-2.5 text-center">
+                <span className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {canonicalResult.state === 'INSUFFICIENT_CV'
+                    ? 'Uzupełnij profil zawodowy'
+                    : canonicalResult.state === 'INSUFFICIENT_JD'
+                    ? 'Zbyt krótka treść ogłoszenia'
+                    : 'Brak wykrytych wymagań'}
+                </span>
+                <p className="text-[10px] text-ink-muted mt-1 leading-relaxed">
+                  {canonicalResult.reason}
+                </p>
+              </div>
+            )}
 
             <div className="w-full border-t border-line/60 pt-3">
               <span className="font-mono text-[11px] font-bold text-muted uppercase tracking-wider block mb-1">
                 Rozbicie algebry ważonej
               </span>
               <p className="font-mono text-[10px] text-subtle leading-tight">
-                {result.layer3Scoring?.formulaBreakdown || 'Score = (3.0 × Hard Skills) + (1.5 × Recency) + (1.5 × Title)'}
+                {canonicalResult
+                  ? 'Wynik = (0.40 × Umiejętności) + (0.25 × Staż) + (0.20 × Struktura) + (0.15 × Formalia)'
+                  : (result.layer3Scoring?.formulaBreakdown || 'Score = (3.0 × Hard Skills) + (1.5 × Recency) + (1.5 × Title)')}
               </p>
             </div>
+
+            {canonicalResult && (
+              <div className="w-full grid grid-cols-2 gap-2 pt-3 border-t border-line/60">
+                <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
+                  <span className="block text-[10px] text-muted">Umiejętności (40%)</span>
+                  <span className={`font-mono text-xs font-bold ${
+                    canonicalResult.components.skills >= 75 ? 'text-success-fg' : canonicalResult.components.skills >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                  }`}>
+                    {canonicalResult.components.skills}%
+                  </span>
+                </div>
+                <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
+                  <span className="block text-[10px] text-muted">Staż i świeżość (25%)</span>
+                  <span className={`font-mono text-xs font-bold ${
+                    canonicalResult.components.experience >= 75 ? 'text-success-fg' : canonicalResult.components.experience >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                  }`}>
+                    {canonicalResult.components.experience}%
+                  </span>
+                </div>
+                <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
+                  <span className="block text-[10px] text-muted">Struktura (20%)</span>
+                  <span className={`font-mono text-xs font-bold ${
+                    canonicalResult.components.structure >= 75 ? 'text-success-fg' : canonicalResult.components.structure >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                  }`}>
+                    {canonicalResult.components.structure}%
+                  </span>
+                </div>
+                <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
+                  <span className="block text-[10px] text-muted">Formalia (15%)</span>
+                  <span className={`font-mono text-xs font-bold ${
+                    canonicalResult.components.formal >= 75 ? 'text-success-fg' : canonicalResult.components.formal >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                  }`}>
+                    {canonicalResult.components.formal}%
+                  </span>
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card tone="raised" className="space-y-3">
@@ -114,7 +178,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
           <GapAnalysis result={result} />
 
           <DealbreakerList
-            missingItems={result.missingHardSkills || []}
+            missingItems={canonicalResult?.missingRequirements?.length ? canonicalResult.missingRequirements : (result.missingHardSkills || [])}
             onAddToVault={onAddToVault}
           />
         </div>

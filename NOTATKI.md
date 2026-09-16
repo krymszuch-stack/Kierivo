@@ -28,12 +28,12 @@
   Nie znajduje się w historii tego repo. Jeżeli dawny projekt Stripe nadal jest
   używany, rotacja klucza publishable pozostaje rozsądną ostrożnością.
 
-- Wynik kanoniczny `scoreCanonicalAts` (`src/lib/canonicalAts.ts`, PR #123) nie jest
-  jeszcze podpięty pod UI — `AtsLabView` i `JobMatcher` pokazują medianę silników
-  i telemetrię. Przełączenie głównego wskaźnika na kanon to osobna zmiana
-  produktowa (wymaga decyzji, co pokazać obok: rozbicie na składniki jest gotowe
-  w `components`).
-  _(wpis od agenta po PR #123)_
+- Wynik kanoniczny `scoreCanonicalAts` (`src/lib/canonicalAts.ts`, F6) został
+  podpięty pod UI — `AtsLabView`, `JobMatcher` oraz `AtsSimulatorView` prezentują
+  wynik kanoniczny jako główny rozstrzygający wskaźnik dopasowania wraz z 4 filarami
+  wagowymi (umiejętności 40%, staż 25%, struktura 20%, formalia 15%) oraz stanami
+  pustymi (INSUFFICIENT_CV, INSUFFICIENT_JD, NO_REQUIREMENTS_DETECTED). Symulator
+  wielosilnikowy i telemetria pozostają jako moduły diagnostyczne w laboratorium.
 
 ---
 

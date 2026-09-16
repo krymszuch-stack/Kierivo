@@ -30,6 +30,7 @@ import type { MobilityPreferences } from '../../lib/commuteCalculator';
 import { RealtimeLivePreview } from './RealtimeLivePreview';
 import { DocumentRenderer } from './DocumentRenderer';
 import { simulateAtsCheck } from '../../lib/atsSimulator';
+import { scoreCanonicalAts, type CanonicalAtsScore } from '../../lib/canonicalAts';
 import { generateAntiTemplateCoverLetter } from '../../lib/coverLetterEngine';
 import { triggerConfetti } from '../../lib/confetti';
 import { consumeAiLocally } from '../../store/useEntitlements';
@@ -142,6 +143,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   const [tailoredResume, setTailoredResume] = useState<TailoredResume | null>(null);
   const [coverLetter, setCoverLetter] = useState<CoverLetter | null>(null);
   const [atsResult, setAtsResult] = useState<AtsCheckResult | null>(null);
+  const [canonicalResult, setCanonicalResult] = useState<CanonicalAtsScore | null>(null);
   const [isFetchingUrl, setIsFetchingUrl] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [parsedJd, setParsedJd] = useState<ParsedJobDescription | null>(null);
@@ -197,12 +199,16 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       };
 
       // 2. Run Slot Filling & ATS Simulation
+      const canonical = scoreCanonicalAts(vault, jdText, job.title);
+      setCanonicalResult(canonical);
+
       const ats = simulateAtsCheck(tailored, vault, jdText);
-      tailored.atsScore = ats.overallScore;
+      // Kanoniczny wynik ATS jest jedyną rozstrzygającą liczbą dopasowania (F6).
+      tailored.atsScore = canonical.score;
       setAtsResult(ats);
       onAdvisorContext?.(buildAdvisorContext(vault, job, ats));
 
-      if (ats.overallScore >= 90) {
+      if (canonical.score >= 90) {
         triggerConfetti({ count: 90, durationMs: 3000 });
       }
 
@@ -545,6 +551,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                 vault={vault}
                 jobOffer={selectedJob}
                 atsResult={atsResult}
+                canonicalResult={canonicalResult ?? undefined}
                 tailoredResume={tailoredResume}
                 coverLetter={coverLetter}
                 onSaveTailoredCV={() => {
@@ -574,14 +581,16 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                     date: new Date().toISOString().slice(0, 10),
                     status: 'Wysłana',
                     jobUrl: selectedJob.url,
-                    atsScore: atsResult.overallScore,
-                    missingKeywords: atsResult.missingHardSkills,
+                    atsScore: canonicalResult ? canonicalResult.score : atsResult.overallScore,
+                    missingKeywords: canonicalResult?.missingRequirements?.length
+                      ? canonicalResult.missingRequirements
+                      : atsResult.missingHardSkills,
                     documentSnapshot: snapshot,
                   };
 
                   saveApplication(application);
                   showToast('Dodano do moich aplikacji', {
-                    message: `${selectedJob.title} — dopasowanie ${atsResult.overallScore}%.`,
+                    message: `${selectedJob.title} — dopasowanie ${canonicalResult ? canonicalResult.score : atsResult.overallScore}%.`,
                   });
                   setIsAtsModalOpen(false);
                 }}

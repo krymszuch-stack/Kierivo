@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { MasterVault } from '../../types';
 import { simulateMultiEngineATS, AtsEngineResult } from '../../lib/atsSimulator';
+import { scoreCanonicalAts } from '../../lib/canonicalAts';
 import { formatDecimalPl } from '../../lib/pluralFormat';
 import { buildAtsTelemetryReport, STUFFING_DENSITY_THRESHOLD } from '../../lib/atsScorer';
 import { ScoreRing } from '../../components/ui/ScoreRing';
@@ -63,6 +64,11 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 
   const [selectedEngineId, setSelectedEngineId] = useState<string | null>('konsensus_cvelocity');
   const [openPracticeIdx, setOpenPracticeIdx] = useState<number | null>(0);
+
+  const canonical = useMemo(
+    () => scoreCanonicalAts(vault, customJdText, customRole),
+    [vault, customJdText, customRole]
+  );
 
   const consensus = useMemo(
     () => simulateMultiEngineATS(vault, customJdText, customRole),
@@ -124,45 +130,79 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       <div className="relative overflow-hidden rounded-3xl border border-brand/20 bg-surface-raised/80 p-6 shadow-card-glass backdrop-blur-xl sm:p-8">
         <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
           <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-4 text-center lg:col-span-4">
-            <ScoreRing value={consensus.medianScore} label="Mediana modułów" />
+            <ScoreRing value={canonical.score} label="Wynik kanoniczny" />
             <span className="mt-2 block text-[11px] text-ink-faint">
-              mediana wewnętrznych reguł Kierivo, nie benchmark rynku
+              kanoniczne dopasowanie do oferty wg reguł Kierivo (D07–D11)
             </span>
-            <span className={`mt-4 rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white ${
-              consensus.medianScore >= 80 ? 'bg-emerald-500' : consensus.medianScore >= 65 ? 'bg-blue-500' : 'bg-amber-500'
-            }`}>
-              {consensus.medianScore >= 80
-                ? 'Wysoka zgodność z regułami'
-                : consensus.medianScore >= 65
-                  ? 'Umiarkowana zgodność z regułami'
-                  : 'Niska zgodność z regułami'}
-            </span>
+            {canonical.state !== 'SCORABLE' ? (
+              <span className="mt-4 rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-extrabold text-white">
+                {canonical.state === 'INSUFFICIENT_CV'
+                  ? 'Uzupełnij profil'
+                  : canonical.state === 'INSUFFICIENT_JD'
+                  ? 'Zbyt krótkie ogłoszenie'
+                  : 'Brak wykrytych wymagań'}
+              </span>
+            ) : (
+              <span className={`mt-4 rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white ${
+                canonical.score >= 80 ? 'bg-emerald-500' : canonical.score >= 65 ? 'bg-blue-500' : 'bg-amber-500'
+              }`}>
+                {canonical.score >= 80
+                  ? 'Wysoka zgodność kanoniczna'
+                  : canonical.score >= 65
+                    ? 'Umiarkowana zgodność kanoniczna'
+                    : 'Niska zgodność kanoniczna'}
+              </span>
+            )}
           </div>
 
           <div className="space-y-5 lg:col-span-8">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-ink">
-                <Sparkles className="h-5 w-5 text-brand-fg" /> Uzasadnienie oceny Kierivo
+                <Sparkles className="h-5 w-5 text-brand-fg" /> Rozbicie kanoniczne Kierivo
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-ink-muted sm:text-base">
-                {consensus.summaryJustification}
+              <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                {canonical.reason}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ['Średnia', consensus.meanScore],
-                ['Minimum', consensus.minScore],
-                ['Maksimum', consensus.maxScore],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                  <span className="block text-xs text-ink-faint">{label}</span>
-                  <span className="mt-0.5 block font-mono text-xl font-bold text-ink">{value}%</span>
-                </div>
-              ))}
               <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                <span className="block text-xs text-ink-faint">Liczba modułów</span>
-                <span className="mt-0.5 block font-mono text-xl font-bold text-brand-fg">{consensus.engines.length}</span>
+                <span className="block text-xs text-ink-faint">Umiejętności (40%)</span>
+                <span className={`mt-0.5 block font-mono text-xl font-bold ${
+                  canonical.components.skills >= 75 ? 'text-emerald-500' : canonical.components.skills >= 50 ? 'text-blue-500' : 'text-amber-500'
+                }`}>
+                  {canonical.components.skills}%
+                </span>
               </div>
+              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
+                <span className="block text-xs text-ink-faint">Staż i świeżość (25%)</span>
+                <span className={`mt-0.5 block font-mono text-xl font-bold ${
+                  canonical.components.experience >= 75 ? 'text-emerald-500' : canonical.components.experience >= 50 ? 'text-blue-500' : 'text-amber-500'
+                }`}>
+                  {canonical.components.experience}%
+                </span>
+              </div>
+              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
+                <span className="block text-xs text-ink-faint">Struktura (20%)</span>
+                <span className={`mt-0.5 block font-mono text-xl font-bold ${
+                  canonical.components.structure >= 75 ? 'text-emerald-500' : canonical.components.structure >= 50 ? 'text-blue-500' : 'text-amber-500'
+                }`}>
+                  {canonical.components.structure}%
+                </span>
+              </div>
+              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
+                <span className="block text-xs text-ink-faint">Formalia (15%)</span>
+                <span className={`mt-0.5 block font-mono text-xl font-bold ${
+                  canonical.components.formal >= 75 ? 'text-emerald-500' : canonical.components.formal >= 50 ? 'text-blue-500' : 'text-amber-500'
+                }`}>
+                  {canonical.components.formal}%
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted border-t border-ink/5 pt-3">
+              <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
+              <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
+              <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
+              <span className="ml-auto text-ink-faint">Mediana symulatora: <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
             </div>
           </div>
         </div>

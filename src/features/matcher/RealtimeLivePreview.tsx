@@ -18,6 +18,7 @@ import {
   CoverLetter,
   GeneratedCvExport,
 } from '../../types';
+import { type CanonicalAtsScore } from '../../lib/canonicalAts';
 import { DocumentRenderer } from './DocumentRenderer';
 import { CVWordBuilder } from './CVWordBuilder';
 import { AtsSimulatorView } from './AtsSimulatorView';
@@ -42,6 +43,7 @@ export interface RealtimeLivePreviewProps {
   vault: MasterVault;
   jobOffer: JobOffer;
   atsResult: AtsCheckResult;
+  canonicalResult?: CanonicalAtsScore;
   tailoredResume: TailoredResume;
   coverLetter: CoverLetter;
   onSaveTailoredCV?: () => void;
@@ -52,6 +54,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   vault,
   jobOffer,
   atsResult,
+  canonicalResult,
   tailoredResume,
   coverLetter,
   onSaveTailoredCV,
@@ -71,8 +74,10 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
       title: jobOffer.title,
       sourceUrl: jobOffer.url,
       salary: jobOffer.salary,
-      atsScore: atsResult?.overallScore,
-      missingKeywords: atsResult?.missingHardSkills,
+      atsScore: canonicalResult?.score ?? atsResult?.overallScore,
+      missingKeywords: canonicalResult?.missingRequirements?.length
+        ? canonicalResult.missingRequirements
+        : atsResult?.missingHardSkills,
       documentSnapshot: {
         schemaVersion: 1,
         createdAt: new Date().toISOString(),
@@ -154,6 +159,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
           {activeSubTab === 'report' && (
             <AtsSimulatorView
               result={atsResult}
+              canonicalResult={canonicalResult}
             />
           )}
 
