@@ -22,7 +22,7 @@ const DIRS = {
 
 const OLLAMA =
   process.env.OLLAMA_URL ||
-  'http://192.168.1.170:11434';
+  'http://192.168.1.100:11434';
 
 const GENERATOR =
   process.env.GENERATOR_MODEL ||
