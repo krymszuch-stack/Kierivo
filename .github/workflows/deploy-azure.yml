@@ -7,68 +7,46 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: production
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: npm
-      - run: npm ci && npm run lint && npm test && npm run build
-      - name: Zaloguj runner do ACR przez OIDC
-        run: az acr login --name "${{ vars.AZURE_ACR_NAME }}"
-      - name: Buduj obraz wyłącznie z publicznymi argumentami
-        run: |
-          docker build --file Dockerfile --tag "${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}" \
-            --build-arg "VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}" \
-            --build-arg "VITE_SUPABASE_ANON_KEY=${{ vars.VITE_SUPABASE_ANON_KEY }}" .
-          docker push "${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
-      - name: Utwórz albo zaktualizuj Container App i sprawdź zdrowie
-        run: |
-          IMAGE="${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
-          APP_EXISTS=$(az containerapp show --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query name -o tsv 2>/dev/null || true)
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          if [ -z "$APP_EXISTS" ]; then
-            az containerapp create \
-              --name "${{ vars.AZURE_CONTAINER_APP }}" \
-              --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --environment "${{ vars.AZURE_CONTAINER_APP_ENV }}" \
-              --image "$IMAGE" \
-              --ingress external \
-              --target-port 8080 \
-              --revisions-mode multiple \
-              --min-replicas 1 \
-              --max-replicas 3 \
-              --user-assigned "${{ vars.AZURE_WORKLOAD_IDENTITY_ID }}" \
-              --registry-server "${{ vars.AZURE_ACR_LOGIN_SERVER }}" \
-              --registry-identity "${{ vars.AZURE_WORKLOAD_IDENTITY_ID }}" \
-              --secrets "supabase-sr-key=keyvaultref:${{ vars.AZURE_KEY_VAULT_SUPABASE_SERVICE_ROLE_SECRET_ID }},identityref:${{ vars.AZURE_WORKLOAD_IDENTITY_ID }}" \
-              --env-vars \
-                NODE_ENV=production \
-                PORT=8080 \
-                TRUST_PROXY=true \
-                BACKEND_MODE=cloud \
-                APP_URL=https://www.kierivo.com \
-                AI_PROVIDER=azure_openai \
-                AZURE_OPENAI_ENDPOINT="${{ vars.AZURE_OPENAI_ENDPOINT }}" \
-                AZURE_OPENAI_DEPLOYMENT="${{ vars.AZURE_OPENAI_DEPLOYMENT }}" \
-                AZURE_OPENAI_API_VERSION=2024-10-21 \
-                SUPABASE_URL="${{ vars.VITE_SUPABASE_URL }}" \
-                SUPABASE_SERVICE_ROLE_KEY=secretref:supabase-sr-key
-          else
-            az containerapp update --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-              --image "$IMAGE"
-          fi
+      - name: Login to Azure
+        uses: azure/login@v3
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-          FQDN=$(az containerapp show --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query properties.configuration.ingress.fqdn -o tsv)
-          curl --fail --retry 12 --retry-delay 5 "https://${FQDN}/api/health" | grep -q '"status":"ok"'
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry ca41879ca90bacr \
+            --image kierivo:${{ github.sha }} \
+            --file Dockerfile \
+            --build-arg VITE_SUPABASE_URL="${{ vars.VITE_SUPABASE_URL }}" \
+            --build-arg VITE_SUPABASE_ANON_KEY="${{ vars.VITE_SUPABASE_ANON_KEY }}" \
+            --build-arg VITE_API_URL="" \
+            .
+
+      - name: Deploy new revision
+        run: |
+          az containerapp update \
+            --name kierivo \
+            --resource-group kierivo-prod-rg \
+            --image ca41879ca90bacr.azurecr.io/kierivo:${{ github.sha }}
+
+      - name: Health check
+        run: |
+          FQDN=$(az containerapp show \
+            --name kierivo \
+            --resource-group kierivo-prod-rg \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          curl --fail --retry 12 --retry-delay 5 \
+            "https://${FQDN}/api/health"
