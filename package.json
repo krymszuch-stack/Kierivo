@@ -12,7 +12,7 @@
     "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
     "start": "node --enable-source-maps dist/server.mjs",
     "clean": "rm -rf dist server.js",
-    "lint": "eslint . --ignore-pattern .cvelocity-lab/** && tsc --noEmit",
+    "lint": "eslint . --ignore-pattern \".cvelocity-lab/**\" && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e-doradca.mjs",
     "test:rls": "node scripts/test-rls.mjs",
