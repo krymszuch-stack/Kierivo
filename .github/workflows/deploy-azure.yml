@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   deploy:
@@ -17,36 +18,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login to Azure
-        uses: azure/login@v3
+      - name: Login to Azure with OIDC
+        uses: azure/login@v2
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build image in ACR
+      - name: Build and test
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - name: Build and push image to ACR
         run: |
           az acr build \
-            --registry ca41879ca90bacr \
-            --image kierivo:${{ github.sha }} \
+            --registry "${{ vars.AZURE_ACR_NAME }}" \
+            --image "${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}" \
             --file Dockerfile \
-            --build-arg VITE_SUPABASE_URL="${{ vars.VITE_SUPABASE_URL }}" \
-            --build-arg VITE_SUPABASE_ANON_KEY="${{ vars.VITE_SUPABASE_ANON_KEY }}" \
-            --build-arg VITE_API_URL="" \
+            --build-arg "VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}" \
+            --build-arg "VITE_SUPABASE_ANON_KEY=${{ vars.VITE_SUPABASE_ANON_KEY }}" \
+            --build-arg "VITE_API_URL=" \
             .
 
       - name: Deploy new revision
         run: |
+          IMAGE="${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
+
           az containerapp update \
-            --name kierivo \
-            --resource-group kierivo-prod-rg \
-            --image ca41879ca90bacr.azurecr.io/kierivo:${{ github.sha }}
+            --name "${{ vars.AZURE_CONTAINER_APP }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE"
 
       - name: Health check
         run: |
           FQDN=$(az containerapp show \
-            --name kierivo \
-            --resource-group kierivo-prod-rg \
+            --name "${{ vars.AZURE_CONTAINER_APP }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --query properties.configuration.ingress.fqdn \
             -o tsv)
 
-          curl --fail --retry 12 --retry-delay 5 \
+          echo "Checking https://${FQDN}/api/health"
+
+          curl \
+            --fail \
+            --retry 12 \
+            --retry-delay 5 \
             "https://${FQDN}/api/health"
