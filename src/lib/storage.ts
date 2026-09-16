@@ -55,6 +55,8 @@ export const StorageKeys = {
   a11ySettings: `${PREFIX}a11y-settings`,
   /** Samouczący się bank leksemów i adaptacyjnych wag podsumowań NLG (RLAIF / Knowledge Distillation). */
   learnedLexicon: `${PREFIX}learned-lexicon`,
+  /** Biblioteka zapisanych wersji CV (CV Library). */
+  cvLibrary: `${PREFIX}cv-library`,
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];

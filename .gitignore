@@ -74,3 +74,10 @@ pnpm-lock.yaml
 # Powstaje przy pierwszym utworzeniu konta i zawiera identyfikatory kont
 # z konta Stripe osoby uruchamiającej próbkę, więc nie należy do repozytorium.
 samples/stripe-connect/.dane/
+
+# Python / mastervault-cv
+mastervault-cv/build/
+mastervault-cv/**/__pycache__/
+*.pyc
+mastervault-cv/sample/out.*
+

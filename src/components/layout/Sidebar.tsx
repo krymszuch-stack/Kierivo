@@ -11,6 +11,7 @@ import {
   Eye,
   Sparkles,
   BookOpen,
+  FolderArchive,
   House,
   LucideIcon,
 } from 'lucide-react';
@@ -171,6 +172,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             isActive={activeTab === 'porady'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('porady')}
+          />
+
+          <NavItem
+            icon={FolderArchive}
+            label="Biblioteka CV"
+            hint="Zapisane wersje CV z tagami — szybki powrót, klonowanie pod inną ofertę i ponowny eksport bez limitu."
+            isActive={activeTab === 'biblioteka'}
+            isCollapsed={isCollapsed}
+            onClick={() => onSelectTab('biblioteka')}
           />
 
           <NavItem

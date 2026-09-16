@@ -52,6 +52,7 @@ const CareerTipsView = lazy(() => import('./views/CareerTipsView').then((m) => (
 const DesignTokensShowcaseModal = lazy(() => import('./components/DesignTokensShowcaseModal').then((m) => ({ default: m.DesignTokensShowcaseModal })));
 const InterviewCockpitView = lazy(() => import('./features/cockpit/InterviewCockpitView').then((m) => ({ default: m.InterviewCockpitView })));
 const ProfileSection = lazy(() => import('./features/profile/ProfileSection').then((m) => ({ default: m.ProfileSection })));
+const CVLibraryView = lazy(() => import('./features/library/CVLibraryView').then((m) => ({ default: m.CVLibraryView })));
 
 const ViewLoadingFallback = () => (
   <div className="space-y-4 p-4 sm:p-6" aria-busy="true" aria-live="polite">
@@ -417,6 +418,9 @@ function MainApp() {
 
             {/* Porady & Baza wiedzy (Blog/SEO) */}
             {activeTab === 'porady' && <CareerTipsView />}
+
+            {/* Biblioteka CV — wersje dokumentów, tagi, klonowanie, re-eksport */}
+            {activeTab === 'biblioteka' && <CVLibraryView onNavigate={navigate} />}
           </Suspense>
         </motion.div>
       </AnimatePresence>

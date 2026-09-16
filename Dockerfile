@@ -67,6 +67,16 @@ COPY --from=build /app/dist ./dist
 # wymusza `query_only = ON` i `fileMustExist`.
 COPY --from=build /app/semantic-work-graph/data ./semantic-work-graph/data
 
+# Instalacja środowiska Python oraz zależności silnika Dual-Layer Semantic PDF (mvcv)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    && ln -s /usr/bin/python3 /usr/bin/python \
+    && pip install --no-cache-dir --break-system-packages reportlab pikepdf pdfminer.six pillow \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/mastervault-cv ./mastervault-cv
+
 # Kontener nie ma powodu działać jako root. Obraz `node` ma gotowego
 # nieuprzywilejowanego użytkownika `node` (uid 1000).
 USER node

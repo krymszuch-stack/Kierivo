@@ -1,0 +1,191 @@
+{
+  "source_id": "mastervault://profiles/michal-kowalczyk/v3",
+  "name": "Michał Kowalczyk",
+  "title": "Inżynier Utrzymania Ruchu · Automatyk · Analityk Danych",
+  "initials": "MK",
+  "avatar": "circle",
+  "contact": {
+    "phone": "+48 601 234 567",
+    "email": "michal.kowalczyk@example.pl",
+    "city": "Warszawa",
+    "linkedin": "linkedin.com/in/mkowalczyk",
+    "github": "github.com/mkowalczyk"
+  },
+  "summary": {
+    "display": "Inżynier utrzymania ruchu z 10-letnim doświadczeniem w automatyce przemysłowej. Łączę pracę przy liniach produkcyjnych z analityką danych: buduję raportowanie przestojów i wdrażam predykcyjne utrzymanie ruchu.",
+    "semantic": "Inżynier utrzymania ruchu i automatyk przemysłowy z 10-letnim doświadczeniem w utrzymaniu ruchu zakładów produkcyjnych (szklarnie, produkcja spożywcza, przemysł szklarski). Specjalizacja: analiza danych operacyjnych w SQL i Pythonie, raportowanie przestojów w Excelu (Power Query, VBA), programowanie sterowników PLC Siemens S7 oraz predykcyjne utrzymanie ruchu (PdM). Uprawnienia SEP do 1 kV z pomiarami, operator UDT."
+  },
+  "skills": [
+    {
+      "label": "SQL",
+      "semantic": "Relacyjne bazy danych SQL: zaawansowane zapytania, agregacja danych i optymalizacja raportów operacyjnych (MS SQL Server, PostgreSQL)",
+      "group": "core",
+      "weight": 10
+    },
+    {
+      "label": "Excel",
+      "semantic": "Excel na poziomie eksperckim: Power Query, tabele przestawne, automatyzacja raportów w VBA, dashboardy KPI dla działów produkcji",
+      "group": "core",
+      "weight": 9
+    },
+    {
+      "label": "Python",
+      "semantic": "Python do analizy danych przemysłowych: pandas, matplotlib, automatyzacja zbierania danych z sterowników i historianów",
+      "group": "core",
+      "weight": 8
+    },
+    {
+      "label": "PLC Siemens",
+      "semantic": "Programowanie sterowników PLC Siemens S7-1200/1500 w TIA Portal, diagnostyka awarii, modyfikacje programów linii produkcyjnych",
+      "group": "domain",
+      "weight": 7
+    },
+    {
+      "label": "SCADA",
+      "semantic": "Systemy wizualizacji SCADA WinCC: projektowanie ekranów operatorskich, archiwizacja alarmów, integracja z raportowaniem",
+      "group": "domain",
+      "weight": 6
+    },
+    {
+      "label": "Predykcyjne utrzymanie ruchu",
+      "semantic": "Predykcyjne utrzymanie ruchu (PdM): analiza trendów czujników, wczesne wykrywanie degradacji maszyn, planowanie przeglądów na podstawie danych",
+      "group": "domain",
+      "weight": 6
+    },
+    {
+      "label": "Power BI",
+      "semantic": "Power BI: modele danych DAX, raporty produkcyjne dla zarządu, automatyczne odświeżanie z baz SQL",
+      "group": "tooling",
+      "weight": 5
+    },
+    {
+      "label": "Lean Manufacturing",
+      "semantic": "Lean Manufacturing: 5S, SMED, analiza OEE i eliminacja strat na liniach produkcyjnych",
+      "group": "domain",
+      "weight": 4
+    }
+  ],
+  "experience": [
+    {
+      "role": "Inżynier Utrzymania Ruchu",
+      "company": "NordGlass S.A.",
+      "location": "Warszawa",
+      "start": "03.2021",
+      "end": "obecnie",
+      "bullets": [
+        {
+          "kind": "result",
+          "display": "Zredukowałem przestoje linii hartowania o 38% w 18 miesięcy.",
+          "semantic": "Zredukowałem przestoje linii hartowania szkła o 38% w 18 miesięcy, wdrażając predykcyjne utrzymanie ruchu oparte na analizie danych z czujników w SQL i Pythonie."
+        },
+        {
+          "kind": "result",
+          "display": "Zbudowałem automatyczne raportowanie OEE (Power BI + SQL).",
+          "semantic": "Zaprojektowałem i wdrożyłem automatyczne raportowanie OEE w Power BI zasilane z MS SQL Server, zastępując ręczne raporty Excel — czas przygotowania raportu spadł z 2 dni do 15 minut."
+        },
+        {
+          "kind": "result",
+          "display": "Skróciłem czas reakcji na awarie o 25% dzięki systemowi alarmów SCADA.",
+          "semantic": "Skróciłem średni czas reakcji na awarie o 25% przez przebudowę systemu alarmów SCADA WinCC i priorytetyzację interwencji."
+        },
+        {
+          "kind": "duty",
+          "display": "Nadzoruję zespół 6 mechaników i automatyków.",
+          "semantic": "Nadzoruję zespół 6 mechaników i automatyków: planowanie przeglądów, zarządzanie częściami zamiennymi, szkolenia z diagnostyki PLC."
+        },
+        {
+          "kind": "duty",
+          "display": "Prowadzę modyfikacje programów PLC S7-1500.",
+          "semantic": "Prowadzę modyfikacje programów sterowników PLC Siemens S7-1500 w TIA Portal przy modernizacjach linii."
+        }
+      ],
+      "tech": ["SQL", "Power BI", "PLC Siemens"]
+    },
+    {
+      "role": "Technik Automatyk",
+      "company": "Pilz Food Machinery Sp. z o.o.",
+      "location": "Warszawa",
+      "start": "06.2018",
+      "end": "02.2021",
+      "bullets": [
+        {
+          "kind": "result",
+          "display": "Wdrożyłem harmonogram przeglądów, obniżając awaryjność o 17%.",
+          "semantic": "Wdrożyłem harmonogram przeglądów prewencyjnych w CMMS, obniżając wskaźnik awaryjności maszyn pakujących o 17% w pierwszym roku."
+        },
+        {
+          "kind": "result",
+          "display": "Zautomatyzowałem raporty przestojów w Excelu (VBA).",
+          "semantic": "Zautomatyzowałem raportowanie przestojów w Excelu z użyciem VBA i Power Query, eliminując ręczne przepisywanie danych z kart produkcyjnych."
+        },
+        {
+          "kind": "duty",
+          "display": "Serwis i diagnostyka automatów pakujących i robotów paletyzujących.",
+          "semantic": "Bieżący serwis i diagnostyka automatów pakujących oraz robotów paletyzujących KUKA, w tym wymiana układów pneumatycznych i kalibracje."
+        }
+      ],
+      "tech": ["Excel", "SCADA", "PLC Siemens"]
+    },
+    {
+      "role": "Monter Instalacji Elektrycznych",
+      "company": "Elektromont Serwis",
+      "location": "Radom",
+      "start": "07.2016",
+      "end": "05.2018",
+      "bullets": [
+        {
+          "kind": "result",
+          "display": "Wykonałem ok. 40 projektów instalacji sterowania pod nadzorem SEP.",
+          "semantic": "Wykonałem około 40 projektów montażu instalacji sterowania i siłowych do 1 kV pod nadzorem elektrycznym z uprawnieniami SEP."
+        },
+        {
+          "kind": "duty",
+          "display": "Montaż szaf sterowniczych i pomiary odbiorcze.",
+          "semantic": "Montaż szaf sterowniczych, prowadzenie przewodów, pomiary odbiorcze i protokoły powykonawcze."
+        }
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Inżynier, Automatyka i Robotyka",
+      "school": "Politechnika Warszawska",
+      "start": "2014",
+      "end": "2018",
+      "note": "Praca dyplomowa: system monitoringu energii linii produkcyjnej w Pythonie"
+    },
+    {
+      "degree": "Technik Mechatronik",
+      "school": "ZS nr 1 w Radomiu",
+      "start": "2010",
+      "end": "2014",
+      "note": ""
+    }
+  ],
+  "certifications": [
+    {
+      "name": "SEP do 1 kV z pomiarami",
+      "issuer": "Stowarzyszenie Elektryków Polskich",
+      "year": "2017",
+      "semantic": "Świadectwo kwalifikacyjne SEP grupa E do 1 kV z pomiarami elektrycznymi (uprawnienia dozoru i eksploatacji)"
+    },
+    {
+      "name": "UDT — operator wózków jezdnych",
+      "issuer": "Urząd Dozoru Technicznego",
+      "year": "2019",
+      "semantic": "Kwalifikacja UDT na operatora wózków jezdnych z napędem silnikowym"
+    },
+    {
+      "name": "Siemens TIA Portal — serwis S7",
+      "issuer": "Siemens Digital Industries",
+      "year": "2022",
+      "semantic": "Szkolenie certyfikowane Siemens: programowanie i serwis sterowników SIMATIC S7 w TIA Portal"
+    }
+  ],
+  "languages": [
+    { "name": "polski", "level": "ojczysty" },
+    { "name": "angielski", "level": "B2" },
+    { "name": "niemiecki", "level": "A2" }
+  ],
+  "licenses": ["SEP E do 1 kV", "UDT wózki jezdne", "Prawo jazdy kat. B"]
+}

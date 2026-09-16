@@ -22,7 +22,7 @@ export type NavSectionId = 'profil' | 'aplikuj' | 'trenuj' | 'pipeline';
  * „następny krok", `pricing` siedzi w menu konta, a `ats-lab` to dedykowane
  * laboratorium audytu wielosilnikowego.
  */
-export type NavTabId = NavSectionId | 'home' | 'pricing' | 'ats-lab' | 'porady';
+export type NavTabId = NavSectionId | 'home' | 'pricing' | 'ats-lab' | 'porady' | 'biblioteka';
 
 export const NAV_SECTION_IDS: readonly NavSectionId[] = [
   'profil',
@@ -98,7 +98,8 @@ export function resolveTabId(value: string): NavTabId {
     value === 'home' ||
     value === 'pricing' ||
     value === 'ats-lab' ||
-    value === 'porady'
+    value === 'porady' ||
+    value === 'biblioteka'
   )
     return value;
   return LEGACY_TAB_MAP[value] ?? 'home';

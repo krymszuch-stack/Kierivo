@@ -44,6 +44,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
 
   const handleStartParsing = async () => {
     let textToParse = rawText;
+    let portableResult: ParsedCVResult | undefined;
 
     if (ingestMode === 'file') {
       if (!selectedFile) {
@@ -62,15 +63,21 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
 
       setIsProcessing(true);
       setParseProgress(20);
-      setStatusMessage('Odczytywanie struktury pliku...');
-
       try {
         const extracted = await extractTextFromAnyFile(selectedFile);
         textToParse = extracted.text;
+        portableResult = extracted.portableVault;
       } catch {
         showToast('Nie udało się odczytać pliku', { message: 'Spróbuj wkleić treść CV ręcznie.', variant: 'error' });
         setIsProcessing(false);
         return;
+      }
+
+      if (portableResult) {
+        showToast('Wykryto profil Smart Portable CV', {
+          message: 'Bezstratny odczyt danych z certyfikowanego pliku PDF.',
+          variant: 'success',
+        });
       }
     } else {
       if (!rawText.trim() || rawText.trim().length < 30) {
@@ -81,17 +88,23 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     }
 
     setParseProgress(50);
-    setStatusMessage('Analiza sekcji, ról oraz słów kluczowych...');
+    setStatusMessage(
+      portableResult
+        ? 'Błyskawiczny odczyt certyfikowanego rekordu MasterVault...'
+        : 'Analiza sekcji, ról oraz słów kluczowych...'
+    );
 
     await new Promise((resolve) => setTimeout(resolve, 600));
 
     setParseProgress(80);
     setStatusMessage('Formatowanie widoku porównawczego (Diff)...');
 
-    const result = parseTextToMasterVault(textToParse);
+    const result = portableResult || parseTextToMasterVault(textToParse);
     if (ingestMode === 'file') {
       consumeImport();
-      result.detectedFormat = selectedFile?.name.split('.').pop()?.toUpperCase() || 'Plik';
+      result.detectedFormat = portableResult
+        ? 'Smart Portable PDF'
+        : (selectedFile?.name.split('.').pop()?.toUpperCase() || 'Plik');
     } else {
       result.detectedFormat = 'Wklejony tekst';
     }

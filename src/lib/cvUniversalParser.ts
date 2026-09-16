@@ -1,5 +1,6 @@
 import { WorkExperience, Education, Certification, LanguageProficiency, Project, HighlightMetric } from '../types';
 import { normalizeDocumentText } from './textNormalization';
+import { extractEmbeddedMasterVault, convertResumeDataToParsedCVResult } from './portableCvExtractor';
 
 /**
  * PDF.js is loaded on demand: importing it at module scope pulls in browser-only globals
@@ -35,11 +36,17 @@ export interface ParsedCVResult {
   warnings?: string[];
 }
 
+export interface ExtractedFileResult {
+  text: string;
+  format: string;
+  portableVault?: ParsedCVResult;
+}
+
 /**
  * Universal Multi-Format Text Extractor
  * Supports: .pdf, .docx, .doc, .rtf, .txt, .json, .csv
  */
-export async function extractTextFromAnyFile(file: File): Promise<{ text: string; format: string }> {
+export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileResult> {
   const fileName = file.name.toLowerCase();
 
   // 1. JSON Format
@@ -81,8 +88,26 @@ export async function extractTextFromAnyFile(file: File): Promise<{ text: string
 
   // 5. PDF Format
   if (fileName.endsWith('.pdf')) {
-    const pdfjsLib = await loadPdfJs();
     const arrayBuffer = await file.arrayBuffer();
+
+    // Sprawdzamy czy dokument posiada osadzony rekord załącznika (Smart Portable CV Round-Trip)
+    try {
+      const embedded = await extractEmbeddedMasterVault(arrayBuffer);
+      if (embedded) {
+        const portableParsed = convertResumeDataToParsedCVResult(embedded);
+        if (portableParsed) {
+          return {
+            text: portableParsed.rawText,
+            format: 'KIERIVO_PORTABLE_PDF',
+            portableVault: portableParsed,
+          };
+        }
+      }
+    } catch {
+      // kontynuujemy klasyczny fallback PDF.js
+    }
+
+    const pdfjsLib = await loadPdfJs();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let pdfText = '';
     for (let i = 1; i <= pdf.numPages; i++) {

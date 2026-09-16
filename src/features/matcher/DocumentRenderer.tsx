@@ -17,6 +17,11 @@ import {
   X,
   LayoutTemplate,
   Lightbulb,
+  Download,
+  Settings2,
+  FolderArchive,
+  BookmarkPlus,
+  Tag,
 } from 'lucide-react';
 import { MasterVault, TailoredResume, HighlightMetric, GeneratedCvExport } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -27,6 +32,9 @@ import {
   CV_TEMPLATE_CATALOG,
   findCvTemplate,
 } from '../../lib/cvTemplateEngine';
+import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
+import { saveCV, PRESET_TAGS } from '../../lib/cvLibraryStorage';
+import { Modal } from '../../components/ui/Modal';
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -64,6 +72,19 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const [hasSynced, setHasSynced] = useState(false);
   const [showEmptyHints, setShowEmptyHints] = useState(true);
 
+  // Silnik Dual-Layer Semantic PDF (mvcv)
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfTheme, setPdfTheme] = useState('parchment');
+  const [pdfLayout, setPdfLayout] = useState('sidebar');
+  const [pdfTargetPages, setPdfTargetPages] = useState<1 | 2>(1);
+  const [showPdfSettings, setShowPdfSettings] = useState(false);
+
+  // Biblioteka CV
+  const [isSaveLibraryOpen, setIsSaveLibraryOpen] = useState(false);
+  const [saveLibraryTitle, setSaveLibraryTitle] = useState('');
+  const [saveLibraryTags, setSaveLibraryTags] = useState<string[]>([]);
+  const [saveCustomTag, setSaveCustomTag] = useState('');
+
   // Lokalna robocza wersja dokumentu z możliwością edycji przed drukiem
   const [docVault, setDocVault] = useState<MasterVault>(() => JSON.parse(JSON.stringify(vault)));
 
@@ -94,6 +115,71 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
       window.print();
       onExported?.(buildExportMetadata());
     }, 40);
+  };
+
+  const handleExportSemanticPdf = async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      await downloadSemanticPdf({
+        vault: docVault,
+        tailoredResume,
+        theme: pdfTheme,
+        layout: pdfLayout,
+        targetPages: pdfTargetPages,
+      });
+      showToast('Pobrano dwuwarstwowy PDF', {
+        message: 'Dokument z warstwą wizualną i drzewem Tagged PDF (ATS) został pomyślnie wygenerowany.',
+        variant: 'success',
+      });
+      onExported?.({
+        templateId: `semantic-${pdfTheme}`,
+        templateName: `Dual-Layer ${pdfTheme} (${pdfLayout})`,
+        fit: 'ats-friendly',
+        exportedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      showToast('Błąd generowania PDF', {
+        message: err instanceof Error ? err.message : 'Wystąpił nieoczekiwany błąd.',
+        variant: 'error',
+      });
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  const openSaveLibraryModal = () => {
+    const role = tailoredResume?.targetJobTitle || docVault.personalInfo?.title || 'CV';
+    const company = tailoredResume?.companyName ? ` — ${tailoredResume.companyName}` : '';
+    const defaultTitle = `${docVault.personalInfo?.fullName ? `${docVault.personalInfo.fullName} — ` : ''}${role}${company} (${new Date().toLocaleDateString('pl-PL')})`;
+    setSaveLibraryTitle(defaultTitle);
+    const initialTags: string[] = [pdfTargetPages === 1 ? '1-stronicowe' : '2-stronicowe'];
+    if (tailoredResume?.atsScore) {
+      initialTags.push('Zweryfikowane ATS');
+    }
+    setSaveLibraryTags(initialTags);
+    setIsSaveLibraryOpen(true);
+  };
+
+  const handleConfirmSaveToLibrary = () => {
+    const finalTitle = saveLibraryTitle.trim() || 'Moje CV';
+    saveCV({
+      title: finalTitle,
+      tags: saveLibraryTags,
+      theme: pdfTheme,
+      layout: pdfLayout,
+      targetPages: pdfTargetPages,
+      targetRole: tailoredResume?.targetJobTitle || docVault.personalInfo?.title,
+      companyName: tailoredResume?.companyName,
+      summaryOverride: tailoredResume?.summary,
+      vault: docVault,
+      tailoredResume,
+    });
+    setIsSaveLibraryOpen(false);
+    showToast('Zapisano w Bibliotece CV', {
+      message: `Wersja „${finalTitle}” została zachowana. Możesz ją w każdej chwili pobrać ponownie bez limitów.`,
+      variant: 'success',
+    });
   };
 
   const handleCopyText = () => {
@@ -323,10 +409,136 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             onClick={handlePrint}
             className="text-xs"
           >
-            Drukuj / PDF
+            Drukuj
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={Settings2}
+            onClick={() => setShowPdfSettings(!showPdfSettings)}
+            className="text-xs"
+            aria-label="Ustawienia motywu PDF"
+          >
+            Motyw PDF
+          </Button>
+
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            icon={isExportingPdf ? Sparkles : Download}
+            onClick={handleExportSemanticPdf}
+            disabled={isExportingPdf}
+            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
+          >
+            {isExportingPdf ? 'Generowanie...' : 'Dual-Layer PDF'}
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={FolderArchive}
+            onClick={openSaveLibraryModal}
+            className="text-xs text-brand-fg border-brand-500/30 hover:bg-brand-500/10 font-semibold"
+            aria-label="Zapisz tę wersję do biblioteki CV"
+          >
+            Zapisz w bibliotece
           </Button>
         </div>
       </div>
+
+      {/* Panel ustawień silnika Dual-Layer Semantic PDF */}
+      {showPdfSettings && (
+        <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 text-xs space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-ink flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-indigo-500" />
+              Silnik Dual-Layer Semantic PDF (ATS + Print)
+            </span>
+            <span className="text-[11px] text-muted">
+              ReportLab + pikepdf · Tagged PDF · /ActualText · XMP JSON-LD
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+            <div>
+              <label className="block text-[11px] font-medium text-muted mb-1">
+                Motyw wizualny (33 presety)
+              </label>
+              <select
+                value={pdfTheme}
+                onChange={(e) => setPdfTheme(e.target.value)}
+                className="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="parchment">Parchment Warm (Szeryfowy, ciepły)</option>
+                <option value="editorial">Editorial Slate (Magazynowy, szeryfowy)</option>
+                <option value="cobalt">Cobalt Pro (Inżynierski błękit)</option>
+                <option value="blueprint">Blueprint Technical (Precyzyjny)</option>
+                <option value="coral">Coral Modern (Nowoczesny koral)</option>
+                <option value="sand">Sand Minimal (Ciepły minimalizm)</option>
+                <option value="classic">Classic Monochrome (Formalny B&W)</option>
+                <option value="graphite">Graphite Dark Tint (Szmaragdowy akcent)</option>
+                <option value="teal">Teal Nordic (Skandynawski morski)</option>
+                <option value="navy">Corporate Navy (Klasyczny granat)</option>
+                <option value="olive">Olive Industry (Przemysłowa oliwka)</option>
+                <option value="charlotte">Charlotte Editorial (Fiolet szeryfowy)</option>
+                <option value="zyra">Zyra Clean (Subtelny pastel)</option>
+                <option value="slate">Slate Executive (Grafitowy)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-muted mb-1">
+                Układ siatki A4
+              </label>
+              <select
+                value={pdfLayout}
+                onChange={(e) => setPdfLayout(e.target.value)}
+                className="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="sidebar">Sidebar lewy (32/68) — standard</option>
+                <option value="sidebar-right">Sidebar prawy (65/35)</option>
+                <option value="banner-sidebar">Banner nagłówkowy + Sidebar</option>
+                <option value="two-column">Dwie kolumny (48/52)</option>
+                <option value="single">Jedna kolumna (Strict ATS)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-medium text-muted mb-1">
+                Docelowa objętość (Governance)
+              </label>
+              <div className="flex items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPdfTargetPages(1)}
+                  className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                    pdfTargetPages === 1
+                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      : 'border-line bg-surface text-muted hover:text-ink'
+                  }`}
+                >
+                  1 Strona (Zwięzłe)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPdfTargetPages(2)}
+                  className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                    pdfTargetPages === 2
+                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      : 'border-line bg-surface text-muted hover:text-ink'
+                  }`}
+                >
+                  2 Strony (Pełne)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-sunken/40 px-3 py-2 text-xs">
         <LayoutTemplate className="h-4 w-4 text-muted" />
@@ -672,6 +884,128 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
           ))}
         </div>
       </section>
+
+      {/* Modal zapisu do Biblioteki CV */}
+      <Modal
+        isOpen={isSaveLibraryOpen}
+        onClose={() => setIsSaveLibraryOpen(false)}
+        title="Zapisz wersję w Bibliotece CV"
+        description="Zapisane CV jest bezpiecznie przechowywane na Twoim urządzeniu. Będziesz mógł je w każdej chwili pobrać ponownie w formacie Dual-Layer PDF bez zużywania limitu importu ani kredytów."
+      >
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="block text-xs font-semibold text-ink mb-1.5">
+              Tytuł wersji dokumentu
+            </label>
+            <input
+              type="text"
+              value={saveLibraryTitle}
+              onChange={(e) => setSaveLibraryTitle(e.target.value)}
+              placeholder="np. Jan Kowalski — Automatyk KGHM (2026)"
+              className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500/50 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold text-ink mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-muted" /> Tagi branżowe
+              </span>
+              <span className="text-[11px] font-normal text-muted">Kliknij tag, aby usunąć</span>
+            </div>
+
+            {/* Wybrane tagi */}
+            <div className="flex flex-wrap gap-1.5 mb-2.5 min-h-[2rem] p-2 rounded-xl bg-surface-alt/40 border border-line/50 items-center">
+              {saveLibraryTags.length === 0 ? (
+                <span className="text-[11px] text-muted">Brak wybranych tagów — wybierz z listy poniżej lub wpisz własny</span>
+              ) : (
+                saveLibraryTags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => setSaveLibraryTags(saveLibraryTags.filter((t) => t !== tag))}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-500/15 border border-brand-500/30 px-2.5 py-0.5 text-[11px] font-medium text-brand-fg hover:bg-brand-500/25 transition-colors cursor-pointer"
+                  >
+                    {tag}
+                    <X className="h-3 w-3 ml-0.5 opacity-60" />
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Dostępne presety */}
+            <div className="flex flex-wrap gap-1 mb-2.5">
+              {PRESET_TAGS.filter((pt) => !saveLibraryTags.includes(pt)).map((pt) => (
+                <button
+                  key={pt}
+                  type="button"
+                  onClick={() => setSaveLibraryTags([...saveLibraryTags, pt])}
+                  className="text-[10px] rounded-full border border-dashed border-line/70 px-2 py-0.5 text-muted hover:text-ink hover:border-brand-500/40 transition-colors cursor-pointer"
+                >
+                  + {pt}
+                </button>
+              ))}
+            </div>
+
+            {/* Własny tag */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={saveCustomTag}
+                onChange={(e) => setSaveCustomTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const trimmed = saveCustomTag.trim();
+                    if (trimmed && !saveLibraryTags.includes(trimmed)) {
+                      setSaveLibraryTags([...saveLibraryTags, trimmed]);
+                      setSaveCustomTag('');
+                    }
+                  }
+                }}
+                placeholder="Wpisz własny tag i wciśnij Enter..."
+                className="flex-1 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs text-ink focus:border-brand-500/50 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={!saveCustomTag.trim()}
+                onClick={() => {
+                  const trimmed = saveCustomTag.trim();
+                  if (trimmed && !saveLibraryTags.includes(trimmed)) {
+                    setSaveLibraryTags([...saveLibraryTags, trimmed]);
+                    setSaveCustomTag('');
+                  }
+                }}
+              >
+                Dodaj
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line/40">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsSaveLibraryOpen(false)}
+            >
+              Anuluj
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              icon={BookmarkPlus}
+              onClick={handleConfirmSaveToLibrary}
+              disabled={!saveLibraryTitle.trim()}
+            >
+              Zapisz w bibliotece
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

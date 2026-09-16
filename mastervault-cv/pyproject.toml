@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mvcv"
+version = "1.0.0"
+description = "MasterVault CV Engine — dwuwarstwowy generator PDF (wizualny + semantyczny ATS)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Adrian & AI Pair Team" }
+]
+dependencies = [
+    "reportlab>=4.0.0",
+    "pikepdf>=8.0.0",
+    "pdfminer.six>=20231228",
+    "pillow>=10.0.0",
+]
+
+[project.scripts]
+mvcv = "mvcv.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["mvcv*"]
