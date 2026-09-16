@@ -87,8 +87,13 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   });
 
   const handlePrint = () => {
-    window.print();
-    onExported?.(buildExportMetadata());
+    if (isEditing) {
+      setIsEditing(false);
+    }
+    setTimeout(() => {
+      window.print();
+      onExported?.(buildExportMetadata());
+    }, 40);
   };
 
   const handleCopyText = () => {
