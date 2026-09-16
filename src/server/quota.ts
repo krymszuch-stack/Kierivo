@@ -19,7 +19,7 @@ export type QuotaKind = 'ai' | 'import';
  * (`getEntitlements`). Rozdzielenie tych dwóch wartości sprawiłoby, że
  * interfejs pokazywałby inny limit niż ten, który faktycznie odsyła żądanie.
  */
-export const FREE_DAILY_AI_USES = 5;
+export const FREE_DAILY_AI_USES = 25;
 export const PRO_DAILY_AI_USES = 100;
 
 export class QuotaExceededError extends Error {

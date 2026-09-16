@@ -45,7 +45,11 @@ describe('Interview Cockpit Engine', () => {
     const updated = toggleLessonCompletion('pitch_completed');
     expect(updated.completedLessons).toContain('pitch_completed');
 
+    const withCoach = toggleLessonCompletion('star_coach_completed');
+    expect(withCoach.completedLessons).toContain('star_coach_completed');
+
     const reloaded = loadCockpitProgress();
     expect(reloaded.completedLessons).toContain('pitch_completed');
+    expect(reloaded.completedLessons).toContain('star_coach_completed');
   });
 });

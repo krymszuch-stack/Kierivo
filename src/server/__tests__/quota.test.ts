@@ -67,7 +67,7 @@ describe('Atomic Quota Reservation & Refund', () => {
     expect(task).toHaveBeenCalled();
     expect(mockRpc).toHaveBeenCalledWith('reserve_ai_quota', {
       p_user_id: 'user-123',
-      p_max_daily_uses: 5,
+      p_max_daily_uses: 25,
     });
   });
 
@@ -83,12 +83,12 @@ describe('Atomic Quota Reservation & Refund', () => {
 
     expect(mockRpc).toHaveBeenCalledWith('reserve_ai_quota', {
       p_user_id: 'user-pro',
-      p_max_daily_uses: 5,
+      p_max_daily_uses: 25,
     });
   });
 
   it('executeAiOperation rzuca QuotaExceededError gdy rezerwacja zostaje odrzucona', async () => {
-    mockRpc.mockResolvedValueOnce({ data: { allowed: false, current_uses: 5 }, error: null });
+    mockRpc.mockResolvedValueOnce({ data: { allowed: false, current_uses: 25 }, error: null });
 
     const task = vi.fn();
 

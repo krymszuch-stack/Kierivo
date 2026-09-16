@@ -10,6 +10,7 @@ import { StorageKeys, readJson, writeJson } from './storage';
 
 export type CockpitSectionId =
   | 'pitch'
+  | 'ai_coach'
   | 'bridging'
   | 'traps'
   | 'questions'

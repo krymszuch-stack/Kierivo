@@ -1,6 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { aiService } from '../services/ai.service';
 import { verifyCvWithTripleLoop } from '../services/cvVerifier.service';
+import {
+  generateInterviewQuestionsWithAi,
+  evaluateStarAnswerWithAi,
+} from '../services/interviewCoach.service';
 import { aiEndpointsLimiter } from '../middleware/rateLimiter';
 import { requireAuth } from '../middleware/requireAuth';
 import { executeAiOperation } from '../quota';
@@ -315,6 +319,115 @@ aiRouter.post(
         reply: result.content,
         provider: 'ollama',
         model: result.model,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/ai/coach-star/generate-questions
+ * Generuje pytania rekrutacyjne dopasowane do kandydata i stanowiska (Azure OpenAI gpt-4o).
+ */
+aiRouter.post(
+  '/ai/coach-star/generate-questions',
+  requireAuth,
+  aiEndpointsLimiter,
+  async (
+    req: Request<
+      unknown,
+      unknown,
+      {
+        targetRole?: string;
+        targetCompany?: string;
+        jobDescription?: string;
+        vault?: MasterVault;
+      }
+    >,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { targetRole, targetCompany, jobDescription, vault } = req.body;
+      const userId = req.user!.id;
+
+      const questions = await executeAiOperation(
+        userId,
+        'coach-star-questions',
+        async () => {
+          const result = await generateInterviewQuestionsWithAi({
+            targetRole,
+            targetCompany,
+            jobDescription,
+            vault,
+          });
+          return { data: result.questions, usage: result.usage };
+        }
+      );
+
+      res.json({
+        success: true,
+        questions,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/ai/coach-star/evaluate-answer
+ * Ocenia odpowiedź kandydata w schemacie STAR (Situation, Task, Action, Result) z korektą.
+ */
+aiRouter.post(
+  '/ai/coach-star/evaluate-answer',
+  requireAuth,
+  aiEndpointsLimiter,
+  async (
+    req: Request<
+      unknown,
+      unknown,
+      {
+        question?: string;
+        answer?: string;
+        targetRole?: string;
+        vault?: MasterVault;
+      }
+    >,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { question, answer, targetRole, vault } = req.body;
+
+      if (!question || typeof question !== 'string' || !question.trim()) {
+        return res.status(400).json({ success: false, error: 'Brak pytania rekrutacyjnego.' });
+      }
+
+      if (!answer || typeof answer !== 'string' || !answer.trim()) {
+        return res.status(400).json({ success: false, error: 'Brak treści odpowiedzi kandydata.' });
+      }
+
+      const userId = req.user!.id;
+
+      const evaluation = await executeAiOperation(
+        userId,
+        'coach-star-evaluate',
+        async () => {
+          const result = await evaluateStarAnswerWithAi({
+            question,
+            answer,
+            targetRole,
+            vault,
+          });
+          return { data: result.evaluation, usage: result.usage };
+        }
+      );
+
+      res.json({
+        success: true,
+        evaluation,
       });
     } catch (err) {
       next(err);

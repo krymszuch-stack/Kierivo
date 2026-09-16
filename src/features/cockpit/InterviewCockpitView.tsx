@@ -9,7 +9,9 @@ import {
   RotateCcw,
   Trophy,
   ArrowRight,
+  Sparkles,
 } from 'lucide-react';
+import { StarCoachSection } from './StarCoachSection';
 import { MasterVault } from '../../types';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Tabs } from '../../components/ui/Tabs';
@@ -100,10 +102,11 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
 
   const navTabs = [
     { id: 'pitch' as CockpitSectionId, label: '1. Elevator Pitch', icon: Mic },
-    { id: 'bridging' as CockpitSectionId, label: '2. Most kompetencyjny', icon: Zap },
-    { id: 'traps' as CockpitSectionId, label: '3. Trudne Pytania & Stawki', icon: ShieldCheck },
-    { id: 'questions' as CockpitSectionId, label: '4. Twoje Pytania (Red Flags)', icon: AlertTriangle },
-    { id: 'tracker' as CockpitSectionId, label: '5. Live Tracker & Pamiętnik', icon: Clock },
+    { id: 'ai_coach' as CockpitSectionId, label: '2. Trener STAR (AI Coach)', icon: Sparkles },
+    { id: 'bridging' as CockpitSectionId, label: '3. Most kompetencyjny', icon: Zap },
+    { id: 'traps' as CockpitSectionId, label: '4. Trudne Pytania & Stawki', icon: ShieldCheck },
+    { id: 'questions' as CockpitSectionId, label: '5. Twoje Pytania (Red Flags)', icon: AlertTriangle },
+    { id: 'tracker' as CockpitSectionId, label: '6. Live Tracker & Pamiętnik', icon: Clock },
   ];
 
   return (
@@ -299,7 +302,12 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
         </div>
       )}
 
-      {/* SECTION 2: SKILL BRIDGING */}
+      {/* SECTION 2: TRENER STAR (AI COACH) */}
+      {activeSection === 'ai_coach' && (
+        <StarCoachSection vault={vault} />
+      )}
+
+      {/* SECTION 3: SKILL BRIDGING */}
       {activeSection === 'bridging' && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-accent/20 bg-accent-soft/30 p-5">

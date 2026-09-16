@@ -20,7 +20,7 @@ describe('useEntitlements i isProStatus', () => {
 
   it('udostępnia poprawne stałe darmowych limitów', () => {
     expect(FREE_MONTHLY_IMPORTS).toBe(1);
-    expect(FREE_DAILY_AI_USES).toBe(5);
+    expect(FREE_DAILY_AI_USES).toBe(25);
   });
 
   it('consumeAiLocally działa bezpiecznie i zmniejsza licznik', () => {

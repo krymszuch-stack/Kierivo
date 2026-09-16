@@ -43,7 +43,7 @@ export interface EntitlementsState {
 }
 
 const FREE_IMPORTS = 1;
-const FREE_AI_USES = 5;
+const FREE_AI_USES = 25;
 
 export const FREE_MONTHLY_IMPORTS = FREE_IMPORTS;
 export const FREE_DAILY_AI_USES = FREE_AI_USES;
