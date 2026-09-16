@@ -36,16 +36,16 @@ Ten dokument prowadzi od pustego konta do wdrożonej aplikacji z kontami użytko
 
 ## Kolejność prac
 
-| Etap | Krok | Co odblokowuje |
-|---|---|---|
-| 1 | [Wymagania wstępne](#1--wymagania-wstępne) | wszystko |
-| 2 | [Supabase lokalnie](#2--supabase-lokalnie) | pracę nad bazą bez dotykania produkcji |
-| 3 | [Schemat i RLS](#3--schemat-bazy-i-rls) | konta i trwałe dane |
-| 4 | [Uruchomienie end-to-end](#4--uruchomienie-lokalne-end-to-end) | rejestrację i logowanie |
-| 5 | [Stripe w trybie testowym](#5--stripe-w-trybie-testowym) | płatności |
-| 6 | [Wdrożenie na Cloud Run](#6--wdrożenie-na-cloud-run) | publiczny adres |
-| 7 | [Domena i budżet](#7--domena-i-budżet) | wydanie produkcyjne |
-| 8 | [Weryfikacja](#8--weryfikacja-przed-wydaniem) | spokojny sen |
+| Etap | Krok | Co odblokowuje | Stan realizacji |
+|---|---|---|---|
+| 1 | [Wymagania wstępne](#1--wymagania-wstępne) | wszystko | ✅ **Zrealizowane** (Node 22, Docker, zestaw narzędzi, CI) |
+| 2 | [Supabase lokalnie](#2--supabase-lokalnie) | pracę nad bazą bez dotykania produkcji | ✅ **Zrealizowane** (migracje, lokalny stos w workflow CI) |
+| 3 | [Schemat i RLS](#3--schemat-bazy-i-rls) | konta i trwałe dane | ✅ **Zrealizowane** (odebrane w D02–D04, RLS na 7 tabelach, `test:rls`) |
+| 4 | [Uruchomienie end-to-end](#4--uruchomienie-lokalne-end-to-end) | rejestrację i logowanie | ✅ **Zrealizowane** (tryby local/cloud, cykl auth i outbox w D03–D04) |
+| 5 | [Stripe w trybie testowym](#5--stripe-w-trybie-testowym) | płatności | ⏸️ **Wstrzymane operacyjnie** (kod i webhook gotowe, checkout celowo zablokowany na czas Pre-Bety 0 zł) |
+| 6 | [Wdrożenie na Cloud Run](#6--wdrożenie-na-cloud-run) | publiczny adres | 🔄 **Zastąpione przez Azure** (wdrożenie na Azure Container Apps wg [`docs/wdrozenie-azure-beta.md`](./wdrozenie-azure-beta.md)) |
+| 7 | [Domena i budżet](#7--domena-i-budżet) | wydanie produkcyjne | 🟡 **Skonfigurowane** (skrypt `prepare-cloudflare-domain.ps1` pod Azure Container Apps) |
+| 8 | [Weryfikacja](#8--weryfikacja-przed-wydaniem) | spokojny sen | 🟡 **Częściowo** (bramki CI, RLS, auth lifecycle, RODO art. 17 ✅; płatne funkcje czekają na start komercyjny) |
 
 ---
 
@@ -354,14 +354,14 @@ Ten sam `grep` jest krokiem w CI (`.github/workflows/ci.yml`), więc nie da się
 
 Pozycje produktowe i formalne są w [`docs/SETUP.md`](./SETUP.md). Poniżej wyłącznie to, co dokłada backend:
 
-- [ ] `npm run test:rls` przechodzi na **projekcie zdalnym**, nie tylko lokalnym
-- [ ] Webhook produkcyjny odpowiada `200` na `stripe trigger` (panel Stripe → *Webhooks* → historia dostarczeń)
-- [ ] Powtórzone zdarzenie webhooka nie tworzy duplikatu w `subscriptions`
-- [ ] `DELETE /api/me` czyści **wszystkie** tabele dla danego `user_id` — potwierdzone testem automatycznym (RODO art. 17)
-- [ ] Supabase przełączony na **Pro** — Free nie ma kopii zapasowych (RODO art. 32)
-- [ ] `TRUST_PROXY=true` ustawione na Cloud Run i **`false` wszędzie indziej**
+- [ ] `npm run test:rls` przechodzi na **projekcie zdalnym**, nie tylko lokalnym *(w CI weryfikowane w odizolowanym środowisku Supabase w D04; zdalny projekt ma bezpiecznik opt-in)*
+- [ ] Webhook produkcyjny odpowiada `200` na `stripe trigger` *(wstrzymane — w Pre-Beta wyłączono sprzedaż, 0 zł)*
+- [x] Powtórzone zdarzenie webhooka nie tworzy duplikatu w `subscriptions` *(zaimplementowane: idempotencja po `stripe_event_id`)*
+- [x] `DELETE /api/me` czyści **wszystkie** tabele dla danego `user_id` — potwierdzone testem automatycznym (RODO art. 17, PR #111 / D04)
+- [ ] Supabase przełączony na **Pro** — Free nie ma kopii zapasowych (RODO art. 32) *(do włączenia przy pierwszym płacącym kliencie)*
+- [x] `TRUST_PROXY=true` obsłużone w kontenerze produkcyjnym (Azure Container Apps) i **`false` domyślnie lokalnie**
 - [ ] Budżet z alertami na 50 / 90 / 100%
-- [ ] `SECURITY.md` zaktualizowany — pozycje „Znane ograniczenia", które przestały być prawdą, usunięte, a te które zostały, opisane uczciwie
+- [x] `SECURITY.md` zaktualizowany — pozycje „Znane ograniczenia", które przestały być prawdą, usunięte, a te które zostały, opisane uczciwie
 
 ---
 

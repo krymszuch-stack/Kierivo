@@ -1,6 +1,5 @@
 import { WorkExperience, Education, Certification, LanguageProficiency, Project, HighlightMetric } from '../types';
 import { normalizeDocumentText } from './textNormalization';
-import * as mammoth from 'mammoth';
 
 /**
  * PDF.js is loaded on demand: importing it at module scope pulls in browser-only globals
@@ -65,6 +64,9 @@ export async function extractTextFromAnyFile(file: File): Promise<{ text: string
   // 4. DOCX / DOC Format
   if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
     try {
+      // Mammoth jest ładowany na żądanie (Z-1), aby biblioteka DOCX nie dociążała
+      // głównej paczki wejściowej dla użytkowników niekorzystających z formatu Word.
+      const mammoth = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
       if (result.value && result.value.trim().length > 20) {
