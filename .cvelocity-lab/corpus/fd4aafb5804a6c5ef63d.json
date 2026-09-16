@@ -1,0 +1,30 @@
+{
+  "id": "fd4aafb5804a6c5ef63d",
+  "generated_at": "2026-09-11T13:27:32.684Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "Docker",
+    "text": "Specialized in orchestrating containerized microservices architectures using the Docker Engine API, managing lifecycle events via CLI commands, and bridging gaps between legacy monoliths and ephemeral environments.",
+    "expected": "PARTIAL",
+    "attack_type": "false_negative",
+    "difficulty": 5,
+    "reason": "The text describes the core mechanics of Docker (Engine API, CLI, containers) without explicitly using the word 'Docker' itself. This forces the parser to rely on semantic matching or normalization. If the parser relies heavily on exact lexem matches for 'Docker', it might miss this nuance, resulting in a false negative.",
+    "evidence_terms": [
+      "containerized",
+      "microservices",
+      "Docker Engine API",
+      "CLI commands",
+      "lifecycle events"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.95,
+    "reason": "The case is well-constructed and represents a nuanced scenario where the parser must infer Docker expertise from contextual clues rather than exact keyword matches. The text clearly references Docker's core components (Engine API, CLI, container lifecycle) without using the word 'Docker' explicitly, which is a strong test of semantic understanding. This is an excellent example for training a parser to detect partial or implicit Docker knowledge, and it effectively demonstrates how a false negative could occur if the parser relies too heavily on exact lexeme matching.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}
