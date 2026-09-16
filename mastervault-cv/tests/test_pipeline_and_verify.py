@@ -141,6 +141,55 @@ class TestPipelineAndVerification(unittest.TestCase):
         self.assertTrue(os.path.exists(out_pdf))
         self.assertEqual(verify_pdf(out_pdf, strict=True), 0)
 
+    def test_export_with_photo(self):
+        from PIL import Image
+
+        img_path = os.path.join(self.temp_dir, "test_candidate.jpg")
+        img = Image.new("RGB", (200, 240), color=(50, 100, 180))
+        img.save(img_path, format="JPEG")
+
+        with open(self.sample_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        data["photo"] = img_path
+        profile_with_photo = os.path.join(self.temp_dir, "profile_photo.json")
+        with open(profile_with_photo, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+        out_pdf = os.path.join(self.temp_dir, "photo_export.pdf")
+        rep = export(
+            profile_with_photo,
+            out_pdf,
+            layout="banner-sidebar",
+            theme="parchment",
+            target_pages=1,
+            sidecar=False,
+        )
+        self.assertTrue(os.path.exists(out_pdf))
+        self.assertEqual(verify_pdf(out_pdf, strict=True), 0)
+
+    def test_export_auto_balancing_fits_single_page(self):
+        # Profil z wieloma doświadczeniami i umiejętnościami
+        with open(self.sample_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Zduplikujmy doświadczenie aby wywołać presję na objętość
+        data["experience"] = data.get("experience", []) * 2
+        dense_profile = os.path.join(self.temp_dir, "dense_profile.json")
+        with open(dense_profile, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+        out_pdf = os.path.join(self.temp_dir, "dense_1page.pdf")
+        rep = export(
+            dense_profile,
+            out_pdf,
+            layout="sidebar",
+            theme="editorial",
+            target_pages=1,
+            sidecar=False,
+        )
+        self.assertTrue(os.path.exists(out_pdf))
+        self.assertEqual(rep.pages, 1, "Auto-balancing powinien zagwarantować dokładnie 1 stronę bez sierot")
+        self.assertEqual(verify_pdf(out_pdf, strict=True), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

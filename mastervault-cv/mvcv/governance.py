@@ -127,7 +127,7 @@ DEFAULT_RODO_CLAUSE = (
 
 
 def apply(profile: MasterProfile, *, content_width: float, measure,
-          target_pages: int = 1) -> tuple[MasterProfile, GovernanceReport]:
+          target_pages: int = 1, aggressive_fit: bool = False) -> tuple[MasterProfile, GovernanceReport]:
     """Zwróć skrojony profil zgodny z limitami (selekcja + priorytety)."""
     rep = GovernanceReport()
     out = replace(profile)
@@ -137,11 +137,17 @@ def apply(profile: MasterProfile, *, content_width: float, measure,
         out.clause = DEFAULT_RODO_CLAUSE
         rep.notes.append("dodano standardowa klauzule RODO")
 
-    # --- limity zależne od docelowej liczby stron
-    max_skills = SKILLS_COUNT[1] if target_pages >= 2 else min(8, SKILLS_COUNT[1])
-    min_skills = SKILLS_COUNT[0]
-    max_exps = EXP_ENTRIES[1] if target_pages >= 2 else min(3, EXP_ENTRIES[1])
-    max_bullet_lines = EXP_ENTRY_LINES[1] if target_pages >= 2 else 5
+    # --- limity zależne od docelowej liczby stron oraz trybu agresywnego dopasowania A4
+    if aggressive_fit:
+        max_skills = min(6, SKILLS_COUNT[0])
+        min_skills = 4
+        max_exps = min(2, len(out.experience)) if len(out.experience) > 1 else 1
+        max_bullet_lines = 3
+    else:
+        max_skills = SKILLS_COUNT[1] if target_pages >= 2 else min(8, SKILLS_COUNT[1])
+        min_skills = SKILLS_COUNT[0]
+        max_exps = EXP_ENTRIES[1] if target_pages >= 2 else min(3, EXP_ENTRIES[1])
+        max_bullet_lines = EXP_ENTRY_LINES[1] if target_pages >= 2 else 5
 
     # --- umiejętności: najpierw najwyższy weight, stabilnie po nazwie
     skills = sorted(out.skills, key=lambda s: (-s.weight, s.label))
@@ -168,7 +174,7 @@ def apply(profile: MasterProfile, *, content_width: float, measure,
     out.experience = new_exps
 
     # --- opis profilu: 3–5 linii
-    max_summary = SUMMARY_LINES[1] if target_pages >= 2 else 4
+    max_summary = 3 if aggressive_fit else (SUMMARY_LINES[1] if target_pages >= 2 else 4)
     text, n = truncate_to_lines(out.summary.display, width_pt=content_width,
                                 font="Sans", size=9.6, max_lines=max_summary, measure=measure)
     rep.summary_lines = n

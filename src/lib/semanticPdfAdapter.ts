@@ -23,6 +23,7 @@ export interface MasterProfilePayload {
   title: string;
   initials: string;
   avatar: string;
+  photo?: string;
   contact: {
     phone: string;
     email: string;
@@ -423,6 +424,7 @@ export function adaptMasterVaultToSemanticProfile(
     title: targetTitle,
     initials,
     avatar: 'circle',
+    photo: personal.photoUrl?.trim() || '',
     contact,
     summary: {
       display: displaySummary,

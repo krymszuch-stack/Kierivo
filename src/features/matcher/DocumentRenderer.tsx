@@ -22,6 +22,7 @@ import {
   FolderArchive,
   BookmarkPlus,
   Tag,
+  ShieldCheck,
 } from 'lucide-react';
 import { MasterVault, TailoredResume, HighlightMetric, GeneratedCvExport } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -35,6 +36,7 @@ import {
 import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
 import { saveCV, PRESET_TAGS } from '../../lib/cvLibraryStorage';
 import { Modal } from '../../components/ui/Modal';
+import { Cv360VerifierModal } from './Cv360VerifierModal';
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -78,6 +80,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const [pdfLayout, setPdfLayout] = useState('sidebar');
   const [pdfTargetPages, setPdfTargetPages] = useState<1 | 2>(1);
   const [showPdfSettings, setShowPdfSettings] = useState(false);
+  const [isVerifierOpen, setIsVerifierOpen] = useState(false);
 
   // Biblioteka CV
   const [isSaveLibraryOpen, setIsSaveLibraryOpen] = useState(false);
@@ -440,6 +443,18 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             type="button"
             variant="outline"
             size="sm"
+            icon={ShieldCheck}
+            onClick={() => setIsVerifierOpen(true)}
+            className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 font-semibold"
+            aria-label="Weryfikator CV AI 360°"
+          >
+            Audyt AI 360°
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             icon={FolderArchive}
             onClick={openSaveLibraryModal}
             className="text-xs text-brand-fg border-brand-500/30 hover:bg-brand-500/10 font-semibold"
@@ -453,14 +468,21 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
       {/* Panel ustawień silnika Dual-Layer Semantic PDF */}
       {showPdfSettings && (
         <div className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 text-xs space-y-3 shadow-xs">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold text-ink flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-indigo-500" />
               Silnik Dual-Layer Semantic PDF (ATS + Print)
             </span>
-            <span className="text-[11px] text-muted">
-              ReportLab + pikepdf · Tagged PDF · /ActualText · XMP JSON-LD
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">
+                Auto-Balancing A4 aktywny (Zero stron-sierot)
+              </span>
+              {docVault.personalInfo?.photoUrl && (
+                <span className="rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 text-[10px] font-bold">
+                  Zdjęcie aktywne
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
@@ -1006,6 +1028,15 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
           </div>
         </div>
       </Modal>
+
+      {/* Modal Weryfikatora CV AI 360° (Potrójna Pętla) */}
+      <Cv360VerifierModal
+        isOpen={isVerifierOpen}
+        onClose={() => setIsVerifierOpen(false)}
+        vault={docVault}
+        targetRole={tailoredResume?.targetJobTitle || docVault.personalInfo?.title}
+        targetCompany={tailoredResume?.companyName}
+      />
     </div>
   );
 };

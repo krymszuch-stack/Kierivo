@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as _dt
 import io
 import math
+import os
 from dataclasses import dataclass, field
 
 from reportlab.lib.colors import HexColor
@@ -57,7 +58,8 @@ class RenderResult:
 
 class Renderer:
     def __init__(self, profile: MasterProfile, theme: ResumeTheme,
-                 layout: LayoutPreset, *, avatar: str | None = None):
+                 layout: LayoutPreset, *, avatar: str | None = None,
+                 density: str = "normal"):
         self.p = profile
         self.t = theme
         self.c = theme.colors
@@ -66,11 +68,51 @@ class Renderer:
         self.avatar_mode = (avatar or theme.avatar or "none").lower()
         if self.avatar_mode not in ("circle", "square", "none"):
             raise ValueError(f"avatar musi być circle|square|none, jest {avatar!r}")
+        self.density = density if density in ("normal", "compact", "ultra_compact") else "normal"
+        self.v_scale = 1.0 if self.density == "normal" else (0.86 if self.density == "compact" else 0.74)
+        self.leading_scale = 1.0 if self.density == "normal" else (0.92 if self.density == "compact" else 0.85)
         self.sem = SemanticDoc(lang="pl-PL")
         self.warnings: list[str] = []
         self.accent_area = 0.0
         self.soft_area = 0.0
         self._buf = io.BytesIO()
+
+    def _get_cropped_photo(self, photo_path: str, target_size_pt: float) -> str | None:
+        if not photo_path or not os.path.exists(photo_path):
+            return None
+        try:
+            import tempfile
+            from PIL import Image, ImageOps
+
+            with Image.open(photo_path) as img:
+                img = ImageOps.exif_transpose(img)
+                # Konwersja na RGB z zachowaniem estetycznego tła
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    alpha = img.convert("RGBA").split()[-1]
+                    bg.paste(img.convert("RGBA"), mask=alpha)
+                    img = bg
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+
+                # Center / face-balanced square crop
+                w, h = img.size
+                min_dim = min(w, h)
+                left = (w - min_dim) // 2
+                top = max(0, int((h - min_dim) * 0.2))
+                if top + min_dim > h:
+                    top = h - min_dim
+                img = img.crop((left, top, left + min_dim, top + min_dim))
+                target_px = int(target_size_pt * 3.5)
+                img = img.resize((target_px, target_px), Image.Resampling.LANCZOS)
+
+                fd, tmp_file = tempfile.mkstemp(suffix="_cv_avatar.jpg")
+                os.close(fd)
+                img.save(tmp_file, format="JPEG", quality=92)
+                return tmp_file
+        except Exception as e:  # noqa: BLE001
+            self.warnings.append(f"Nie udało się przetworzyć zdjęcia: {e}")
+            return None
 
     # ------------------------------------------------------------ narzędzia
 
@@ -204,8 +246,9 @@ class Renderer:
     # ------------------------------------------------------------ komponenty
 
     def _section_header(self, col: Column, label: str, group: str) -> None:
-        self._ensure(col, 28)
-        size = self.t.typography.h2_size
+        h_needed = 28 * self.v_scale
+        self._ensure(col, h_needed)
+        size = self.t.typography.h2_size * (0.94 if self.density == "ultra_compact" else 1.0)
         y = col.y - size
         self._fill("accent")
         self.canv.rect(col.x, y + 2.2, 13, 2.6, stroke=0, fill=1)
@@ -214,20 +257,21 @@ class Renderer:
         self._text(col.x + 19, y, label.upper(), self.t.typography.sans_bold,
                    size, color="text_primary", char_space=1.5)
         self.w.end()
-        col.y = y - 9
+        col.y = y - (9 * self.v_scale)
 
     def _para(self, col: Column, text: str, *, font: str, size: float, leading: float,
               color: str, struct: str = "P", group: str, actual: str = "",
               width: float | None = None) -> float:
         w = width or col.width
+        eff_leading = leading * self.leading_scale
         lines = wrap_text(text, font, size, w)
-        h = len(lines) * leading
+        h = len(lines) * eff_leading
         self._ensure(col, h)
         self.w.begin(struct, group, actual_text=actual or text,
                      visible_text=" ".join(lines))
         for ln in lines:
             self._text(col.x, col.y - size, ln, font, size, color=color)
-            col.y -= leading
+            col.y -= eff_leading
         self.w.end()
         return col.y
 
@@ -235,7 +279,7 @@ class Renderer:
         """Pigułka [ SQL ]: etykieta dla oka, ActualText dla parsera. Zwraca szerokość."""
         tp = self.t.typography
         w = text_width(label, tp.sans_semibold, tp.pill_size) + 14
-        h = 15.5
+        h = 15.5 * (0.92 if self.density != "normal" else 1.0)
         self.w.begin("Span", group, actual_text=semantic, visible_text=label)
         self.canv.setFillColor(HexColor(self.c.accent_soft))
         self.canv.setStrokeColor(HexColor(self.c.accent_border))
@@ -249,7 +293,8 @@ class Renderer:
 
     def _pills_flow(self, col: Column, skills, group: str) -> None:
         tp = self.t.typography
-        h, gap = 15.5, 5.5
+        h = 15.5 * (0.92 if self.density != "normal" else 1.0)
+        gap = 5.5 * self.v_scale
         x, y = col.x, col.y
         for s in skills:
             w = text_width(s.label, tp.sans_semibold, tp.pill_size) + 14
@@ -262,7 +307,7 @@ class Renderer:
                 x, y = col.x, col.top
             self._pill(x, y, s.label, s.semantic, group)
             x += w + gap
-        col.y = y - h - 6
+        col.y = y - h - (6 * self.v_scale)
 
     def _side_value_color(self) -> str:
         return "sidebar_text" if self.t.sidebar_style == "dark" else "text_primary"
@@ -274,7 +319,7 @@ class Renderer:
         mode = self.avatar_mode
         if mode == "none":
             return
-        size = AVATAR_MM / 25.4 * 72  # 42 mm -> pt
+        size = AVATAR_MM / 25.4 * 72 * (0.90 if self.density != "normal" else 1.0)  # 42 mm -> pt
         cx = col.x + col.width / 2
         cy = col.top - size / 2 - 2
         r = size / 2
@@ -282,19 +327,32 @@ class Renderer:
                      visible_text=self.p.initials)
         cv = self.canv
         drew_photo = False
-        if self.p.photo:
+        cropped = self._get_cropped_photo(self.p.photo, size) if self.p.photo else None
+        if cropped:
             try:
                 cv.saveState()
+                cv.setStrokeColor(HexColor(self.c.accent))
+                cv.setFillColor(HexColor(self.c.accent_soft))
+                cv.setLineWidth(1.4)
+                if mode == "circle":
+                    cv.circle(cx, cy, r + 1.2, stroke=1, fill=1)
+                else:
+                    cv.roundRect(cx - r - 1.2, cy - r - 1.2, size + 2.4, size + 2.4, 7, stroke=1, fill=1)
+
                 p = cv.beginPath()
                 if mode == "circle":
                     p.circle(cx, cy, r)
                 else:
-                    p.rect(cx - r, cy - r, size, size)
+                    p.roundRect(cx - r, cy - r, size, size, 6)
                 cv.clipPath(p, stroke=0, fill=0)
-                cv.drawImage(self.p.photo, cx - r, cy - r, size, size,
+                cv.drawImage(cropped, cx - r, cy - r, size, size,
                              preserveAspectRatio=True, mask="auto")
                 cv.restoreState()
                 drew_photo = True
+                try:
+                    os.remove(cropped)
+                except OSError:
+                    pass
             except Exception as e:  # noqa: BLE001
                 self.warnings.append(f"Nie udało się wstawić zdjęcia ({e}); użyto inicjałów.")
         if not drew_photo:
@@ -312,12 +370,12 @@ class Renderer:
             self.accent_area += math.pi * r * r if mode == "circle" else size * size
             initials = self.p.initials or " ".join(
                 w[0] for w in self.p.name.split()[:2]).upper()
-            fs = 30
+            fs = 30 * (0.90 if self.density != "normal" else 1.0)
             self._text(cx - text_width(initials, self.t.typography.serif_bold, fs) / 2,
                        cy - fs * 0.36, initials, self.t.typography.serif_bold, fs,
                        color="on_accent")
         self.w.end()
-        col.y = cy - r - 26
+        col.y = cy - r - (22 * self.v_scale)
 
     def _contact_block(self, col: Column) -> None:
         self._section_header(col, "Kontakt", "sidebar.contact")
@@ -376,23 +434,64 @@ class Renderer:
                 self._text(col.x + col.width - lw, col.y - 9, lang.level,
                            tp.sans_semibold, 8.8, color="accent")
             self.w.end()
-            col.y -= 15.5
+            col.y -= 15.5 * self.v_scale
 
     def _header_block(self, col: Column) -> None:
         tp = self.t.typography
+        has_photo = self.avatar_mode != "none" and bool(self.p.photo)
+        av_size = 54.0 * (0.90 if self.density != "normal" else 1.0)
+
+        if has_photo:
+            cropped = self._get_cropped_photo(self.p.photo, av_size)
+            if cropped:
+                try:
+                    ax = col.x + col.width - av_size - 4
+                    ay = col.y - av_size / 2 - 4
+                    r = av_size / 2
+                    self.w.begin("Figure", "header.avatar", actual_text=self.p.name,
+                                 visible_text=self.p.initials)
+                    cv = self.canv
+                    cv.saveState()
+                    cv.setStrokeColor(HexColor(self.c.accent))
+                    cv.setFillColor(HexColor(self.c.accent_soft))
+                    cv.setLineWidth(1.4)
+                    if self.avatar_mode == "circle":
+                        cv.circle(ax + r, ay, r + 1.2, stroke=1, fill=1)
+                    else:
+                        cv.roundRect(ax - 1.2, ay - r - 1.2, av_size + 2.4, av_size + 2.4, 7, stroke=1, fill=1)
+
+                    p = cv.beginPath()
+                    if self.avatar_mode == "circle":
+                        p.circle(ax + r, ay, r)
+                    else:
+                        p.roundRect(ax, ay - r, av_size, av_size, 6)
+                    cv.clipPath(p, stroke=0, fill=0)
+                    cv.drawImage(cropped, ax, ay - r, av_size, av_size,
+                                 preserveAspectRatio=True, mask="auto")
+                    cv.restoreState()
+                    self.w.end()
+                    try:
+                        os.remove(cropped)
+                    except OSError:
+                        pass
+                except Exception as e:  # noqa: BLE001
+                    self.warnings.append(f"Nie udało się wstawić zdjęcia w nagłówku ({e}).")
+
         # H1: imię i nazwisko; ActualText łączy imię z tytułem dla parsera
         self.w.begin("H1", "header", actual_text=f"{self.p.name} — {self.p.title}",
                      visible_text=self.p.name)
         self._text(col.x, col.y - tp.name_size, self.p.name, tp.serif_bold,
                    tp.name_size, color="text_primary")
         self.w.end()
-        col.y -= tp.name_size + 7
+        col.y -= tp.name_size + (7 * self.v_scale)
+
         # tytuł zawodowy: wersaliki, rozstrzelony, akcent
         self.w.begin("P", "header", actual_text=self.p.title, visible_text=self.p.title)
         self._text(col.x, col.y - tp.title_size, self.p.title.upper(),
                    tp.sans_semibold, tp.title_size, color="accent", char_space=1.6)
         self.w.end()
-        col.y -= tp.title_size + 9
+        col.y -= tp.title_size + (9 * self.v_scale)
+
         # linia z segmentem akcentu
         self._stroke("hairline")
         self.canv.setLineWidth(0.8)
@@ -400,7 +499,7 @@ class Renderer:
         self._fill("accent")
         self.canv.rect(col.x, col.y - 2.0, 46, 2.2, stroke=0, fill=1)
         self.accent_area += 46 * 2.2
-        col.y -= 18
+        col.y -= 18 * self.v_scale
 
     def _summary_block(self, col: Column) -> None:
         self._section_header(col, "Profil", "content.summary")
@@ -414,8 +513,8 @@ class Renderer:
         self._section_header(col, "Doświadczenie", "content.exp")
         tp = self.t.typography
         for exp in self.p.experience:
-            head_h = 14 + 12 + 8
-            self._ensure(col, head_h + 30)
+            head_h = (14 + 12 + 8) * self.v_scale
+            self._ensure(col, head_h + 24 * self.v_scale)
             actual = f"{exp.role} — {exp.company} ({exp.period}" + \
                      (f", {exp.location}" if exp.location else "") + ")"
             # rola (H3) + daty w jednym marked sequence
@@ -427,7 +526,7 @@ class Renderer:
             self._text(col.x + col.width - dw, col.y - 9.4, exp.period, tp.sans, 8.4,
                        color="text_secondary")
             self.w.end()
-            col.y -= 14
+            col.y -= 14 * self.v_scale
             # firma (kursywa, akcent) + lokalizacja
             self.w.begin("P", "content.exp",
                          actual_text=f"Firma: {exp.company}" +
@@ -440,15 +539,16 @@ class Renderer:
                            col.y - 9.6, f"· {exp.location}", tp.sans, 8.4,
                            color="text_secondary")
             self.w.end()
-            col.y -= 12
+            col.y -= 12 * self.v_scale
             self._stroke("hairline")
             self.canv.setLineWidth(0.6)
             self.canv.line(col.x, col.y, col.x + col.width, col.y)
-            col.y -= 8
+            col.y -= 8 * self.v_scale
             # punkty: kropka akcentu + tekst (LI + ActualText)
+            b_leading = 13.6 * self.leading_scale
             for b in exp.bullets:
                 lines = wrap_text(b.display, tp.sans, 9.6, col.width - 12)
-                self._ensure(col, len(lines) * 13.6 + 4)
+                self._ensure(col, len(lines) * b_leading + 3)
                 self.w.begin("LI", "content.exp", actual_text=b.semantic,
                              visible_text=b.display)
                 self._fill("accent")
@@ -457,10 +557,10 @@ class Renderer:
                 for ln in lines:
                     self._text(col.x + 12, col.y - 9.6, ln, tp.sans, 9.6,
                                color="text_primary")
-                    col.y -= 13.6
+                    col.y -= b_leading
                 self.w.end()
-                col.y -= 4.5
-            col.y -= 8
+                col.y -= 4.5 * self.v_scale
+            col.y -= 8 * self.v_scale
 
     def _edu_block(self, col: Column) -> None:
         if not self.p.education:
@@ -470,7 +570,7 @@ class Renderer:
         for ed in self.p.education:
             period = " – ".join(x for x in (ed.start, ed.end) if x)
             actual = f"{ed.degree} — {ed.school}" + (f" ({period})" if period else "")
-            self._ensure(col, 30 + (14 if ed.note else 0))
+            self._ensure(col, (30 + (14 if ed.note else 0)) * self.v_scale)
             self.w.begin("P", "content.edu", actual_text=actual,
                          visible_text=ed.degree)
             self._text(col.x, col.y - 9.8, ed.degree, tp.sans_semibold, 9.8,
@@ -480,17 +580,17 @@ class Renderer:
                 self._text(col.x + col.width - pw, col.y - 9.2, period, tp.sans, 8.4,
                            color="text_secondary")
             self.w.end()
-            col.y -= 13
+            col.y -= 13 * self.v_scale
             self.w.begin("P", "content.edu", actual_text=f"Uczelnia/szkoła: {ed.school}",
                          visible_text=ed.school)
             self._text(col.x, col.y - 9.4, ed.school, tp.serif_italic, 9.6,
                        color="text_secondary")
             self.w.end()
-            col.y -= 12.5
+            col.y -= 12.5 * self.v_scale
             if ed.note:
                 self._para(col, ed.note, font=tp.sans, size=8.4, leading=11.4,
                            color="text_secondary", group="content.edu")
-            col.y -= 6
+            col.y -= 6 * self.v_scale
 
     def _footer(self) -> None:
         tp = self.t.typography
@@ -542,29 +642,60 @@ class Renderer:
         by = PAGE_H - 18
         text_x = pad
         if self.avatar_mode != "none":
-            av_size = 52.0
+            av_size = 54.0 * (0.90 if self.density != "normal" else 1.0)
             ax = pad
             ay = by - av_size / 2 - 8
             r = av_size / 2
             self.w.begin("Figure", "header.avatar", actual_text=self.p.name,
                          visible_text=self.p.initials)
             cv = self.canv
-            cv.saveState()
-            p = cv.beginPath()
-            if self.avatar_mode == "circle":
-                p.circle(ax + r, ay, r)
-            else:
-                p.roundRect(ax, ay - r, av_size, av_size, 6)
-            cv.clipPath(p, stroke=0, fill=0)
-            cv.linearGradient(ax, ay + r, ax + av_size, ay - r,
-                              [HexColor(self.c.accent), HexColor(self.c.accent_alt)],
-                              extend=True)
-            cv.restoreState()
-            self.accent_area += math.pi * r * r if self.avatar_mode == "circle" else av_size * av_size
-            initials = self.p.initials or " ".join(w[0] for w in self.p.name.split()[:2]).upper()
-            fs = 20
-            self._text(ax + r - text_width(initials, tp.serif_bold, fs) / 2,
-                       ay - fs * 0.36, initials, tp.serif_bold, fs, color="on_accent")
+            drew_photo = False
+            cropped = self._get_cropped_photo(self.p.photo, av_size) if self.p.photo else None
+            if cropped:
+                try:
+                    cv.saveState()
+                    cv.setStrokeColor(HexColor(self.c.accent))
+                    cv.setFillColor(HexColor(self.c.accent_soft))
+                    cv.setLineWidth(1.4)
+                    if self.avatar_mode == "circle":
+                        cv.circle(ax + r, ay, r + 1.2, stroke=1, fill=1)
+                    else:
+                        cv.roundRect(ax - 1.2, ay - r - 1.2, av_size + 2.4, av_size + 2.4, 7, stroke=1, fill=1)
+
+                    p = cv.beginPath()
+                    if self.avatar_mode == "circle":
+                        p.circle(ax + r, ay, r)
+                    else:
+                        p.roundRect(ax, ay - r, av_size, av_size, 6)
+                    cv.clipPath(p, stroke=0, fill=0)
+                    cv.drawImage(cropped, ax, ay - r, av_size, av_size,
+                                 preserveAspectRatio=True, mask="auto")
+                    cv.restoreState()
+                    drew_photo = True
+                    try:
+                        os.remove(cropped)
+                    except OSError:
+                        pass
+                except Exception as e:  # noqa: BLE001
+                    self.warnings.append(f"Nie udało się wstawić zdjęcia do banera ({e}); użyto inicjałów.")
+
+            if not drew_photo:
+                cv.saveState()
+                p = cv.beginPath()
+                if self.avatar_mode == "circle":
+                    p.circle(ax + r, ay, r)
+                else:
+                    p.roundRect(ax, ay - r, av_size, av_size, 6)
+                cv.clipPath(p, stroke=0, fill=0)
+                cv.linearGradient(ax, ay + r, ax + av_size, ay - r,
+                                  [HexColor(self.c.accent), HexColor(self.c.accent_alt)],
+                                  extend=True)
+                cv.restoreState()
+                self.accent_area += math.pi * r * r if self.avatar_mode == "circle" else av_size * av_size
+                initials = self.p.initials or " ".join(w[0] for w in self.p.name.split()[:2]).upper()
+                fs = 20 * (0.90 if self.density != "normal" else 1.0)
+                self._text(ax + r - text_width(initials, tp.serif_bold, fs) / 2,
+                           ay - fs * 0.36, initials, tp.serif_bold, fs, color="on_accent")
             self.w.end()
             text_x = pad + av_size + 16
 

@@ -155,6 +155,27 @@ pdfRouter.post(
       const profileJsonPath = path.join(tempDir, 'profile.json');
       const outPdfPath = path.join(tempDir, 'cv.pdf');
 
+      // Obsługa zdjęcia kandydata (dekodowanie data URI / base64 do pliku tymczasowego)
+      if (profilePayload.photo && typeof profilePayload.photo === 'string') {
+        const rawPhoto = profilePayload.photo.trim();
+        const dataUriMatch = rawPhoto.match(/^data:([A-Za-z-+/]+);base64,(.+)$/s);
+        if (dataUriMatch) {
+          const mime = dataUriMatch[1].toLowerCase();
+          const ext = mime.includes('png') ? '.png' : mime.includes('webp') ? '.webp' : '.jpg';
+          const photoPath = path.join(tempDir, `avatar${ext}`);
+          try {
+            const photoBuffer = Buffer.from(dataUriMatch[2], 'base64');
+            await fs.writeFile(photoPath, photoBuffer);
+            profilePayload.photo = photoPath;
+          } catch {
+            profilePayload.photo = '';
+          }
+        } else if (!existsSync(rawPhoto)) {
+          // Jeśli podana ścieżka nie istnieje fizycznie na serwerze, zerujemy
+          profilePayload.photo = '';
+        }
+      }
+
       await fs.writeFile(profileJsonPath, JSON.stringify(profilePayload, null, 2), 'utf-8');
 
       // 3. Ścieżka do silnika `mastervault-cv`

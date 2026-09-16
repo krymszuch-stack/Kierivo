@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { aiService } from '../services/ai.service';
+import { verifyCvWithTripleLoop } from '../services/cvVerifier.service';
 import { aiEndpointsLimiter } from '../middleware/rateLimiter';
 import { requireAuth } from '../middleware/requireAuth';
 import { executeAiOperation } from '../quota';
@@ -117,6 +118,65 @@ aiRouter.post(
       );
 
       res.json({ success: true, enrichment });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/ai/verify-cv
+ *
+ * Dedykowany endpoint backendowy z potrójną pętlą sprawdzającą AI (360° CV Verification).
+ * Wykorzystuje wdrożone modele Azure OpenAI (np. gpt-4o) do głębokiego audytu:
+ * 1. ATS Parser & Keyword Alignment Gate
+ * 2. Recruiter 6-Second First Impression & Achievement Metrics
+ * 3. Chronology, Logic Consistency & Compliance Gate
+ */
+aiRouter.post(
+  '/ai/verify-cv',
+  requireAuth,
+  aiEndpointsLimiter,
+  async (
+    req: Request<
+      unknown,
+      unknown,
+      {
+        vault?: MasterVault;
+        targetRole?: string;
+        targetCompany?: string;
+        jobDescription?: string;
+      }
+    >,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { vault, targetRole, targetCompany, jobDescription } = req.body;
+
+      if (!vault || typeof vault !== 'object' || !vault.personalInfo) {
+        return res.status(400).json({
+          success: false,
+          error: 'Brak kompletnego profilu MasterVault do weryfikacji.',
+        });
+      }
+
+      const userId = req.user!.id;
+      const report = await executeAiOperation(
+        userId,
+        'verify-cv',
+        async () => {
+          const result = await verifyCvWithTripleLoop({
+            vault,
+            targetRole,
+            targetCompany,
+            jobDescription,
+          });
+          return { data: result };
+        }
+      );
+
+      res.json({ success: true, report });
     } catch (err) {
       next(err);
     }

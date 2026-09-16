@@ -78,8 +78,35 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
     resolved, gov = govern(profile, content_width=main_column_width(ly), measure=measure,
                            target_pages=target_pages)
 
-    r = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar)
+    # Pass 1: standardowy render
+    r = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar, density="normal")
     result = r.render()
+
+    # Inteligentny Auto-Balancing A4: eliminacja stron-sierot i gwarancja dopasowania do 1 strony
+    if target_pages == 1 and result.pages > 1:
+        # Pass 2: kompresja wertykalna (mikro-spacing) bez usuwania żadnej treści
+        r_compact = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar, density="compact")
+        res_compact = r_compact.render()
+        if res_compact.pages == 1:
+            r = r_compact
+            result = res_compact
+            gov.notes.append("Auto-Balancing A4: dopasowano idealnie do 1 strony przez kompresję wertykalną.")
+        else:
+            # Pass 3: adaptacyjny governance pod 1 stronę (selekcja najważniejszych osiągnięć)
+            resolved_agg, gov_agg = govern(profile, content_width=main_column_width(ly), measure=measure,
+                                           target_pages=1, aggressive_fit=True)
+            r_agg = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="compact")
+            res_agg = r_agg.render()
+            if res_agg.pages == 1:
+                r, result, resolved, gov = r_agg, res_agg, resolved_agg, gov_agg
+                gov.notes.append("Auto-Balancing A4: zbalansowano treść do dokładnie 1 strony A4.")
+            else:
+                # Pass 4: tryb ultra-compact dla pewności dopasowania
+                r_ultra = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="ultra_compact")
+                res_ultra = r_ultra.render()
+                if res_ultra.pages <= 1 or res_ultra.pages < result.pages:
+                    r, result, resolved, gov = r_ultra, res_ultra, resolved_agg, gov_agg
+                    gov.notes.append("Auto-Balancing A4: zastosowano tryb ultra-compact.")
 
     import io
 
