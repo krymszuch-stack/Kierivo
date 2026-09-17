@@ -1,0 +1,29 @@
+{
+  "id": "c354f6933248f2eb9418",
+  "generated_at": "2026-09-11T13:25:15.713Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "Entra ID",
+    "text": "Zarządzanie tożsamością w chmurze za pomocą Azure AD Premium, z naciskiem na Single Sign-On i integracje z legacy systemami.",
+    "expected": "PARTIAL",
+    "attack_type": "false_positive",
+    "difficulty": 5,
+    "reason": "Użycie 'Azure AD' (synonim historyczny dla Entra ID) w kontekście 'Premium' sugeruje zaawansowaną kompetencję, ale brak słowa 'Entra' lub 'Identity' wprost może sprawić, że parser uzna to za ogólną kompetencję chmurowa, zamiast specyficznej administracji tożsamości.",
+    "evidence_terms": [
+      "Azure AD",
+      "Premium",
+      "Single Sign-On",
+      "Legacy"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.95,
+    "reason": "Przypadek dobrze ilustruje potencjalny fałszywy pozytyw parsera CVelocity. Użycie 'Azure AD' jako synonimu dla Entra ID jest historycznie poprawne, ale brak wyraźnego wskazania na 'Entra' lub 'Identity' może prowadzić do błędnej klasyfikacji. Wartość 'Premium' dodaje kontekst zaawansowania, co potwierdza kompetencję, ale nie zastępuje konieczności wskazania na tożsamość. Przypadek jest realistyczny, zawiera dowody i może wywołać błąd parsera.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "prop_mock_1785337395511",
+  "entity": {
+    "id": "device:specjalistyczny-sprzet-1785337395511",
+    "type": "device",
+    "name": "Analizator Diagnostyczny dla serwisant kotłów gazowych",
+    "aliases": [
+      "Analizator serwisant kotłów gazowych"
+    ],
+    "description": "Wykryte urządzenie pomiarowe i diagnostyczne wykorzystywane przez serwisant kotłów gazowych",
+    "tags": [
+      "diagnostyka",
+      "gemini-proposal"
+    ],
+    "status": "proposed",
+    "confidence": 0.8,
+    "source": "gemini",
+    "createdAt": "2026-07-29T15:03:15.510Z",
+    "updatedAt": "2026-07-29T15:03:15.510Z"
+  },
+  "status": "proposed",
+  "proposedBy": "gemini-provider-simulation",
+  "notes": "Niezweryfikowana propozycja urządzeń dla profesji serwisant kotłów gazowych",
+  "createdAt": "2026-07-29T15:03:15.510Z"
+}

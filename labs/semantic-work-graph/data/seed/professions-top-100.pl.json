@@ -1,0 +1,113 @@
+[
+  {
+    "id": "serwisant-kotlow-gazowych",
+    "name": "Serwisant kotłów gazowych",
+    "category": "Budownictwo i instalacje",
+    "aliases": ["monter urządzeń gazowych", "serwisant junkersów", "gazownik serwisant", "technik urządzeń grzewczych"],
+    "skills": ["diagnostyka urządzeń gazowych", "analiza spalin", "regulacja automatyki palnika", "próby szczelności gazowej"],
+    "tools": ["analizator spalin", "detektor gazu", "kocioł gazowy", "piecyk gazowy", "manometr cyfrowy"],
+    "tasks": ["przegląd okresowy kotła gazowego", "wymiana zużytych części i czyszczenie wymiennika", "pomiar emisyjności spalin"],
+    "brands": ["Junkers", "Viessmann", "Vaillant", "Buderus", "Bosch"],
+    "technologies": ["kotły kondensacyjne", "automatyka pogodowa"],
+    "confidence": 0.95
+  },
+  {
+    "id": "monter-instalacji-grzewczych",
+    "name": "Monter instalacji grzewczych",
+    "category": "Budownictwo i instalacje",
+    "aliases": ["instalator co", "hydraulik installer", "monter techniki grzewczej"],
+    "skills": ["zdzieranie i układanie rur", "lutowanie twarde", "montaż kotłowni", "płukanie instalacji centralnego ogrzewania"],
+    "tools": ["gwintownica rur", "zaciskarka PEX", "kocioł gazowy", "pompa ciepła"],
+    "tasks": ["montaż grzejników i podłogówki", "podłączenie pieca do instalacji", "próby ciśnieniowe"],
+    "brands": ["KAN-therm", "Wavin", "Grundfos"],
+    "confidence": 0.95
+  },
+  {
+    "id": "elektryk-instalator",
+    "name": "Elektryk instalator",
+    "category": "Budownictwo i instalacje",
+    "aliases": ["elektryk budowlany", "monter sieci elektrycznych", "elektromonter"],
+    "skills": ["pomiary rezystancji izolacji", "montaż rozdzielnic niska napięcie", "czytanie schematów elektrycznych"],
+    "tools": ["miernik parametrów instalacji", "wkrętaki izolowane VDE", "bruzdownica", "próbnik napięcia"],
+    "tasks": ["układanie okablowania w obiektach", "podłączanie aparatury modułowej", "wykonywanie pomiarów odbiorczych"],
+    "brands": ["Legrand", "Hager", "Schneider Electric", "Sonel"],
+    "confidence": 0.95
+  },
+  {
+    "id": "spawacz-mag-tig",
+    "name": "Spawacz MAG / TIG",
+    "category": "Produkcja i technika",
+    "aliases": ["spawacz konstrukcji stalowych", "spawacz rurociągów", "operator spawalniczy"],
+    "skills": ["spawanie metodą 135 MAG", "spawanie metodą 141 TIG", "kontrola spoin wzrokowa VT2", "przygotowanie krawędzi"],
+    "tools": ["półautomat spawalniczy", "spawarka TIG", "szlifierka kątowa", "przyłbica samościemniająca"],
+    "tasks": ["łączenie elementów ze stali nierdzewnej i czarnej", "szlifowanie i trasowanie", "ocena jakości spoin"],
+    "brands": ["Esab", "Kemppi", "Fronius", "Lincoln Electric"],
+    "confidence": 0.95
+  },
+  {
+    "id": "mechanik-pojazdow-samochodowych",
+    "name": "Mechanik pojazdów samochodowych",
+    "category": "Motoryzacja i transport",
+    "aliases": ["mechanik samochodowy", "auto mechanik", "serwisant aut"],
+    "skills": ["diagnostyka komputerowa samochodów", "wymiana rozrządu", "serwis układu hamulcowego", "naprawa zawieszenia"],
+    "tools": ["tester diagnostyczny OBD2", "podnośnik warsztatowy kolumnowy", "klucz dynamometryczny", "blokada rozrządu"],
+    "tasks": ["diagnozowanie usterek silnika i podwozia", "wymiana oleju i filtrów", "wymiana klocków i tarcz hamulcowych"],
+    "brands": ["Bosch", "Texa", "Snap-on", "Hazet"],
+    "confidence": 0.95
+  },
+  {
+    "id": "programista-frontend-react",
+    "name": "Programista Frontend (React)",
+    "category": "IT i dane",
+    "aliases": ["frontend developer", "react engineer", "programista interfejsu", "web developer"],
+    "skills": ["tworzenie komponentów React", "programowanie w TypeScript", "stylowanie Tailwind CSS", "integracja REST API"],
+    "tools": ["Visual Studio Code", "Git", "Chrome DevTools", "npm", "Vite"],
+    "tasks": ["kodowanie interfejsów użytkownika", "optymalizacja wydajności stron web", "pisać testy jednostkowe"],
+    "brands": ["Meta", "Vercel", "GitHub"],
+    "confidence": 0.95
+  },
+  {
+    "id": "administrator-sieci-i-systemow",
+    "name": "Administrator sieci i systemów",
+    "category": "IT i dane",
+    "aliases": ["sysadmin", "network engineer", "administrator IT", "inżynier infrastruktury"],
+    "skills": ["konfiguracja routerów i switchy", "zarządzanie serwerami Linux", "konfiguracja firewalli", "tworzenie kopii zapasowych"],
+    "tools": ["serwer rackowy", "switch zarządzalny", "Wireshark", "Terminal SSH", "PuTTY"],
+    "tasks": ["monitoring dostępności usług IT", "zarządzanie uprawnieniami użytkowników Active Directory", "rozwiązywanie incydentów sieciowych"],
+    "brands": ["Cisco", "MikroTik", "Fortinet", "Dell"],
+    "confidence": 0.95
+  },
+  {
+    "id": "pielegniarka-oddzialowa",
+    "name": "Pielęgniarka / Pielęgniarz",
+    "category": "Zdrowie i opieka",
+    "aliases": ["pielęgniarka odcinkowa", "personel pielęgniarski", "siostra pielęgniarka"],
+    "skills": ["pobieranie krwi do badań", "podawanie leków i kroplówek", "opatrywanie ran", "prowadzenie dokumentacji medycznej"],
+    "tools": ["stetoskop Medyczny", "ciśnieniomierz", "wenflon", "glukometr", "strzykawki jednorazowe"],
+    "tasks": ["toaleta drzewca i pielęgnacja pacjenta", "kaniulacja żył obwodowych", "monitorowanie parametrów życiowych"],
+    "brands": ["B. Braun", "BD Medical", "3M Littmann"],
+    "confidence": 0.95
+  },
+  {
+    "id": "magazynier-operator-wózka",
+    "name": "Magazynier / Operator wózka widłowego",
+    "category": "Logistyka i magazyn",
+    "aliases": ["operator wózka jezdniowego", "pracownik magazynowy", "magazynier komplektator"],
+    "skills": ["obsługa wózka widłowego czołowego i bocznego", "kompletowanie zamówień wg skanera WMS", "przyjmowanie i wydawanie towaru"],
+    "tools": ["wózek widłowy", "skaner kodów kreskowych WMS", "owijarka palet", "wózek paletowy ręczny"],
+    "tasks": ["załadunek i rozładunek ciężarówek", "rozmieszczanie palet na regałach wysokiego składowania", "inwentaryzacja stanów magazynowych"],
+    "brands": ["Toyota Material Handling", "Linde", "Jungheinrich", "Zebra"],
+    "confidence": 0.95
+  },
+  {
+    "id": "ksiegowy-bilansista",
+    "name": "Księgowy / Księgowa bilansistka",
+    "category": "Biuro, finanse i obsługa klienta",
+    "aliases": ["samodzielny księgowy", "pracownik działu księgowości", "specjalista ds. rachunkowości"],
+    "skills": ["prowadzenie ksiąg rachunkowych", "sporządzanie deklaracji VAT i CIT", "uzgadnianie kont rozrachunkowych", "zamknięcie miesiąca i roku"],
+    "tools": ["system ERP FK", "Microsoft Excel", "program Symfonia", "Płatnik ZUS"],
+    "tasks": ["księgowanie faktur zakupowych i sprzedażowych", "wyliczanie zaliczek na podatki", "przygotowywanie sprawozdań finansowych"],
+    "brands": ["Comarch", "Sage Symfonia", "Inserth"],
+    "confidence": 0.95
+  }
+]

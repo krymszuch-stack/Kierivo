@@ -1,0 +1,25 @@
+{
+  // Własny tsconfig, bo to osobny pakiet npm z własnymi zależnościami —
+  // dokładnie tak samo jak `semantic-work-graph/`. Katalog główny wyklucza
+  // `samples/` w swoim `tsconfig.json` i w `eslint.config.js`, więc `npm run
+  // lint` w korzeniu nie próbuje kompilować kodu, którego zależności leżą
+  // w innym `node_modules`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "allowJs": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}

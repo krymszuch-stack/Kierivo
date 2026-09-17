@@ -1,0 +1,29 @@
+{
+  "id": "b03bd6f68f7b862dd3f2",
+  "generated_at": "2026-09-11T13:15:01.906Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "SQL",
+    "text": "Specialized in legacy data warehousing with extensive experience in Sybase SQL Server environments, optimizing complex stored procedures and managing large-scale transactional databases before the migration to modern cloud stacks.",
+    "expected": "PARTIAL",
+    "attack_type": "historic_name",
+    "difficulty": 5,
+    "reason": "The parser might conflate 'Sybase SQL Server' (a historic, specific engine) with generic 'SQL' or miss it entirely if looking for the modern 'SQL Server' keyword. The text avoids the direct string 'SQL Server' in favor of 'Sybase SQL Server', testing the parser's ability to handle vendor-specific legacy naming conventions.",
+    "evidence_terms": [
+      "Sybase",
+      "SQL Server",
+      "stored procedures",
+      "data warehousing"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.95,
+    "reason": "The case is well-constructed and meets all criteria for a high-quality corpus entry. It effectively tests the parser's ability to distinguish between legacy and modern SQL naming conventions, while also providing clear evidence terms that support the 'PARTIAL' classification. The text is realistic, the expected classification is justified, and the attack type is clearly defined. This case would be useful for training and evaluating the parser's robustness in handling vendor-specific terminology.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}

@@ -1,0 +1,44 @@
+{
+  "name": "semantic-work-graph",
+  "version": "1.0.0",
+  "description": "Controlled semantic knowledge graph of professions, competencies, tools, devices, brands, technologies, and concepts.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "swg": "dist/cli/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "cli": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "seed:import": "tsx src/cli/index.ts seed:import",
+    "seed:export-md": "tsx src/cli/index.ts seed:export-md",
+    "seed:lexicon": "tsx scripts/seed-lexicon.ts",
+    "test:lexicon": "vitest run tests/lexicon.test.ts"
+  },
+  "keywords": [
+    "semantic-graph",
+    "knowledge-graph",
+    "professions",
+    "competencies",
+    "tools",
+    "typescript"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "@google/genai": "*",
+    "better-sqlite3": "^13.0.3",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.13.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

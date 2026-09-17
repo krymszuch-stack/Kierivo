@@ -1,0 +1,29 @@
+{
+  "id": "679a714ddd1ef33058f9",
+  "generated_at": "2026-09-11T13:22:02.769Z",
+  "generator": "oathcry-twin:latest",
+  "critic": "oathcry-twin-classic:latest",
+  "generated": {
+    "target_concept": "DHCP",
+    "text": "Spearheaded the migration of legacy TFTP boot servers to a modern, scalable protocol infrastructure, ensuring seamless IP address lifecycle management for over 2,000 endpoints across hybrid environments.",
+    "expected": "PARTIAL",
+    "attack_type": "historic_name",
+    "difficulty": 5,
+    "reason": "The text describes the exact function of DHCP (IP lifecycle, booting, endpoint management) but avoids the word 'DHCP' entirely, relying on the synonym 'TFTP' which is technically related but not identical. It forces the parser to decide if 'protocol infrastructure' implies the specific stateless/stateful logic of DHCP or just a generic network layer upgrade.",
+    "evidence_terms": [
+      "TFTP",
+      "boot servers",
+      "IP address lifecycle",
+      "endpoints"
+    ]
+  },
+  "critique": {
+    "valid_case": true,
+    "corrected_expected": "PARTIAL",
+    "confidence": 0.95,
+    "reason": "This case is highly suitable for a high-quality parser corpus. It presents a nuanced scenario where the text describes DHCP functionality through related but distinct terminology (TFTP, IP lifecycle, endpoints). The absence of the exact term 'DHCP' forces the parser to infer based on contextual clues, which is a realistic and challenging scenario. The expected classification as 'PARTIAL' is appropriate, as the text clearly relates to DHCP but does not explicitly name it. This case effectively tests the parser's ability to recognize implicit references to technical concepts, making it valuable for training and evaluating robustness in real-world scenarios.",
+    "parser_risk": "medium",
+    "useful_for_training": true
+  },
+  "expected": "PARTIAL"
+}
