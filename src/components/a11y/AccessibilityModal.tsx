@@ -72,6 +72,7 @@ export const AccessibilityModal: React.FC<AccessibilityModalProps> = ({ isOpen, 
                 key={opt.id}
                 type="button"
                 onClick={() => setTextScale(opt.id)}
+                aria-pressed={settings.textScale === opt.id}
                 className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
                   settings.textScale === opt.id
                     ? 'border-brand-500 bg-brand-500/10 text-brand-600 font-bold'
