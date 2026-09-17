@@ -14,6 +14,7 @@ import os from 'os';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter';
+import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
 import { MasterVault, TailoredResume } from '../../types';
 
 export const pdfRouter = Router();
@@ -45,6 +46,7 @@ export interface ExportPdfRequestBody {
   theme?: string;
   layout?: string;
   targetPages?: number;
+  avatar?: 'circle' | 'square' | 'none';
   summaryOverride?: string;
   targetRole?: string;
   companyName?: string;
@@ -90,6 +92,47 @@ pdfRouter.get('/cv/themes', (_req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/cv/validate-ats
+ * Waliduje wyekstrahowany tekst PDF pod kątem kompatybilności z 5 ATS-ami.
+ * Nie generuje PDF — przyjmuje surowy tekst i dane MasterVault.
+ */
+pdfRouter.post(
+  '/cv/validate-ats',
+  async (
+    req: Request<unknown, unknown, { extractedText: string; vault: MasterVault; vendorIds?: string[] }>,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const { extractedText, vault, vendorIds } = req.body;
+
+      if (!extractedText || typeof extractedText !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Wymagany jest extractedText (surowy tekst ekstrahowany z PDF).',
+        });
+      }
+
+      if (!vault || !vault.personalInfo) {
+        return res.status(400).json({
+          success: false,
+          error: 'Wymagany jest vault (MasterVault) do porównania.',
+        });
+      }
+
+      const report = await validatePdfTextForAts(extractedText, vault, { vendorIds });
+
+      res.json({
+        success: true,
+        report,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
  * POST /api/cv/export-pdf
  * Generuje dwuwarstwowy plik PDF z profilu MasterVault.
  */
@@ -98,12 +141,13 @@ pdfRouter.post(
   async (req: Request<unknown, unknown, ExportPdfRequestBody>, res: Response, next: NextFunction) => {
     let tempDir = '';
     try {
-      const {
+       const {
         vault,
         tailoredResume,
         theme = 'parchment',
         layout = 'sidebar',
         targetPages = 1,
+        avatar,
         summaryOverride,
         targetRole,
         companyName,
@@ -200,6 +244,10 @@ pdfRouter.post(
         String(Math.min(Math.max(Number(targetPages) || 1, 1), 2)),
       ];
 
+      if (avatar && avatar !== 'none') {
+        args.push('--avatar', avatar);
+      }
+
       const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 
       await new Promise<void>((resolve, reject) => {
@@ -233,6 +281,40 @@ pdfRouter.post(
       // 5. Odczyt wygenerowanego bufora PDF
       const pdfBuffer = await fs.readFile(outPdfPath);
 
+      // 6. Walidacja ATS: ekstrakcja tekstu z PDF i porównanie z MasterVault
+      let atsValidation = null;
+      try {
+        const atsExtractArgs = ['-m', 'mvcv', 'tools', 'ats_extract', outPdfPath];
+        const atsExtractResult = await new Promise<string>((resolve, reject) => {
+          let stdout = '';
+          let stderr = '';
+          const proc = spawn(pythonBin, atsExtractArgs, {
+            cwd: engineDir,
+            env: {
+              ...process.env,
+              PYTHONPATH: engineDir,
+              PYTHONIOENCODING: 'utf-8',
+            },
+          });
+          proc.stdout.on('data', (d) => { stdout += d.toString(); });
+          proc.stderr.on('data', (d) => { stderr += d.toString(); });
+          proc.on('close', (code) => {
+            if (code === 0) resolve(stdout);
+            else reject(new Error(`ATS extraction failed (code ${code}): ${stderr}`));
+          });
+          proc.on('error', reject);
+        });
+
+        const atsExtractData = JSON.parse(atsExtractResult);
+        atsValidation = await validatePdfTextForAts(atsExtractData.rawText, vault, {
+          hasActualText: atsExtractData.hasActualText,
+          hasInvisibleText: atsExtractData.hasInvisibleText,
+        });
+      } catch {
+        // Walidacja ATS jest niekrytyczna — nie blokuje eksportu
+        atsValidation = null;
+      }
+
       // Przygotowanie bezpiecznej nazwy pliku
       const safeName = profilePayload.name
         .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ_-]/g, '_')
@@ -259,6 +341,23 @@ pdfRouter.post(
       res.setHeader('X-CV-Theme', theme);
       res.setHeader('X-CV-Layout', layout);
       res.setHeader('X-CV-Cache', 'MISS');
+
+      // Dodaj wyniki walidacji ATS w headerach (dla klienta)
+      if (atsValidation) {
+        res.setHeader('X-ATS-Score', String(atsValidation.overallScore));
+        res.setHeader('X-ATS-Status', atsValidation.overallStatus);
+        res.setHeader('X-ATS-Tagged', String(atsValidation.taggedPdfPresent));
+        // Pełny raport w body — klient go odczyta z JSON
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+        return res.json({
+          success: true,
+          filename,
+          pdf: pdfBuffer.toString('base64'),
+          atsValidation,
+        });
+      }
+
       res.send(pdfBuffer);
     } catch (err) {
       next(err);

@@ -3,11 +3,13 @@
  *
  * Pobiera wygenerowany dokument z backendu Kierivo i uruchamia pobieranie
  * binarnego pliku .pdf za pomocą biblioteki `file-saver`.
+ * Po eksporcie zwraca wyniki walidacji ATS (jeśli dostępne).
  */
 
 import { saveAs } from 'file-saver';
 import { clientEnv } from './clientEnv';
 import { MasterVault, TailoredResume } from '../types';
+import type { AtsPdfValidationReport } from './atsPdfValidator';
 
 export interface SemanticPdfExportOptions {
   vault: MasterVault;
@@ -15,6 +17,7 @@ export interface SemanticPdfExportOptions {
   theme?: string;
   layout?: string;
   targetPages?: number;
+  avatar?: 'circle' | 'square' | 'none';
   summaryOverride?: string;
   targetRole?: string;
   companyName?: string;
@@ -59,10 +62,18 @@ export async function fetchSemanticThemes(): Promise<{
   }
 }
 
+export interface SemanticPdfExportResult {
+  /** Wyniki walidacji ATS (null jeśli walidacja nie była dostępna) */
+  atsValidation: AtsPdfValidationReport | null;
+  /** Nazwa pliku */
+  filename: string;
+}
+
 /**
  * Wywołuje backendowy silnik mvcv i pobiera gotowy plik PDF.
+ * Po eksporcie zwraca wyniki walidacji ATS.
  */
-export async function downloadSemanticPdf(options: SemanticPdfExportOptions): Promise<void> {
+export async function downloadSemanticPdf(options: SemanticPdfExportOptions): Promise<SemanticPdfExportResult> {
   const res = await fetch(`${clientEnv.apiUrl}/api/cv/export-pdf`, {
     method: 'POST',
     headers: {
@@ -82,11 +93,55 @@ export async function downloadSemanticPdf(options: SemanticPdfExportOptions): Pr
     throw new Error(errorMsg);
   }
 
+  const contentType = res.headers.get('content-type') || '';
+  const name = options.vault.personalInfo?.fullName?.replace(/\s+/g, '_') || 'Kandydat';
+
+  // Obsługa nowej odpowiedzi JSON (z walidacją ATS)
+  if (contentType.includes('application/json')) {
+    const data = await res.json();
+    if (data.pdf) {
+      // Dekoduj base64 PDF
+      const binaryStr = atob(data.pdf);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const filename = data.filename || `CV_${name}.pdf`;
+      saveAs(blob, filename);
+
+      return {
+        atsValidation: data.atsValidation ?? null,
+        filename,
+      };
+    }
+  }
+
+  // Fallback: binarny PDF (stary format bez walidacji)
   const disposition = res.headers.get('content-disposition') || '';
   const match = disposition.match(/filename="?([^";]+)"?/);
-  const name = options.vault.personalInfo?.fullName?.replace(/\s+/g, '_') || 'Kandydat';
   const filename = match && match[1] ? decodeURIComponent(match[1]) : `CV_${name}.pdf`;
 
   const blob = await res.blob();
   saveAs(blob, filename);
+
+  // Próbuj odczytać wyniki z headerów
+  const atsScore = res.headers.get('X-ATS-Score');
+  const atsStatus = res.headers.get('X-ATS-Status');
+  const atsTagged = res.headers.get('X-ATS-Tagged');
+
+  return {
+    atsValidation: atsScore
+      ? {
+          vendors: [],
+          overallScore: parseInt(atsScore, 10) || 0,
+          overallStatus: (atsStatus as 'PASS' | 'WARN' | 'FAIL') || 'WARN',
+          taggedPdfPresent: atsTagged === 'true',
+          invisibleTextDetected: false,
+          generalRecommendations: [],
+          validatedAt: new Date().toISOString(),
+        }
+      : null,
+    filename,
+  };
 }
