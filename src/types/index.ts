@@ -123,6 +123,8 @@ export interface Claim {
 import type { MobilityPreferences } from '../lib/commuteCalculator';
 
 export interface MasterVault {
+  /** Wersja schematu danych encji (liczba całkowita, np. 1). */
+  schemaVersion?: number;
   version: string;
   updatedAt: string;
   profiler: ProfilerState;
@@ -541,6 +543,8 @@ export interface GeneratedCvExport {
  * i synchronizacji, a przy jednej rozmowie na aplikację nie kupowałaby nic.
  */
 export interface JobApplication {
+  /** Wersja schematu danych encji (liczba całkowita, np. 1). */
+  schemaVersion?: number;
   id: string;
   company: string;
   position: string;
@@ -576,4 +580,7 @@ export interface JobApplication {
    * Opcjonalna dla aplikacji dodanych ręcznie w Pipeline.
    */
   documentSnapshot?: ApplicationDocumentSnapshot;
+
+  /** Czas ostatniej aktualizacji rekordu (ISO 8601). */
+  updatedAt?: string;
 }

@@ -19,6 +19,7 @@ import { NAV_SECTIONS, NavTabId } from '../../lib/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { showToast } from '../../store/useToastStore';
 import { FREE_BETA_LABEL } from '../../lib/beta';
+import { ModelQuotaCounter } from '../ui/ModelQuotaCounter';
 
 export interface TopbarProps {
   activeTab: NavTabId;
@@ -95,12 +96,18 @@ export const Topbar: React.FC<TopbarProps> = ({
           onClick={() => {
             window.dispatchEvent(new Event('cvelocity:open-command-palette'));
           }}
+          aria-label="Otwórz wyszukiwarkę funkcji"
           className="hidden sm:flex items-center gap-2 rounded-xl border border-line bg-elevated px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-ink transition-colors"
           title="Otwórz wyszukiwarkę funkcji"
         >
           <Search className="h-3.5 w-3.5" />
           <span>Szukaj...</span>
         </button>
+
+        <ModelQuotaCounter
+          variant="badge"
+          onClick={onSelectTab ? () => onSelectTab('pricing') : undefined}
+        />
 
         <AdvisorButton onClick={onOpenAdvisor} />
 
@@ -134,6 +141,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             whileTap={{ scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
             className="flex h-9 items-center gap-2 rounded-xl border border-line bg-elevated px-2 py-1 text-xs font-semibold text-ink shadow-xs hover:border-brand-500/40 hover:bg-brand-500/5 focus-visible:outline-none cursor-pointer"
+            aria-expanded={isDropdownOpen}
+            aria-haspopup="menu"
             title={isAuthenticated ? userEmail : cloudAvailable ? 'Zaloguj się lub załóż konto' : 'Utwórz profil lokalny'}
           >
             {isAuthenticated ? (
@@ -179,6 +188,8 @@ export const Topbar: React.FC<TopbarProps> = ({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 6 }}
                 transition={{ duration: 0.16, ease: [0.19, 1, 0.22, 1] }}
+                role="menu"
+                aria-label="Menu konta użytkownika"
                 className="absolute right-0 mt-2 w-56 overflow-hidden rounded-2xl border border-line bg-elevated p-1.5 shadow-floating z-50 text-xs"
               >
                 <div className="border-b border-line/60 p-2.5">

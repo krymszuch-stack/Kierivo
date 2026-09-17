@@ -10,6 +10,7 @@ import {
   Clock,
   Layers,
   FileText,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ApplicationModal } from './ApplicationModal';
@@ -26,6 +27,9 @@ import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { HistoricalDocumentModal } from './HistoricalDocumentModal';
+import { Tooltip } from '../../components/ui/Tooltip';
+import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
+import { getPipelineFilters, matchesStatusFilter } from './trackerStatusConfig';
 
 
 /**
@@ -84,6 +88,19 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     return () => clearTimeout(timer);
   }, [highlightedApplicationId, setHighlightedApplicationId]);
 
+  /** Tryb zaawansowany pipeline (pełne granularne rozbicie statusów i kolumn). */
+  const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(() => {
+    return readRaw(StorageKeys.pipelineAdvancedMode) === 'true';
+  });
+
+  const handleToggleAdvancedMode = () => {
+    setIsAdvancedMode((prev) => {
+      const next = !prev;
+      writeRaw(StorageKeys.pipelineAdvancedMode, String(next));
+      return next;
+    });
+  };
+
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'COMPANY'>('DATE_DESC');
@@ -104,12 +121,25 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const exportedCvCount = applications.filter((a) => a?.documentSnapshot?.exportedCv).length;
   const responseRate = totalApps > 0 ? Math.round(((inInterviews + offersReceived) / totalApps) * 100) : 0;
 
+  // Filtry dostosowane do trybu: na starcie 4 zredukowane stany, w zaawansowanym pełne rozbicie
+  const filterButtons = useMemo(() => {
+    return getPipelineFilters(applications, isAdvancedMode);
+  }, [applications, isAdvancedMode]);
+
+  // Jeśli filtr nie istnieje po przełączeniu trybu, zresetuj do ALL
+  useEffect(() => {
+    const exists = filterButtons.some((b) => b.id === filterStatus);
+    if (!exists && filterStatus !== 'ALL') {
+      setFilterStatus('ALL');
+    }
+  }, [filterButtons, filterStatus]);
+
   // Filtered and Sorted
   const filteredApps = useMemo(() => {
     return applications
       .filter((app) => {
         if (!app) return false;
-        if (filterStatus !== 'ALL' && app.status !== filterStatus) return false;
+        if (!matchesStatusFilter(app.status, filterStatus, isAdvancedMode)) return false;
         if (searchQuery.trim()) {
           const query = searchQuery.toLowerCase();
           return (
@@ -126,7 +156,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         if (sortBy === 'COMPANY') return (a.company || '').localeCompare(b.company || '');
         return 0;
       });
-  }, [applications, filterStatus, searchQuery, sortBy]);
+  }, [applications, filterStatus, searchQuery, sortBy, isAdvancedMode]);
 
   const handleStatusChange = (id: string, newStatus: ApplicationStatus) => {
     setStatus(id, newStatus);
@@ -177,15 +207,6 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       });
     }
   };
-
-  const filterButtons: Array<{ id: string; label: string; count: number }> = [
-    { id: 'ALL', label: 'Wszystkie', count: totalApps },
-    { id: 'Do wysłania', label: 'Do wysłania', count: applications.filter((a) => a?.status === 'Do wysłania').length },
-    { id: 'Wysłana', label: 'Wysłane', count: applications.filter((a) => a?.status === 'Wysłana').length },
-    { id: 'Rozmowa', label: 'Rozmowy', count: inInterviews },
-    { id: 'Oferta', label: 'Oferty', count: offersReceived },
-    { id: 'Odrzucona', label: 'Odrzucone', count: applications.filter((a) => a?.status === 'Odrzucona').length },
-  ];
 
   return (
     <div className="space-y-6">
@@ -279,29 +300,55 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       {/* Control Bar: Filters, Search, Sort */}
       <Card tone="raised" className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {/* Gmail/Linear Style Filter Pills */}
+          {/* Gmail/Linear Style Filter Pills + Advanced Mode Toggle */}
           <div className="flex flex-wrap items-center gap-1.5">
             {filterButtons.map((btn) => (
-              <button
-                key={btn.id}
-                type="button"
-                onClick={() => setFilterStatus(btn.id)}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
-                  filterStatus === btn.id
-                    ? 'bg-brand-600 text-on-brand shadow-xs'
-                    : 'border border-line bg-sunken text-muted hover:border-brand-300 hover:text-ink'
-                }`}
-              >
-                <span>{btn.label}</span>
-                <span
-                  className={`rounded-md px-1.5 py-px font-mono text-[10px] ${
-                    filterStatus === btn.id ? 'bg-surface/30 text-on-brand' : 'bg-surface text-muted'
+              <Tooltip key={btn.id} content={btn.tooltip} side="top">
+                <button
+                  type="button"
+                  onClick={() => setFilterStatus(btn.id)}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+                    filterStatus === btn.id
+                      ? 'bg-brand-600 text-on-brand shadow-xs'
+                      : 'border border-line bg-sunken text-muted hover:border-brand-300 hover:text-ink'
                   }`}
                 >
-                  {btn.count}
-                </span>
-              </button>
+                  <span>{btn.label}</span>
+                  <span
+                    className={`rounded-md px-1.5 py-px font-mono text-[10px] ${
+                      filterStatus === btn.id ? 'bg-surface/30 text-on-brand' : 'bg-surface text-muted'
+                    }`}
+                  >
+                    {btn.count}
+                  </span>
+                </button>
+              </Tooltip>
             ))}
+
+            {/* Przełącznik konfiguracji zaawansowanej (pełne rozbicie statusów i kolumn) */}
+            <Tooltip
+              content={
+                isAdvancedMode
+                  ? 'Konfiguracja zaawansowana jest aktywna (pełne rozbicie statusów i kolumn). Kliknij, aby powrócić do widoku 4 kluczowych stanów.'
+                  : 'Widok startowy zredukowany do 4 kluczowych stanów. Kliknij, aby włączyć konfigurację zaawansowaną (Rozmowa, Oferta, Odrzucona).'
+              }
+              side="top"
+            >
+              <button
+                type="button"
+                onClick={handleToggleAdvancedMode}
+                aria-pressed={isAdvancedMode}
+                aria-label="Przełącz konfigurację zaawansowaną pipeline"
+                className={`ml-1 flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+                  isAdvancedMode
+                    ? 'border-brand-300 bg-brand-50 text-brand-700 shadow-xs'
+                    : 'border-line bg-sunken text-muted hover:border-brand-300 hover:text-ink'
+                }`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span>{isAdvancedMode ? 'Szczegółowy' : '4 etapy'}</span>
+              </button>
+            </Tooltip>
           </div>
 
           {/* Search & Sort Controls */}
@@ -332,6 +379,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       <TrackerTable
         applications={filteredApps}
         highlightApplicationId={flashId}
+        isAdvancedMode={isAdvancedMode}
         onStatusChange={handleStatusChange}
         onEdit={(app) => {
           setEditingApp(app);

@@ -27,11 +27,14 @@ import {
  * Prawdziwe uwierzytelnienie i szyfrowanie w spoczynku wchodzą razem z Supabase.
  */
 export interface LocalProfile {
+  /** Wersja schematu danych encji (liczba całkowita, np. 1). */
+  schemaVersion?: number;
   id: string;
   name: string;
   /** Opcjonalny — profil lokalny nie wymaga adresu e-mail do niczego. */
   email?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 /**
@@ -60,11 +63,14 @@ export function createLocalProfile(
   const trimmedName = name.trim();
   const trimmedEmail = email?.trim();
 
+  const now = new Date().toISOString();
   const profile: LocalProfile = {
+    schemaVersion: 1,
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: trimmedName,
     ...(trimmedEmail ? { email: trimmedEmail } : {}),
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   };
 
   writeJson(StorageKeys.profile, profile);

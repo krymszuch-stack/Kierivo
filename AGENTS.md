@@ -29,19 +29,19 @@ i katalog `.agents/` pilnuje `scripts/sprawdz-limity-regul.mjs` w CI.
 
 ## Dwa pakiety, dwie konfiguracje
 
-| | katalog główny | `semantic-work-graph/` |
+| | katalog główny | `labs/semantic-work-graph/` |
 | --- | --- | --- |
 | co to jest | aplikacja (React + Express) | silnik semantyczny i graf wiedzy |
 | baza | Supabase/Postgres (`BACKEND_MODE=cloud`) albo localStorage (`local`) | SQLite przez `better-sqlite3` |
 | testy | `npm test` (Vitest, Node) | `npm test` (własny `vitest.config.ts`) |
 
-**Pakiet `semantic-work-graph` jest wykluczony z konfiguracji katalogu głównego**
+**Pakiet `labs/semantic-work-graph` jest wykluczony z konfiguracji katalogu głównego**
 — w `tsconfig.json`, `eslint.config.js` i `vite.config.ts`. Ma własny `tsconfig`,
 własne zależności i własnego Vitest. Uruchamiając cokolwiek dla tego pakietu,
 rób to z jego katalogu.
 
 **Workflow CI (`.github/workflows/ci.yml`) obejmuje wyłącznie katalog główny.**
-Testy `semantic-work-graph` nie uruchamiają się na GitHubie. Jeśli zmieniasz ten
+Testy `labs/semantic-work-graph` nie uruchamiają się na GitHubie. Jeśli zmieniasz ten
 pakiet, uruchom jego testy lokalnie — nikt inny tego za ciebie nie zrobi.
 
 ## Komendy
@@ -53,7 +53,7 @@ npm run lint           # eslint . && tsc --noEmit  — to jest bramka CI
 npm test               # vitest run
 npm run build          # klient (vite) + serwer (esbuild)
 
-# semantic-work-graph/
+# labs/semantic-work-graph/
 npm test               # vitest run
 npm run seed:import    # graf profesji z pliku seed
 npm run seed:lexicon   # PoliMorf + ESCO (pełny przebieg: kilkadziesiąt minut)
@@ -122,7 +122,7 @@ indziej. Jeśli jest, wydziel go zamiast kopiować.
 > Klucze schowka leżały w ośmiu plikach w trzech konwencjach (`storage.ts:4`).
 > Klasyfikacja narzędzia była powielona dwoma **różnymi** wyrażeniami
 > regularnymi i tworzyła relacje do nieistniejących węzłów grafu
-> (`semantic-work-graph/src/seed/SeedImporter.ts`).
+> (`labs/semantic-work-graph/src/seed/SeedImporter.ts`).
 
 **4. Poprawiaj klasę, nie wystąpienie.** Po znalezieniu błędu przeszukaj repo pod
 kątem tego samego wzorca i wymień wszystkie trafienia w jednej zmianie.
@@ -181,7 +181,7 @@ Zielona i czerwona lista zadań, zasady zadań cyklicznych i reguły antykolizyj
 ## Zanim zgłosisz zmianę
 
 - [ ] `npm run lint` bez błędów (to bramka CI)
-- [ ] `npm test` na zielono; jeśli tknąłeś `semantic-work-graph`, jego testy też
+- [ ] `npm test` na zielono; jeśli tknąłeś `labs/semantic-work-graph`, jego testy też
 - [ ] żadnych wymyślonych danych, żadnych nowych ścieżek bez konsumenta
 - [ ] przy zmianie wydajnościowej — liczba przed i po w opisie PR-a
 - [ ] opis PR-a mówi, **dlaczego** tak, nie tylko **co** się zmieniło; jeśli

@@ -13,7 +13,7 @@ def text_width(text: str, font: str, size: float, char_space: float = 0.0) -> fl
 
 def wrap_text(text: str, font: str, size: float, max_width: float,
               char_space: float = 0.0) -> list[str]:
-    """Zawijanie po słowach. Zwraca listę linii (bezłamliwe długie słowa są przycinane)."""
+    """Zawijanie po słowach. Długie słowa przekraczające max_width są przycinane z elipsą."""
     lines: list[str] = []
     for paragraph in text.split("\n"):
         words = paragraph.split()
@@ -28,6 +28,17 @@ def wrap_text(text: str, font: str, size: float, max_width: float,
             else:
                 lines.append(cur)
                 cur = w
+        # Sprawdź czy ostatnie słowo przekracza max_width
+        if text_width(cur, font, size, char_space) > max_width and len(cur) > 1:
+            # Truncuj znak po znaku z elipsą
+            truncated = ""
+            for ch in cur:
+                candidate = truncated + ch + "…"
+                if text_width(candidate, font, size, char_space) <= max_width:
+                    truncated += ch
+                else:
+                    break
+            cur = truncated + "…" if truncated else cur[:1] + "…"
         lines.append(cur)
     return lines
 

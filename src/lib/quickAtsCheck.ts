@@ -215,3 +215,164 @@ export function runQuickAtsCheck(
     detectedSubRole,
   };
 }
+
+export interface TopProblem {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'warning' | 'info';
+  category: 'formal' | 'hard_skill' | 'structure';
+}
+
+/**
+ * Wybiera dokładnie 3 najważniejsze, najbardziej krytyczne problemy
+ * z wyniku szybkiego sprawdzenia ATS (dla uproszczonego onboardingu).
+ *
+ * Kolejność priorytetów:
+ * 1. Niespełnione formalne kryteria dyskwalifikujące (brak SEP, UDT, prawa jazdy itp.) — krytyczne.
+ * 2. Brakujące kluczowe umiejętności techniczne z ogłoszenia — ostrzeżenia.
+ * 3. Ryzyka formatowania i błędy strukturalne ATS — ostrzeżenia / zalecenia.
+ * 4. Uzupełnienie do 3 o praktyczne zalecenia redakcyjne, jeśli profil nie ma braków.
+ */
+export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] {
+  const problems: TopProblem[] = [];
+
+  // 1. Niespełnione wymagania formalne (najwyższy priorytet - natychmiastowe odrzucenie)
+  if (result.knockouts && Array.isArray(result.knockouts.findings)) {
+    const unsatisfiedKnockouts = result.knockouts.findings.filter((f) => !f.satisfied);
+    for (const ko of unsatisfiedKnockouts) {
+      if (problems.length >= 3) break;
+      problems.push({
+        id: `ko-${ko.ruleId}`,
+        title: ko.label,
+        description: ko.hint || 'Brak wymaganego uprawnienia lub kryterium formalnego w treści CV.',
+        severity: 'critical',
+        category: 'formal',
+      });
+    }
+  }
+
+  // 2. Brakujące kluczowe umiejętności twarde
+  const missingHard = Array.isArray(result.missingSkills) ? result.missingSkills : [];
+  for (const skill of missingHard) {
+    if (problems.length >= 3) break;
+    problems.push({
+      id: `skill-${skill.toLowerCase().replace(/\s+/g, '-')}`,
+      title: `Brak umiejętności: ${skill}`,
+      description: `Wymaganie zauważone w ogłoszeniu. Dodaj słowo „${skill}” do opisu doświadczenia lub umiejętności.`,
+      severity: 'warning',
+      category: 'hard_skill',
+    });
+  }
+
+  // 3. Problemy ze strukturą i formatowaniem ATS
+  if (problems.length < 3 && result.ats?.formattingScore !== undefined && result.ats.formattingScore < 80) {
+    problems.push({
+      id: 'formatting-risk',
+      title: 'Ryzyko problemów z formatowaniem ATS',
+      description: 'Złożony lub niestandardowy układ dokumentu może utrudniać automatyczny odczyt przez systemy rekrutacyjne.',
+      severity: 'warning',
+      category: 'structure',
+    });
+  }
+
+  // 4. Kolejne brakujące słowa kluczowe z silnika ATS
+  if (problems.length < 3 && Array.isArray(result.ats?.missingHardSkills)) {
+    for (const hs of result.ats.missingHardSkills) {
+      if (problems.length >= 3) break;
+      if (!problems.some((p) => p.title.toLowerCase().includes(hs.toLowerCase()))) {
+        problems.push({
+          id: `hs-${hs.toLowerCase().replace(/\s+/g, '-')}`,
+          title: `Brak frazy kluczowej: ${hs}`,
+          description: `Ogłoszenie wymienia „${hs}”. Uzupełnij opis stanowiska o to pojęcie.`,
+          severity: 'warning',
+          category: 'hard_skill',
+        });
+      }
+    }
+  }
+
+  // 5. Rekomendacje redakcyjne ATS
+  if (problems.length < 3 && Array.isArray(result.ats?.recommendations)) {
+    for (const rec of result.ats.recommendations) {
+      if (problems.length >= 3) break;
+      problems.push({
+        id: `rec-${problems.length}`,
+        title: 'Zalecenie optymalizacyjne',
+        description: rec,
+        severity: 'info',
+        category: 'structure',
+      });
+    }
+  }
+
+  // 6. Dopełnienie do 3 pozycji praktycznymi poradami, jeśli kandydat ma wysokie dopasowanie
+  const defaultTips: TopProblem[] = [
+    {
+      id: 'tip-metrics',
+      title: 'Wzmocnij osiągnięcia liczbami',
+      description: 'Dodaj mierzalne metryki (np. liczba wykonanych montaży, budżet, oszczędność czasu) w punktach historii.',
+      severity: 'info',
+      category: 'structure',
+    },
+    {
+      id: 'tip-keywords',
+      title: 'Dopasuj nazewnictwo stanowisk',
+      description: 'Upewnij się, że tytuły w Twojej historii odpowiadają branżowym sformułowaniom z ogłoszenia.',
+      severity: 'info',
+      category: 'structure',
+    },
+    {
+      id: 'tip-summary',
+      title: 'Skondensuj podsumowanie zawodowe',
+      description: 'Dostosuj 2-3 zdania na początku CV bezpośrednio pod wymagania tego konkretnego pracodawcy.',
+      severity: 'info',
+      category: 'structure',
+    },
+  ];
+
+  for (const tip of defaultTips) {
+    if (problems.length >= 3) break;
+    if (!problems.some((p) => p.id === tip.id)) {
+      problems.push(tip);
+    }
+  }
+
+  return problems.slice(0, 3);
+}
+
+export interface QuickCheckScoreVisualTone {
+  tone: 'high' | 'mid' | 'low';
+  text: string;
+  ring: string;
+  label: string;
+}
+
+/**
+ * Zwraca klasy stylów oraz etykietę słowną dopasowania ATS dla prostej prezentacji (QuickCheck).
+ * Progi są zgodne ze specyfikacją demoTimeline: >=75 (wysokie), >=50 (umiarkowane), <50 (niskie).
+ */
+export function getQuickCheckScoreTone(score: number): QuickCheckScoreVisualTone {
+  if (score >= 75) {
+    return {
+      tone: 'high',
+      text: 'text-success-fg',
+      ring: 'stroke-success-fg',
+      label: 'Wysokie dopasowanie',
+    };
+  }
+  if (score >= 50) {
+    return {
+      tone: 'mid',
+      text: 'text-warning-fg',
+      ring: 'stroke-warning-fg',
+      label: 'Umiarkowane dopasowanie',
+    };
+  }
+  return {
+    tone: 'low',
+    text: 'text-danger-fg',
+    ring: 'stroke-danger-fg',
+    label: 'Niskie dopasowanie',
+  };
+}

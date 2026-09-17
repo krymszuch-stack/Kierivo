@@ -15,7 +15,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Textarea } from '../../components/ui/Field';
 import { extractTextFromAnyFile } from '../../lib/cvUniversalParser';
-import { runQuickAtsCheck, QuickCheckError, type QuickCheckResult } from '../../lib/quickAtsCheck';
+import { runQuickAtsCheck, QuickCheckError, type QuickCheckResult, getQuickCheckScoreTone } from '../../lib/quickAtsCheck';
 import { showToast } from '../../store/useToastStore';
 import { MasterVault } from '../../types';
 
@@ -23,12 +23,6 @@ export interface QuickAtsCheckProps {
   onSaveProfile: (vault: MasterVault) => void;
   onOpenEditor: (vault: MasterVault) => void;
   className?: string;
-}
-
-function scoreTone(score: number): { text: string; ring: string; label: string } {
-  if (score >= 75) return { text: 'text-success-fg', ring: 'stroke-success-fg', label: 'Wysokie dopasowanie' };
-  if (score >= 50) return { text: 'text-warning-fg', ring: 'stroke-warning-fg', label: 'Umiarkowane dopasowanie' };
-  return { text: 'text-danger-fg', ring: 'stroke-danger-fg', label: 'Niskie dopasowanie' };
 }
 
 export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
@@ -89,7 +83,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
     setError(null);
   };
 
-  const tone = result ? scoreTone(result.ats.overallScore) : null;
+  const tone = result ? getQuickCheckScoreTone(result.ats.overallScore) : null;
   const circumference = 2 * Math.PI * 42;
 
   return (

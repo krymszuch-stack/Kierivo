@@ -438,7 +438,7 @@ export async function generateCheatSheetEnrichmentWithAI(
   // przypadek, w którym podpowiedź i prawda się zgadzają.
   if (!consumeAiLocally()) {
     throw new Error(
-      'Dzisiejszy limit darmowych wywołań AI jest wyczerpany. Limit odnowi się o północy albo aktywuj plan Pro.'
+      'Dzisiejszy limit darmowych wywołań AI jest wyczerpany. Limit odnowi się automatycznie o północy.'
     );
   }
 

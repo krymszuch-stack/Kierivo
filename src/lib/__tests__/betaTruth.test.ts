@@ -1,14 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BETA_PURCHASES_ENABLED, FREE_BETA_ACTIVE, FREE_BETA_PRICE_PLN } from '../beta';
+import { PAYMENTS_ENABLED, BETA_PURCHASES_ENABLED, FREE_BETA_ACTIVE, FREE_BETA_PRICE_PLN } from '../beta';
 
 function source(path: string): string {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
 }
 
 describe('D05 — prawdziwość bezpłatnej bety', () => {
-  it('ma jednoznacznie wyłączone zakupy', () => {
+  it('ma jednoznacznie wyłączone zakupy i płatności', () => {
+    expect(PAYMENTS_ENABLED).toBe(false);
     expect(FREE_BETA_ACTIVE).toBe(true);
     expect(FREE_BETA_PRICE_PLN).toBe(0);
     expect(BETA_PURCHASES_ENABLED).toBe(false);
@@ -77,10 +78,13 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(gate).not.toContain('if (hasActivePass) return');
   });
 
-  it('cennik pokazuje 0 zł i granice bety bez zasypywania nimi ekranu startowego', () => {
+  it('cennik pokazuje 0 zł i granice bety bez zasypywania nimi ekranu startowego oraz bez niedostępnych planów', () => {
     const home = source('src/views/HomeView.tsx');
     const pricing = source('src/views/PricingView.tsx');
     expect(pricing).toContain('FREE_BETA_PRICE_PLN');
+    expect(pricing).toContain('data-testid="prebeta-status-section"');
+    expect(pricing).not.toContain('Karnet Aplikacyjny (Planowany)');
+    expect(pricing).not.toContain('Plan Pro (Planowany)');
     expect(home).not.toContain('FREE_BETA_PRICE_PLN');
     expect(home).not.toContain('49 zł');
     expect(home).not.toContain('39 zł');

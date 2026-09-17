@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { migrateLegacyKeys } from './lib/storage.ts';
+import { migrateAllStorageAtStartup } from './lib/dataMigration.ts';
 import { reportClientEnvIssues } from './lib/clientEnv.ts';
 import { getSupabaseBrowserClient } from './lib/supabaseClient.ts';
 import { initializeErrorMonitoring } from './lib/errorMonitoring.ts';
@@ -14,6 +15,7 @@ import './index.css';
 // kluczy po zamontowaniu drzewa przyszłoby o jeden render za późno i
 // użytkownik zobaczyłby pusty profil, zanim dane wróciłyby na swoje miejsce.
 migrateLegacyKeys();
+migrateAllStorageAtStartup();
 
 // Niekompletna konfiguracja ma się ujawnić przy starcie, a nie w połowie
 // ścieżki użytkownika. Tylko ostrzeżenie i tylko w trybie deweloperskim —

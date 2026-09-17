@@ -298,12 +298,17 @@ export function adaptMasterVaultToSemanticProfile(
   }
 
   // 5. Doświadczenie zawodowe i punkty osiągnięć
-  const selectedHighlightsMap = new Map<string, string>();
+  const tailoredByExpAndText = new Map<string, string>();
+  const tailoredByExpId = new Map<string, string>();
+
   if (tailoredResume?.selectedHighlights) {
     for (const sh of tailoredResume.selectedHighlights) {
       const text = sh.optimizedText || sh.originalText;
-      if (text) {
-        selectedHighlightsMap.set(sh.experienceId, text);
+      if (text && sh.experienceId) {
+        if (sh.originalText) {
+          tailoredByExpAndText.set(`${sh.experienceId}:::${sh.originalText.trim()}`, text);
+        }
+        tailoredByExpId.set(sh.experienceId, text);
       }
     }
   }
@@ -317,8 +322,15 @@ export function adaptMasterVaultToSemanticProfile(
 
     const expHighlights = exp.highlights || [];
     for (const h of expHighlights) {
-      const text = h.text?.trim();
-      if (!text) continue;
+      const original = h.text?.trim();
+      if (!original) continue;
+
+      const tailoredText =
+        tailoredByExpAndText.get(`${exp.id}:::${original}`) ||
+        (expHighlights.length === 1 ? tailoredByExpId.get(exp.id) : undefined) ||
+        original;
+
+      const text = tailoredText.trim();
 
       if (h.tool) techSet.add(h.tool);
       if (Array.isArray(h.keywords)) {

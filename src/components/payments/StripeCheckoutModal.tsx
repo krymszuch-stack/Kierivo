@@ -7,6 +7,7 @@ import { ApiError, api } from '../../lib/apiClient';
 import { useEntitlements } from '../../store/useEntitlements';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../../features/auth/AuthModal';
+import { PAYMENTS_ENABLED } from '../../lib/beta';
 
 /**
  * Przejście do bramki płatności.
@@ -78,7 +79,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
   const { grantDemoPro } = useEntitlements();
   const { mode, cloudAvailable, signInWithProvider, user } = useAuth();
 
-  const paymentsAvailable = clientEnv.backendConfigured;
+  const paymentsAvailable = PAYMENTS_ENABLED && clientEnv.backendConfigured;
   const isCloudAccount = mode === 'cloud' && !!user;
 
   // Hardkod „odnawia się co miesiąc" kłamał przy rozliczeniu rocznym, więc częstotliwość
@@ -222,10 +223,10 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
                 {loading ? 'Łączenie z bramką płatności…' : 'Przejdź do bezpiecznej płatności'}
               </Button>
             ) : (
-              <div className="flex min-h-[2.75rem] gap-2 rounded-xl bg-warning-soft p-3 text-meta text-warning-fg">
+              <div className="flex min-h-[2.75rem] gap-2 rounded-xl bg-brand-50 p-3 text-meta text-brand-fg">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <span>
-                  Płatności nie są jeszcze uruchomione w tej instalacji. Nic nie zostanie pobrane.
+                  Płatności i checkout są wyłączone w fazie Public Pre-Beta (PB-2026.09). Wszystkie narzędzia są dostępne bezpłatnie (0 zł).
                 </span>
               </div>
             )}

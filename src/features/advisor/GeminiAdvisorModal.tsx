@@ -1,5 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, Send, User, RotateCcw, RefreshCw, ArrowUpRight, Map, CircleHelp, ExternalLink } from 'lucide-react';
+import {
+  Sparkles,
+  Send,
+  User,
+  RotateCcw,
+  RefreshCw,
+  ArrowUpRight,
+  Map,
+  CircleHelp,
+  ExternalLink,
+  MessageSquare,
+  Wand2,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -8,6 +20,7 @@ import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
 import { trackProductInsight } from '../../lib/productInsights';
 import type { AdvisorContext } from './advisorContext';
 import type { NavTabId } from '../../lib/navigation';
+import { SectionRewriterView } from './SectionRewriterView';
 
 import type { MasterVault } from '../../types';
 import {
@@ -114,6 +127,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const [isCheckingOllama, setIsCheckingOllama] = useState(false);
   const [selectedFaq, setSelectedFaq] = useState(FAQ_ENTRIES[0]);
+  const [advisorTab, setAdvisorTab] = useState<'chat' | 'rewriter'>('chat');
 
   const [ollamaStatus, setOllamaStatus] = useState<{
     checked: boolean;
@@ -283,93 +297,134 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         isOpen={isOpen}
         onClose={onClose}
         title="Doradca lokalny"
-        description="Rozmowa działa wyłącznie z dostępną lokalną Ollamą. Gdy model jest wyłączony albo niedostępny, zostają konkretne skróty i FAQ — bez udawanej odpowiedzi AI."
+        description="Rozmowa działa wyłącznie z dostępną lokalną Ollamą. Gdy model jest wyłączony albo niedostępny, zostają konkretne skróty, FAQ oraz regułowy Asystent Rewritingu (bez danych kontaktowych i pełnej treści CV)."
         size="lg"
       >
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-sunken p-3">
-            <div>
-              <p className="text-xs font-semibold text-ink">
-                {ollamaStatus.checked ? 'Lokalna Ollama jest teraz niedostępna.' : 'Sprawdzam lokalną Ollamę…'}
-              </p>
-              <p className="mt-0.5 text-[11px] text-muted">Do rozmowy potrzebny jest działający model na tym urządzeniu.</p>
-            </div>
-            <Button
+          {/* Zakładki główne Doradcy */}
+          <div className="flex items-center gap-2 border-b border-line pb-2.5">
+            <button
               type="button"
-              variant="secondary"
-              size="sm"
-              icon={RefreshCw}
-              onClick={() => void checkOllama()}
-              disabled={isCheckingOllama}
+              onClick={() => setAdvisorTab('chat')}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+                advisorTab === 'chat'
+                  ? 'bg-brand-600 text-on-brand shadow-xs'
+                  : 'border border-line bg-sunken text-muted hover:text-ink'
+              }`}
             >
-              Sprawdź ponownie
-            </Button>
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Konsultacja & FAQ</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdvisorTab('rewriter')}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+                advisorTab === 'rewriter'
+                  ? 'bg-brand-600 text-on-brand shadow-xs'
+                  : 'border border-line bg-sunken text-muted hover:text-ink'
+              }`}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              <span>Asystent Rewritingu (STAR / ATS)</span>
+            </button>
           </div>
 
-          {advisorContext?.suggestions.length ? (
-            <section aria-label="Najbliższe kroki po analizie CV">
-              <p className="mb-2 text-xs font-semibold text-ink">Wynik analizy podpowiada:</p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {advisorContext.suggestions.map((suggestion) => (
-                  <button
-                    key={suggestion.id}
+          {advisorTab === 'rewriter' ? (
+            <SectionRewriterView
+              initialRole={advisorContext?.offerTitle}
+              onNavigateToProfile={() => {
+                onNavigate?.('profil');
+                onClose();
+              }}
+            />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-sunken p-3">
+                <div>
+                  <p className="text-xs font-semibold text-ink">
+                    {ollamaStatus.checked ? 'Lokalna Ollama jest teraz niedostępna.' : 'Sprawdzam lokalną Ollamę…'}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted">Do rozmowy czatowej potrzebny jest działający model lokalny. Asystent Rewritingu działa natychmiastowo na silniku reguł.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={RefreshCw}
+                  onClick={() => void checkOllama()}
+                  disabled={isCheckingOllama}
+                >
+                  Sprawdź ponownie
+                </Button>
+              </div>
+
+              {advisorContext?.suggestions.length ? (
+                <section aria-label="Najbliższe kroki po analizie CV">
+                  <p className="mb-2 text-xs font-semibold text-ink">Wynik analizy podpowiada:</p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {advisorContext.suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        onClick={() => {
+                          trackProductInsight('advisor_suggestion_clicked');
+                          onNavigate?.(suggestion.target);
+                          onClose();
+                        }}
+                        className="rounded-xl border border-line bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                      >
+                        <span className="text-xs font-semibold text-ink">{suggestion.label}</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-muted">{suggestion.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="rounded-2xl border border-line bg-surface p-4" aria-label="Najczęściej zadawane pytania">
+                <div className="mb-3 flex items-center gap-2">
+                  <CircleHelp className="h-4 w-4 text-brand-600" aria-hidden="true" />
+                  <div>
+                    <h3 className="text-sm font-bold text-ink">FAQ: co możesz zrobić teraz?</h3>
+                    <p className="text-[11px] text-muted">Kliknij pytanie — pokażę odpowiedź i właściwe miejsce w aplikacji.</p>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {FAQ_ENTRIES.map((entry) => (
+                    <button
+                      key={entry.question}
+                      type="button"
+                      onClick={() => setSelectedFaq(entry)}
+                      className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+                        selectedFaq.question === entry.question
+                          ? 'border-brand-300 bg-brand-50 text-brand-fg'
+                          : 'border-line bg-sunken text-ink hover:border-brand-200'
+                      }`}
+                    >
+                      {entry.question}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-xl border border-line bg-sunken p-3">
+                  <p className="text-xs leading-relaxed text-ink">{selectedFaq.answer}</p>
+                  <Button
                     type="button"
+                    variant="primary"
+                    size="sm"
+                    icon={ExternalLink}
                     onClick={() => {
-                      trackProductInsight('advisor_suggestion_clicked');
-                      onNavigate?.(suggestion.target);
+                      onNavigate?.(selectedFaq.target);
                       onClose();
                     }}
-                    className="rounded-xl border border-line bg-surface p-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                    className="mt-3"
                   >
-                    <span className="text-xs font-semibold text-ink">{suggestion.label}</span>
-                    <span className="mt-1 block text-[10px] leading-relaxed text-muted">{suggestion.description}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="rounded-2xl border border-line bg-surface p-4" aria-label="Najczęściej zadawane pytania">
-            <div className="mb-3 flex items-center gap-2">
-              <CircleHelp className="h-4 w-4 text-brand-600" aria-hidden="true" />
-              <div>
-                <h3 className="text-sm font-bold text-ink">FAQ: co możesz zrobić teraz?</h3>
-                <p className="text-[11px] text-muted">Kliknij pytanie — pokażę odpowiedź i właściwe miejsce w aplikacji.</p>
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {FAQ_ENTRIES.map((entry) => (
-                <button
-                  key={entry.question}
-                  type="button"
-                  onClick={() => setSelectedFaq(entry)}
-                  className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
-                    selectedFaq.question === entry.question
-                      ? 'border-brand-300 bg-brand-50 text-brand-fg'
-                      : 'border-line bg-sunken text-ink hover:border-brand-200'
-                  }`}
-                >
-                  {entry.question}
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 rounded-xl border border-line bg-sunken p-3">
-              <p className="text-xs leading-relaxed text-ink">{selectedFaq.answer}</p>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                icon={ExternalLink}
-                onClick={() => {
-                  onNavigate?.(selectedFaq.target);
-                  onClose();
-                }}
-                className="mt-3"
-              >
-                {selectedFaq.action}
-              </Button>
-            </div>
-          </section>
+                    {selectedFaq.action}
+                  </Button>
+                </div>
+              </section>
+            </>
+          )}
         </div>
       </Modal>
     );
@@ -380,12 +435,53 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Doradca lokalny"
-      description="Czyta lokalnie aktualny profil i ostatni wynik dopasowania, aby wykryć konkretne luki. Rozmowa zostaje w przeglądarce; do Ollamy trafia tylko zredukowany kontekst analizy."
+      description="Czyta lokalnie aktualny profil i ostatni wynik dopasowania, aby wykryć konkretne luki. Rozmowa zostaje w przeglądarce; do Ollamy trafia tylko zredukowany kontekst analizy (bez danych kontaktowych i pełnej treści CV)."
       size="lg"
     >
-      <div className="flex h-[540px] flex-col">
-        {/* Pasek statusu asysty Ollamy i narzędzi */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
+      <div className="flex h-[560px] flex-col">
+        {/* Zakładki główne Doradcy */}
+        <div className="flex items-center gap-2 border-b border-line pb-2.5 mb-2">
+          <button
+            type="button"
+            onClick={() => setAdvisorTab('chat')}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+              advisorTab === 'chat'
+                ? 'bg-brand-600 text-on-brand shadow-xs'
+                : 'border border-line bg-sunken text-muted hover:text-ink'
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span>Rozmowa z Doradcą</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAdvisorTab('rewriter')}
+            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
+              advisorTab === 'rewriter'
+                ? 'bg-brand-600 text-on-brand shadow-xs'
+                : 'border border-line bg-sunken text-muted hover:text-ink'
+            }`}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            <span>Asystent Rewritingu (STAR / ATS)</span>
+          </button>
+        </div>
+
+        {advisorTab === 'rewriter' ? (
+          <div className="flex-1 overflow-y-auto p-1">
+            <SectionRewriterView
+              initialRole={advisorContext?.offerTitle}
+              onNavigateToProfile={() => {
+                onNavigate?.('profil');
+                onClose();
+              }}
+            />
+          </div>
+        ) : (
+          <>
+            {/* Pasek statusu asysty Ollamy i narzędzi */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-full border border-line bg-sunken px-2.5 py-1">
               <span
@@ -599,6 +695,8 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             Wyślij
           </Button>
         </div>
+        </>
+        )}
       </div>
     </Modal>
   );

@@ -19,7 +19,7 @@ export default defineConfig(() => {
       emptyOutDir: true,
     },
     test: {
-      exclude: ['**/node_modules/**', '**/dist/**', 'semantic-work-graph/**'],
+      exclude: ['**/node_modules/**', '**/dist/**', 'labs/**'],
     },
     server: {
       port: 3000,

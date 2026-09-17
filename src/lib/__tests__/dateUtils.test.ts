@@ -5,6 +5,9 @@ import {
   isFutureMonthYear,
   validateDateRange,
   getCurrentMonthYear,
+  toLocalInputValue,
+  fromLocalInputValue,
+  describeInterviewTiming,
 } from '../dateUtils';
 
 describe('dateUtils - obsługa i walidacja dat miesiąc/rok', () => {
@@ -105,6 +108,51 @@ describe('dateUtils - obsługa i walidacja dat miesiąc/rok', () => {
     it('zwraca aktualny rok i miesiąc w poprawnym formacie', () => {
       const current = getCurrentMonthYear();
       expect(current).toMatch(/^\d{4}-\d{2}$/);
+    });
+  });
+
+  describe('toLocalInputValue i fromLocalInputValue', () => {
+    it('konwertuje ISO na lokalny format wejściowy YYYY-MM-DDTHH:mm i z powrotem', () => {
+      const iso = '2026-09-20T14:30:00.000Z';
+      const localValue = toLocalInputValue(iso);
+      expect(localValue).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+
+      const roundTrippedIso = fromLocalInputValue(localValue);
+      expect(roundTrippedIso).toBeDefined();
+      expect(new Date(roundTrippedIso!).getTime()).toBe(new Date(localValue).getTime());
+    });
+
+    it('bezpiecznie radzi sobie z pustymi lub niepoprawnymi wartościami', () => {
+      expect(toLocalInputValue(undefined)).toBe('');
+      expect(toLocalInputValue('')).toBe('');
+      expect(toLocalInputValue('nie-data')).toBe('');
+      expect(fromLocalInputValue('')).toBeUndefined();
+      expect(fromLocalInputValue('nie-data')).toBeUndefined();
+    });
+  });
+
+  describe('describeInterviewTiming', () => {
+    it('zwraca właściwy opis relatywny czasu rozmowy w języku polskim', () => {
+      const now = new Date('2026-09-17T12:00:00.000Z');
+
+      expect(describeInterviewTiming(undefined, now)).toBe('Termin nieustalony');
+      expect(describeInterviewTiming('nie-poprawna-data', now)).toBe('Termin nieustalony');
+
+      // Przeszłość
+      const past = new Date(now.getTime() - 2 * 3600_000).toISOString();
+      expect(describeInterviewTiming(past, now)).toBe('Rozmowa się odbyła');
+
+      // Za chwilę
+      const imminent = new Date(now.getTime() + 10 * 60_000).toISOString();
+      expect(describeInterviewTiming(imminent, now)).toBe('Rozmowa lada chwila');
+
+      // Za kilkanaście godzin (< 48h)
+      const in5h = new Date(now.getTime() + 5 * 3600_000).toISOString();
+      expect(describeInterviewTiming(in5h, now)).toBe('Za 5 h');
+
+      // Za kilka dni (>= 48h)
+      const in4days = new Date(now.getTime() + 96 * 3600_000).toISOString();
+      expect(describeInterviewTiming(in4days, now)).toBe('Za 4 dni');
     });
   });
 });

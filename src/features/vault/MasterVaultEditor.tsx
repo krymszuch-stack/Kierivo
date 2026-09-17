@@ -36,6 +36,7 @@ import { PreferencesSection } from './PreferencesSection';
 import { Button } from '../../components/ui/Button';
 import { Tabs } from '../../components/ui/Tabs';
 import { PageHeader } from '../../components/ui/PageHeader';
+import { CVExportModal } from '../../components/ui/CVExportModal';
 import { showToast } from '../../store/useToastStore';
 import { useFieldSuggestions } from '../../hooks/useFieldSuggestions';
 import { bestSubRoleMatch } from '../../lib/specializationIndex';
@@ -68,6 +69,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('stepper');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const { mode } = useAuth();
 
   // Podpowiedzi liczone raz na cały edytor
@@ -174,6 +176,16 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               title="Zobacz gotowy dokument CV na arkuszu A4, zmień szablon i wydrukuj"
             >
               Podgląd i Druk CV
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Download}
+              onClick={() => setIsExportModalOpen(true)}
+              title="Wygeneruj dwuwarstwowy PDF z 33 motywami"
+            >
+              Eksportuj PDF
             </Button>
 
             <button
@@ -554,6 +566,13 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
           />
         </Modal>
       )}
+
+      {/* Modal Eksportu CV — Silnik Dual-Layer Semantic PDF */}
+      <CVExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        vault={vault}
+      />
     </div>
   );
 };

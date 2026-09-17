@@ -1,5 +1,6 @@
 import { api } from './apiClient';
 import type { JobApplication, ApplicationDocumentSnapshot } from '../types';
+import { deepClone, repairSnapshotReferences } from './applicationSnapshot';
 
 /**
  * Ankieta po eksporcie dokumentu — logika bez DOM-u.
@@ -137,7 +138,7 @@ export function buildApplicationFromPending(
     atsScore: pending.atsScore,
     missingKeywords: pending.missingKeywords,
     documentSnapshot: pending.documentSnapshot
-      ? (JSON.parse(JSON.stringify(pending.documentSnapshot)) as ApplicationDocumentSnapshot)
+      ? repairSnapshotReferences(deepClone(pending.documentSnapshot))
       : undefined,
   };
 }

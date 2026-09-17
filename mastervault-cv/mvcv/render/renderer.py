@@ -126,14 +126,17 @@ class Renderer:
         self.canv.setStrokeColorRGB(*self._rgb(name))
 
     def _text(self, x: float, y: float, s: str, font: str, size: float,
-              *, color: str = "text_primary", char_space: float = 0.0) -> None:
+              *, color: str = "text_primary", char_space: float = 0.0,
+              max_width: float | None = None) -> None:
         if not s:
             return
+        # Auto-fit: jeśli tekst przekracza max_width, zmniejsz rozmiar
+        if max_width is not None and max_width > 0:
+            while text_width(s, font, size, char_space) > max_width and size > 5.0:
+                size -= 0.25
         self._fill(color)
         t = self.canv.beginText(x, y)
         t.setFont(font, size)
-        # UWAGA: Tc jest stanem tekstowym PDF — nie jest resetowany przez BT/ET,
-        # więc każdy przebieg musi ustawiać go jawnie (0 = brak rozstrzelenia).
         t.setCharSpace(char_space)
         t.textOut(s)
         self.canv.drawText(t)
@@ -254,8 +257,13 @@ class Renderer:
         self.canv.rect(col.x, y + 2.2, 13, 2.6, stroke=0, fill=1)
         self.accent_area += 13 * 2.6
         self.w.begin("H2", group, actual_text=label, visible_text=label)
+        # Auto-fit: obniż rozmiar jeśli nagłówek przekracza szerokość kolumny
+        header_max_w = col.width - 19
+        label_size = size
+        while text_width(label.upper(), self.t.typography.sans_bold, label_size, 1.5) > header_max_w and label_size > 6.0:
+            label_size -= 0.25
         self._text(col.x + 19, y, label.upper(), self.t.typography.sans_bold,
-                   size, color="text_primary", char_space=1.5)
+                   label_size, color="text_primary", char_space=1.5, max_width=header_max_w)
         self.w.end()
         col.y = y - (9 * self.v_scale)
 
@@ -427,12 +435,24 @@ class Renderer:
             self.w.begin("P", "sidebar.languages",
                          actual_text=f"Język {lang.name}: poziom {lang.level}".strip(" :"),
                          visible_text=f"{lang.name} {lang.level}".strip())
-            self._text(col.x, col.y - 9, lang.name.capitalize(), tp.sans, 8.8,
-                       color=self._side_value_color())
-            if lang.level:
-                lw = text_width(lang.level, tp.sans_semibold, 8.8)
-                self._text(col.x + col.width - lw, col.y - 9, lang.level,
-                           tp.sans_semibold, 8.8, color="accent")
+            name_w = text_width(lang.name.capitalize(), tp.sans, 8.8)
+            level_w = text_width(lang.level, tp.sans_semibold, 8.8) if lang.level else 0
+            total_w = name_w + level_w + 8
+            if total_w <= col.width:
+                # Wszystko mieści się w jednej linii
+                self._text(col.x, col.y - 9, lang.name.capitalize(), tp.sans, 8.8,
+                           color=self._side_value_color(), max_width=col.width)
+                if lang.level:
+                    self._text(col.x + col.width - level_w, col.y - 9, lang.level,
+                               tp.sans_semibold, 8.8, color="accent", max_width=level_w)
+            else:
+                # Nazwa za długa — stawiamy poziom pod nazwą
+                self._text(col.x, col.y - 9, lang.name.capitalize(), tp.sans, 8.8,
+                           color=self._side_value_color(), max_width=col.width)
+                col.y -= 9
+                if lang.level:
+                    self._text(col.x, col.y - 8, lang.level, tp.sans_semibold, 7.8,
+                               color="accent")
             self.w.end()
             col.y -= 15.5 * self.v_scale
 
@@ -478,19 +498,29 @@ class Renderer:
                     self.warnings.append(f"Nie udało się wstawić zdjęcia w nagłówku ({e}).")
 
         # H1: imię i nazwisko; ActualText łączy imię z tytułem dla parsera
+        # Name size skaluje z density — w trybach kompaktowych jest mniejsze
+        name_size = tp.name_size * self.v_scale
         self.w.begin("H1", "header", actual_text=f"{self.p.name} — {self.p.title}",
                      visible_text=self.p.name)
-        self._text(col.x, col.y - tp.name_size, self.p.name, tp.serif_bold,
-                   tp.name_size, color="text_primary")
+        self._text(col.x, col.y - name_size, self.p.name, tp.serif_bold,
+                   name_size, color="text_primary", max_width=col.width)
         self.w.end()
-        col.y -= tp.name_size + (7 * self.v_scale)
+        col.y -= name_size + (7 * self.v_scale)
 
         # tytuł zawodowy: wersaliki, rozstrzelony, akcent
+        # char_space obniżany dla długich tytułów by nie przekraczał kolumny
+        title_size = tp.title_size * self.v_scale
         self.w.begin("P", "header", actual_text=self.p.title, visible_text=self.p.title)
-        self._text(col.x, col.y - tp.title_size, self.p.title.upper(),
-                   tp.sans_semibold, tp.title_size, color="accent", char_space=1.6)
+        # Auto-calculate safe char_space based on title length and column width
+        title_full = self.p.title.upper()
+        base_char_space = 1.6
+        max_safe_char_space = max(0.4, (col.width - text_width(title_full, tp.sans_semibold, title_size)) / max(len(title_full) - 1, 1))
+        safe_char_space = min(base_char_space, max_safe_char_space)
+        self._text(col.x, col.y - title_size, title_full,
+                   tp.sans_semibold, title_size, color="accent",
+                   char_space=safe_char_space, max_width=col.width)
         self.w.end()
-        col.y -= tp.title_size + (9 * self.v_scale)
+        col.y -= title_size + (9 * self.v_scale)
 
         # linia z segmentem akcentu
         self._stroke("hairline")
@@ -619,22 +649,33 @@ class Renderer:
 
     def _contact_inline(self, col: Column) -> None:
         tp = self.t.typography
-        parts = [v for _, v in self.p.contact.pairs()]
         sep = "   ·   "
-        line = sep.join(parts)
+        pairs = self.p.contact.pairs()
+        # Budujemy linie, które mieszczą się w kolumnie
         size = 8.6
-        while text_width(line, tp.sans, size) > col.width and size > 7.4:
-            size -= 0.2
-        if text_width(line, tp.sans, size) > col.width:
-            line = sep.join(parts[:3])
-        self.w.begin("P", "header",
-                     actual_text="; ".join(f"{l.capitalize()}: {v}"
-                                           for l, v in self.p.contact.pairs()),
-                     visible_text=line)
-        y = col.y - 9
-        self._text(col.x, y, line, tp.sans, size, color="text_secondary")
+        lines: list[str] = []
+        current_line_parts: list[str] = []
+        for label, value in pairs:
+            part = f"{label.capitalize()}: {value}"
+            # Sprawdź czy dodanie tego elementu nadal mieści się
+            test_line = sep.join(current_line_parts + [part]) if current_line_parts else part
+            if text_width(test_line, tp.sans, size) <= col.width or not current_line_parts:
+                current_line_parts.append(part)
+            else:
+                lines.append(sep.join(current_line_parts))
+                current_line_parts = [part]
+        if current_line_parts:
+            lines.append(sep.join(current_line_parts))
+        # Rysujemy maksymalnie 2 linie przy czytelnym rozmiarze
+        visible_text = sep.join(p[1] for p in pairs)
+        actual_text = "; ".join(f"{l.capitalize()}: {v}" for l, v in pairs)
+        self.w.begin("P", "header", actual_text=actual_text, visible_text=visible_text)
+        for i, ln in enumerate(lines[:2]):
+            self._text(col.x, col.y - size - i * (size + 3), ln,
+                       tp.sans, size, color="text_secondary",
+                       max_width=col.width)
         self.w.end()
-        col.y = y - 14
+        col.y -= size * len(lines[:2]) + (3 * (len(lines[:2]) - 1)) + 5
 
     def _banner_header(self) -> None:
         tp = self.t.typography
@@ -702,30 +743,51 @@ class Renderer:
         name_color = "sidebar_text" if self.t.sidebar_style == "dark" else "text_primary"
         self.w.begin("H1", "header", actual_text=f"{self.p.name} — {self.p.title}",
                      visible_text=self.p.name)
-        self._text(text_x, by - tp.name_size, self.p.name, tp.serif_bold,
-                   tp.name_size, color=name_color)
+        name_size = tp.name_size * self.v_scale
+        self.w.begin("H1", "header", actual_text=f"{self.p.name} — {self.p.title}",
+                     visible_text=self.p.name)
+        self._text(text_x, by - name_size, self.p.name, tp.serif_bold,
+                   name_size, color=name_color, max_width=PAGE_W - pad - text_x)
         self.w.end()
-        by -= tp.name_size + 6
+        by -= name_size + 6
 
+        title_size = tp.title_size * self.v_scale
         self.w.begin("P", "header", actual_text=self.p.title, visible_text=self.p.title)
-        self._text(text_x, by - tp.title_size, self.p.title.upper(),
-                   tp.sans_semibold, tp.title_size, color="accent", char_space=1.4)
+        title_full = self.p.title.upper()
+        max_title_w = PAGE_W - pad - text_x
+        safe_char_space = min(1.4, max(0.4, (max_title_w - text_width(title_full, tp.sans_semibold, title_size)) / max(len(title_full) - 1, 1)))
+        self._text(text_x, by - title_size, title_full,
+                   tp.sans_semibold, title_size, color="accent",
+                   char_space=safe_char_space, max_width=max_title_w)
         self.w.end()
-        by -= tp.title_size + 8
+        by -= title_size + 8
 
-        parts = [v for _, v in self.p.contact.pairs()]
-        line = "   ·   ".join(parts)
+        # Kontakt w bannerze — wrap na 2 linie zamiast shrink do 7pt
+        pairs = self.p.contact.pairs()
+        sep_local = "   ·   "
         c_size = 8.2
-        avail_w = PAGE_W - pad - text_x
-        while text_width(line, tp.sans, c_size) > avail_w and c_size > 7.0:
-            c_size -= 0.2
+        contact_lines: list[str] = []
+        current_parts: list[str] = []
+        for label, value in pairs:
+            part = f"{label.capitalize()}: {value}"
+            test_line = sep_local.join(current_parts + [part]) if current_parts else part
+            if text_width(test_line, tp.sans, c_size) <= (PAGE_W - pad - text_x) or not current_parts:
+                current_parts.append(part)
+            else:
+                contact_lines.append(sep_local.join(current_parts))
+                current_parts = [part]
+        if current_parts:
+            contact_lines.append(sep_local.join(current_parts))
         self.w.begin("P", "header",
-                     actual_text="; ".join(f"{l.capitalize()}: {v}"
-                                           for l, v in self.p.contact.pairs()),
-                     visible_text=line)
+                      actual_text="; ".join(f"{l.capitalize()}: {v}"
+                                            for l, v in pairs),
+                      visible_text=sep_local.join(p[1] for p in pairs))
         c_color = "sidebar_muted" if self.t.sidebar_style == "dark" else "text_secondary"
-        self._text(text_x, by - c_size, line, tp.sans, c_size, color=c_color)
+        for i, cl in enumerate(contact_lines[:2]):
+            self._text(text_x, by - c_size - i * (c_size + 3), cl, tp.sans, c_size, color=c_color,
+                       max_width=PAGE_W - pad - text_x)
         self.w.end()
+        by -= c_size * len(contact_lines[:2]) + 5
 
     def _render_sidebar(self, side: Column) -> None:
         if not getattr(self.layout, "has_banner", False):

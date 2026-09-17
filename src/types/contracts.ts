@@ -29,6 +29,7 @@ export type ParseJdInput = z.infer<typeof parseJdSchema>;
  */
 export const vaultPayloadSchema = z.object({
   vault: z.object({
+    schemaVersion: z.number().int().positive().optional(),
     version: z.string(),
     updatedAt: z.string(),
     personalInfo: z.object({}).passthrough(),

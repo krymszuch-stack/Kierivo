@@ -12,6 +12,8 @@ import { MasterVault, TailoredResume } from '../types';
 import { StorageKeys, readJson, writeJson } from './storage';
 
 export interface SavedCVDocument {
+  /** Wersja schematu danych encji (liczba całkowita, np. 1). */
+  schemaVersion?: number;
   id: string;
   title: string;
   tags: string[];
@@ -55,6 +57,7 @@ export function saveCV(
   const now = new Date().toISOString();
   const newDoc: SavedCVDocument = {
     ...data,
+    schemaVersion: 1,
     id: `cv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     tags: Array.isArray(data.tags) ? Array.from(new Set(data.tags)) : [],
     createdAt: now,

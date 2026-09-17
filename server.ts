@@ -21,11 +21,12 @@ import { stripeWebhookRouter } from "./src/server/routes/stripe.routes";
 import { pdfRouter } from "./src/server/routes/pdf.routes";
 import { errorHandler } from "./src/server/middleware/errorHandler";
 import { standardApiLimiter } from "./src/server/middleware/rateLimiter";
-import { loadConfig } from "./src/server/config";
+import { validateStartupEnv } from "./src/server/config";
 
 async function startServer() {
-  // Throws and stops the process if required configuration is missing.
-  const config = loadConfig();
+  // Twarda walidacja startowa: sprawdza kompletność zmiennych krytycznych,
+  // spójność konfiguracji oraz restrykcje bezpieczeństwa przed zainicjalizowaniem aplikacji.
+  const config = validateStartupEnv();
   const isProduction = config.NODE_ENV === "production";
 
   const app = express();

@@ -86,7 +86,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const statusBadges: Record<KeywordMatchStatus, { label: string; variant: 'success' | 'warning' | 'danger'; icon: any }> = {
+  const statusBadges: Record<KeywordMatchStatus, { label: string; variant: 'success' | 'warning' | 'danger'; icon: React.ElementType }> = {
     MATCHED_IN_CV: { label: 'W CV', variant: 'success', icon: CheckCircle2 },
     IN_VAULT_NOT_IN_CV: { label: 'W Vault (do dodania)', variant: 'warning', icon: Layers },
     MISSING_IN_VAULT: { label: 'Brak w profilu', variant: 'danger', icon: AlertTriangle },

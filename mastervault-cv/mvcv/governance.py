@@ -60,7 +60,19 @@ def truncate_to_lines(text: str, *, width_pt: float, font: str, size: float, max
         last = lines[-1]
         while last and measure(last + ELLIPSIS, font, size) > width_pt:
             last = last.rsplit(" ", 1)[0]
-        lines[-1] = (last + " " + ELLIPSIS).strip()
+        if last:
+            lines[-1] = (last + " " + ELLIPSIS).strip()
+        else:
+            # Jeśli nie zostało żadne słowo, użyj poprzednich linii bez ostatniej
+            # i dodaj elipsę do ostatniej z nich
+            if len(lines) >= 2:
+                prev = lines[-2]
+                while prev and measure(prev + " " + ELLIPSIS, font, size) > width_pt:
+                    prev = prev.rsplit(" ", 1)[0]
+                lines[-2] = (prev + " " + ELLIPSIS).strip()
+                lines = lines[:-1]
+            else:
+                lines[-1] = ELLIPSIS
     return " ".join(lines), len(lines)
 
 
@@ -78,7 +90,7 @@ def sort_bullets(bullets: list[Bullet]) -> list[Bullet]:
 
 
 def fit_bullets_to_lines(bullets: list[Bullet], *, max_lines: int, width_pt: float,
-                         measure, bullet_font: str = "Sans", bullet_size: float = 9.5) -> list[Bullet]:
+                          measure, bullet_font: str = "Sans", bullet_size: float = 9.5) -> list[Bullet]:
     """Wybierz punkty tak, by łącznie nie przekroczyć max_lines (results first)."""
     ordered = sort_bullets(bullets)
     used = 0
@@ -86,7 +98,7 @@ def fit_bullets_to_lines(bullets: list[Bullet], *, max_lines: int, width_pt: flo
     for b in ordered:
         lines = count_lines(b.display, width_pt=width_pt - 12, font=bullet_font,
                             size=bullet_size, measure=measure)
-        if used + lines > max_lines and out:
+        if used + lines > max_lines:
             break
         used += lines
         out.append(b)

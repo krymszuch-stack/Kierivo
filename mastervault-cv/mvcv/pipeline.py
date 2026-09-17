@@ -49,11 +49,18 @@ class ExportReport:
         return "\n".join(rows)
 
 
-def main_column_width(layout: LayoutPreset) -> float:
+def main_column_width(layout: LayoutPreset, theme: ResumeTheme) -> float:
+    """Szerokość głównej kolumny z użyciem rzeczywistych tokenów tematu."""
     if layout.kind == "sidebar":
         sw = PAGE_W * layout.sidebar_ratio
-        return PAGE_W - (sw + 26) - 46
-    return PAGE_W - 2 * 46
+        # Używamy rzeczywistych tokenów zamiast hardcodowanych 26/46
+        gutter = theme.layout.gutter
+        page_margin = theme.layout.page_margin
+        sidebar_pad = theme.layout.sidebar_pad
+        if layout.sidebar_pos == "right":
+            return PAGE_W - (sw + gutter + page_margin + sidebar_pad)
+        return PAGE_W - (sw + gutter + page_margin)
+    return PAGE_W - 2 * theme.layout.page_margin
 
 
 def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
@@ -75,38 +82,31 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
 
         return stringWidth(text, alias_for(font), size)
 
-    resolved, gov = govern(profile, content_width=main_column_width(ly), measure=measure,
+    resolved, gov = govern(profile, content_width=main_column_width(ly, th), measure=measure,
                            target_pages=target_pages)
 
     # Pass 1: standardowy render
     r = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar, density="normal")
     result = r.render()
 
-    # Inteligentny Auto-Balancing A4: eliminacja stron-sierot i gwarancja dopasowania do 1 strony
+    # Pass 2: kompresja (jeśli potrzebne)
     if target_pages == 1 and result.pages > 1:
-        # Pass 2: kompresja wertykalna (mikro-spacing) bez usuwania żadnej treści
         r_compact = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar, density="compact")
         res_compact = r_compact.render()
         if res_compact.pages == 1:
-            r = r_compact
             result = res_compact
-            gov.notes.append("Auto-Balancing A4: dopasowano idealnie do 1 strony przez kompresję wertykalną.")
+
+        # Pass 3: adaptacyjny governance
         else:
-            # Pass 3: adaptacyjny governance pod 1 stronę (selekcja najważniejszych osiągnięć)
-            resolved_agg, gov_agg = govern(profile, content_width=main_column_width(ly), measure=measure,
-                                           target_pages=1, aggressive_fit=True)
-            r_agg = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="compact")
+            resolved_agg, gov_agg = govern(profile, content_width=main_column_width(ly, th), measure=measure,
+                                            target_pages=1, aggressive_fit=True)
+            r_agg = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="ultra_compact")
             res_agg = r_agg.render()
-            if res_agg.pages == 1:
-                r, result, resolved, gov = r_agg, res_agg, resolved_agg, gov_agg
-                gov.notes.append("Auto-Balancing A4: zbalansowano treść do dokładnie 1 strony A4.")
+            if res_agg.pages <= 1:
+                result = res_agg
             else:
-                # Pass 4: tryb ultra-compact dla pewności dopasowania
-                r_ultra = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="ultra_compact")
-                res_ultra = r_ultra.render()
-                if res_ultra.pages <= 1 or res_ultra.pages < result.pages:
-                    r, result, resolved, gov = r_ultra, res_ultra, resolved_agg, gov_agg
-                    gov.notes.append("Auto-Balancing A4: zastosowano tryb ultra-compact.")
+                result = r_agg.render()
+                result.warnings.append("Auto-balancing: nie udało się zmieścić w 1 stronie — dokument może mieć 2 strony")
 
     import io
 

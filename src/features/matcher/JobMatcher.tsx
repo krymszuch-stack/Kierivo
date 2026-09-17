@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ArrowRight,
   ShieldCheck,
+  Layers,
 } from 'lucide-react';
 import {
   MasterVault,
@@ -24,14 +25,21 @@ import { ApiError, api } from '../../lib/apiClient';
 import type { ParsedJobDescription } from '../../lib/jdParser';
 import { parseJobDescriptionResponse } from '../../lib/jdSchema';
 import { parseJobDescriptionLocal } from '../../lib/jdParser';
+import { createApplicationDocumentSnapshot } from '../../lib/applicationSnapshot';
+import { isVaultEmpty } from '../../lib/vaultCompleteness';
+import { Tabs } from '../../components/ui/Tabs';
+import { QuickOnboardingFlow } from '../onboarding/QuickOnboardingFlow';
 import { JDInputModes } from './JDInputModes';
 import { JobFeasibilityAdvisor } from './JobFeasibilityAdvisor';
 import type { MobilityPreferences } from '../../lib/commuteCalculator';
 import { RealtimeLivePreview } from './RealtimeLivePreview';
 import { DocumentRenderer } from './DocumentRenderer';
-import { simulateAtsCheck } from '../../lib/atsSimulator';
-import { scoreCanonicalAts, type CanonicalAtsScore } from '../../lib/canonicalAts';
-import { generateAntiTemplateCoverLetter } from '../../lib/coverLetterEngine';
+import type { CanonicalAtsScore } from '../../lib/canonicalAts';
+import {
+  calculateJobMatch,
+  buildJobOfferFromScraped,
+  buildJobOfferFromManual,
+} from '../../lib/jobMatcherEngine';
 import { triggerConfetti } from '../../lib/confetti';
 import { consumeAiLocally } from '../../store/useEntitlements';
 import { contributeJobIntel } from '../../lib/crowdsourceIntel';
@@ -42,7 +50,8 @@ import { Modal } from '../../components/ui/Modal';
 import { useApplications } from '../../store/useApplications';
 import { JobApplication } from '../../types';
 import { showToast } from '../../store/useToastStore';
-import { buildAdvisorContext, type AdvisorContext } from '../advisor/advisorContext';
+import type { AdvisorContext } from '../advisor/advisorContext';
+import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 
 interface JobPreset {
   id: string;
@@ -152,6 +161,11 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   // a modal czekał na wyniki w nieskończoność.
   const [matchError, setMatchError] = useState<string | null>(null);
 
+  // Tryb dopasowania: domyślnie uproszczony onboarding dla nowego użytkownika
+  const [matcherMode, setMatcherMode] = useState<'quick' | 'advanced'>(() => {
+    return isVaultEmpty(vault) ? 'quick' : 'advanced';
+  });
+
   // Preferencje dojazdu żyją w vaulcie, a nie w stanie widoku: kalkulator ma
   // pamiętać, jak daleko użytkownik mieszka, przy każdej kolejnej ofercie.
   const handleMobilityChange = (mobilityPreferences: MobilityPreferences) => {
@@ -168,56 +182,16 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     setIsAtsModalOpen(true);
 
     try {
-      const jdText = job.description || job.requirements?.join(' ') || job.title;
+      const matchResult = calculateJobMatch(vault, job);
+      setCanonicalResult(matchResult.canonicalResult);
+      setAtsResult(matchResult.atsResult);
+      setCoverLetter(matchResult.coverLetter);
+      setTailoredResume(matchResult.tailoredResume);
+      onAdvisorContext?.(matchResult.advisorContext);
 
-      // 1. Create Tailored Resume
-      const tailored: TailoredResume = {
-        targetJobTitle: job.title,
-        companyName: job.company,
-        summary: vault.personalInfo?.summary
-          ? vault.personalInfo.summary
-          : `Dopasowany profil zawodowy pod stanowisko ${job.title} w firmie ${job.company}.`,
-        selectedHighlights: vault.history.flatMap((h) =>
-          h.highlights.map((hl) => ({
-            experienceId: h.id,
-            role: h.role,
-            company: h.company,
-            originalText: hl.text,
-            optimizedText: hl.text,
-            source: 'SLOT_FILLING' as const,
-            keywordsMatched: hl.keywords || [],
-          }))
-        ),
-        skillsMatched: {
-          hardSkills: vault.skillsMatrix?.hardSkills || [],
-          toolsAndTech: vault.skillsMatrix?.toolsAndTech || [],
-          softSkills: vault.skillsMatrix?.softSkills || [],
-        },
-        // Wypełniane zaraz po symulacji. Stała w tym miejscu była wartością
-        // wymyśloną, którą łatwo przeoczyć przy refaktorze i wypuścić na ekran.
-        atsScore: 0,
-      };
-
-      // 2. Run Slot Filling & ATS Simulation
-      const canonical = scoreCanonicalAts(vault, jdText, job.title);
-      setCanonicalResult(canonical);
-
-      const ats = simulateAtsCheck(tailored, vault, jdText);
-      // Kanoniczny wynik ATS jest jedyną rozstrzygającą liczbą dopasowania (F6).
-      tailored.atsScore = canonical.score;
-      setAtsResult(ats);
-      onAdvisorContext?.(buildAdvisorContext(vault, job, ats));
-
-      if (canonical.score >= 90) {
+      if (matchResult.shouldCelebrate) {
         triggerConfetti({ count: 90, durationMs: 3000 });
       }
-
-
-      // 3. Generate Anti-Template Cover Letter
-      const cl = generateAntiTemplateCoverLetter(job.title, job.company, jdText, vault);
-      setCoverLetter(cl);
-
-      setTailoredResume(tailored);
     } catch (err) {
       console.error('Błąd dopasowywania oferty:', err);
       // Bez tego modal wisiał na spinnerze „Kalkulacja..." do zamknięcia ręcznego.
@@ -230,25 +204,43 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   };
 
   const handleMatchManual = (manualOffer: Partial<JobOffer>) => {
-    const rawText = manualOffer.description || '';
-    const parsed =
-      manualOffer.parsedJd ||
-      parseJobDescriptionLocal(rawText, manualOffer.title || 'Stanowisko');
-    const job: JobOffer = {
-      id: manualOffer.id || `manual-${Date.now()}`,
-      title: manualOffer.title || '',
-      company: manualOffer.company || '',
-      salary: manualOffer.salary || '',
-      location: manualOffer.location || '',
-      description: manualOffer.description || '',
-      requirements: manualOffer.requirements || [],
-      remote: manualOffer.remote ?? false,
-      portal: 'Manual',
-      techStack: manualOffer.requirements || [],
-      parsedJd: parsed,
-    };
+    const { job, parsed } = buildJobOfferFromManual(manualOffer);
     setParsedJd(parsed);
     handleMatchJob(job);
+  };
+
+  const parseScrapedJob = async (rawJdText: string): Promise<ParsedJobDescription> => {
+    const aiAvailable = consumeAiLocally();
+    if (!aiAvailable) {
+      showToast('Limit analiz AI wyczerpany', {
+        message: 'Dzienny przydział wywołań AI został wyczerpany (odnowi się o północy). Ogłoszenie zostało przeanalizowane lokalnym silnikiem regułowym.',
+        variant: 'info',
+      });
+      return parseJobDescriptionLocal(rawJdText);
+    }
+
+    try {
+      const parseData = await api.post<{ parsedJd: unknown }>('/api/parse-jd', {
+        rawJdText,
+      });
+      return (
+        parseJobDescriptionResponse(parseData.parsedJd) ||
+        parseJobDescriptionLocal(rawJdText)
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.isQuotaExceeded) {
+        showToast('Limit analiz AI wyczerpany', {
+          message: 'Dzienny limit wywołań modeli AI został wyczerpany (odnowi się o północy). Przełączono na wbudowany silnik regułowy.',
+          variant: 'info',
+        });
+      } else {
+        showToast('Lokalna analiza regułowa', {
+          message: 'Model AI był niedostępny. Zastosowano lokalny parser heurystyczny Kierivo.',
+          variant: 'info',
+        });
+      }
+      return parseJobDescriptionLocal(rawJdText);
+    }
   };
 
   const handleMatchUrl = async (url: string) => {
@@ -268,57 +260,10 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         return;
       }
 
-      // Structure the scraped text via the AI parser, falling back to the local
-      // heuristic. The response is validated rather than trusted: `res.json()` is
-      // `any`, so a shape mismatch would otherwise pass typecheck and leave every
-      // field undefined — throwing away a result we paid the model for.
-      let parsed: ParsedJobDescription;
-      // Podpowiedź licznika na zero = strzał skazany na 402; lokalny parser
-      // daje od razu gorszy, ale uczciwy wynik. Prawdę o limicie i tak zna
-      // serwer — tu decydujemy tylko, czy warto wysyłać.
-      const aiAvailable = consumeAiLocally();
-      try {
-        if (!aiAvailable) throw new Error('lokalny limit AI wyczerpany');
-        const parseData = await api.post<{ parsedJd: unknown }>('/api/parse-jd', {
-          rawJdText: fetched.descriptionRaw,
-        });
-        parsed =
-          parseJobDescriptionResponse(parseData.parsedJd) ||
-          parseJobDescriptionLocal(fetched.descriptionRaw);
-      } catch {
-        // Model bywa niedostępny, a limit kwot bywa wyczerpany. Lokalny parser
-        // heurystyczny daje gorszy wynik, ale zawsze jakiś — użytkownik nie
-        // zostaje z pustym ekranem po tym, jak ofertę udało się już pobrać.
-        parsed = parseJobDescriptionLocal(fetched.descriptionRaw);
-      }
+      const parsed = await parseScrapedJob(fetched.descriptionRaw);
+      const job = buildJobOfferFromScraped({ url, fetched, parsed });
 
-      // Gdy portal udostępnia dane strukturalne (schema.org/JobPosting), mają one
-      // pierwszeństwo przed wynikiem modelu: pochodzą wprost od wystawiającego
-      // ofertę, więc tytuł, firma, widełki i tryb pracy są faktem, a nie
-      // odczytem z tekstu. Model uzupełnia wtedy tylko to, czego w nich nie ma.
-      const fromPortal = fetched.extraction?.structured === true;
-
-      const job: JobOffer = {
-        id: `url-${Date.now()}`,
-        title: (fromPortal && fetched.title) || parsed.jobTitle || fetched.title || 'Oferta z adresu URL',
-        company: (fromPortal && fetched.company) || parsed.companyName || fetched.company || '',
-        salary: fetched.salary || parsed.salaryRange || '',
-        location: fetched.location || '',
-        description: fetched.descriptionRaw,
-        requirements: parsed.requiredHardSkills?.length
-          ? parsed.requiredHardSkills
-          : (fetched.skills ?? []),
-        remote: fetched.remote ?? parsed.workModel === 'REMOTE',
-        portal: 'URL',
-        url,
-        techStack: parsed.toolsAndTech?.length ? parsed.toolsAndTech : (fetched.skills ?? []),
-        parsedJd: parsed,
-      };
-
-      // Ogłoszenie zostało rozpoznane — to jest moment, w którym powstaje
-      // cegiełka do wspólnej bazy.
-      // Wysyłka jest anonimowa i „best effort": jej błąd nie może przerwać
-      // dopasowania, które użytkownik właśnie uruchomił.
+      // Ogłoszenie zostało rozpoznane — wysyłka jest anonimowa i „best effort"
       contributeJobIntel({ ...parsed, sourceUrl: url });
       setParsedJd(parsed);
 
@@ -339,173 +284,213 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         badge="Analiza bez tokenów AI"
       />
 
-      {/* Input Modes (Live / URL / Manual) */}
-      <JDInputModes
-        onMatchManual={handleMatchManual}
-        onMatchUrl={handleMatchUrl}
-        isFetchingUrl={isFetchingUrl}
-        urlError={urlError}
-      />
+      {/* Pasek wyboru trybu dopasowania: Uproszczony onboarding vs Tryb zaawansowany */}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-line bg-surface p-3.5 shadow-xs">
+        <div>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-brand-fg">
+            {matcherMode === 'quick' ? 'Pierwszy przejazd — minimalny happy path' : 'Tryb zaawansowany'}
+          </span>
+          <p className="text-xs text-muted">
+            {matcherMode === 'quick'
+              ? 'Wklej CV i ogłoszenie, aby natychmiast poznać wynik ATS i 3 główne problemy.'
+              : 'Pełny zestaw narzędzi: 7 modułów dopasowania, presety branżowe i kalkulator dojazdów.'}
+          </p>
+        </div>
 
-      {/* Stan początkowy przed wklejeniem oferty: Szybki Start + Podgląd Twojego Bazowego CV */}
-      {!selectedJob && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Kolumna lewa: Szybki start (Presety ofert z różnych branż) & Jak działa audyt */}
-          <div className="lg:col-span-7 space-y-6">
-            <Card tone="raised" className="p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
-                    <Sparkles className="h-4 w-4" />
+        <Tabs<'quick' | 'advanced'>
+          items={[
+            { id: 'quick', label: 'Uproszczony start', icon: Sparkles },
+            { id: 'advanced', label: 'Tryb zaawansowany', icon: Layers },
+          ]}
+          active={matcherMode}
+          onChange={setMatcherMode}
+          variant="pill"
+        />
+      </div>
+
+      {matcherMode === 'quick' ? (
+        <QuickOnboardingFlow
+          onShowDetails={(newVault, jobOffer) => {
+            onUpdateVault?.(newVault);
+            setMatcherMode('advanced');
+            handleMatchJob(jobOffer);
+          }}
+          onSwitchToAdvanced={() => setMatcherMode('advanced')}
+        />
+      ) : (
+        <>
+          {/* Informacja o limicie operacji modelowych i łagodne wygaszanie */}
+          <ModelQuotaCounter variant="banner" feature="matcher" className="mb-1" />
+
+          {/* Input Modes (Live / URL / Manual) */}
+          <JDInputModes
+            onMatchManual={handleMatchManual}
+            onMatchUrl={handleMatchUrl}
+            isFetchingUrl={isFetchingUrl}
+            urlError={urlError}
+          />
+
+          {/* Stan początkowy przed wklejeniem oferty: Szybki Start + Podgląd Twojego Bazowego CV */}
+          {!selectedJob && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Kolumna lewa: Szybki start (Presety ofert z różnych branż) & Jak działa audyt */}
+              <div className="lg:col-span-7 space-y-6">
+                <Card tone="raised" className="p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                        <Sparkles className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-ink">Szybki start — przetestuj na gotowej ofercie</h3>
+                        <p className="text-xs text-ink-muted">Kliknij dowolną branżę, aby natychmiast zobaczyć audyt ATS i dopasowanie dokumentów.</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-ink">Szybki start — przetestuj na gotowej ofercie</h3>
-                    <p className="text-xs text-ink-muted">Kliknij dowolną branżę, aby natychmiast zobaczyć audyt ATS i dopasowanie dokumentów.</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {SAMPLE_PRESETS.map((preset) => {
+                      const Icon = preset.icon;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleMatchManual(preset.offer)}
+                          className="flex flex-col text-left p-3.5 rounded-xl border border-line bg-surface hover:border-brand-500/50 hover:bg-brand-500/5 transition-all group cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-muted text-ink-muted group-hover:text-brand-600">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-muted text-muted font-medium">
+                              {preset.badge}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-ink group-hover:text-brand-600 line-clamp-2 leading-snug">
+                            {preset.title}
+                          </span>
+                          <span className="text-[11px] text-ink-muted mt-1 truncate">{preset.company}</span>
+                          <span className="text-[10px] font-mono text-brand-fg font-semibold mt-2.5">{preset.salary}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
+                </Card>
+
+                {/* Karta: Jak działa audyt ATS w 3 krokach */}
+                <Card tone="flat" className="p-5 space-y-3 bg-surface-muted/40 border border-line">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted">Jak działa silnik dopasowania ATS</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
+                      <span className="font-mono text-[10px] font-bold text-brand-600">01. EKSTRAKCJA</span>
+                      <p className="font-bold text-ink text-xs">Dane z ogłoszenia</p>
+                      <p className="text-[11px] text-ink-muted leading-relaxed">Odczyt struktury JSON-LD lub treści oferty bez zużywania tokenów AI.</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
+                      <span className="font-mono text-[10px] font-bold text-brand-600">02. FLEKSJA</span>
+                      <p className="font-bold text-ink text-xs">Lematyzator PL</p>
+                      <p className="text-[11px] text-ink-muted leading-relaxed">Analiza odmian gramatycznych i wykrywanie brakujących słów kluczowych.</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
+                      <span className="font-mono text-[10px] font-bold text-brand-600">03. DOKUMENTY</span>
+                      <p className="font-bold text-ink text-xs">Dopasowane CV</p>
+                      <p className="text-[11px] text-ink-muted leading-relaxed">Generowanie spersonalizowanego CV, listu motywacyjnego i pytań rekrutacyjnych.</p>
+                    </div>
+                  </div>
+                </Card>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {SAMPLE_PRESETS.map((preset) => {
-                  const Icon = preset.icon;
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => handleMatchManual(preset.offer)}
-                      className="flex flex-col text-left p-3.5 rounded-xl border border-line bg-surface hover:border-brand-500/50 hover:bg-brand-500/5 transition-all group cursor-pointer"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface-muted text-ink-muted group-hover:text-brand-600">
-                          <Icon className="h-4 w-4" />
+              {/* Kolumna prawa: Karta Twojego Bazowego CV (Live Preview) */}
+              <div className="lg:col-span-5">
+                <Card tone="raised" className="p-5 space-y-4 h-full flex flex-col justify-between">
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between pb-3 border-b border-line">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600">
+                          <FileText className="h-5 w-5" />
                         </div>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-muted text-muted font-medium">
-                          {preset.badge}
+                        <div>
+                          <h3 className="text-sm font-bold text-ink">Twoje Bazowe CV</h3>
+                          <p className="text-xs text-ink-muted">Master Vault gotowy do dopasowania</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={Eye}
+                        onClick={() => setIsBaseCvPreviewOpen(true)}
+                      >
+                        Podgląd A4
+                      </Button>
+                    </div>
+
+                    {/* Profil snapshot */}
+                    <div className="rounded-xl border border-line bg-surface p-3.5 space-y-2.5 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-ink text-sm truncate">
+                          {vault.personalInfo?.fullName || 'Brak imienia i nazwiska'}
+                        </span>
+                        <span className="text-[11px] text-brand-fg font-medium shrink-0">
+                          {vault.personalInfo?.title || 'Tytuł zawodowy'}
                         </span>
                       </div>
-                      <span className="text-xs font-bold text-ink group-hover:text-brand-600 line-clamp-2 leading-snug">
-                        {preset.title}
-                      </span>
-                      <span className="text-[11px] text-ink-muted mt-1 truncate">{preset.company}</span>
-                      <span className="text-[10px] font-mono text-brand-fg font-semibold mt-2.5">{preset.salary}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
 
-            {/* Karta: Jak działa audyt ATS w 3 krokach */}
-            <Card tone="flat" className="p-5 space-y-3 bg-surface-muted/40 border border-line">
-              <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted">Jak działa silnik dopasowania ATS</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
-                  <span className="font-mono text-[10px] font-bold text-brand-600">01. EKSTRAKCJA</span>
-                  <p className="font-bold text-ink text-xs">Dane z ogłoszenia</p>
-                  <p className="text-[11px] text-ink-muted leading-relaxed">Odczyt struktury JSON-LD lub treści oferty bez zużywania tokenów AI.</p>
-                </div>
-                <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
-                  <span className="font-mono text-[10px] font-bold text-brand-600">02. FLEKSJA</span>
-                  <p className="font-bold text-ink text-xs">Lematyzator PL</p>
-                  <p className="text-[11px] text-ink-muted leading-relaxed">Analiza odmian gramatycznych i wykrywanie brakujących słów kluczowych.</p>
-                </div>
-                <div className="p-3 rounded-xl bg-surface border border-line space-y-1.5">
-                  <span className="font-mono text-[10px] font-bold text-brand-600">03. DOKUMENTY</span>
-                  <p className="font-bold text-ink text-xs">Dopasowane CV</p>
-                  <p className="text-[11px] text-ink-muted leading-relaxed">Generowanie spersonalizowanego CV, listu motywacyjnego i pytań rekrutacyjnych.</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Kolumna prawa: Karta Twojego Bazowego CV (Live Preview) */}
-          <div className="lg:col-span-5">
-            <Card tone="raised" className="p-5 space-y-4 h-full flex flex-col justify-between">
-              <div className="space-y-3.5">
-                <div className="flex items-center justify-between pb-3 border-b border-line">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10 text-brand-600">
-                      <FileText className="h-5 w-5" />
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-ink-muted pt-2 border-t border-line">
+                        <div>
+                          <span className="text-muted block">Doświadczenie:</span>
+                          <span className="font-semibold text-ink">{vault.history?.length || 0} stanowisk</span>
+                        </div>
+                        <div>
+                          <span className="text-muted block">Osiągnięcia STAR:</span>
+                          <span className="font-semibold text-ink">
+                            {vault.history?.reduce((acc, h) => acc + (h.highlights?.length || 0), 0) || 0} punktów
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted block">Umiejętności:</span>
+                          <span className="font-semibold text-ink">
+                            {vault.skillsMatrix?.hardSkills?.length || 0} twardych
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted block">Lokalizacja:</span>
+                          <span className="font-semibold text-ink truncate block">
+                            {vault.personalInfo?.location || 'Nie podano'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-ink">Twoje Bazowe CV</h3>
-                      <p className="text-xs text-ink-muted">Master Vault gotowy do dopasowania</p>
+
+                    {/* Szybka miniatura dokumentu */}
+                    <div
+                      onClick={() => setIsBaseCvPreviewOpen(true)}
+                      className="group relative cursor-pointer overflow-hidden rounded-xl border border-line bg-surface p-4 text-center hover:border-brand-500/50 hover:bg-brand-500/5 transition-all"
+                    >
+                      <div className="mx-auto max-w-[200px] space-y-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <div className="h-2 w-3/4 mx-auto bg-ink/30 rounded" />
+                        <div className="h-1.5 w-1/2 mx-auto bg-brand-500/40 rounded" />
+                        <div className="h-1 w-full bg-ink/10 rounded mt-2" />
+                        <div className="h-1 w-5/6 bg-ink/10 rounded" />
+                        <div className="h-1 w-4/6 bg-ink/10 rounded" />
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-brand-600 group-hover:underline">
+                        <Eye className="h-3.5 w-3.5" />
+                        Otwórz pełny podgląd arkusza A4
+                      </span>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    icon={Eye}
-                    onClick={() => setIsBaseCvPreviewOpen(true)}
-                  >
-                    Podgląd A4
-                  </Button>
-                </div>
 
-                {/* Profil snapshot */}
-                <div className="rounded-xl border border-line bg-surface p-3.5 space-y-2.5 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-ink text-sm truncate">
-                      {vault.personalInfo?.fullName || 'Brak imienia i nazwiska'}
-                    </span>
-                    <span className="text-[11px] text-brand-fg font-medium shrink-0">
-                      {vault.personalInfo?.title || 'Tytuł zawodowy'}
+                  <div className="pt-3 border-t border-line flex items-center justify-between text-xs">
+                    <span className="text-ink-muted">To CV zostanie dopasowane do ogłoszenia</span>
+                    <span className="text-success-fg font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Gotowe
                     </span>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-ink-muted pt-2 border-t border-line">
-                    <div>
-                      <span className="text-muted block">Doświadczenie:</span>
-                      <span className="font-semibold text-ink">{vault.history?.length || 0} stanowisk</span>
-                    </div>
-                    <div>
-                      <span className="text-muted block">Osiągnięcia STAR:</span>
-                      <span className="font-semibold text-ink">
-                        {vault.history?.reduce((acc, h) => acc + (h.highlights?.length || 0), 0) || 0} punktów
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted block">Umiejętności:</span>
-                      <span className="font-semibold text-ink">
-                        {vault.skillsMatrix?.hardSkills?.length || 0} twardych
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted block">Lokalizacja:</span>
-                      <span className="font-semibold text-ink truncate block">
-                        {vault.personalInfo?.location || 'Nie podano'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Szybka miniatura dokumentu */}
-                <div
-                  onClick={() => setIsBaseCvPreviewOpen(true)}
-                  className="group relative cursor-pointer overflow-hidden rounded-xl border border-line bg-surface p-4 text-center hover:border-brand-500/50 hover:bg-brand-500/5 transition-all"
-                >
-                  <div className="mx-auto max-w-[200px] space-y-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                    <div className="h-2 w-3/4 mx-auto bg-ink/30 rounded" />
-                    <div className="h-1.5 w-1/2 mx-auto bg-brand-500/40 rounded" />
-                    <div className="h-1 w-full bg-ink/10 rounded mt-2" />
-                    <div className="h-1 w-5/6 bg-ink/10 rounded" />
-                    <div className="h-1 w-4/6 bg-ink/10 rounded" />
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 mt-3 text-xs font-semibold text-brand-600 group-hover:underline">
-                    <Eye className="h-3.5 w-3.5" />
-                    Otwórz pełny podgląd arkusza A4
-                  </span>
-                </div>
+                </Card>
               </div>
-
-              <div className="pt-3 border-t border-line flex items-center justify-between text-xs">
-                <span className="text-ink-muted">To CV zostanie dopasowane do ogłoszenia</span>
-                <span className="text-success-fg font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Gotowe
-                </span>
-              </div>
-            </Card>
-          </div>
-        </div>
+            </div>
+          )}
+        </>
       )}
 
 
@@ -555,23 +540,13 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                 tailoredResume={tailoredResume}
                 coverLetter={coverLetter}
                 onSaveTailoredCV={() => {
-                  const snapshot: ApplicationDocumentSnapshot = {
-                    schemaVersion: 1,
-                    createdAt: new Date().toISOString(),
-                    tailoredResume: JSON.parse(JSON.stringify(tailoredResume)),
-                    coverLetter: coverLetter ? JSON.parse(JSON.stringify(coverLetter)) : undefined,
-                    vaultSnapshot: JSON.parse(JSON.stringify(vault)),
-                    jobOfferSnapshot: {
-                      id: selectedJob.id,
-                      title: selectedJob.title,
-                      company: selectedJob.company,
-                      salary: selectedJob.salary,
-                      location: selectedJob.location,
-                      description: selectedJob.description,
-                      url: selectedJob.url,
-                    },
-                    atsResultSnapshot: atsResult ? JSON.parse(JSON.stringify(atsResult)) : undefined,
-                  };
+                  const snapshot = createApplicationDocumentSnapshot({
+                    vault,
+                    tailoredResume,
+                    jobOffer: selectedJob,
+                    atsResult,
+                    coverLetter,
+                  });
 
                   const application: JobApplication = {
                     id: `app-${Date.now()}`,

@@ -29,6 +29,8 @@ export interface TrackerTableProps {
   onOpenNotes: (app: JobApplication) => void;
   onViewDocument: (app: JobApplication) => void;
   className?: string;
+  /** Czy pokazywać pełną siatkę kolumn zaawansowanych, czy zredukowany widok na start */
+  isAdvancedMode?: boolean;
 }
 
 export const TrackerTable: React.FC<TrackerTableProps> = ({
@@ -40,6 +42,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
   onOpenNotes,
   onViewDocument,
   className = '',
+  isAdvancedMode = false,
 }) => {
   if (applications.length === 0) {
     return (
@@ -55,14 +58,23 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Table Header (Desktop) */}
-      <div className="hidden lg:grid grid-cols-12 gap-3 px-5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
-        <div className="col-span-3">Firma</div>
-        <div className="col-span-3">Stanowisko</div>
-        <div className="col-span-2">Widełki</div>
-        <div className="col-span-1 text-center">Data</div>
-        <div className="col-span-2 text-center">Status</div>
-        <div className="col-span-1 text-right">Akcje</div>
-      </div>
+      {isAdvancedMode ? (
+        <div className="hidden lg:grid grid-cols-12 gap-3 px-5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
+          <div className="col-span-3">Firma</div>
+          <div className="col-span-3">Stanowisko</div>
+          <div className="col-span-2">Widełki</div>
+          <div className="col-span-1 text-center">Data</div>
+          <div className="col-span-2 text-center">Status</div>
+          <div className="col-span-1 text-right">Akcje</div>
+        </div>
+      ) : (
+        <div className="hidden lg:grid grid-cols-12 gap-3 px-5 py-2 font-mono text-[11px] font-bold uppercase tracking-wider text-muted">
+          <div className="col-span-5">Firma i Stanowisko</div>
+          <div className="col-span-3">Wynagrodzenie & Data</div>
+          <div className="col-span-3 text-center">Status</div>
+          <div className="col-span-1 text-right">Akcje</div>
+        </div>
+      )}
 
       {/* Rows */}
       <div className="space-y-2">
@@ -85,60 +97,121 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     : 'border-line bg-surface'
                 }`}
               >
-                {/* 1. Company */}
-                <div className="col-span-3 flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-sunken font-sans text-xs font-extrabold text-ink group-hover:border-brand-500/40">
-                    {initial}
-                  </div>
-                  <div className="min-w-0">
-                    <span className="truncate font-sans text-sm font-bold text-ink block">
-                      {app.company}
-                    </span>
-                    {app.jobUrl && (
-                      <a
-                        href={app.jobUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 font-mono text-[10px] text-muted hover:text-brand-fg"
-                      >
-                        <span>Link do oferty</span>
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
+                {/* WIDOK ZAAWANSOWANY (6 oddzielnych kolumn) */}
+                {isAdvancedMode ? (
+                  <>
+                    {/* 1. Company */}
+                    <div className="col-span-3 flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-sunken font-sans text-xs font-extrabold text-ink group-hover:border-brand-500/40">
+                        {initial}
+                      </div>
+                      <div className="min-w-0">
+                        <span className="truncate font-sans text-sm font-bold text-ink block">
+                          {app.company}
+                        </span>
+                        {app.jobUrl && (
+                          <a
+                            href={app.jobUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-mono text-[10px] text-muted hover:text-brand-fg"
+                          >
+                            <span>Link do oferty</span>
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
 
-                {/* 2. Position */}
-                <div className="col-span-3 min-w-0">
-                  <span className="truncate text-xs font-semibold text-ink/90 block">
-                    {app.position}
-                  </span>
-                  {app.documentSnapshot?.exportedCv && (
-                    <span className="mt-1 inline-flex max-w-full truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
-                      CV: {app.documentSnapshot.exportedCv.templateName}
-                    </span>
-                  )}
-                </div>
+                    {/* 2. Position */}
+                    <div className="col-span-3 min-w-0">
+                      <span className="truncate text-xs font-semibold text-ink/90 block">
+                        {app.position}
+                      </span>
+                      {app.documentSnapshot?.exportedCv && (
+                        <span className="mt-1 inline-flex max-w-full truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
+                          CV: {app.documentSnapshot.exportedCv.templateName}
+                        </span>
+                      )}
+                    </div>
 
-                {/* 3. Salary */}
-                <div className="col-span-2">
-                  <span className="inline-block rounded-lg border border-line/60 bg-sunken px-2.5 py-1 font-mono text-[11px] font-bold text-ink">
-                    {app.salary || 'Do negocjacji'}
-                  </span>
-                </div>
+                    {/* 3. Salary */}
+                    <div className="col-span-2">
+                      <span className="inline-block rounded-lg border border-line/60 bg-sunken px-2.5 py-1 font-mono text-[11px] font-bold text-ink">
+                        {app.salary || 'Do negocjacji'}
+                      </span>
+                    </div>
 
-                {/* 4. Date */}
-                <div className="col-span-1 text-left lg:text-center">
-                  <span className="font-mono text-xs text-muted">{app.date}</span>
-                </div>
+                    {/* 4. Date */}
+                    <div className="col-span-1 text-left lg:text-center">
+                      <span className="font-mono text-xs text-muted">{app.date}</span>
+                    </div>
 
-                {/* 5. Status Select */}
-                <div className="col-span-2 flex justify-start lg:justify-center">
-                  <StatusSelect
-                    status={app.status}
-                    onChange={(newStatus) => onStatusChange(app.id, newStatus)}
-                  />
-                </div>
+                    {/* 5. Status Select */}
+                    <div className="col-span-2 flex justify-start lg:justify-center">
+                      <StatusSelect
+                        status={app.status}
+                        onChange={(newStatus) => onStatusChange(app.id, newStatus)}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  /* WIDOK UPROSZCZONY (4 czytelne grupy kolumn: Firma/Rola, Warunki/Data, Status, Akcje) */
+                  <>
+                    {/* 1. Firma i Stanowisko (col-span-5) */}
+                    <div className="col-span-5 flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-sunken font-sans text-xs font-extrabold text-ink group-hover:border-brand-500/40">
+                        {initial}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-sans text-sm font-bold text-ink">
+                            {app.company}
+                          </span>
+                          {app.jobUrl && (
+                            <a
+                              href={app.jobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-mono text-[10px] text-muted hover:text-brand-fg"
+                              title="Otwórz link do ogłoszenia"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted font-medium">
+                            {app.position}
+                          </span>
+                          {app.documentSnapshot?.exportedCv && (
+                            <span className="inline-flex truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
+                              CV: {app.documentSnapshot.exportedCv.templateName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Wynagrodzenie i Data (col-span-3) */}
+                    <div className="col-span-3 flex flex-col justify-center">
+                      <span className="inline-block self-start rounded-lg border border-line/60 bg-sunken px-2.5 py-1 font-mono text-[11px] font-bold text-ink">
+                        {app.salary || 'Do negocjacji'}
+                      </span>
+                      <span className="mt-1 font-mono text-[10px] text-muted">
+                        Zgłoszenie: {app.date}
+                      </span>
+                    </div>
+
+                    {/* 3. Status z opisem (col-span-3) */}
+                    <div className="col-span-3 flex justify-start lg:justify-center">
+                      <StatusSelect
+                        status={app.status}
+                        onChange={(newStatus) => onStatusChange(app.id, newStatus)}
+                      />
+                    </div>
+                  </>
+                )}
 
                 {/* 6. Actions */}
                 <div className="col-span-1 flex items-center justify-end gap-1">

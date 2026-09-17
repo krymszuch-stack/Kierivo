@@ -121,13 +121,14 @@ export const NextActionCard: React.FC<NextActionCardProps> = ({
           </div>
         </div>
 
-        <Button
-          variant="primary"
-          icon={ArrowRight}
-          iconPosition="right"
-          onClick={handleGo}
-          className="shrink-0"
-        >
+         <Button
+           variant="primary"
+           size="sm"
+           icon={ArrowRight}
+           iconPosition="right"
+           onClick={handleGo}
+           className="shrink-0"
+         >
           {TAB_LABELS[action.deepLink.tab]
             ? `Przejdź do ${TAB_LABELS[action.deepLink.tab]}`
             : 'Przejdź'}

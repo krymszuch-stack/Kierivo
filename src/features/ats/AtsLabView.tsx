@@ -381,11 +381,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             const isSelected = engine.id === selectedEngineId;
             const style = getStatusColor(engine.status);
             return (
-              <motion.button
-                key={engine.id}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setSelectedEngineId(engine.id)}
+               <motion.button
+                 key={engine.id}
+                 type="button"
+                 whileHover={{ scale: 1.02 }}
+                 whileTap={{ scale: 0.98 }}
+                 onClick={() => setSelectedEngineId(engine.id)}
                 className={`relative flex flex-col items-center justify-between rounded-2xl border p-4 text-center transition-all ${isSelected ? 'border-brand bg-surface-raised ring-2 ring-brand/30' : 'border-ink/10 bg-surface/60'}`}
               >
                 <span className="font-mono text-2xl font-black text-ink">{engine.score}%</span>

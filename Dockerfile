@@ -55,7 +55,7 @@ COPY --from=build /app/dist ./dist
 # Graf semantyczny (PoliMorf/ESCO) jako baza SQLite tylko-do-odczytu.
 #
 # Plik `work-graph.db` jest generowany (`npm run seed:import` w pakiecie
-# semantic-work-graph) i nie leży w repozytorium — kopiowanie całego katalogu
+# labs/semantic-work-graph) i nie leży w repozytorium — kopiowanie całego katalogu
 # `data/` przenosi go do obrazu wtedy, gdy zdążył powstać przed buildem, a bez
 # niego obraz i tak się buduje (katalog niesie też seed i dokumenty).
 #
@@ -65,7 +65,7 @@ COPY --from=build /app/dist ./dist
 # — na systemie plików tylko-do-odczytu kontenera skończyło by się to błędem.
 # Odczyt otwiera `SqliteGraphRepository({ readonly: true })`, co dodatkowo
 # wymusza `query_only = ON` i `fileMustExist`.
-COPY --from=build /app/semantic-work-graph/data ./semantic-work-graph/data
+COPY --from=build /app/labs/semantic-work-graph/data ./labs/semantic-work-graph/data
 
 # Instalacja środowiska Python oraz zależności silnika Dual-Layer Semantic PDF (mvcv)
 RUN apt-get update && apt-get install -y --no-install-recommends \

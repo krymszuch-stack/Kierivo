@@ -18,18 +18,16 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'node_modules/**',
-      // Osobny projekt npm z własnym tsconfigiem i własnymi zależnościami.
-      'semantic-work-graph/**',
+      // Katalog eksperymentów, narzędzi trenerskich i grafu wiedzy.
+      'labs/**',
       // Silnik CV w Pythonie z własnym pakietem i testami.
       'mastervault-cv/**',
-      // To samo dotyczy próbek integracji: własny `package.json`, własne
-      // `node_modules` i własna wersja SDK. Sprawdzane komendą `lint` z katalogu
-      // danej próbki, nie stąd.
-      'samples/**',
       // Funkcje brzegowe biegną na Deno: globalne `Deno`, importy `jsr:`
       // i własne typy. Dla konfiguracji Node są nieparsowalne.
       'supabase/functions/**',
       'scripts/**',
+      // Jednorazowe skrypty analityczne — nie są kodem produkcyjnym.
+      'scratch/**',
     ],
   },
 
@@ -41,6 +39,19 @@ export default tseslint.config(
     plugins: { 'react-hooks': reactHooks },
     rules: {
       ...reactHooks.configs.recommended.rules,
+
+      // Kod laboratoryjny nie może przenikać do kodu produkcyjnego ani wpływać na bundle
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/labs/**', '../labs/**', './labs/**', 'labs/**'],
+              message: 'Kod laboratoryjny (labs/*) nie może być importowany w aplikacji produkcyjnej (src/* lub server.ts).',
+            },
+          ],
+        },
+      ],
 
       // Nieużywana zmienna to zwykle ślad po niedokończonej zmianie. Prefiks `_`
       // zostaje furtką na świadomie pominięte argumenty — konwencja jest już

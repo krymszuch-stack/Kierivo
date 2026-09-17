@@ -163,3 +163,38 @@ export function validateDateRange(
 
   return {};
 }
+
+/**
+ * Konwertuje ciąg ISO na lokalny format wejściowy dla pola datetime-local ('YYYY-MM-DDTHH:mm').
+ */
+export function toLocalInputValue(iso: string | undefined): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+/**
+ * Konwertuje wartość z lokalnego pola wejściowego datetime-local z powrotem na pełny ciąg ISO (UTC).
+ */
+export function fromLocalInputValue(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/**
+ * Formatuje czytelny, relatywny czas pozostały do zaplanowanej rozmowy rekrutacyjnej w języku polskim.
+ */
+export function describeInterviewTiming(interviewAt: string | undefined, now: Date = new Date()): string {
+  if (!interviewAt) return 'Termin nieustalony';
+  const at = new Date(interviewAt).getTime();
+  if (Number.isNaN(at)) return 'Termin nieustalony';
+
+  const diffHours = Math.round((at - now.getTime()) / 3_600_000);
+  if (diffHours < 0) return 'Rozmowa się odbyła';
+  if (diffHours === 0) return 'Rozmowa lada chwila';
+  if (diffHours < 48) return `Za ${diffHours} h`;
+  return `Za ${Math.round(diffHours / 24)} dni`;
+}

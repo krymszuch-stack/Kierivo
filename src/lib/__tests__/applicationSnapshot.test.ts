@@ -12,6 +12,13 @@ import { createEmptyVault } from '../sampleVault';
 import { buildApplicationFromPending, PendingApplication } from '../applicationFeedback';
 import { StorageKeys, readJson, writeJson } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
+import {
+  createApplicationDocumentSnapshot,
+  validateSnapshotIntegrity,
+  repairSnapshotReferences,
+  resolveApplicationVault,
+} from '../applicationSnapshot';
+import { adaptMasterVaultToSemanticProfile } from '../semanticPdfAdapter';
 
 describe('Application Snapshot Immutability Suite (BUG-002 Verification)', () => {
   let memoryStorage: MemoryStorage;
@@ -651,5 +658,256 @@ describe('Application Snapshot Immutability Suite (BUG-002 Verification)', () =>
     expect(rehydratedVault.personalInfo.email).toBe('jan.kowalski@example.com');
     expect(rehydratedVault.history.length).toBeGreaterThan(0);
     expect(rehydratedVault.skillsMatrix.hardSkills).toContain('Montaż instalacji HVAC');
+  });
+
+  describe('Weryfikacja integralności powiązań i izolacji snapshotów (Broken Links & Deep Immutability)', () => {
+    it('Test 15: validateSnapshotIntegrity wykrywa złamany link (dangling experienceId) w selectedHighlights', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      // Przed uszkodzeniem: snapshot jest w 100% poprawny
+      const initialReport = validateSnapshotIntegrity(snapshot);
+      expect(initialReport.isValid).toBe(true);
+      expect(initialReport.brokenExperienceLinks).toHaveLength(0);
+
+      // Symulacja złamanego linku do historii zatrudnienia
+      snapshot.tailoredResume.selectedHighlights[0].experienceId = 'usuniety_rekord_exp_999';
+
+      const report = validateSnapshotIntegrity(snapshot);
+      expect(report.isValid).toBe(false);
+      expect(report.brokenExperienceLinks).toHaveLength(1);
+      expect(report.brokenExperienceLinks[0].experienceId).toBe('usuniety_rekord_exp_999');
+      expect(report.brokenExperienceLinks[0].company).toBe('TermoKlim Sp. z o.o.');
+      // Walidator znajduje sugerowany odpowiednik w vaultSnapshot.history po firmie i roli
+      expect(report.brokenExperienceLinks[0].suggestedExperienceId).toBe('exp_1');
+    });
+
+    it('Test 16: repairSnapshotReferences automatycznie naprawia złamany link experienceId gdy firma i rola pasują', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      // Psujemy referencję identyfikatora
+      snapshot.tailoredResume.selectedHighlights[0].experienceId = 'stare_id_sprzed_migracji';
+
+      // Samonaprawa referencji
+      const repairedSnapshot = repairSnapshotReferences(snapshot);
+
+      expect(repairedSnapshot.tailoredResume.selectedHighlights[0].experienceId).toBe('exp_1');
+      const report = validateSnapshotIntegrity(repairedSnapshot);
+      expect(report.isValid).toBe(true);
+      expect(report.brokenExperienceLinks).toHaveLength(0);
+    });
+
+    it('Test 17: validateSnapshotIntegrity i repairSnapshotReferences oczyszczają wiszące linki z experienceOrder', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+      tailored.experienceOrder = ['exp_1', 'exp_widmo_404', 'exp_nieistniejace_888'];
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      // Podczas createApplicationDocumentSnapshot wiszące ID są już czyszczone
+      expect(snapshot.tailoredResume.experienceOrder).toEqual(['exp_1']);
+
+      // Ręczne wstrzyknięcie uszkodzonego ID do gotowego snapshotu
+      snapshot.tailoredResume.experienceOrder = ['exp_1', 'exp_dangling'];
+      const report = validateSnapshotIntegrity(snapshot);
+      expect(report.isValid).toBe(false);
+      expect(report.brokenExperienceOrderLinks).toEqual(['exp_dangling']);
+
+      const repaired = repairSnapshotReferences(snapshot);
+      expect(repaired.tailoredResume.experienceOrder).toEqual(['exp_1']);
+      expect(validateSnapshotIntegrity(repaired).isValid).toBe(true);
+    });
+
+    it('Test 18: createApplicationDocumentSnapshot gwarantuje pełną głęboką izolację przed mutacjami Master Vault', () => {
+      const mutableVault = createTestVault();
+      mutableVault.claims = [
+        {
+          id: 'claim_sep_1',
+          sourceProject: 'TermoKlim Sp. z o.o.',
+          dateRange: '2020-2023',
+          metric: '120 jednostek',
+          tags: ['HVAC', 'SEP'],
+        },
+      ];
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, mutableVault);
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault: mutableVault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      // Wykonujemy serię głębokich i zagnieżdżonych mutacji obiektu MasterVault
+      mutableVault.personalInfo.fullName = 'Zmienione Imię i Nazwisko';
+      mutableVault.history[0].company = 'Zmieniona Nazwa Firmy';
+      mutableVault.history[0].highlights[0].text = 'Zmutowany tekst osiągnięcia';
+      mutableVault.history[0].highlights.push({
+        id: 'hl_nowy',
+        text: 'Drugie nowe osiągnięcie dodane po czasie',
+        action: 'Montaż',
+        target: 'instalacji',
+        tool: '',
+        metric: '',
+        keywords: [],
+      });
+      mutableVault.history.push({
+        id: 'exp_nowy',
+        company: 'Nowa Firma Sp. z o.o.',
+        role: 'Kierownik',
+        location: 'Warszawa',
+        startDate: '2024-01',
+        endDate: '2025-01',
+        isCurrent: true,
+        highlights: [],
+      });
+      mutableVault.skillsMatrix.hardSkills.push('Nowy skill niewidoczny w snapshocie');
+      mutableVault.claims.push({
+        id: 'claim_nowy_2',
+        sourceProject: 'Nowy',
+        dateRange: '2024-2025',
+        tags: ['NowyTag'],
+      });
+
+      // Asercje: snapshot zachował 100% pierwotnych wartości
+      expect(snapshot.vaultSnapshot.personalInfo.fullName).toBe('Jan Kowalski');
+      expect(snapshot.vaultSnapshot.history).toHaveLength(1);
+      expect(snapshot.vaultSnapshot.history[0].company).toBe('TermoKlim Sp. z o.o.');
+      expect(snapshot.vaultSnapshot.history[0].highlights).toHaveLength(1);
+      expect(snapshot.vaultSnapshot.history[0].highlights[0].text).toBe(
+        'Montaż ponad 120 jednostek klimatyzacji split i VRF.'
+      );
+      expect(snapshot.vaultSnapshot.skillsMatrix.hardSkills).not.toContain(
+        'Nowy skill niewidoczny w snapshocie'
+      );
+      expect(snapshot.vaultSnapshot.claims).toHaveLength(1);
+      expect(snapshot.vaultSnapshot.claims?.[0].id).toBe('claim_sep_1');
+    });
+
+    it('Test 19: createApplicationDocumentSnapshot wymusza schemaVersion: 1 i normalizuje brakujące sekcje', () => {
+      const rawVault = createTestVault();
+      delete (rawVault as any).schemaVersion;
+      delete (rawVault as any).claims;
+
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, rawVault);
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault: rawVault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      expect(snapshot.schemaVersion).toBe(1);
+      expect(snapshot.vaultSnapshot.schemaVersion).toBe(1);
+      expect(Array.isArray(snapshot.vaultSnapshot.claims)).toBe(true);
+      expect(snapshot.vaultSnapshot.claims).toEqual([]);
+      expect(typeof snapshot.createdAt).toBe('string');
+    });
+
+    it('Test 20: resolveApplicationVault zwraca vaultSnapshot ze snapshotu jako niezmienne pojedyncze źródło prawdy', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      const appWithSnapshot: JobApplication = {
+        id: 'app-with-snapshot',
+        company: job.company,
+        position: job.title,
+        salary: '8000',
+        date: '2026-08-28',
+        status: 'Wysłana',
+        documentSnapshot: snapshot,
+      };
+
+      const fallbackVault = createTestVault();
+      fallbackVault.personalInfo.fullName = 'Użytkownik Fallback';
+
+      // Gdy snapshot istnieje: pobieramy dane ze snapshotu
+      const resolved = resolveApplicationVault(appWithSnapshot, fallbackVault);
+      expect(resolved.personalInfo.fullName).toBe('Jan Kowalski');
+
+      // Modyfikacja zwróconego obiektu nie psuje snapshotu (izolacja)
+      resolved.personalInfo.fullName = 'Zmutowany Jan';
+      expect(appWithSnapshot.documentSnapshot?.vaultSnapshot.personalInfo.fullName).toBe('Jan Kowalski');
+
+      // Gdy snapshotu brak (aplikacja archiwalna/ręczna)
+      const manualApp: JobApplication = {
+        id: 'app-manual',
+        company: 'Inna Firma',
+        position: 'Monter',
+        salary: '5000',
+        date: '2026-08-20',
+        status: 'Do wysłania',
+      };
+      const resolvedManual = resolveApplicationVault(manualApp, fallbackVault);
+      expect(resolvedManual.personalInfo.fullName).toBe('Użytkownik Fallback');
+    });
+
+    it('Test 21: adaptMasterVaultToSemanticProfile nie rzuca błędu przy złamanych linkach, a po naprawie uwzględnia zoptymalizowany tekst', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+
+      // Ustawiamy zoptymalizowany tekst
+      tailored.selectedHighlights[0].optimizedText = 'Zoptymalizowany montaż 120 jednostek klimatyzacji split i VRF.';
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+      });
+
+      // Uszkadzamy link experienceId
+      snapshot.tailoredResume.selectedHighlights[0].experienceId = 'broken_exp_link_404';
+
+      // Renderer nie powinien rzucić błędu runtime przy złamanych linkach
+      expect(() => {
+        adaptMasterVaultToSemanticProfile(snapshot.vaultSnapshot, snapshot.tailoredResume);
+      }).not.toThrow();
+
+      const profileBeforeRepair = adaptMasterVaultToSemanticProfile(
+        snapshot.vaultSnapshot,
+        snapshot.tailoredResume
+      );
+      // Przed naprawą: highlight ze złamanym linkiem nie został wstrzyknięty do doświadczenia exp_1
+      const bulletBefore = profileBeforeRepair.experience[0]?.bullets[0]?.display;
+      expect(bulletBefore).toBe('Montaż ponad 120 jednostek klimatyzacji split i VRF.');
+
+      // Po naprawie referencji: link do exp_1 zostaje odzyskany i zoptymalizowany tekst wchodzi do profilu
+      const repairedSnapshot = repairSnapshotReferences(snapshot);
+      const profileAfterRepair = adaptMasterVaultToSemanticProfile(
+        repairedSnapshot.vaultSnapshot,
+        repairedSnapshot.tailoredResume
+      );
+      const bulletAfter = profileAfterRepair.experience[0]?.bullets[0]?.display;
+      expect(bulletAfter).toBe('Zoptymalizowany montaż 120 jednostek klimatyzacji split i VRF.');
+    });
   });
 });

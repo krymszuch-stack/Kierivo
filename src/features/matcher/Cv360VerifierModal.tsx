@@ -13,7 +13,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { MasterVault } from '../../types';
-import { clientEnv } from '../../lib/clientEnv';
+import { api, ApiError } from '../../lib/apiClient';
+import { useEntitlements, consumeAiLocally } from '../../store/useEntitlements';
+import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 import { CvVerificationReport } from '../../server/services/cvVerifier.service';
 
 export interface Cv360VerifierModalProps {
@@ -33,43 +35,43 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
   targetCompany,
   jobDescription,
 }) => {
+  const { usage, refresh: refreshEntitlements } = useEntitlements();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<CvVerificationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeLoopTab, setActiveLoopTab] = useState<'ats' | 'recruiter' | 'logic'>('ats');
 
   const runVerification = async () => {
+    if (usage.aiUses <= 0 || !consumeAiLocally()) {
+      setError(
+        'Dzienny limit zapytań AI w tej becie został wyczerpany (odnowi się o północy). Możesz skorzystać z lokalnego audytu struktury w zakładce Laboratorium Audytu ATS.'
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${clientEnv.apiUrl}/api/ai/verify-cv`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          vault,
-          targetRole,
-          targetCompany,
-          jobDescription,
-        }),
+      const data = await api.post<{ report?: CvVerificationReport }>('/api/ai/verify-cv', {
+        vault,
+        targetRole,
+        targetCompany,
+        jobDescription,
       });
 
-      if (!res.ok) {
-        let msg = 'Błąd podczas weryfikacji CV.';
-        try {
-          const json = await res.json();
-          if (json.error) msg = json.error;
-        } catch {
-          // ignore
-        }
-        throw new Error(msg);
+      if (data.report) {
+        setReport(data.report);
       }
-
-      const data = await res.json();
-      setReport(data.report);
+      refreshEntitlements();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie udało się połączyć z modelem weryfikatora.');
+      if (err instanceof ApiError && err.isQuotaExceeded) {
+        setError(
+          'Dzienny limit wywołań weryfikatora AI został osiągnięty. Limit odnawia się automatycznie o północy.'
+        );
+        refreshEntitlements();
+      } else {
+        setError(err instanceof Error ? err.message : 'Nie udało się połączyć z modelem weryfikatora.');
+      }
     } finally {
       setLoading(false);
     }
@@ -92,6 +94,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 <span className="rounded-full bg-indigo-600/10 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
                   Potrójna Pętla Sprawdzająca
                 </span>
+                <ModelQuotaCounter variant="badge" feature="verifier" />
               </div>
               <p className="text-xs text-muted">
                 Niezależny audyt ATS, 6-sekundowe oko rekrutera oraz detekcja luk logicznych i zgodności RODO.
@@ -110,6 +113,8 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
         {/* Stan początkowy: Przed uruchomieniem */}
         {!report && !loading && !error && (
           <div className="space-y-6 text-center py-8">
+            <ModelQuotaCounter variant="banner" feature="verifier" className="text-left" />
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
               <div className="rounded-2xl border border-line bg-sunken/40 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-indigo-600 font-semibold text-xs uppercase tracking-wider">
@@ -148,10 +153,15 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
             <button
               type="button"
               onClick={runVerification}
-              className="inline-flex items-center gap-2 rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-all cursor-pointer"
+              disabled={usage.aiUses <= 0}
+              className={`inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-lg transition-all ${
+                usage.aiUses <= 0
+                  ? 'bg-muted cursor-not-allowed opacity-60'
+                  : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20 cursor-pointer'
+              }`}
             >
               <Sparkles className="h-4 w-4" />
-              Uruchom Potrójną Pętlę Audytorską
+              {usage.aiUses <= 0 ? 'Limit audytu AI wyczerpany na dziś' : 'Uruchom Potrójną Pętlę Audytorską'}
             </button>
           </div>
         )}

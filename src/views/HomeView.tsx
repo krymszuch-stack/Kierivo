@@ -118,7 +118,7 @@ const FAQ = [
   },
   {
     q: 'Czy wynik oznacza, że przejdę filtr ATS?',
-    a: 'Nie. To własna, deterministyczna ocena Kierivo. Nie mamy dostępu do prywatnych konfiguracji rekrutera w Workday, Greenhouse, Lever czy Taleo i nie obiecujemy zaproszenia na rozmowę.',
+    a: 'Nie. To szacowany wynik przejścia filtra ATS wyliczony na podstawie reguł Kierivo. Nie mamy dostępu do prywatnych konfiguracji rekrutera w Workday, Greenhouse, Lever czy Taleo i nie obiecujemy zaproszenia na rozmowę.',
   },
   {
     q: 'Czym jest Doradca w interfejsie?',
@@ -154,12 +154,12 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
-function PrimaryCta({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
+ function PrimaryCta({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-600 px-6 text-sm font-semibold text-on-brand shadow-raised transition duration-fast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 motion-safe:hover:-translate-y-0.5"
+      className="group inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-600 px-5 text-sm font-semibold text-on-brand shadow-raised transition duration-fast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 motion-safe:hover:-translate-y-0.5"
     >
       {children}
       <svg
@@ -183,7 +183,7 @@ function GhostCta({ onClick, children }: { onClick?: () => void; children: React
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-md border border-line-strong bg-elevated px-6 text-sm font-semibold text-ink transition duration-fast hover:border-brand-400 hover:text-brand-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
+      className="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line-strong bg-elevated px-5 text-sm font-semibold text-ink transition duration-fast hover:border-brand-400 hover:text-brand-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
     >
       {children}
     </button>
@@ -197,17 +197,17 @@ function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 /** Makieta wyniku dopasowania — statyczna, poglądowa, bez wykresów z biblioteki. */
-function MatchPanel() {
+ function MatchPanel() {
   const coverage = 78;
   return (
     <figure className="rounded-2xl border border-line bg-elevated p-5 shadow-floating sm:p-6">
       <figcaption className="flex items-start justify-between gap-4">
         <div>
           <p className="font-mono text-label uppercase tracking-[0.16em] text-subtle">
-            Wynik dopasowania
+            Przykładowy wynik
           </p>
           <p className="mt-1 text-base font-semibold text-ink">
-            Specjalista ds. logistyki · Kraków
+            Logistyka · Kraków
           </p>
         </div>
         <span className="shrink-0 rounded-sm bg-brand-50 px-2 py-1 font-mono text-meta uppercase tracking-[0.14em] text-brand-fg">
@@ -230,10 +230,10 @@ function MatchPanel() {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">Pokrycie umiejętności z ogłoszenia</p>
-          <p className="mt-1 text-sm text-muted">
-            14 z 18 wymagań ma potwierdzenie w Twoim profilu. Cztery pozostałe wskazujemy poniżej —
-            razem z tym, gdzie w CV ich brakuje.
-          </p>
+           <p className="mt-1 text-sm text-muted">
+             W przykładzie 14 z 18 wymagań ma potwierdzenie. Cztery pozostałe wskazujemy poniżej —
+             razem z tym, gdzie w CV ich brakuje.
+           </p>
         </div>
       </div>
 
@@ -299,7 +299,7 @@ export function HomeView({
     if (onStart) {
       onStart();
     } else if (onNavigate) {
-      onNavigate(hasStarted ? 'aplikuj' : 'profil');
+      onNavigate('aplikuj');
     }
   };
 
@@ -314,8 +314,10 @@ export function HomeView({
   const handleStepClick = (target: NavTabId) => {
     if (onNavigate) {
       onNavigate(target);
+    } else if (onStart) {
+      onStart();
     } else {
-      handleStart();
+      return;
     }
   };
 
@@ -331,7 +333,7 @@ export function HomeView({
               'radial-gradient(closest-side, color-mix(in oklab, var(--color-brand-500) 22%, transparent), transparent)',
           }}
         />
-        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:items-center lg:gap-14 lg:pb-24 lg:pt-20">
+        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-20 pt-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:items-center lg:gap-14 lg:pb-24 lg:pt-20">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated/80 px-3 py-1 font-mono text-meta uppercase tracking-[0.16em] text-muted backdrop-blur">
               <span className="h-1.5 w-1.5 rounded-full bg-violet" aria-hidden="true" />
@@ -354,12 +356,13 @@ export function HomeView({
               <PrimaryCta onClick={handleStart}>
                 {hasStarted ? 'Sprawdź dopasowanie do oferty' : 'Sprawdź swoje CV — bezpłatnie'}
               </PrimaryCta>
-              <a
-                href="#jak-to-dziala"
-                className="inline-flex h-12 items-center justify-center rounded-md px-4 text-sm font-semibold text-ink underline decoration-line-strong decoration-2 underline-offset-4 transition duration-fast hover:decoration-brand-400"
+              <button
+                type="button"
+                onClick={() => document.getElementById('jak-to-dziala')?.scrollIntoView({ behavior: 'smooth' })}
+                className="inline-flex h-11 items-center justify-center rounded-md px-4 text-sm font-semibold text-ink transition duration-fast hover:text-brand-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
               >
                 Zobacz, jak to działa
-              </a>
+              </button>
             </div>
 
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-subtle">
@@ -385,7 +388,7 @@ export function HomeView({
 
       {/* -------------------------------------------------- jak to działa */}
       <section id="jak-to-dziala" className="border-t border-line bg-sunken/60 scroll-mt-16">
-        <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 lg:py-20">
+        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 lg:py-20 lg:pl-4">
           <SectionLabel>Jak to działa</SectionLabel>
           <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
             Trzy ruchy i masz kontrolę nad swoim CV.
@@ -398,7 +401,15 @@ export function HomeView({
             {STEPS.map((s) => (
               <li
                 key={s.n}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleStepClick(s.target)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleStepClick(s.target);
+                  }
+                }}
                 className="group cursor-pointer rounded-lg border border-line bg-elevated p-6 transition duration-ui hover:border-brand-400 motion-safe:hover:-translate-y-1"
               >
                 <div className="flex items-center justify-between">
@@ -417,9 +428,9 @@ export function HomeView({
         </div>
       </section>
 
-      {/* ------------------------------------------------------- filary */}
+       {/* ------------------------------------------------------- filary */}
       <section className="border-t border-line">
-        <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 lg:py-20">
+        <div className="mx-auto max-w-6xl px-5 py-20 sm:px-6 lg:py-20 lg:pl-4">
           <SectionLabel>Co dostajesz</SectionLabel>
           <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
             Cztery rzeczy, które robi Public Pre-Beta
@@ -427,22 +438,30 @@ export function HomeView({
 
           <div className="mt-10 grid gap-4 sm:grid-cols-2">
             {PILLARS.map((p) => {
-              const lock = p.target === 'pipeline' ? lockReasons?.pipeline : undefined;
+              const isLocked = p.target === 'pipeline' ? !!lockReasons?.pipeline : false;
               return (
                 <article
                   key={p.title}
-                  onClick={() => !lock && handleStepClick(p.target)}
+                  role="button"
+                  tabIndex={isLocked ? -1 : 0}
+                  onClick={() => !isLocked && handleStepClick(p.target)}
+                  onKeyDown={(e) => {
+                    if ((e.key === 'Enter' || e.key === ' ') && !isLocked) {
+                      e.preventDefault();
+                      handleStepClick(p.target);
+                    }
+                  }}
                   className={`rounded-lg border border-line bg-elevated p-6 transition duration-ui ${
-                    lock ? 'opacity-85' : 'cursor-pointer hover:border-brand-300'
+                    isLocked ? 'opacity-85' : 'cursor-pointer hover:border-brand-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="grid h-10 w-10 place-items-center rounded-md bg-brand-50 text-brand-fg">
                       <Icon>{p.icon}</Icon>
                     </span>
-                    {lock && (
+                    {isLocked && (
                       <span className="rounded bg-sunken px-2 py-0.5 font-mono text-meta text-subtle">
-                        {lock}
+                        {lockReasons?.pipeline}
                       </span>
                     )}
                   </div>
@@ -455,9 +474,9 @@ export function HomeView({
         </div>
       </section>
 
-      {/* --------------------------------------------- zaufanie i dane */}
+       {/* --------------------------------------------- zaufanie i dane */}
       <section className="border-t border-line bg-sunken/60">
-        <div className="mx-auto grid max-w-6xl gap-8 px-5 py-16 sm:px-6 lg:grid-cols-2 lg:py-20">
+        <div className="mx-auto grid max-w-6xl gap-8 px-5 py-20 sm:px-6 lg:grid-cols-2 lg:py-20 lg:pl-4">
           <div>
             <SectionLabel>Dane i uczciwość</SectionLabel>
             <h2 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
@@ -490,8 +509,8 @@ export function HomeView({
             </p>
             <ul className="mt-4 space-y-3 text-sm leading-relaxed text-ink">
               <li>
-                Wynik Kierivo to <strong className="font-semibold">własna, deterministyczna ocena</strong>{' '}
-                — nie jest wynikiem Workday, Greenhouse, Lever, Taleo ani innego zewnętrznego ATS.
+                Wynik Kierivo to <strong className="font-semibold">szacowany wynik przejścia filtra ATS</strong>{' '}
+                — oparty na analizie zgodności z ofertą, a nie wynik z systemów Workday, Greenhouse, Lever czy Taleo.
               </li>
               <li>
                 Nie mamy dostępu do prywatnej konfiguracji rekrutera i nie gwarantujemy przejścia
@@ -510,12 +529,12 @@ export function HomeView({
         </div>
       </section>
 
-      {/* ---------------------------------------------------------- FAQ */}
+       {/* ---------------------------------------------------------- FAQ */}
       <section className="border-t border-line">
-        <div className="mx-auto max-w-3xl px-5 py-16 sm:px-6 lg:py-20">
+        <div className="mx-auto max-w-3xl px-5 py-20 sm:px-6 lg:py-20 lg:pl-4">
           <SectionLabel>Częste pytania</SectionLabel>
           <h2 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
-            Zanim klikniesz
+            Najczęściej zadawane pytania
           </h2>
 
           <div className="mt-8 divide-y divide-line border-y border-line">
@@ -537,10 +556,10 @@ export function HomeView({
                   {item.q.includes('Doradca') && onOpenAdvisor && (
                     <button
                       type="button"
-                      onClick={() => onOpenAdvisor()}
+                      onClick={() => onOpenAdvisor(item.q)}
                       className="cursor-pointer font-semibold text-brand-fg hover:underline"
                     >
-                      Otwórz pytania Doradcy →
+                      Otwórz pytania Doradcy
                     </button>
                   )}
                 </div>
@@ -550,9 +569,9 @@ export function HomeView({
         </div>
       </section>
 
-      {/* -------------------------------------------------- domknięcie */}
+       {/* -------------------------------------------------- domknięcie */}
       <section className="border-t border-line bg-sunken/60">
-        <div className="relative mx-auto max-w-6xl overflow-hidden px-5 py-16 text-center sm:px-6 lg:py-24">
+        <div className="relative mx-auto max-w-6xl overflow-hidden px-5 py-20 text-center sm:px-6 lg:py-24 lg:pl-4">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 bottom-[-30%] mx-auto h-[420px] w-[720px] rounded-full opacity-50 blur-3xl"
@@ -571,10 +590,12 @@ export function HomeView({
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <PrimaryCta onClick={handleStart}>Sprawdź swoje CV — bezpłatnie</PrimaryCta>
-              <GhostCta onClick={handlePricing}>Co jest w tej wersji</GhostCta>
+              <GhostCta onClick={handlePricing}>
+                Ograniczenia darmowej wersji
+              </GhostCta>
             </div>
             <p className="mt-6 font-mono text-meta uppercase tracking-[0.16em] text-subtle">
-              PB-2026.09 · cena 0 zł · bez checkoutu
+              PB-2026.09 · cena 0 zł · bez płatności
             </p>
           </div>
         </div>

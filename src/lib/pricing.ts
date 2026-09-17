@@ -1,17 +1,13 @@
+import { PAYMENTS_ENABLED } from './beta';
+
 /**
- * Katalog płatny — **jedyne** miejsce w kodzie, w którym żyją identyfikatory
- * cen i to, co dany zakup odblokowuje.
- *
- * Powód wprost z reguły 3: identyfikatory były wcześniej sklejane w widoku
- * (`price_cvelocity_template_${nazwa.toLowerCase()}`), więc zmiana nazwy
- * szablonu po cichu tworzyła cenę, której nie ma ani w Stripe, ani w tabeli
- * `plans`. Klient wysyła stąd wyłącznie klucz; cena i tak jest weryfikowana
- * po stronie serwera w `billing.routes.ts` na podstawie tabeli `plans`.
- *
- * Identyfikatory są celowo czytelne (`pro_monthly`, a nie `price_1Abc...`) —
- * są to `lookup_key` w Stripe, więc te same wartości działają w środowisku
- * testowym i produkcyjnym.
+ * Zwraca informację, czy płatności i plany komercyjne są globalnie aktywne.
+ * W obecnej fazie Public Pre-Beta flaga zwraca false.
  */
+export function arePaymentsEnabled(): boolean {
+  return PAYMENTS_ENABLED;
+}
+
 
 /** Identyfikator szablonu CV, którego dotyczy zakup jednorazowy. */
 export type PremiumTemplateId = 'executive' | 'creative';

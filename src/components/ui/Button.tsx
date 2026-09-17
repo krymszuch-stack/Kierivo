@@ -23,18 +23,18 @@ const variantStyles: Record<NonNullable<ButtonProps['variant']>, string> = {
   danger: 'border border-danger/30 bg-danger-soft text-danger-fg hover:bg-danger-soft/80',
 };
 
-const sizeStyles = {
-  sm: 'py-1 text-xs gap-1.5 rounded-lg font-medium',
-  md: 'py-2 text-xs font-semibold gap-2 rounded-xl',
-  lg: 'py-2.5 text-sm font-semibold gap-2.5 rounded-xl',
-};
+ const sizeStyles = {
+   sm: 'h-8 py-1 text-xs gap-1.5 rounded-lg font-medium',
+   md: 'h-11 py-1.5 text-xs font-semibold gap-2 rounded-xl',
+   lg: 'h-11 py-2 text-sm font-semibold gap-2.5 rounded-xl',
+ };
 
 /** Odstępy poziome zależą od tego, czy przycisk ma etykietę, czy samą ikonę. */
-const paddingStyles = {
-  sm: { withLabel: 'px-2.5', iconOnly: 'px-1' },
-  md: { withLabel: 'px-3.5', iconOnly: 'px-2' },
-  lg: { withLabel: 'px-5', iconOnly: 'px-2.5' },
-};
+ const paddingStyles = {
+   sm: { withLabel: 'px-3', iconOnly: 'px-1.5' },
+   md: { withLabel: 'px-4', iconOnly: 'px-2' },
+   lg: { withLabel: 'px-5', iconOnly: 'px-2.5' },
+ };
 
 const iconSizes = {
   sm: 'h-3.5 w-3.5',
@@ -75,14 +75,15 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   return (
-    <motion.button
-      whileHover={!isDisabled ? { scale: 1.02 } : undefined}
-      whileTap={!isDisabled ? { scale: 0.98 } : undefined}
-      transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
-      disabled={isDisabled}
-      aria-busy={loading || undefined}
-      onClick={handleClick}
-      className={[
+   <motion.button
+       type="button"
+       whileHover={!isDisabled ? { scale: 1.02 } : undefined}
+       whileTap={!isDisabled ? { scale: 0.98 } : undefined}
+       transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
+       disabled={isDisabled}
+       aria-busy={loading || undefined}
+       onClick={handleClick}
+       className={[
         'relative overflow-hidden inline-flex items-center justify-center transition-colors',
         // Wyłączony przycisk ma to pokazywać także kursorem, nie samą przezroczystością.
         'disabled:opacity-50 disabled:cursor-not-allowed',

@@ -1,11 +1,12 @@
 import React from 'react';
-import { ShieldCheck, Lightbulb, Sparkles, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Lightbulb, Sparkles, AlertTriangle, HelpCircle } from 'lucide-react';
 import { AtsCheckResult } from '../../types';
 import { type CanonicalAtsScore } from '../../lib/canonicalAts';
 import { ScoreRing } from './ScoreRing';
 import { GapAnalysis } from './GapAnalysis';
 import { DealbreakerList } from './DealbreakerList';
 import { Card } from '../../components/ui/Card';
+import { Tooltip } from '../../components/ui/Tooltip';
 
 export interface AtsSimulatorViewProps {
   result: AtsCheckResult;
@@ -62,9 +63,23 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
           <ShieldCheck className="h-5 w-5" />
         </div>
         <div>
-          <h3 className="text-sm font-bold text-ink">Audyt Kierivo: zgodność z ofertą</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-ink">Szacowany wynik przejścia filtra ATS</h3>
+            <Tooltip
+              content="Systemy ATS (Applicant Tracking System) to oprogramowanie rekrutacyjne wstępnie weryfikujące zgodność CV przed przeczytaniem go przez człowieka. Szacujemy szanse Twojego dokumentu na podstawie słów kluczowych, uprawnień i czytelności formatu."
+              side="top"
+            >
+              <button
+                type="button"
+                aria-label="Czym jest szacowany wynik filtra ATS?"
+                className="inline-flex items-center justify-center text-muted hover:text-ink cursor-help transition-colors"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+            </Tooltip>
+          </div>
           <p className="text-xs text-muted">
-            Własna ocena regułowa Kierivo na podstawie treści CV i ogłoszenia. Nie jest wynikiem
+            Szacowana ocena dopasowania na podstawie treści CV i ogłoszenia. Nie jest wynikiem
             żadnego zewnętrznego systemu ATS ani gwarancją przejścia rekrutacji.
           </p>
         </div>
@@ -76,7 +91,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
             <ScoreRing
               score={mainScore}
               size={150}
-              label={canonicalResult ? 'Wynik kanoniczny' : 'Wynik Kierivo'}
+              label={canonicalResult ? 'Szacowany wynik' : 'Wynik dopasowania'}
             />
 
             {canonicalResult && canonicalResult.state !== 'SCORABLE' && (
@@ -97,12 +112,12 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
 
             <div className="w-full border-t border-line/60 pt-3">
               <span className="font-mono text-[11px] font-bold text-muted uppercase tracking-wider block mb-1">
-                Rozbicie algebry ważonej
+                Wagi poszczególnych kryteriów
               </span>
               <p className="font-mono text-[10px] text-subtle leading-tight">
                 {canonicalResult
-                  ? 'Wynik = (0.40 × Umiejętności) + (0.25 × Staż) + (0.20 × Struktura) + (0.15 × Formalia)'
-                  : (result.layer3Scoring?.formulaBreakdown || 'Score = (3.0 × Hard Skills) + (1.5 × Recency) + (1.5 × Title)')}
+                  ? 'Umiejętności: 40% · Doświadczenie i staż: 25% · Układ dokumentu: 20% · Wymogi formalne: 15%'
+                  : (result.layer3Scoring?.formulaBreakdown || 'Wymagania twarde (50%) + Doświadczenie (25%) + Tytuł roli (25%)')}
               </p>
             </div>
 
@@ -149,8 +164,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
               Składowe wyniku Kierivo
             </h4>
             <p className="text-[11px] text-subtle">
-              Każda liczba poniżej pochodzi z reguł uruchamianych przez Kierivo. Nie podszywamy ich
-              pod ocenę konkretnego produktu ATS.
+              Szczegółowe kryteria wyliczone z analizy Twojego CV i ogłoszenia o pracę.
             </p>
 
             <div className="space-y-2">

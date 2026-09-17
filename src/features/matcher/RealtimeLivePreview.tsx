@@ -19,6 +19,7 @@ import {
   GeneratedCvExport,
 } from '../../types';
 import { type CanonicalAtsScore } from '../../lib/canonicalAts';
+import { createApplicationDocumentSnapshot } from '../../lib/applicationSnapshot';
 import { DocumentRenderer } from './DocumentRenderer';
 import { CVWordBuilder } from './CVWordBuilder';
 import { AtsSimulatorView } from './AtsSimulatorView';
@@ -78,24 +79,14 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
       missingKeywords: canonicalResult?.missingRequirements?.length
         ? canonicalResult.missingRequirements
         : atsResult?.missingHardSkills,
-      documentSnapshot: {
-        schemaVersion: 1,
-        createdAt: new Date().toISOString(),
-        tailoredResume: JSON.parse(JSON.stringify(tailoredResume)),
-        coverLetter: coverLetter ? JSON.parse(JSON.stringify(coverLetter)) : undefined,
-        vaultSnapshot: JSON.parse(JSON.stringify(vault)),
-        jobOfferSnapshot: {
-          id: jobOffer.id,
-          title: jobOffer.title,
-          company: jobOffer.company,
-          salary: jobOffer.salary,
-          location: jobOffer.location,
-          description: jobOffer.description,
-          url: jobOffer.url,
-        },
-        atsResultSnapshot: atsResult ? JSON.parse(JSON.stringify(atsResult)) : undefined,
+      documentSnapshot: createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume,
+        jobOffer,
+        atsResult,
+        coverLetter,
         exportedCv,
-      },
+      }),
     });
 
   const subTabs = [

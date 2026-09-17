@@ -4,7 +4,12 @@ import { MasterVault } from '../../types';
 import { DropZone } from './DropZone';
 import { DiffView, MergeStrategies } from './DiffView';
 import { applyParsedCVToVault } from '../../lib/vaultImportMerge';
-import { extractTextFromAnyFile, parseTextToMasterVault, ParsedCVResult } from '../../lib/cvUniversalParser';
+import { extractTextFromAnyFile, ParsedCVResult } from '../../lib/cvUniversalParser';
+import {
+  validateRawCvText,
+  resolveCvIngestionResult,
+  formatCvMergeSummary,
+} from '../../lib/cvIngestionEngine';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Textarea } from '../../components/ui/Field';
@@ -80,8 +85,12 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
         });
       }
     } else {
-      if (!rawText.trim() || rawText.trim().length < 30) {
-        showToast('Za mało treści', { message: 'Wklejony tekst jest zbyt krótki do analizy.', variant: 'error' });
+      const validation = validateRawCvText(rawText);
+      if (!validation.valid) {
+        showToast('Za mało treści', {
+          message: validation.error || 'Wklejony tekst jest zbyt krótki do analizy.',
+          variant: 'error',
+        });
         return;
       }
       setIsProcessing(true);
@@ -99,14 +108,15 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     setParseProgress(80);
     setStatusMessage('Formatowanie widoku porównawczego (Diff)...');
 
-    const result = portableResult || parseTextToMasterVault(textToParse);
+    const result = resolveCvIngestionResult({
+      extractedText: textToParse,
+      portableResult,
+      fileName: selectedFile?.name,
+      isFile: ingestMode === 'file',
+    });
+
     if (ingestMode === 'file') {
       consumeImport();
-      result.detectedFormat = portableResult
-        ? 'Smart Portable PDF'
-        : (selectedFile?.name.split('.').pop()?.toUpperCase() || 'Plik');
-    } else {
-      result.detectedFormat = 'Wklejony tekst';
     }
 
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -122,15 +132,8 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     const { vault: scalonyVault, added } = applyParsedCVToVault(currentVault, parsedResult, strategies);
     onApplyVault(scalonyVault);
 
-    const części: string[] = [];
-    if (added.history) części.push(`${added.history} stanowisk`);
-    if (added.education) części.push(`${added.education} szkół`);
-    const dodaneUmiejętności =
-      added.hardSkills + added.softSkills + added.toolsAndTech + added.certifications;
-    if (dodaneUmiejętności) części.push(`${dodaneUmiejętności} pozycji umiejętności`);
-
     showToast('CV scalone z profilem', {
-      message: części.length ? `Dodano: ${części.join(', ')}.` : 'Nie wykryto nowych pozycji do dodania.',
+      message: formatCvMergeSummary(added),
       variant: 'success',
     });
 

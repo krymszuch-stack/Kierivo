@@ -43,7 +43,8 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
   }
 
   const toolbarButtonClass = (isActive: boolean) =>
-    `p-1.5 rounded-lg text-xs font-semibold transition-colors ${
+    // min-h-11 / min-w-11 zapewnia 44px cel dotyku (WCAG 2.5.5).
+    `flex min-h-11 min-w-11 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
       isActive
         ? 'bg-brand-50 text-brand-fg border border-brand-200'
         : 'text-muted hover:bg-surface hover:text-ink border border-transparent'
@@ -58,6 +59,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleBold().run()}
             className={toolbarButtonClass(editor.isActive('bold'))}
+            aria-pressed={editor.isActive('bold')}
             title="Pogrubienie (Ctrl+B)"
             aria-label="Pogrubienie"
           >
@@ -68,6 +70,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleItalic().run()}
             className={toolbarButtonClass(editor.isActive('italic'))}
+            aria-pressed={editor.isActive('italic')}
             title="Kursywa (Ctrl+I)"
             aria-label="Kursywa"
           >
@@ -80,6 +83,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
             className={toolbarButtonClass(editor.isActive('heading', { level: 2 }))}
+            aria-pressed={editor.isActive('heading', { level: 2 })}
             title="Nagłówek H2"
             aria-label="Nagłówek H2"
           >
@@ -90,6 +94,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
             className={toolbarButtonClass(editor.isActive('heading', { level: 3 }))}
+            aria-pressed={editor.isActive('heading', { level: 3 })}
             title="Nagłówek H3"
             aria-label="Nagłówek H3"
           >
@@ -102,6 +107,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleBulletList().run()}
             className={toolbarButtonClass(editor.isActive('bulletList'))}
+            aria-pressed={editor.isActive('bulletList')}
             title="Lista punktowana"
             aria-label="Lista punktowana"
           >
@@ -112,6 +118,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().toggleOrderedList().run()}
             className={toolbarButtonClass(editor.isActive('orderedList'))}
+            aria-pressed={editor.isActive('orderedList')}
             title="Lista numerowana"
             aria-label="Lista numerowana"
           >
@@ -124,7 +131,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().undo().run()}
             disabled={!editor.can().undo()}
-            className="p-1.5 rounded-lg text-muted hover:bg-surface hover:text-ink disabled:opacity-40"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-ink disabled:opacity-40"
             title="Cofnij (Ctrl+Z)"
             aria-label="Cofnij"
           >
@@ -135,7 +142,7 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
             type="button"
             onClick={() => editor.chain().focus().redo().run()}
             disabled={!editor.can().redo()}
-            className="p-1.5 rounded-lg text-muted hover:bg-surface hover:text-ink disabled:opacity-40"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-ink disabled:opacity-40"
             title="Ponów (Ctrl+Y)"
             aria-label="Ponów"
           >
@@ -144,8 +151,8 @@ export const RichTextCvEditor: React.FC<RichTextCvEditorProps> = ({
         </div>
       </div>
 
-      {/* Editor Content Area */}
-      <EditorContent editor={editor} />
+      {/* Obszar edycji — tytuł nadany przez label renderowany przez klasę opakowującą */}
+      <EditorContent editor={editor} aria-label="Edytor treści CV" />
     </div>
   );
 };

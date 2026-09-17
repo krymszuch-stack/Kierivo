@@ -57,6 +57,8 @@ export const StorageKeys = {
   learnedLexicon: `${PREFIX}learned-lexicon`,
   /** Biblioteka zapisanych wersji CV (CV Library). */
   cvLibrary: `${PREFIX}cv-library`,
+  /** Widok zaawansowany panelu pipeline (pełne rozbicie statusów i kolumn). */
+  pipelineAdvancedMode: `${PREFIX}pipeline-advanced-mode`,
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
@@ -96,6 +98,7 @@ const PRESERVED_ON_WIPE = new Set<string>([
   StorageKeys.advisorOllamaEnabled,
   StorageKeys.advisorOllamaModel,
   StorageKeys.productInsightsEnabled,
+  StorageKeys.pipelineAdvancedMode,
 ]);
 
 /**

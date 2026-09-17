@@ -76,13 +76,14 @@ export const PricingCard: React.FC<PricingCardProps> = ({
         ))}
       </ul>
 
-      <Button
-        variant={isPopular ? 'primary' : 'secondary'}
-        className="mt-auto w-full"
-        onClick={onSelect}
-        disabled={disabled}
-        aria-label={`${ctaLabel}: ${title}, ${price} ${period}`}
-      >
+       <Button
+         variant={isPopular ? 'primary' : 'secondary'}
+         size="sm"
+         className="mt-auto w-full"
+         onClick={onSelect}
+         disabled={disabled}
+         aria-label={`${ctaLabel}: ${title}, ${price} ${period}`}
+       >
         {/* Etykieta zawsze z propsu — nadpisywanie jej stanem disabled ukrywało poprawny opis
             stanu dla kart trwale nieaktywnych (plan Free wobec użytkownika Pro). */}
         {ctaLabel}

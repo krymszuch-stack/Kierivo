@@ -3,6 +3,7 @@ import { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
 import { mergeImportedVault } from './vaultImportMerge';
 import { getSupabaseBrowserClient } from './supabaseClient';
 import { readJson } from './storage';
+import { migrateVault } from './dataMigration';
 
 /**
  * Vault w chmurze — odczyt i zapis wprost z przeglądarki.
@@ -48,7 +49,7 @@ function client() {
 
 function pendingFor(ownerId: string): MasterVault | null {
   const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
-  return pending?.ownerId === ownerId && pending.vault ? pending.vault : null;
+  return pending?.ownerId === ownerId && pending.vault ? migrateVault(pending.vault) : null;
 }
 
 /**
@@ -75,13 +76,14 @@ export async function fetchCloudVault(): Promise<MasterVault | null> {
     throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
   }
 
-  const remote = (data?.data as MasterVault | undefined) ?? null;
+  const rawRemote = (data?.data as MasterVault | undefined) ?? null;
+  const remote = rawRemote ? migrateVault(rawRemote) : null;
   if (!pending) return remote;
   if (!remote) return pending;
 
   // Chmura jest podstawą, bo może zawierać wpisy z innego urządzenia. Pending
   // jest warstwą świeższą dla pól bieżącego urządzenia; merge nie usuwa list.
-  return mergeImportedVault(remote, pending);
+  return migrateVault(mergeImportedVault(remote, pending));
 }
 
 /**
@@ -107,11 +109,13 @@ export async function saveCloudVault(
     throw new CloudVaultError('Sesja zmieniła właściciela przed potwierdzeniem zapisu.');
   }
 
+  const normalizedVault = migrateVault(vault);
+
   const { error } = await supabase.from(TABELA).upsert(
     {
       user_id: userId,
-      data: vault,
-      version: vault.version,
+      data: normalizedVault,
+      version: normalizedVault.version,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
@@ -120,7 +124,7 @@ export async function saveCloudVault(
   if (error) {
     if (!expectedOwnerId) {
       const { enqueueCloudVaultSave } = await import('./cloudVaultOutbox');
-      enqueueCloudVaultSave(userId, vault);
+      enqueueCloudVaultSave(userId, normalizedVault);
     }
     throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
   }

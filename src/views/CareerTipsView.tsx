@@ -341,20 +341,20 @@ export const CareerTipsView: React.FC = () => {
           {/* Wyszukiwarka i filtry */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setActiveCategory(c.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer border ${
-                    activeCategory === c.id
-                      ? 'border-brand-500 bg-brand-500/10 text-brand-600 font-bold'
-                      : 'border-line bg-surface text-muted hover:border-line-strong hover:text-ink'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
+               {categories.map((c) => (
+                 <button
+                   key={c.id}
+                   type="button"
+                   onClick={() => setActiveCategory(c.id)}
+                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors border ${
+                     activeCategory === c.id
+                       ? 'border-brand-500 bg-brand-500/10 text-brand-600 font-bold'
+                       : 'border-line bg-surface text-muted hover:border-line-strong hover:text-ink'
+                   }`}
+                 >
+                   {c.label}
+                 </button>
+               ))}
             </div>
 
             <div className="relative w-full sm:w-64">
@@ -372,16 +372,25 @@ export const CareerTipsView: React.FC = () => {
           {/* Siatka artykułów */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredArticles.map((art) => (
-              <motion.div
-                key={art.id}
-                whileHover={{ y: -3 }}
-                transition={{ duration: 0.15 }}
-                className="rounded-2xl border border-line bg-surface p-5 shadow-xs flex flex-col justify-between hover:border-brand-500/40 cursor-pointer transition-colors"
-                onClick={() => {
-                  trackProductInsight('career_article_opened');
-                  setSelectedArticle(art);
-                }}
-              >
+               <motion.div
+                 key={art.id}
+                 whileHover={{ y: -3 }}
+                 transition={{ duration: 0.15 }}
+                 role="button"
+                 tabIndex={0}
+                 onClick={() => {
+                   trackProductInsight('career_article_opened');
+                   setSelectedArticle(art);
+                 }}
+                 onKeyDown={(e) => {
+                   if (e.key === 'Enter' || e.key === ' ') {
+                     e.preventDefault();
+                     trackProductInsight('career_article_opened');
+                     setSelectedArticle(art);
+                   }
+                 }}
+                 className="rounded-2xl border border-line bg-surface p-5 shadow-xs flex flex-col justify-between hover:border-brand-500/40 cursor-pointer transition-colors"
+               >
                 <div className="space-y-3">
                   <img
                     src={art.imageSrc}
@@ -399,19 +408,29 @@ export const CareerTipsView: React.FC = () => {
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-base text-ink leading-snug group-hover:text-brand-fg">
-                    {art.title}
-                  </h3>
+                   <h3 className="font-bold text-base text-ink leading-snug group-hover:text-brand-fg transition-colors">
+                     {art.title}
+                   </h3>
 
-                  <p className="text-xs text-muted leading-relaxed line-clamp-3">
-                    {art.snippet}
-                  </p>
-                </div>
+                   <p className="text-xs text-muted leading-relaxed line-clamp-3">
+                     {art.snippet}
+                   </p>
+                 </div>
 
-                <div className="pt-4 flex items-center justify-between text-xs font-semibold text-brand-fg mt-2 border-t border-line/40">
-                  <span>Czytaj artykuł</span>
-                  <ChevronRight className="h-4 w-4" />
-                </div>
+                 <div className="pt-4 flex items-center justify-between text-xs font-semibold text-brand-fg mt-2 border-t border-line/40">
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="sm"
+                     className="cursor-pointer text-brand-fg hover:underline"
+                     onClick={() => {
+                       trackProductInsight('career_article_opened');
+                       setSelectedArticle(art);
+                     }}
+                   >
+                     Czytaj artykuł <ChevronRight className="ml-1 h-3 w-3" />
+                   </Button>
+                 </div>
               </motion.div>
             ))}
           </div>

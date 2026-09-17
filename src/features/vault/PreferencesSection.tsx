@@ -1,6 +1,6 @@
 import React from 'react';
 import { Briefcase, DollarSign, MapPin, Globe, Compass, ShieldCheck } from 'lucide-react';
-import { ProfilerState, ExperienceLevel } from '../../types';
+import { ProfilerState, ExperienceLevel, LocationPreferences } from '../../types';
 import { SENIORITY_LEVELS } from '../../data/seniority';
 import { Card } from '../../components/ui/Card';
 import { Input, Select } from '../../components/ui/Field';
@@ -28,7 +28,7 @@ export const PreferencesSection: React.FC<PreferencesSectionProps> = ({
     description: level.range ? `${level.description} (${level.range})` : level.description,
   }));
 
-  const handleUpdateLocation = (field: string, value: any) => {
+  const handleUpdateLocation = <K extends keyof LocationPreferences>(field: K, value: LocationPreferences[K]) => {
     onChange({
       ...profiler,
       location: {

@@ -19,9 +19,10 @@ import {
   Award,
 } from 'lucide-react';
 import { MasterVault } from '../../types';
-import { clientEnv } from '../../lib/clientEnv';
+import { api, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/ui/Button';
-import { useEntitlements } from '../../store/useEntitlements';
+import { useEntitlements, consumeAiLocally } from '../../store/useEntitlements';
+import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 import {
   InterviewQuestionItem,
   StarAnswerEvaluation,
@@ -106,38 +107,35 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   };
 
   const handleGenerateQuestions = async () => {
+    if (usage.aiUses <= 0 || !consumeAiLocally()) {
+      setError('Wykorzystano dzisiejszy limit zapytań AI (odnowi się o północy). Możesz swobodnie trenować na gotowej liście pytań rekrutacyjnych poniżej.');
+      return;
+    }
+
     setIsGeneratingQuestions(true);
     setError(null);
     try {
-      const res = await fetch(`${clientEnv.apiUrl}/api/ai/coach-star/generate-questions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await api.post<{ questions?: InterviewQuestionItem[] }>(
+        '/api/ai/coach-star/generate-questions',
+        {
           vault,
           targetRole,
           targetCompany: targetCompany.trim() || undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        let msg = 'Nie udało się wygenerować pytań rekrutacyjnych.';
-        try {
-          const json = await res.json();
-          if (json.error) msg = json.error;
-        } catch {
-          // ignore
         }
-        throw new Error(msg);
-      }
+      );
 
-      const data = await res.json();
       if (data.questions && data.questions.length > 0) {
         setQuestions(data.questions);
         setSelectedQuestion(data.questions[0]);
       }
       refreshEntitlements();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas generowania pytań.');
+      if (err instanceof ApiError && err.isQuotaExceeded) {
+        setError('Limit zapytań AI na dziś wyczerpany. Pula odnowi się o północy. Możesz dalej korzystać z bazy pytań predefiniowanych.');
+        refreshEntitlements();
+      } else {
+        setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas generowania pytań.');
+      }
     } finally {
       setIsGeneratingQuestions(false);
     }
@@ -149,36 +147,35 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
       return;
     }
 
+    if (usage.aiUses <= 0 || !consumeAiLocally()) {
+      setError('Wykorzystano dzisiejszy limit analiz AI (odnowi się o północy). Skorzystaj ze stopera i samodzielnej checklisty STAR.');
+      return;
+    }
+
     setIsEvaluating(true);
     setError(null);
     try {
-      const res = await fetch(`${clientEnv.apiUrl}/api/ai/coach-star/evaluate-answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await api.post<{ evaluation?: StarAnswerEvaluation }>(
+        '/api/ai/coach-star/evaluate-answer',
+        {
           question: selectedQuestion.question,
           answer: candidateAnswer,
           targetRole,
           vault,
-        }),
-      });
-
-      if (!res.ok) {
-        let msg = 'Nie udało się przeanalizować odpowiedzi.';
-        try {
-          const json = await res.json();
-          if (json.error) msg = json.error;
-        } catch {
-          // ignore
         }
-        throw new Error(msg);
-      }
+      );
 
-      const data = await res.json();
-      setEvaluation(data.evaluation);
+      if (data.evaluation) {
+        setEvaluation(data.evaluation);
+      }
       refreshEntitlements();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas oceny odpowiedzi.');
+      if (err instanceof ApiError && err.isQuotaExceeded) {
+        setError('Limit analiz AI na dziś wyczerpany. Pula odnowi się o północy.');
+        refreshEntitlements();
+      } else {
+        setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas oceny odpowiedzi.');
+      }
     } finally {
       setIsEvaluating(false);
     }
@@ -232,9 +229,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 <span className="inline-flex items-center gap-1 rounded-full border border-brand-300 bg-brand-100 dark:bg-brand-900/40 dark:border-brand-700 px-2.5 py-0.5 text-xs font-semibold text-brand-800 dark:text-brand-300">
                   <Sparkles className="h-3 w-3" /> Azure OpenAI gpt-4o
                 </span>
-                <span className="inline-flex items-center rounded-full border border-success/30 bg-success-soft px-2.5 py-0.5 text-xs font-semibold text-success-fg">
-                  Pozostało: {usage.aiUses} / 25 zapytań dziś
-                </span>
+                <ModelQuotaCounter variant="badge" feature="coach" />
               </div>
               <p className="mt-2 text-xs leading-relaxed text-muted sm:text-sm">
                 Ćwicz odpowiedzi metodą <strong>STAR</strong> (Situation, Task, Action, Result).
@@ -323,11 +318,15 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
             variant="secondary"
             size="sm"
             onClick={handleGenerateQuestions}
-            disabled={isGeneratingQuestions}
+            disabled={isGeneratingQuestions || usage.aiUses <= 0}
             className="flex items-center gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${isGeneratingQuestions ? 'animate-spin' : ''}`} />
-            {isGeneratingQuestions ? 'Generowanie pytań...' : 'Generuj nowe pytania (AI)'}
+            {isGeneratingQuestions
+              ? 'Generowanie pytań...'
+              : usage.aiUses <= 0
+                ? 'Limit AI wyczerpany'
+                : 'Generuj nowe pytania (AI)'}
           </Button>
         </div>
 
@@ -509,19 +508,25 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
           </div>
         </div>
 
-        <div className="flex justify-end pt-2">
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={handleEvaluateAnswer}
-            disabled={isEvaluating || !candidateAnswer.trim()}
-            className="flex items-center gap-2"
-          >
-            <Sparkles className={`h-4 w-4 ${isEvaluating ? 'animate-spin' : ''}`} />
-            {isEvaluating ? 'Analiza w schemacie STAR...' : 'Oceń odpowiedź (AI STAR Coach)'}
-          </Button>
-        </div>
+          <ModelQuotaCounter variant="banner" feature="coach" className="my-2" />
+
+          <div className="flex justify-end pt-2">
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={handleEvaluateAnswer}
+              disabled={isEvaluating || !candidateAnswer.trim() || usage.aiUses <= 0}
+              className="flex items-center gap-2"
+            >
+              <Sparkles className={`h-4 w-4 ${isEvaluating ? 'animate-spin' : ''}`} />
+              {isEvaluating
+                ? 'Analiza w schemacie STAR...'
+                : usage.aiUses <= 0
+                  ? 'Limit AI wyczerpany na dziś'
+                  : 'Oceń odpowiedź (AI STAR Coach)'}
+            </Button>
+          </div>
       </div>
 
       {/* KROK 3: Raport z oceny STAR i wzorcowa odpowiedź */}

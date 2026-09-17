@@ -351,7 +351,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
                 placeholder="Wpisz polecenie, ofertę albo umiejętność..."
                 className="flex-1 bg-transparent text-sm text-ink placeholder:text-subtle focus:outline-none"
               />
-              <span className="rounded-md border border-line bg-sunken px-1.5 py-0.5 font-mono text-[10px] text-muted">
+              {/* Skrót ESC — czysto dekoracyjny, nie dodaje informacji dla czytników */}
+              <span aria-hidden="true" className="rounded-md border border-line bg-sunken px-1.5 py-0.5 font-mono text-[10px] text-muted">
                 ESC
               </span>
             </div>
@@ -375,6 +376,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
                         id={`${LISTBOX_ID}-opt-${item.id}`}
                         role="option"
                         aria-selected={isSelected}
+                        tabIndex={-1}
                         onClick={() => handleExecute(item)}
                         onMouseEnter={() => setSelectedIndex(idx)}
                         className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-xs transition-colors focus-visible:outline-none ${
@@ -405,8 +407,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ onNavigate }) =>
               )}
             </div>
 
-            {/* Footer Navigation Hints */}
-            <div className="flex items-center justify-between border-t border-line/60 bg-sunken/50 px-4 py-2 text-[10px] text-muted font-mono">
+            {/* Podpowiedzi nawigacyjne — dekoracyjne, czytnik ogłasza kontrolę combobox */}
+            <div aria-hidden="true" className="flex items-center justify-between border-t border-line/60 bg-sunken/50 px-4 py-2 text-[10px] text-muted font-mono">
               <div className="flex items-center gap-3">
                 <span>↑↓ Nawigacja</span>
                 <span>↵ Wybierz</span>

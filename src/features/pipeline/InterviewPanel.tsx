@@ -7,6 +7,11 @@ import { ReactFloatingPanel } from '../../components/hud/ReactFloatingPanel';
 import { ApplicationPassGate } from '../../components/payments/ApplicationPassGate';
 import { useEntitlements } from '../../store/useEntitlements';
 import { InterviewLoopModal } from '../loop/InterviewLoopModal';
+import {
+  toLocalInputValue,
+  fromLocalInputValue,
+  describeInterviewTiming,
+} from '../../lib/dateUtils';
 
 /**
  * Zasobnik Rozmowy — narzędzia live przy konkretnej rozmowie.
@@ -25,32 +30,6 @@ export interface InterviewPanelProps {
   showShortcutsHint?: boolean;
   onDismissShortcutsHint?: () => void;
   className?: string;
-}
-
-function toLocalInputValue(iso: string | undefined): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
-}
-
-function fromLocalInputValue(value: string): string | undefined {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-
-function describeTiming(interviewAt: string | undefined, now: Date): string {
-  if (!interviewAt) return 'Termin nieustalony';
-  const at = new Date(interviewAt).getTime();
-  if (Number.isNaN(at)) return 'Termin nieustalony';
-
-  const diffHours = Math.round((at - now.getTime()) / 3_600_000);
-  if (diffHours < 0) return 'Rozmowa się odbyła';
-  if (diffHours === 0) return 'Rozmowa lada chwila';
-  if (diffHours < 48) return `Za ${diffHours} h`;
-  return `Za ${Math.round(diffHours / 24)} dni`;
 }
 
 export const InterviewPanel: React.FC<InterviewPanelProps> = ({
@@ -119,7 +98,7 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
           </h3>
         </div>
         <span className="rounded-lg border border-brand-200 bg-surface px-2 py-1 font-mono text-[11px] font-bold text-brand-fg">
-          {describeTiming(selected.interviewAt, now)}
+          {describeInterviewTiming(selected.interviewAt, now)}
         </span>
       </div>
 

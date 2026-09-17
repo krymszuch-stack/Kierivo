@@ -11,6 +11,8 @@ import { executeAiOperation } from '../quota';
 import { MasterVault } from '../../types';
 import { checkOllamaHealth, callOllamaChat, OllamaChatMessage } from '../ollamaClient';
 import { loadConfig } from '../config';
+import { pseudonymize, rehydrate, assertNoPii } from '../pseudonymize';
+import { rewriteSectionWithRules, SectionType, RuleFocus } from '../../lib/sectionRewriterEngine';
 
 export const aiRouter = Router();
 
@@ -319,6 +321,171 @@ aiRouter.post(
         reply: result.content,
         provider: 'ollama',
         model: result.model,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/advisor/rewrite-section
+ *
+ * Pół-automatyczny rewriting sekcji CV (np. pojedynczego bulletu) łączący
+ * reguły STAR/ATS z asystą lekkiego modelu LLM.
+ *
+ * OCHRONA PRYWATNOŚCI I MINIMALIZACJA KONTEKSTU:
+ * - Model NIE OTRZYMUJE całego Master Vaultu ani historii kandydata.
+ * - Przyjmuje wyłącznie pojedynczy tekst (max 800 znaków) oraz opcjonalną nazwę roli.
+ * - Dane osobowe są pseudonimizowane przed wysyłką do modelu.
+ * - Gdy brak modelu LLM, natychmiast działa deterministyczny silnik regułowy.
+ */
+aiRouter.post(
+  '/advisor/rewrite-section',
+  async (
+    req: Request<
+      unknown,
+      unknown,
+      {
+        text?: string;
+        roleTitle?: string;
+        sectionType?: SectionType;
+        ruleFocus?: RuleFocus;
+        model?: string;
+        vault?: unknown;
+        personalInfo?: unknown;
+      }
+    >,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      // 1. Ochrona przed nadmiarowym kontekstem — model nie może dostać Vaultu
+      if ('vault' in req.body || 'personalInfo' in req.body) {
+        return res.status(400).json({
+          success: false,
+          error: 'Endpoint rewritingu przyjmuje wyłącznie pojedynczy fragment tekstu, a nie cały Master Vault. Zadbaj o minimalizację danych.',
+        });
+      }
+
+      const { text, roleTitle, sectionType, ruleFocus, model } = req.body;
+
+      if (!text || typeof text !== 'string' || text.trim().length < 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Podaj treść punktu lub sekcji do poprawy (minimum 5 znaków).',
+        });
+      }
+
+      const trimmedText = text.trim();
+      if (trimmedText.length > 800) {
+        return res.status(400).json({
+          success: false,
+          error: 'Tekst przekracza maksymalną dozwoloną długość (800 znaków). Podaj pojedynczy punktor lub akapit.',
+        });
+      }
+
+      const trimmedRole = typeof roleTitle === 'string' ? roleTitle.slice(0, 100).trim() : undefined;
+
+      // 2. Deterministyczna analiza regułowa jako baza
+      const ruleFallback = rewriteSectionWithRules({
+        text: trimmedText,
+        roleTitle: trimmedRole,
+        sectionType,
+        ruleFocus,
+      });
+
+      // 3. Jeśli lokalna Ollama jest włączona, spróbuj ulepszyć treść przez lekki LLM
+      const config = loadConfig();
+      const canAttemptOllama = !config.backendEnabled;
+
+      if (canAttemptOllama) {
+        try {
+          const { text: safeText, map } = pseudonymize(trimmedText);
+          assertNoPii(safeText);
+
+          const safeRole = trimmedRole ? pseudonymize(trimmedRole).text : 'specjalista';
+
+          const systemPrompt = `Jesteś asystentem redagowania CV w metodologii STAR i standardach czytelności ATS w aplikacji Kierivo.
+Twoim celem jest przeformułować pojedynczy punkt doświadczenia kandydata na stanowisko: "${safeRole}".
+ZASADY BEZWZGLĘDNE:
+1. ZERO FABRYKACJI (Reguła 1): Nie wymyślaj fikcyjnych technologii ani nie zmyślaj liczb. Jeśli w tekście brakowało pomiaru, wstaw szablon w nawiasie [np. o X% / Y sztuk] do uzupełnienia przez kandydata. Jeśli oryginał zawierał konkretne liczby, zachowaj je dokładnie.
+2. CZASOWNIK I STAR: Rozpocznij od mocnego czasownika dokonanego (np. Zmontowałem, Wdrożyłem, Skompletowałem, Zoptymalizowałem). Zastosuj strukturę: Akcja + Narzędzie/Zakres + Rezultat.
+3. CZYSTOŚĆ ATS: Usuń zaimki ("ja", "byłem odpowiedzialny"), formę bierną i zbędny szum. Maksymalnie 1-2 zwarte zdania.
+4. Zwróć WYŁĄCZNIE poprawny format JSON:
+{
+  "proposedText": "Ulepszona treść punktu",
+  "explanation": "Krótkie wyjaśnienie, co zostało poprawione i dlaczego",
+  "appliedRules": ["Mocny czasownik akcji", "Struktura STAR", "Format ATS"]
+}`;
+
+          const result = await callOllamaChat({
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Oryginalny punkt do poprawy: "${safeText}"` },
+            ],
+            model: typeof model === 'string' && model.trim() ? model.trim() : undefined,
+            context: 'advisor-rewrite',
+            timeoutMs: 15_000,
+          });
+
+          if (result && result.content) {
+            // Próba sparsowania JSON-a ze strumienia modelu
+            let parsedJson: { proposedText?: string; explanation?: string; appliedRules?: string[] } | null = null;
+            try {
+              const cleaned = result.content.replace(/```json\s*|\s*```/g, '').trim();
+              parsedJson = JSON.parse(cleaned);
+            } catch {
+              // Model zwrócił czysty tekst
+              parsedJson = {
+                proposedText: result.content.trim(),
+                explanation: 'Model zaproponował ulepszoną wersję z mocnym czasownikiem i strukturą STAR.',
+                appliedRules: ['Lekki model LLM (Ollama)', 'Mocny czasownik akcji', 'Struktura STAR'],
+              };
+            }
+
+            if (parsedJson?.proposedText) {
+              const proposedText = rehydrate(parsedJson.proposedText, map);
+              const explanation = parsedJson.explanation || ruleFallback.ruleExplanation;
+              const appliedRules = Array.isArray(parsedJson.appliedRules) && parsedJson.appliedRules.length > 0
+                ? parsedJson.appliedRules
+                : ['Lekki model LLM', 'Mocny czasownik akcji', 'Struktura STAR'];
+
+              // Wyliczenie słów dodanych/zmienionych (diff)
+              const origWords = new Set(trimmedText.toLowerCase().split(/\s+/));
+              const newWords = proposedText.split(/\s+/).filter(
+                (w) => !origWords.has(w.toLowerCase().replace(/[.,;:]/g, ''))
+              );
+
+              return res.json({
+                success: true,
+                originalText: trimmedText,
+                proposedText,
+                ruleExplanation: explanation,
+                appliedRules,
+                analysis: ruleFallback.analysis,
+                diffHighlights: {
+                  addedOrChanged: [...new Set(newWords)].slice(0, 10),
+                },
+                model: result.model || 'ollama',
+              });
+            }
+          }
+        } catch {
+          // W razie niedostępności modelu przechodzimy do reguł
+        }
+      }
+
+      // 4. Deterministyczna odpowiedź regułowa
+      return res.json({
+        success: true,
+        originalText: trimmedText,
+        proposedText: ruleFallback.proposedText,
+        ruleExplanation: ruleFallback.ruleExplanation,
+        appliedRules: ruleFallback.appliedRules,
+        analysis: ruleFallback.analysis,
+        diffHighlights: ruleFallback.diffHighlights,
+        model: 'regułowy (STAR + ATS)',
       });
     } catch (err) {
       next(err);

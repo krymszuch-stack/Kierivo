@@ -10,9 +10,9 @@ import { performance } from 'perf_hooks';
 import type { MasterVault, HighlightMetric, LanguageProficiency } from '../src/types';
 import { scoreCanonicalAts } from '../src/lib/canonicalAts';
 import { stripSensitiveFields, identifyingValues, pseudonymize, assertNoPii } from '../src/server/pseudonymize';
-import { SqliteGraphRepository } from '../semantic-work-graph/src/repositories/SqliteGraphRepository';
-import { LexiconImporter } from '../semantic-work-graph/src/seed/LexiconImporter';
-import { LinguisticEngine } from '../semantic-work-graph/src/services/LinguisticEngine';
+import { SqliteGraphRepository } from '../labs/semantic-work-graph/src/repositories/SqliteGraphRepository';
+import { LexiconImporter } from '../labs/semantic-work-graph/src/seed/LexiconImporter';
+import { LinguisticEngine } from '../labs/semantic-work-graph/src/services/LinguisticEngine';
 
 function createHighlight(id: string, text: string, metric = ''): HighlightMetric {
   return {

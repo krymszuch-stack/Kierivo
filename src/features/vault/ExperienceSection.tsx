@@ -67,7 +67,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
     onChange([newExp, ...history]);
   };
 
-  const handleUpdateExperience = (id: string, field: keyof WorkExperience, value: any) => {
+  const handleUpdateExperience = <K extends keyof WorkExperience>(id: string, field: K, value: WorkExperience[K]) => {
     onChange(
       history.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );

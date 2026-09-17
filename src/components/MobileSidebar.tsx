@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { KierivoLogo } from './KierivoLogo';
 import { motion, AnimatePresence } from 'motion/react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 export interface MobileSidebarProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
   title = 'Menu Główne',
   children,
 }) => {
+  const trapRef = useFocusTrap<HTMLElement>(isOpen);
   // Close on Escape key press
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -31,17 +33,22 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
     <AnimatePresence>
       {isOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          {/* Backdrop */}
+          {/* Backdrop — ukryty przed czytnikami: jest to element wizualny */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
+            aria-hidden="true"
             className="fixed inset-0 bg-surface/75 backdrop-blur-sm"
           />
 
           {/* Drawer Panel */}
           <motion.aside
+            ref={trapRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title}
             initial={{ x: -300 }}
             animate={{ x: 0 }}
             exit={{ x: -300 }}

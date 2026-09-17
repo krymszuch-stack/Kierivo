@@ -7,11 +7,17 @@ import {
   Sparkles,
   Zap,
   Bot,
-  FileText,
 } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useEntitlements, FREE_DAILY_AI_USES, FREE_MONTHLY_IMPORTS } from '../store/useEntitlements';
-import { FREE_BETA_LABEL, FREE_BETA_PRICE_PLN } from '../lib/beta';
+import {
+  FREE_BETA_LABEL,
+  FREE_BETA_PRICE_PLN,
+  PAYMENTS_ENABLED,
+  PUBLIC_PREBETA_LABEL,
+  PUBLIC_PREBETA_CODE,
+  PUBLIC_PREBETA_MESSAGE,
+} from '../lib/beta';
 
 const includedInBeta = [
   'Tworzenie i nielimitowana edycja profilu Master Vault',
@@ -39,7 +45,7 @@ export const PricingView: React.FC = () => {
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-4 sm:p-6 lg:p-8" data-testid="beta-scope-view">
       <PageHeader
-        title="Architektura komercyjna i Bezpłatna Beta"
+         title="Architektura handlowa i Bezpłatna Beta"
         description="W tej wersji nie pobieramy opłat, nie sprzedajemy abonamentów ani nie prosimy o kartę. Tester może zrealizować pełny cykl aplikacyjny bezpłatnie w ramach dobowych limitów Azure."
         badge={FREE_BETA_LABEL.toUpperCase()}
       />
@@ -61,7 +67,7 @@ export const PricingView: React.FC = () => {
             </p>
           </div>
 
-          <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft px-3.5 py-2 text-xs font-semibold text-success-fg">
+           <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-success/30 bg-success-soft px-4 py-2 text-xs font-semibold text-success-fg">
             <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>Pełny przepływ i asystenci AI bez karty płatniczej</span>
           </div>
@@ -83,132 +89,148 @@ export const PricingView: React.FC = () => {
         </div>
       </section>
 
-      {/* Trzy filary architektury komercyjnej */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold text-ink">Trzy filary oferty Kierivo</h2>
-          <p className="text-xs text-muted">
-            Docelowa architektura komercyjna. W obecnej fazie testów beta wszystkie funkcje są udostępnione bezpłatnie w ramach dobowych limitów.
-          </p>
-        </div>
-
-        <div className="grid gap-5 md:grid-cols-3">
-          {/* Filar 1: Bezpłatna Beta (Aktywna) */}
-          <div className="relative flex flex-col rounded-3xl border-2 border-brand-500 bg-surface p-6 shadow-sm ring-1 ring-brand-500/20">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-grad px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-on-brand shadow-xs">
-              Aktualnie aktywny dla każdego
-            </div>
-            <div className="flex items-center gap-2 text-brand-fg">
-              <Bot className="h-5 w-5" />
-              <h3 className="font-sans text-base font-bold text-ink">Bezpłatna Beta</h3>
-            </div>
-            <p className="mt-1 text-xs text-muted min-h-[32px]">
-              Dla testerów szukających pracy i weryfikujących skuteczność swojego CV.
+      {/* Architektura handlowa / Stan fazy Public Pre-Beta */}
+      {PAYMENTS_ENABLED ? (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-bold text-ink">Plany i pakiety Kierivo</h2>
+            <p className="text-xs text-muted">
+              Wybierz plan dopasowany do Twojego tempa poszukiwania pracy.
             </p>
-            <div className="mt-4 flex items-baseline gap-1">
-              <span className="font-mono text-4xl font-black text-ink">0 zł</span>
-              <span className="text-xs text-muted">/ bez limitu czasu bety</span>
+          </div>
+          {/* Poniższa siatka planów komercyjnych renderuje się wyłącznie po włączeniu sprzedaży (PAYMENTS_ENABLED=true) */}
+          <div className="grid gap-5 md:grid-cols-3">
+            {/* Siatka produkcyjna planów */}
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4" data-testid="prebeta-status-section">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-brand-fg">
+                {PUBLIC_PREBETA_LABEL} · {PUBLIC_PREBETA_CODE}
+              </span>
+              <span className="text-xs text-muted">· {PUBLIC_PREBETA_MESSAGE}</span>
             </div>
-            <ul className="mt-6 flex-1 space-y-2.5 text-xs text-ink">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                <span><strong>25 zapytań AI / dobę</strong> (Azure gpt-4o)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                <span>Trener Rozmowy STAR & symulator pytań</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                <span>Potrójny weryfikator CV 360°</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                <span>Audyt osi czasu i luk zawodowych</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                <span>Do 3 importów plików / miesiąc</span>
-              </li>
-            </ul>
-            <div className="mt-6 rounded-xl border border-success/30 bg-success-soft py-2 text-center text-xs font-bold text-success-fg">
-              ✓ Aktywne w Twojej przeglądarce
-            </div>
+            <h2 className="mt-2 text-xl font-bold text-ink">Status programu otwartych testów</h2>
+            <p className="text-xs text-muted max-w-3xl leading-relaxed">
+              Kierivo znajduje się w fazie przedpremierowych testów publicznych. Wszystkie funkcje platformy —
+              w tym generator dokumentów, audyt zgodności ATS oraz asystenci AI — są w pełni odblokowane dla każdego testera
+              w cenie 0 zł. Płatności, checkout i płatne plany są w tej fazie całkowicie wyłączone.
+            </p>
           </div>
 
-          {/* Filar 2: Karnet Aplikacyjny (Planowany) */}
-          <div className="flex flex-col rounded-3xl border border-line bg-surface p-6 shadow-xs">
-            <div className="flex items-center gap-2 text-muted">
-              <FileText className="h-5 w-5" />
-              <h3 className="font-sans text-base font-bold text-ink">Karnet Aplikacyjny</h3>
+          <div className="grid gap-5 md:grid-cols-3">
+            {/* Kafelek 1: Dostęp testowy 0 zł */}
+            <div className="relative flex flex-col rounded-3xl border-2 border-brand-500/80 bg-surface p-6 shadow-sm ring-1 ring-brand-500/20">
+              <div className="flex items-center gap-2 text-brand-fg">
+                <Bot className="h-5 w-5" />
+                <h3 className="text-base font-bold text-ink">Dostęp testowy Pre-Beta</h3>
+              </div>
+              <p className="mt-1 text-xs text-muted min-h-[32px]">
+                Dla wszystkich zarejestrowanych testerów biorących udział w programie.
+              </p>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="font-mono text-4xl font-black text-ink">{FREE_BETA_PRICE_PLN} zł</span>
+                <span className="text-xs text-muted">/ bez opłat w czasie testów</span>
+              </div>
+              <ul className="mt-6 flex-1 space-y-2.5 text-xs text-ink">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
+                  <span>Pełny dostęp do edytora Master Vault i profilu</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
+                  <span>Audyt słów kluczowych i wielowskaźnikowy scoring ATS</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
+                  <span>Hybrydowy silnik eksportu PDF (ATS-friendly + Human-first)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
+                  <span>Brak wymogu podawania danych karty płatniczej</span>
+                </li>
+              </ul>
+              <div className="mt-6 rounded-xl border border-success/30 bg-success-soft py-2 text-center text-xs font-bold text-success-fg">
+                ✓ Aktywny w Twojej sesji
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted min-h-[32px]">
-              Jednorazowy pakiet dopasowań bez comiesięcznych subskrypcji.
-            </p>
-            <div className="mt-4 flex items-baseline gap-1">
-              <span className="font-mono text-4xl font-black text-ink">19 zł</span>
-              <span className="text-xs text-muted">/ pakiet 10 aplikacji (planowane)</span>
-            </div>
-            <ul className="mt-6 flex-1 space-y-2.5 text-xs text-muted">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>10 kompletnych pakietów aplikacyjnych (CV + List)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Zaawansowany auto-balancing bloków A4 PDF</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Dopasowanie słów kluczowych pod konkretne ATS</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Brak automatycznego odnawiania subskrypcji</span>
-              </li>
-            </ul>
-            <div className="mt-6 rounded-xl border border-line bg-elevated py-2 text-center text-xs font-medium text-muted">
-              W cenie Bety (0 zł podczas programu)
-            </div>
-          </div>
 
-          {/* Filar 3: Plan Pro (Planowany) */}
-          <div className="flex flex-col rounded-3xl border border-line bg-surface p-6 shadow-xs">
-            <div className="flex items-center gap-2 text-muted">
-              <Zap className="h-5 w-5" />
-              <h3 className="font-sans text-base font-bold text-ink">Plan Pro</h3>
+            {/* Kafelek 2: Pula AI */}
+            <div className="flex flex-col rounded-3xl border border-line bg-surface p-6 shadow-xs">
+              <div className="flex items-center gap-2 text-brand-fg">
+                <Zap className="h-5 w-5" />
+                <h3 className="text-base font-bold text-ink">Dobowy przydział AI</h3>
+              </div>
+              <p className="mt-1 text-xs text-muted min-h-[32px]">
+                Zapewniany przez dedykowaną pulę modeli Azure OpenAI.
+              </p>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="font-mono text-4xl font-black text-ink">25</span>
+                <span className="text-xs text-muted">zapytań / dobę (odnawiane o 00:00)</span>
+              </div>
+              <ul className="mt-6 flex-1 space-y-2.5 text-xs text-muted">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
+                  <span>Trener Rozmowy STAR z symulacją i oceną odpowiedzi</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
+                  <span>Weryfikator CV 360° z analizą prawdomówności</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
+                  <span>Dopasowanie do ofert pracy i ekstrakcja wymagań</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
+                  <span>Nielimitowane wklejanie tekstu CV i edycja faktów</span>
+                </li>
+              </ul>
+              <div className="mt-6 rounded-xl border border-line bg-elevated py-2 text-center text-xs font-medium text-ink">
+                Odnawiane automatycznie każdej nocy
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted min-h-[32px]">
-              Dla aktywnych kandydatów wysyłających dziesiątki aplikacji.
-            </p>
-            <div className="mt-4 flex items-baseline gap-1">
-              <span className="font-mono text-4xl font-black text-ink">39 zł</span>
-              <span className="text-xs text-muted">/ miesiąc (planowane)</span>
-            </div>
-            <ul className="mt-6 flex-1 space-y-2.5 text-xs text-muted">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Nielimitowane analizy AI i nielimitowany import plików</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Teleprompter Live HUD podczas wideorozmów</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Zaawansowane szablony branżowe PDF</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-fg mt-0.5" />
-                <span>Priorytetowe przetwarzanie w chmurze</span>
-              </li>
-            </ul>
-            <div className="mt-6 rounded-xl border border-line bg-elevated py-2 text-center text-xs font-medium text-muted">
-              W cenie Bety (0 zł podczas programu)
+
+            {/* Kafelek 3: Status płatności */}
+            <div className="flex flex-col rounded-3xl border border-line bg-surface p-6 shadow-xs">
+              <div className="flex items-center gap-2 text-muted">
+                <LockKeyhole className="h-5 w-5" />
+                <h3 className="text-base font-bold text-ink">Status płatności</h3>
+              </div>
+              <p className="mt-1 text-xs text-muted min-h-[32px]">
+                Zasada braku monetyzacji w trakcie testów przedpremierowych.
+              </p>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="font-mono text-2xl font-bold text-ink">Wyłączone</span>
+                <span className="text-xs text-muted">(PAYMENTS_ENABLED=false)</span>
+              </div>
+              <ul className="mt-6 flex-1 space-y-2.5 text-xs text-muted">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-muted mt-0.5" />
+                  <span>Brak płatnych subskrypcji i okresów próbnych (trial)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-muted mt-0.5" />
+                  <span>Brak płatnych pakietów szablonów i odblokowań</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-muted mt-0.5" />
+                  <span>Brak automatycznego obciążania konta po zakończeniu bety</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-muted mt-0.5" />
+                  <span>Wszystkie dozwolone funkcje dostępne na równych prawach</span>
+                </li>
+              </ul>
+              <div className="mt-6 rounded-xl border border-line bg-elevated py-2 text-center text-xs font-medium text-muted">
+                Brak checkoutu w tej wersji
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Sekcja limitów technicznych i transparentności */}
       <section className="grid gap-5 md:grid-cols-2">

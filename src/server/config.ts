@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BETA_PURCHASES_ENABLED, FREE_BETA_ACTIVE } from '../lib/beta';
+import { PAYMENTS_ENABLED, BETA_PURCHASES_ENABLED } from '../lib/beta';
 
 /**
  * Server configuration, validated once at boot.
@@ -73,10 +73,24 @@ export type ServerConfig = z.infer<typeof configSchema> & {
 
 let cached: ServerConfig | null = null;
 
-export function loadConfig(): ServerConfig {
-  if (cached) return cached;
+export function validateConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  // Wykrywanie niebezpiecznych wycieków sekretów do zmiennych klienckich VITE_
+  const dangerousViteKeys = [
+    'VITE_SUPABASE_SERVICE_ROLE_KEY',
+    'VITE_STRIPE_SECRET_KEY',
+    'VITE_STRIPE_WEBHOOK_SECRET',
+  ];
+  const leakedKeys = dangerousViteKeys.filter((k) => env[k]?.trim());
+  if (leakedKeys.length > 0) {
+    throw new Error(
+      `Krytyczny błąd bezpieczeństwa w konfiguracji serwera:\n` +
+        `Wykryto prywatny sekret z prefiksem VITE_: ${leakedKeys.join(', ')}.\n` +
+        `Zmienne z prefiksem VITE_ trafiają bezpośrednio do publicznego pakietu przeglądarki. ` +
+        `Usuń prefiks VITE_ i unieważnij skompromitowany klucz u dostawcy.`
+    );
+  }
 
-  const parsed = configSchema.safeParse(process.env);
+  const parsed = configSchema.safeParse(env);
 
   if (!parsed.success) {
     const problems = parsed.error.issues
@@ -98,15 +112,15 @@ export function loadConfig(): ServerConfig {
     (!data.AZURE_OPENAI_ENDPOINT || !data.AZURE_OPENAI_DEPLOYMENT)
   ) {
     throw new Error(
-      'Nieprawidłowa konfiguracja serwera:\n  - Azure OpenAI wymaga AZURE_OPENAI_ENDPOINT i AZURE_OPENAI_DEPLOYMENT przy AI_PROVIDER=azure_openai.\n\n' +
-      'Uzupełnij plik .env na podstawie .env.example albo wybierz lokalną Ollamę.'
+      'Krytyczny błąd konfiguracji serwera:\n' +
+        '  - AI_PROVIDER=azure_openai wymaga ustawienia AZURE_OPENAI_ENDPOINT oraz AZURE_OPENAI_DEPLOYMENT.\n\n' +
+        'Uzupełnij plik .env na podstawie .env.example albo wybierz lokalną Ollamę (AI_PROVIDER=ollama).'
     );
   }
 
   // Walidacja warunkowa: w trybie `cloud` klucze Supabase przestają być
-  // opcjonalne. Zatrzymanie procesu tutaj jest tą samą decyzją co przy
-  // GEMINI_API_KEY — brak konfiguracji ma być widoczny dla operatora przy
-  // starcie, a nie ujawniać się użytkownikowi błędem przy pierwszym logowaniu.
+  // opcjonalne. Zatrzymanie procesu tutaj jest twardą barierą — brak konfiguracji
+  // ma natychmiast zatrzymać start serwera, zamiast ujawniać się błędem 500 użytkownikowi.
   if (data.BACKEND_MODE === 'cloud') {
     const missing = [
       !data.SUPABASE_URL && 'SUPABASE_URL',
@@ -115,41 +129,80 @@ export function loadConfig(): ServerConfig {
 
     if (missing.length > 0) {
       throw new Error(
-        `BACKEND_MODE=cloud wymaga zmiennych: ${missing.join(', ')}.\n` +
-          'Ustaw je albo wróć na BACKEND_MODE=local (dane zostają wtedy w przeglądarce).'
+        `Krytyczny błąd konfiguracji serwera:\n` +
+          `BACKEND_MODE=cloud wymaga zmiennych: ${missing.join(', ')}.\n` +
+          'Ustaw je w pliku .env albo zmień BACKEND_MODE=local (dane pozostaną wtedy lokalnie w przeglądarce).'
+      );
+    }
+  }
+
+  // Twarda walidacja spójności Stripe: klucz prywatny i sekret webhooka muszą występować w parze.
+  // Posiadanie jednego bez drugiego uniemożliwia bezpieczne i spójne przetwarzanie płatności.
+  const hasStripeKey = Boolean(data.STRIPE_SECRET_KEY);
+  const hasStripeWebhook = Boolean(data.STRIPE_WEBHOOK_SECRET);
+  if (data.NODE_ENV !== 'test' && hasStripeKey !== hasStripeWebhook) {
+    const missingStripeVar = hasStripeKey ? 'STRIPE_WEBHOOK_SECRET' : 'STRIPE_SECRET_KEY';
+    const presentStripeVar = hasStripeKey ? 'STRIPE_SECRET_KEY' : 'STRIPE_WEBHOOK_SECRET';
+    throw new Error(
+      `Krytyczny błąd konfiguracji serwera:\n` +
+        `Zmienna ${presentStripeVar} jest ustawiona, ale brakuje ${missingStripeVar}.\n` +
+        `Klucze Stripe muszą być skonfigurowane łącznie — bez webhooka nie da się potwierdzić opłacenia, ` +
+        `a bez klucza prywatnego nie da się utworzyć sesji płatności.`
+    );
+  }
+
+  // Restrykcje środowiska produkcyjnego: ochrona przed błędami operacyjnymi wdrożenia chmurowego.
+  if (data.NODE_ENV === 'production') {
+    const isLocalhostAppUrl =
+      data.APP_URL.includes('localhost') ||
+      data.APP_URL.includes('127.0.0.1') ||
+      data.APP_URL.includes('0.0.0.0');
+
+    if (isLocalhostAppUrl) {
+      throw new Error(
+        `Krytyczny błąd konfiguracji serwera produkcyjnego:\n` +
+          `APP_URL na produkcji (NODE_ENV=production) nie może wskazywać na adres lokalny (${data.APP_URL}).\n` +
+          `Ustaw publiczny adres aplikacji (np. https://app.kierivo.com) w zmiennej APP_URL.`
+      );
+    }
+
+    if (data.BACKEND_MODE === 'local') {
+      throw new Error(
+        `Krytyczny błąd konfiguracji serwera produkcyjnego:\n` +
+          `Wdrożenie produkcyjne (NODE_ENV=production) wymaga BACKEND_MODE=cloud.\n` +
+          `Tryb BACKEND_MODE=local odrzuca żądania autoryzacji i nie prowadzi trwałej bazy danych.`
       );
     }
   }
 
   const stripeConfigured = Boolean(data.STRIPE_SECRET_KEY && data.STRIPE_WEBHOOK_SECRET);
 
-  // Sam klucz sekretny bez sekretu webhooka to konfiguracja, w której da się
-  // przyjąć płatność i nie da się jej potwierdzić — użytkownik płaci i nie
-  // dostaje dostępu. Lepiej powiedzieć to głośno przy starcie.
-  if (data.STRIPE_SECRET_KEY && !data.STRIPE_WEBHOOK_SECRET) {
-    console.warn(
-      '[konfiguracja] STRIPE_SECRET_KEY jest ustawiony bez STRIPE_WEBHOOK_SECRET. ' +
-        'Płatności pozostają wyłączone: bez weryfikacji podpisu webhooka nie ma jak potwierdzić opłacenia.'
-    );
-  }
-
-  if (FREE_BETA_ACTIVE && stripeConfigured) {
+  if (!PAYMENTS_ENABLED && stripeConfigured) {
     console.info(
-      '[konfiguracja] Bezpłatna beta jest aktywna. Klucze Stripe mogą być skonfigurowane, ale checkout pozostaje wyłączony decyzją produktową.'
+      '[konfiguracja] Płatności są wyłączone (PAYMENTS_ENABLED=false). Klucze Stripe są skonfigurowane, ale checkout pozostaje wyłączony decyzją produktową w fazie Public Pre-Beta.'
     );
   }
 
-  cached = {
+  return {
     ...data,
     allowedOrigins: data.ALLOWED_ORIGINS.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
     backendEnabled: data.BACKEND_MODE === 'cloud',
     paymentsEnabled:
-      BETA_PURCHASES_ENABLED && data.BACKEND_MODE === 'cloud' && stripeConfigured,
+      PAYMENTS_ENABLED && BETA_PURCHASES_ENABLED && data.BACKEND_MODE === 'cloud' && stripeConfigured,
   };
+}
 
+export function loadConfig(): ServerConfig {
+  if (cached) return cached;
+  cached = validateConfig(process.env);
   return cached;
+}
+
+/** Twarda walidacja konfiguracji startowej — alias dla jawnego wywołania przy rozruchu. */
+export function validateStartupEnv(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  return validateConfig(env);
 }
 
 export function isProduction(): boolean {
