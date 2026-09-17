@@ -11,13 +11,68 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import os from 'os';
-import { spawn } from 'child_process';
 import { createHash } from 'crypto';
+import { spawn } from 'child_process';
 import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter';
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
+import { runAtsExtract } from '../extract/atsExtract';
 import { MasterVault, TailoredResume } from '../../types';
 
 export const pdfRouter = Router();
+
+/**
+ * Maksymalny czas oczekiwania na proces Pythona (pdfminer / mvcv).
+ * 60s na PDF + 30s marginesu na zimny start kontenera.
+ */
+const PYTHON_TIMEOUT_MS = 90_000;
+
+/**
+ * Wywołuje Pythona z timeoutem i natychmiastowym odrzuceniem gdy brak interpretera.
+ *
+ * Zwraca { code, stdout, stderr }. Timeout odrzuca Promise z błędem opisowym.
+ * ENOENT (Python nie znaleziony) odrzuca z `Python interpreter not found`,
+ * co caller zamienia na 503.
+ */
+function spawnPythonWithTimeout(
+  bin: string,
+  args: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number = PYTHON_TIMEOUT_MS
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(bin, args, { cwd, env });
+
+    let stdout = '';
+    let stderr = '';
+    let killed = false;
+
+    const timer = setTimeout(() => {
+      killed = true;
+      proc.kill('SIGKILL');
+      reject(new Error(`Proces Pythona przekroczył limit czasu (${timeoutMs}ms).`));
+    }, timeoutMs);
+
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    proc.on('close', (code) => {
+      if (killed) return;
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr });
+    });
+
+    proc.on('error', (err) => {
+      if (killed) return;
+      clearTimeout(timer);
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        reject(new Error('Python interpreter not found'));
+      } else {
+        reject(new Error(`Nie udało się uruchomić Pythona: ${err.message}`));
+      }
+    });
+  });
+}
 
 interface CachedPdfEntry {
   buffer: Buffer;
@@ -250,33 +305,16 @@ pdfRouter.post(
 
       const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn(pythonBin, args, {
-          cwd: engineDir,
-          env: {
-            ...process.env,
-            PYTHONPATH: engineDir,
-            PYTHONIOENCODING: 'utf-8',
-          },
-        });
+      const { code, stderr } = await spawnPythonWithTimeout(
+        pythonBin,
+        args,
+        engineDir,
+        { ...process.env, PYTHONPATH: engineDir, PYTHONIOENCODING: 'utf-8' }
+      );
 
-        let stderr = '';
-        proc.stderr.on('data', (d) => {
-          stderr += d.toString();
-        });
-
-        proc.on('close', (code) => {
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(new Error(`Błąd generatora PDF (kod ${code}): ${stderr}`));
-          }
-        });
-
-        proc.on('error', (err) => {
-          reject(new Error(`Nie udało się uruchomić środowiska Python: ${err.message}`));
-        });
-      });
+      if (code !== 0) {
+        throw new Error(`Błąd generatora PDF (kod ${code}): ${stderr}`);
+      }
 
       // 5. Odczyt wygenerowanego bufora PDF
       const pdfBuffer = await fs.readFile(outPdfPath);
@@ -284,34 +322,20 @@ pdfRouter.post(
       // 6. Walidacja ATS: ekstrakcja tekstu z PDF i porównanie z MasterVault
       let atsValidation = null;
       try {
-        const atsExtractArgs = ['-m', 'mvcv', 'tools', 'ats_extract', outPdfPath];
-        const atsExtractResult = await new Promise<string>((resolve, reject) => {
-          let stdout = '';
-          let stderr = '';
-          const proc = spawn(pythonBin, atsExtractArgs, {
-            cwd: engineDir,
-            env: {
-              ...process.env,
-              PYTHONPATH: engineDir,
-              PYTHONIOENCODING: 'utf-8',
-            },
-          });
-          proc.stdout.on('data', (d) => { stdout += d.toString(); });
-          proc.stderr.on('data', (d) => { stderr += d.toString(); });
-          proc.on('close', (code) => {
-            if (code === 0) resolve(stdout);
-            else reject(new Error(`ATS extraction failed (code ${code}): ${stderr}`));
-          });
-          proc.on('error', reject);
-        });
-
-        const atsExtractData = JSON.parse(atsExtractResult);
+        const atsExtractData = await runAtsExtract(outPdfPath);
         atsValidation = await validatePdfTextForAts(atsExtractData.rawText, vault, {
           hasActualText: atsExtractData.hasActualText,
           hasInvisibleText: atsExtractData.hasInvisibleText,
         });
-      } catch {
-        // Walidacja ATS jest niekrytyczna — nie blokuje eksportu
+      } catch (err) {
+        // Brak interpretera Pythona to błąd środowiska — zwracamy 503
+        if (err instanceof Error && err.message.includes('Python interpreter not found')) {
+          return res.status(503).json({
+            success: false,
+            error: 'ATS validation unavailable in this environment',
+          });
+        }
+        // Inne błędy ATS są niekrytyczne — nie blokują eksportu
         atsValidation = null;
       }
 
@@ -360,6 +384,21 @@ pdfRouter.post(
 
       res.send(pdfBuffer);
     } catch (err) {
+      // Python niedostępny (kontener bez python3) lub timeout procesu —
+      // zwracamy 503 zamiast 500, żeby klient wiedział, że to brak usługi,
+      // a nie błąd danych wejściowych.
+      if (err instanceof Error && err.message.includes('Python interpreter not found')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Eksport PDF niedostępny w tym środowisku (brak interpretera Pythona).',
+        });
+      }
+      if (err instanceof Error && err.message.includes('limit czasu')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Eksport PDF przekroczył limit czasu. Spróbuj z mniejszą liczbą stron.',
+        });
+      }
       next(err);
     } finally {
       if (tempDir) {

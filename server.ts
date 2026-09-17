@@ -22,6 +22,7 @@ import { pdfRouter } from "./src/server/routes/pdf.routes";
 import { errorHandler } from "./src/server/middleware/errorHandler";
 import { standardApiLimiter } from "./src/server/middleware/rateLimiter";
 import { validateStartupEnv } from "./src/server/config";
+import { PAYMENTS_ENABLED } from "./src/lib/beta";
 
 async function startServer() {
   // Twarda walidacja startowa: sprawdza kompletność zmiennych krytycznych,
@@ -119,7 +120,12 @@ async function startServer() {
   // niepowodzeniu, więc odbicie go z kodem 429 zamienia chwilowy ruch w pętlę
   // ponowień. Rolę ochrony pełni tu weryfikacja podpisu — żądanie bez ważnego
   // podpisu jest odrzucane, zanim cokolwiek zrobi.
-  app.use("/api", stripeWebhookRouter);
+  //
+  // Webhook mountowany tylko gdy płatności są włączone — bez flagi Secret
+  // i webhook handler nie ma sensu istnieć w drzewie routingowym.
+  if (PAYMENTS_ENABLED) {
+    app.use("/api", stripeWebhookRouter);
+  }
 
   app.use("/api", standardApiLimiter);
 
@@ -144,7 +150,13 @@ async function startServer() {
   app.use("/api", meRouter);
   app.use("/api", vaultRouter);
   app.use("/api", applicationsRouter);
-  app.use("/api", billingRouter);
+
+  // Płatności mountowane wyłącznie gdy flaga produktowa jest włączona.
+  // Gdy PAYMENTS_ENABLED=false, trasy billing i stripe nie istnieją w drzewie
+  // routingowym — żaden curl z tokenem nie dotrze do `checkout.sessions.create`.
+  if (PAYMENTS_ENABLED) {
+    app.use("/api", billingRouter);
+  }
 
   // Wiedza zbiorowa jest celowo bez `requireAuth`: wpis nie ma właściciela,
   // więc nie ma czego weryfikować, a wymaganie konta odcięłoby od korpusu

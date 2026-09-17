@@ -25,3 +25,11 @@ semantic-work-graph
 # prawa wjsc.
 !semantic-work-graph/data
 semantic-work-graph/data/test_*.db*
+
+# Pakiet labs/semantic-work-graph: wyklucz node_modules, dist i bazy testowe.
+# Sam katalog data/ jest potrzebny do COPY w Dockerfile (etap runtime).
+labs/semantic-work-graph/node_modules
+labs/semantic-work-graph/dist
+labs/semantic-work-graph/data/test_*.db*
+labs/semantic-work-graph/data/*.db-wal
+labs/semantic-work-graph/data/*.db-shm

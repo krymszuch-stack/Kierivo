@@ -69,6 +69,23 @@ jobs:
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --image "$IMAGE"
 
+          # APP_URL musi wskazywać na publiczny FQDN — bez tego OAuth i callbacki
+          # ze Stripe'a lecą w kosmos (placeholder.invalid z pierwszego deployu).
+          # Pobieramy FQDN z Container App i nadpisujemy zmienną środowiskową.
+          FQDN=$(az containerapp show \
+            --name "${{ vars.AZURE_CONTAINER_APP }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --query properties.configuration.ingress.fqdn \
+            -o tsv)
+
+          APP_URL="https://${FQDN}"
+          echo "Setting APP_URL=${APP_URL}"
+
+          az containerapp update \
+            --name "${{ vars.AZURE_CONTAINER_APP }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --set-env-vars "APP_URL=${APP_URL}"
+
       - name: Health check
         run: |
           FQDN=$(az containerapp show \

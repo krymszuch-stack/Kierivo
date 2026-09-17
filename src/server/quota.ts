@@ -37,29 +37,6 @@ export class QuotaExceededError extends Error {
   }
 }
 
-/**
- * Pobiera jedną jednostkę limitu albo rzuca `QuotaExceededError`.
- *
- * Sprawdzenie i pobranie dzieje się w jednym poleceniu SQL (`consume_quota`),
- * więc dwie równolegle otwarte karty nie mogą obie zużyć ostatniego kredytu.
- * Rozbicie tego na "odczytaj ile zostało" i "odejmij jeden" po stronie
- * aplikacji dawałoby dokładnie taki wyścig.
- */
-export async function consumeQuota(userId: string, kind: QuotaKind): Promise<void> {
-  const { data, error } = await getSupabase().rpc('consume_quota', {
-    p_user: userId,
-    p_kind: kind,
-  });
-
-  if (error) {
-    throw new Error(`Nie udało się sprawdzić limitu (${kind}): ${error.message}`);
-  }
-
-  if (data !== true) {
-    throw new QuotaExceededError(kind);
-  }
-}
-
 export interface RemainingQuota {
   /** Pozostałe **dzisiejsze** wywołania AI — tyle, ile realnie egzekwuje rezerwacja. */
   aiUses: number;
