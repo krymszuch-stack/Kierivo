@@ -1,7 +1,7 @@
 # CVelocity — czym to jest, na jedną stronę
 
 > Wersja skrócona. Pełna dokumentacja architektury i biznesu jest
-> w [`RAPORT_PROJEKTU_CVELOCITY.md`](../RAPORT_PROJEKTU_CVELOCITY.md), zasady
+> w [`RAPORT_PROJEKTU_CVELOCITY.md`](./RAPORT_PROJEKTU_CVELOCITY.md), zasady
 > pracy nad kodem w [`AGENTS.md`](../AGENTS.md), a model zagrożeń
 > w [`SECURITY.md`](../SECURITY.md).
 >

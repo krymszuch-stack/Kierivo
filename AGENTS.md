@@ -8,11 +8,11 @@ Każda reguła powstała po tym, jak jej brak kosztował realny błąd, i wskazu
 miejsce w kodzie, gdzie ten błąd jest opisany. Odwołanie jest istotne — pozwala
 sprawdzić, że reguła nie została wymyślona.
 
-Wizję produktu opisują `SYSTEM_ARCHITECTURE_GUIDANCE.md` i `README.md`, model
+Wizję produktu opisują `docs/SYSTEM_ARCHITECTURE_GUIDANCE.md` i `README.md`, model
 zagrożeń `SECURITY.md`. Tutaj jest wyłącznie to, jak pisać kod, żeby pasował.
 
 Bieżące obserwacje właściciela repo — rzeczy zauważone, ale jeszcze nie
-naprawione — są w [`NOTATKI.md`](./NOTATKI.md). Przejrzyj je przed zmianą
+naprawione — są w [`NOTATKI.md`](./docs/NOTATKI.md). Przejrzyj je przed zmianą
 w obszarze, którego dotyczą; to kanał na spostrzeżenia, nie na reguły.
 
 Incydenty, z których wyprowadzono reguły poniżej, są opisane w archiwum

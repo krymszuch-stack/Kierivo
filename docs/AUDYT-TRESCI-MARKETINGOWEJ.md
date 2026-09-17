@@ -21,7 +21,7 @@ zweryfikowano względem kodu (`src/server/**`, `supabase/migrations/**`,
 `src/lib/**`) — twierdzenie bez mechanizmu w kodzie jest tu traktowane jak
 atrapa, bo UI jest jedyną jego gwarancją.
 
-Powiązane otwarte uwagi w [`NOTATKI.md`](../NOTATKI.md): karnet aplikacyjny bez
+Powiązane otwarte uwagi w [`NOTATKI.md`](./NOTATKI.md): karnet aplikacyjny bez
 strony odczytu, limity kwot bez decyzji produktowej — ten raport je potwierdza
 z perspektywy copy (§2.1, §2.6) i nie dubluje ich rozwiązań.
 

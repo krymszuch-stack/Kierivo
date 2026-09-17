@@ -15,6 +15,7 @@
     "lint": "eslint . && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e-doradca.mjs",
+    "test:e2e:quick": "node scripts/e2e-quick-onboarding.mjs",
     "test:rls": "node scripts/test-rls.mjs",
     "test:auth-lifecycle": "node scripts/test-auth-lifecycle.mjs",
     "audit:d09:calibrate": "tsx scripts/d09-calibration-report.ts",

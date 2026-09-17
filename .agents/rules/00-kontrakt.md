@@ -9,7 +9,7 @@ Reguły tego repozytorium są w **@../../AGENTS.md**. Ten plik ich nie powtarza 
 dwie kopie rozjechałyby się po pierwszej zmianie, co jest dokładnie tym błędem,
 przed którym ostrzega reguła 3.
 
-Przed pracą przeczytaj **@../../NOTATKI.md** — sekcja „🆕 Nowe" zawiera bieżące
+Przed pracą przeczytaj **@../../docs/NOTATKI.md** — sekcja „🆕 Nowe" zawiera bieżące
 obserwacje właściciela repo, w tym rzeczy zauważone, ale jeszcze nienaprawione.
 
 ## Cztery rzeczy, o które łatwo się potknąć w pierwszej godzinie

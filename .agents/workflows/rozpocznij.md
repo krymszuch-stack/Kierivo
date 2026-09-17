@@ -34,7 +34,7 @@ Code woła dokładnie ten sam plik. Nie licz commitów ręcznie.
 ## Krok 3 — kontekst
 
 Przeczytaj **@../../AGENTS.md** (kontrakt, dziesięć reguł) oraz sekcję „🆕 Nowe"
-w **@../../NOTATKI.md**. Reguły dopasowane do katalogu, w którym pracujesz,
+w **@../../docs/NOTATKI.md**. Reguły dopasowane do katalogu, w którym pracujesz,
 włączą się same — patrz `.agents/rules/`.
 
 ## Krok 4 — bramka na wyjściu

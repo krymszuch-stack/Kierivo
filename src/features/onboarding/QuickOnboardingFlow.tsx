@@ -461,7 +461,14 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
               )}
 
               {/* 2. Sekcja wskaźnika dopasowania z tooltipem wyjaśniającym filtr ATS */}
-              <div className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between">
+              {/* role="status" + aria-label: wynik wstawiany jest dynamicznie po kliknięciu
+                  „Sprawdź", więc bez tego czytnik ekranu go nie ogłasza, a test E2E nie ma
+                  stabilnego selektora semantycznego (testid jest tylko hakiem technicznym). */}
+              <div
+                role="status"
+                aria-label={`Szacowany wynik przejścia filtra ATS ${result.ats.overallScore} procent`}
+                className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
                 <div className="flex items-center gap-5">
                   {/* Pierścień graficzny */}
                   <div className="relative h-[88px] w-[88px] shrink-0">

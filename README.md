@@ -5,7 +5,7 @@
 [![CI](https://github.com/krymszuch-stack/cvelocity/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](tsconfig.json)
 
-[**🌐 Otwórz Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
+[**🌐 Otwórz Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./docs/SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
 
 ## Status produktu
 

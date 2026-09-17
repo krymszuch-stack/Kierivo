@@ -67,11 +67,11 @@ if [ ${#obszary[@]} -gt 0 ]; then
 fi
 
 # --- Przypomnienie o notatkach ----------------------------------------------
-if [ -f NOTATKI.md ]; then
-  nowe=$(sed -n '/^## 🆕 Nowe/,/^## ✅/p' NOTATKI.md | grep -c '^- ' || true)
+if [ -f docs/NOTATKI.md ]; then
+  nowe=$(sed -n '/^## 🆕 Nowe/,/^## ✅/p' docs/NOTATKI.md | grep -c '^- ' || true)
   if [ "$nowe" -gt 0 ]; then
     echo
-    echo "📝 NOTATKI.md ma $nowe otwartych uwag — przejrzyj je, zanim zaczniesz."
+    echo "📝 docs/NOTATKI.md ma $nowe otwartych uwag — przejrzyj je, zanim zaczniesz."
   fi
 fi
 
