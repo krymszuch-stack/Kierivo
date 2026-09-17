@@ -29,9 +29,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     >
       <div>
         <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-extrabold text-ink sm:text-2xl tracking-tight">
+          <h2 className="text-xl font-extrabold text-ink sm:text-2xl tracking-tight m-0">
             {title}
-          </h1>
+          </h2>
           {badge && (
             <span
               className={`rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${

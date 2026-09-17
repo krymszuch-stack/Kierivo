@@ -108,9 +108,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             <Layers className="h-4 w-4" />
             <span>Laboratorium reguł Kierivo</span>
           </div>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
+          <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink sm:text-3xl m-0">
             Audyt Kierivo i konsensus modułów
-          </h1>
+          </h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-muted">
             {consensus.engines.length} wewnętrznych modułów ocenia mierzalne cechy profilu i ogłoszenia.
             Wyniki nie pochodzą z zewnętrznych ATS i nie są prawdopodobieństwem przejścia rekrutacji.

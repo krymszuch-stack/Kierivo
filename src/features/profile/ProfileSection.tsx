@@ -67,7 +67,7 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
     <div className="space-y-5">
       <div className="rounded-2xl border border-line bg-elevated p-4 sm:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-lg font-black tracking-tight text-ink">Twój profil</h1>
+          <h2 className="text-lg font-black tracking-tight text-ink m-0">Twój profil</h2>
           <span className="font-mono text-xs font-bold text-brand-fg">
             {completeness.percent}% uzupełnione
           </span>

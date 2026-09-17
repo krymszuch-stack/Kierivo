@@ -84,9 +84,9 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="rounded-lg border border-line bg-elevated px-2.5 py-1 font-mono text-xs font-semibold text-ink">
+          <h1 className="rounded-lg border border-line bg-elevated px-2.5 py-1 font-mono text-xs font-semibold text-ink m-0">
             {TAB_NAMES[activeTab] || 'Kierivo'}
-          </span>
+          </h1>
         </div>
       </div>
 

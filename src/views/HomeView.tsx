@@ -5,7 +5,7 @@
  * - wyłącznie tokeny z src/styles/tokens.css (surface / elevated / ink / muted /
  *   line / brand-* / violet / success / warning), zero zaszytych kolorów,
  *   poprawny wygląd w trybie jasnym i ciemnym;
- * - jeden <h1>, sekcje z nagłówkami, animacje tylko na CSS;
+ * - jeden <h2>, sekcje z nagłówkami, animacje tylko na CSS;
  * - żadnych nowych zależności.
  *
  * Podmiana 1:1 — zachowuje pełną kompatybilność z App.tsx oraz testami kontraktowymi.
@@ -340,11 +340,11 @@ export function HomeView({
               Public Pre-Beta · 0 zł
             </p>
 
-            <h1 className="mt-5 text-[2.25rem] font-bold leading-[1.02] tracking-[-0.03em] text-ink sm:text-display-md lg:text-[3.5rem]">
+            <h2 className="mt-5 text-[2.25rem] font-bold leading-[1.02] tracking-[-0.03em] text-ink sm:text-display-md lg:text-[3.5rem] m-0">
               Jedno CV, jedno ogłoszenie,
               <br className="hidden sm:block" />{' '}
               <span className="text-brand-fg">zero zgadywania</span>.
-            </h1>
+            </h2>
 
             <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">
               Kierivo porządkuje fakty o Twojej karierze, porównuje je z konkretną ofertą i pokazuje

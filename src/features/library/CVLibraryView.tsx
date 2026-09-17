@@ -360,7 +360,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
             <FolderArchive className="h-5 w-5 text-brand-fg" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-ink">Biblioteka CV</h1>
+            <h2 className="text-lg font-bold text-ink m-0">Biblioteka CV</h2>
             <p className="text-xs text-muted">
               {docs.length === 0
                 ? 'Zapisz wygenerowane CV, aby mieć do nich szybki dostęp.'

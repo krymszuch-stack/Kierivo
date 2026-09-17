@@ -285,9 +285,9 @@ export const CareerTipsView: React.FC = () => {
                 </span>
               </div>
 
-              <h1 className="text-2xl sm:text-4xl font-extrabold text-ink tracking-tight leading-tight">
+              <h2 className="text-2xl sm:text-4xl font-extrabold text-ink tracking-tight leading-tight m-0">
                 {selectedArticle.title}
-              </h1>
+              </h2>
 
               <p className="text-sm sm:text-base text-muted leading-relaxed font-medium">
                 {selectedArticle.content.lead}
