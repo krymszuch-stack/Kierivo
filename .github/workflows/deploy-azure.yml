@@ -41,6 +41,10 @@ jobs:
 
       - run: npm ci
 
+      - name: Install semantic work graph dependencies
+        working-directory: labs/semantic-work-graph
+        run: npm ci
+
       - run: npm run lint
 
       - run: npm test
