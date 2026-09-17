@@ -50,7 +50,7 @@
   - Aktywność użytkownika (nowa aplikacja / zalogowanie) przesuwa `expires_at` o kolejne 60 dni.
 * **Uwaga o wcześniejszej wersji tego zapisu:** planowano tu natywną politykę TTL
   Cloud Firestore. Projekt korzysta z Supabase (Postgres), nie z Firestore —
-  patrz [`docs/SETUP.md`](./docs/SETUP.md) §2 i [`docs/BACKEND-ROADMAP.md`](./docs/BACKEND-ROADMAP.md).
+  patrz [`SETUP.md`](./SETUP.md) §2 i [`BACKEND-ROADMAP.md`](./BACKEND-ROADMAP.md).
   Utrzymywanie w dokumentacji architektury opartej na usłudze, której nie używamy,
   kończy się planowaniem pracy, której nie da się wykonać.
 * **Zaleta RODO/Bezpieczeństwa:** Zgodność z RODO Art. 5 (ograniczenie przechowywania)

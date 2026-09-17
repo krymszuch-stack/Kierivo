@@ -24,10 +24,15 @@ export function Tabs<T extends string = string>({
   className = '',
 }: TabsProps<T>) {
   if (variant === 'underline') {
+    // overflow-x-auto zamiast rozjechania: 7 zakładek w RealtimeLivePreview ma
+    // min-content ~650 px i bez tego rozpychało kartę modala poza viewport 375 px,
+    // ucinając początek toolbara edytora CV (E2E: scripts/e2e-quick-onboarding.mjs).
+    // Kontener przewijany ma zerowe minimum, więc pasek przewija się wewnątrz
+    // rodzica zamiast go poszerzać. Dotyczy wszystkich użyć underline (reguła 4).
     return (
       <div
         role="tablist"
-        className={`flex w-full items-center gap-4 border-b border-line ${className}`}
+        className={`flex w-full items-center gap-4 overflow-x-auto border-b border-line ${className}`}
       >
         {items.map((tab) => {
           const isActive = tab.id === active;

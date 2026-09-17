@@ -13,6 +13,61 @@ async function loadPdfJs() {
   return pdfjsLib;
 }
 
+// ---------------------------------------------------------------------------
+// Bezpieczeństwo importu plików CV
+// ---------------------------------------------------------------------------
+
+/** Maksymalny rozmiar pliku wejściowego (10 MB). */
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+/** Maksymalny rozmiar tekstu po dekompresji DOCX (5 MB). */
+const MAX_DECOMPRESSED_TEXT_LENGTH = 5 * 1024 * 1024;
+
+/** Maksymalna liczba stron PDF przed rozpoczęciem parsowania. */
+const MAX_PDF_PAGES = 200;
+
+/** Limit czasu parsowania PDF (ms). */
+const PDF_PARSE_TIMEOUT_MS = 20_000;
+
+/** Najmniejszy rozmiar nagłówka do odczytania magic bytes. */
+const MAGIC_BYTES_LENGTH = 4;
+
+/**
+ * Odczytuje pierwsze bajty pliku i porównuje z rozszerzeniem.
+ * Zwraca true jeśli format jest zgodny, false jeśli rozszerzenie
+ * nie pasuje do zawartości.
+ */
+function validateMagicBytes(header: Uint8Array, ext: string): boolean {
+  const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
+  const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); // PK..
+  const rtf = new Uint8Array([0x7b, 0x5c, 0x72, 0x74]); // {\rt
+
+  switch (ext) {
+    case '.pdf':
+      return header[0] === pdf[0] && header[1] === pdf[1] && header[2] === pdf[2] && header[3] === pdf[3];
+    case '.docx':
+    case '.doc':
+      return header[0] === zip[0] && header[1] === zip[1] && header[2] === zip[2] && header[3] === zip[3];
+    case '.rtf':
+      return header[0] === rtf[0] && header[1] === rtf[1] && header[2] === rtf[2] && header[3] === rtf[3];
+    case '.json':
+      // JSON może zaczynać się od BOM (EF BB BF), Spacji ({) lub [
+      return (
+        header[0] === 0xef || // BOM UTF-8
+        header[0] === 0x7b || // {
+        header[0] === 0x5b || // [
+        header[0] === 0x0a || // \n (pusta linia przed)
+        header[0] === 0x20    // spacja
+      );
+    case '.csv':
+    case '.txt':
+      // Tekst — nie ma magic bytes, akceptujemy wszystko
+      return true;
+    default:
+      return false;
+  }
+}
+
 export interface ParsedCVResult {
   personalInfo: {
     fullName: string;
@@ -47,7 +102,31 @@ export interface ExtractedFileResult {
  * Supports: .pdf, .docx, .doc, .rtf, .txt, .json, .csv
  */
 export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileResult> {
+  // --- Ochrona 1: limit rozmiaru pliku ---
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    const maxMB = Math.round(MAX_FILE_SIZE_BYTES / (1024 * 1024));
+    const givenMB = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `Plik jest za duży (${givenMB} MB). Maksymalny rozmiar to ${maxMB} MB. Spróbuj skompresować dokument lub wkleić treść CV ręcznie.`
+    );
+  }
+
+  if (file.size === 0) {
+    throw new Error('Wybrany plik jest pusty. Wybierz dokument CV z zawartością.');
+  }
+
   const fileName = file.name.toLowerCase();
+
+  // --- Ochrona 2: walidacja magic bytes ---
+  const headerBuf = await file.slice(0, MAGIC_BYTES_LENGTH).arrayBuffer();
+  const header = new Uint8Array(headerBuf);
+  const ext = ('.' + fileName.split('.').pop()) || '.unknown';
+
+  if (!validateMagicBytes(header, ext)) {
+    throw new Error(
+      'Plik nie odpowiada rozszerzeniu. Wykryto niezgodność między nazwą pliku a jego zawartością — sprawdź, czy plik nie został uszkodzony lub zmieniony.'
+    );
+  }
 
   // 1. JSON Format
   if (fileName.endsWith('.json')) {
@@ -76,11 +155,23 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
       const mammoth = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.extractRawText({ arrayBuffer });
+
+      // --- Ochrona 3: limit rozmiaru tekstu po dekompresji DOCX ---
+      if (result.value && result.value.length > MAX_DECOMPRESSED_TEXT_LENGTH) {
+        const maxMB = Math.round(MAX_DECOMPRESSED_TEXT_LENGTH / (1024 * 1024));
+        throw new Error(
+          `Dokument jest zbyt duży po rozpakowaniu (ponad ${maxMB} MB tekstu). Plik może być uszkodzony lub zawierać zbyt dużo danych. Wklej treść CV ręcznie.`
+        );
+      }
+
       if (result.value && result.value.trim().length > 20) {
         return { text: result.value, format: 'DOCX' };
       }
-    } catch {
-      // Fallback to text reading
+    } catch (err) {
+      // Rzuć błąd bezpieczeństwa dalej, inne błędy fallback do text
+      if (err instanceof Error && err.message.includes('za duży')) {
+        throw err;
+      }
     }
     const txt = await file.text();
     return { text: txt, format: 'DOC/TXT' };
@@ -108,7 +199,35 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
     }
 
     const pdfjsLib = await loadPdfJs();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+    // --- Ochrona 4a: timeout + limit stron PDF ---
+    const abortController = new AbortController();
+    const pdfTimeout = setTimeout(() => abortController.abort(), PDF_PARSE_TIMEOUT_MS);
+
+    let pdf;
+    try {
+      pdf = await pdfjsLib.getDocument({
+        data: arrayBuffer,
+        // Sygnał abort — pdf.js wspiera go od wersji 4.x
+        signal: abortController.signal,
+      }).promise;
+    } catch (err) {
+      clearTimeout(pdfTimeout);
+      if (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('abort'))) {
+        throw new Error(
+          'Odczyt pliku PDF zajął za dużo czasu. Plik może być uszkodzony lub zawierać złożoną strukturę. Spróbuj wkleić treść CV ręcznie.'
+        );
+      }
+      throw err;
+    }
+    clearTimeout(pdfTimeout);
+
+    if (pdf.numPages > MAX_PDF_PAGES) {
+      throw new Error(
+        `Plik PDF ma zbyt wiele stron (${pdf.numPages}). Maksymalnie obsługujemy ${MAX_PDF_PAGES} stron. Spróbuj przyciąć dokument lub wkleić treść CV ręcznie.`
+      );
+    }
+
     let pdfText = '';
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);

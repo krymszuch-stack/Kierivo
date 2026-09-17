@@ -1,7 +1,7 @@
 # Spostrzeżenia i notatki
 
 > Notatnik roboczy projektu. Stan produktu i reguły rozstrzygają kod, testy,
-> `AGENTS.md` oraz protokoły w `docs/historia/`. Stare decyzje pozostają w
+> `AGENTS.md` oraz protokoły w `./historia/`. Stare decyzje pozostają w
 > historii Gita, ale nie są utrzymywane tutaj jako równoległa dokumentacja.
 
 ---
@@ -70,6 +70,6 @@
 - D04: PASSWORD_RECOVERY, usunięcie konta, RLS, granty i izolowany pełny cykl Auth.
 - D05: uczciwy zakres bezpłatnej bety, neutralne profile ATS, wyłączony checkout
   i formalny browser acceptance.
-- Szczegółowe dowody odbioru są w `docs/historia/` i przy odpowiadających PR-ach.
+- Szczegółowe dowody odbioru są w `./historia/` i przy odpowiadających PR-ach.
 - Dawne eksperymenty z gamifikacją, rabatami rangowymi, trialem i komercyjnymi
   pakietami należy traktować jako historię implementacji, nie aktualny zakres bety.

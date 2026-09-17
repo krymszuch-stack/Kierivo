@@ -80,15 +80,30 @@ export interface MasterVaultEmbeddedData {
 /**
  * Wyodrębnia skompresowany lub nieskompresowany strumień JSON załącznika mastervault.json z bufora PDF.
  */
-export async function decompressStreamBytes(compressedSlice: Uint8Array): Promise<string> {
+export async function decompressStreamBytes(compressedSlice: Uint8Array, maxDecompressedBytes: number = 0): Promise<string> {
   // 1. Środowisko Node.js (testy Vitest, backend)
   if (typeof process !== 'undefined' && process.versions?.node) {
     try {
       const zlib = await import('zlib');
       try {
         const decompressed = zlib.inflateSync(compressedSlice);
+        if (maxDecompressedBytes > 0 && decompressed.length > maxDecompressedBytes) {
+          throw new Error(
+            'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
+          );
+        }
         return decompressed.toString('utf-8');
       } catch {
+        if (maxDecompressedBytes > 0) {
+          // Druga próba z limitem — inflateRawSync
+          const decompressedRaw = zlib.inflateRawSync(compressedSlice);
+          if (decompressedRaw.length > maxDecompressedBytes) {
+            throw new Error(
+              'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
+            );
+          }
+          return decompressedRaw.toString('utf-8');
+        }
         const decompressedRaw = zlib.inflateRawSync(compressedSlice);
         return decompressedRaw.toString('utf-8');
       }
@@ -107,13 +122,21 @@ export async function decompressStreamBytes(compressedSlice: Uint8Array): Promis
         writer.close();
         const reader = ds.readable.getReader();
         const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (value) chunks.push(value);
+          if (value) {
+            totalBytes += value.length;
+            if (maxDecompressedBytes > 0 && totalBytes > maxDecompressedBytes) {
+              throw new Error(
+                'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
+              );
+            }
+            chunks.push(value);
+          }
         }
-        const total = chunks.reduce((acc, c) => acc + c.length, 0);
-        const merged = new Uint8Array(total);
+        const merged = new Uint8Array(totalBytes);
         let offset = 0;
         for (const c of chunks) {
           merged.set(c, offset);
@@ -130,6 +153,13 @@ export async function decompressStreamBytes(compressedSlice: Uint8Array): Promis
 }
 
 /**
+ * Maksymalna łączna liczba zdekompresowanych bajtów na cały dokument PDF.
+ * Chroni przed Cumulative Decompression Bomb — wieloma małymi strumieniami,
+ * z których każdy jest w limicie, ale łącznie przekraczają pamięć.
+ */
+const MAX_CUMULATIVE_DECOMPRESSED_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
  * Szuka obiektu EmbeddedFile w binariach PDF i wyciąga obiekt masterVaultRecord.
  */
 export async function extractEmbeddedMasterVault(
@@ -143,6 +173,7 @@ export async function extractEmbeddedMasterVault(
       const zlib = await import('zlib');
       const buf = Buffer.from(bytes);
       const content = buf.toString('binary');
+      let cumulativeDecompressed = 0;
 
       const markers = ['/application#2Fjson', '/application/json', '/EmbeddedFile', 'mastervault.json'];
       for (const m of markers) {
@@ -159,6 +190,14 @@ export async function extractEmbeddedMasterVault(
             const streamEnd = content.indexOf('endstream', streamStart);
             if (streamEnd !== -1 && streamEnd > streamStart) {
               const compressedSlice = buf.subarray(streamStart, streamEnd);
+              const streamSize = streamEnd - streamStart;
+              // Szacunkowy limit: 10:1 ratio dekompresji
+              cumulativeDecompressed += streamSize * 10;
+              if (cumulativeDecompressed > MAX_CUMULATIVE_DECOMPRESSED_BYTES) {
+                throw new Error(
+                  'Dokument PDF zawiera zbyt wiele danych po dekompresji. Plik może być uszkodzony lub zawierać złośliwą strukturę.'
+                );
+              }
               try {
                 const decomp = zlib.inflateSync(compressedSlice);
                 const str = decomp.toString('utf-8');
@@ -206,6 +245,7 @@ export async function extractEmbeddedMasterVault(
       }
     }
 
+    let cumulativeDecompressed = 0;
     const markers = ['/application#2Fjson', '/application/json', '/EmbeddedFile', 'mastervault.json'];
     for (const m of markers) {
       let pos = binaryString.indexOf(m);
@@ -220,8 +260,15 @@ export async function extractEmbeddedMasterVault(
           const streamEnd = binaryString.indexOf('endstream', streamStart);
           if (streamEnd !== -1 && streamEnd > streamStart) {
             const slice = bytes.subarray(streamStart, streamEnd);
+            const streamSize = streamEnd - streamStart;
+            cumulativeDecompressed += streamSize * 10;
+            if (cumulativeDecompressed > MAX_CUMULATIVE_DECOMPRESSED_BYTES) {
+              throw new Error(
+                'Dokument PDF zawiera zbyt wiele danych po dekompresji. Plik może być uszkodzony lub zawierać złośliwą strukturę.'
+              );
+            }
             try {
-              const text = await decompressStreamBytes(slice);
+              const text = await decompressStreamBytes(slice, MAX_CUMULATIVE_DECOMPRESSED_BYTES - cumulativeDecompressed);
               if (text.includes('masterVaultRecord')) {
                 return JSON.parse(text);
               }

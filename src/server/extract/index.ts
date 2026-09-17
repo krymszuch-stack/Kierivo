@@ -12,6 +12,7 @@ import {
 
 export type { ExtractedJob, ExtractionResult, ExtractionTier } from './types';
 export { MIN_USABLE_DESCRIPTION } from './fallbacks';
+export { runAtsExtract, type AtsExtractResult } from './atsExtract';
 
 /**
  * Drabina ekstrakcji ogłoszenia.

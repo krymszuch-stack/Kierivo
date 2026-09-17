@@ -129,7 +129,9 @@ async function dochodzDoFormularza(page, { przezMenuMobilne }) {
 
   if (przezMenuMobilne) {
     await page.getByRole('button', { name: 'Otwórz menu nawigacji' }).click();
-    const menu = page.getByRole('dialog', { name: 'Menu Główne' });
+    // Nazwa drawera to prop `title="KIERIVO"` z Shell.tsx, nie domyślne
+    // „Menu Główne" z MobileSidebar (tego Shell nie używa).
+    const menu = page.getByRole('dialog', { name: 'KIERIVO' });
     await waitVisible(menu);
     // Zakres do drawera: pasek desktopowy też jest w DOM, tylko ukryty CSS-em.
     await menu.getByRole('button', { name: 'Sprawdź dopasowanie' }).click();
@@ -171,8 +173,14 @@ async function sprawdzDopasowanie(page) {
 async function przejdzDoZaawansowanego(page) {
   await page.getByRole('button', { name: 'Pokaż szczegóły' }).click();
 
-  await waitVisible(page.getByText('Tryb zaawansowany', { exact: true }));
-  check('przełączono w tryb zaawansowany', true);
+  // Aktywna zakładka niesie aria-selected="true" — to dowodzi przełączenia
+  // trybu, a nie samej obecności napisu (napis występuje też w nagłówku paska).
+  const tabZaawansowany = page.getByRole('tab', { name: 'Tryb zaawansowany' });
+  await waitVisible(tabZaawansowany);
+  check(
+    'przełączono w tryb zaawansowany',
+    (await tabZaawansowany.getAttribute('aria-selected')) === 'true'
+  );
 
   // Firma jest stałą przepływu quick („Pracodawca z ogłoszenia"), więc tytuł
   // dialogu dowodzi, że oferta pochodzi z wklejonego ogłoszenia, nie z presetu.
