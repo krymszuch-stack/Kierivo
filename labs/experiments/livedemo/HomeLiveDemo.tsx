@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MousePointer2, ArrowRight, FlaskConical } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { ScoreRing } from '../../components/ui/ScoreRing';
-import { useReducedMotion } from '../../hooks/useReducedMotion';
-import { runQuickAtsCheck, type QuickCheckResult } from '../../lib/quickAtsCheck';
-import { scoreCanonicalAts, type CanonicalAtsScore } from '../../lib/canonicalAts';
-import type { NavTabId } from '../../lib/navigation';
+import { Button } from '../../../src/components/ui/Button';
+import { ScoreRing } from '../../../src/components/ui/ScoreRing';
+import { useReducedMotion } from '../../../src/hooks/useReducedMotion';
+import { runQuickAtsCheck, type QuickCheckResult } from '../../../src/lib/quickAtsCheck';
+import { scoreCanonicalAts, type CanonicalAtsScore } from '../../../src/lib/canonicalAts';
+import type { NavTabId } from '../../../src/lib/navigation';
 import {
   buildDurations,
   phaseAt,
@@ -16,7 +16,7 @@ import {
   finalStaticState,
   type DemoPhase,
   type DemoScoreTone,
-} from '../../lib/demoTimeline';
+} from '../../../src/lib/demoTimeline';
 import { EXAMPLE_CV, EXAMPLE_JD, EXAMPLE_ROLE_TITLE } from './demoScenario';
 
 export interface HomeLiveDemoProps {

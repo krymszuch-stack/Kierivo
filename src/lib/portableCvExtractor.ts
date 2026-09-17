@@ -79,71 +79,41 @@ export interface MasterVaultEmbeddedData {
 
 /**
  * Wyodrębnia skompresowany lub nieskompresowany strumień JSON załącznika mastervault.json z bufora PDF.
+ * Wykorzystuje wyłącznie standardowe Web API (DecompressionStream) bez zależności od Node.js zlib.
  */
 export async function decompressStreamBytes(compressedSlice: Uint8Array, maxDecompressedBytes: number = 0): Promise<string> {
-  // 1. Środowisko Node.js (testy Vitest, backend)
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    try {
-      const zlib = await import('zlib');
-      try {
-        const decompressed = zlib.inflateSync(compressedSlice);
-        if (maxDecompressedBytes > 0 && decompressed.length > maxDecompressedBytes) {
-          throw new Error(
-            'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
-          );
-        }
-        return decompressed.toString('utf-8');
-      } catch {
-        if (maxDecompressedBytes > 0) {
-          // Druga próba z limitem — inflateRawSync
-          const decompressedRaw = zlib.inflateRawSync(compressedSlice);
-          if (decompressedRaw.length > maxDecompressedBytes) {
-            throw new Error(
-              'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
-            );
-          }
-          return decompressedRaw.toString('utf-8');
-        }
-        const decompressedRaw = zlib.inflateRawSync(compressedSlice);
-        return decompressedRaw.toString('utf-8');
-      }
-    } catch {
-      // fallback do browser API
-    }
-  }
-
-  // 2. Środowisko przeglądarkowe z natywnym DecompressionStream
-  if (typeof DecompressionStream !== 'undefined') {
+  if (typeof DecompressionStream !== 'undefined' && typeof Response !== 'undefined') {
     for (const format of ['deflate', 'deflate-raw'] as const) {
       try {
-        const ds = new DecompressionStream(format);
-        const writer = ds.writable.getWriter();
-        writer.write(compressedSlice);
-        writer.close();
-        const reader = ds.readable.getReader();
-        const chunks: Uint8Array[] = [];
         let totalBytes = 0;
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) {
-            totalBytes += value.length;
+        const sizeLimiter = new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            totalBytes += chunk.length;
             if (maxDecompressedBytes > 0 && totalBytes > maxDecompressedBytes) {
-              throw new Error(
-                'Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.'
+              controller.error(
+                new Error('Zdekompresowany załącznik PDF jest zbyt duży. Plik może zawierać złośliwą strukturę.')
               );
+              return;
             }
-            chunks.push(value);
-          }
+            controller.enqueue(chunk);
+          },
+        });
+
+        const ds = new DecompressionStream(format);
+        const decompressedStream = new Response(compressedSlice).body
+          ?.pipeThrough(ds)
+          .pipeThrough(sizeLimiter);
+
+        if (!decompressedStream) {
+          continue;
         }
-        const merged = new Uint8Array(totalBytes);
-        let offset = 0;
-        for (const c of chunks) {
-          merged.set(c, offset);
-          offset += c.length;
+
+        const text = await new Response(decompressedStream).text();
+        return text;
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('zbyt duży')) {
+          throw err;
         }
-        return new TextDecoder('utf-8').decode(merged);
-      } catch {
         // próbujemy kolejny format
       }
     }
@@ -167,71 +137,16 @@ export async function extractEmbeddedMasterVault(
 ): Promise<MasterVaultEmbeddedData | null> {
   const bytes = pdfBuffer instanceof Uint8Array ? pdfBuffer : new Uint8Array(pdfBuffer);
   
-  // W środowisku Node.js (testy, backend) używamy szybkiego bufora binarnego
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    try {
-      const zlib = await import('zlib');
-      const buf = Buffer.from(bytes);
-      const content = buf.toString('binary');
-      let cumulativeDecompressed = 0;
-
-      const markers = ['/application#2Fjson', '/application/json', '/EmbeddedFile', 'mastervault.json'];
-      for (const m of markers) {
-        let pos = content.indexOf(m);
-        while (pos !== -1) {
-          const objStart = content.lastIndexOf('obj', pos);
-          const searchStart = objStart !== -1 ? objStart : pos;
-          const streamKeyword = 'stream';
-          let streamStart = content.indexOf(streamKeyword, searchStart);
-          if (streamStart !== -1) {
-            streamStart += streamKeyword.length;
-            if (content.charCodeAt(streamStart) === 0x0d) streamStart++;
-            if (content.charCodeAt(streamStart) === 0x0a) streamStart++;
-            const streamEnd = content.indexOf('endstream', streamStart);
-            if (streamEnd !== -1 && streamEnd > streamStart) {
-              const compressedSlice = buf.subarray(streamStart, streamEnd);
-              const streamSize = streamEnd - streamStart;
-              // Szacunkowy limit: 10:1 ratio dekompresji
-              cumulativeDecompressed += streamSize * 10;
-              if (cumulativeDecompressed > MAX_CUMULATIVE_DECOMPRESSED_BYTES) {
-                throw new Error(
-                  'Dokument PDF zawiera zbyt wiele danych po dekompresji. Plik może być uszkodzony lub zawierać złośliwą strukturę.'
-                );
-              }
-              try {
-                const decomp = zlib.inflateSync(compressedSlice);
-                const str = decomp.toString('utf-8');
-                if (str.includes('masterVaultRecord')) {
-                  return JSON.parse(str);
-                }
-              } catch {
-                try {
-                  const decompRaw = zlib.inflateRawSync(compressedSlice);
-                  const str = decompRaw.toString('utf-8');
-                  if (str.includes('masterVaultRecord')) {
-                    return JSON.parse(str);
-                  }
-                } catch {
-                  // sprawdź kolejne wystąpienie
-                }
-              }
-            }
-          }
-          pos = content.indexOf(m, pos + m.length);
-        }
-      }
-    } catch {
-      // fallback do przeglądarki
-    }
-  }
-
-  // W środowisku przeglądarkowym
   try {
     let binaryString = '';
-    const CHUNK_SIZE = 32768;
-    for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-      const chunk = bytes.subarray(i, i + CHUNK_SIZE);
-      binaryString += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    if (typeof Buffer !== 'undefined') {
+      binaryString = Buffer.from(bytes).toString('binary');
+    } else {
+      const CHUNK_SIZE = 32768;
+      for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+        const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+        binaryString += String.fromCharCode.apply(null, chunk as unknown as number[]);
+      }
     }
 
     if (binaryString.includes('masterVaultRecord')) {
@@ -245,22 +160,31 @@ export async function extractEmbeddedMasterVault(
       }
     }
 
+    // Szukamy sekwencji wskazujących na załączony plik JSON
+    const markers = ['mastervault.json', '/EmbeddedFile', 'masterVaultRecord'];
     let cumulativeDecompressed = 0;
-    const markers = ['/application#2Fjson', '/application/json', '/EmbeddedFile', 'mastervault.json'];
     for (const m of markers) {
       let pos = binaryString.indexOf(m);
       while (pos !== -1) {
         const objStart = binaryString.lastIndexOf('obj', pos);
+        const searchStart = objStart !== -1 ? objStart : pos;
         const streamKeyword = 'stream';
-        let streamStart = binaryString.indexOf(streamKeyword, objStart !== -1 ? objStart : pos);
+        let streamStart = binaryString.indexOf(streamKeyword, searchStart);
         if (streamStart !== -1) {
           streamStart += streamKeyword.length;
           if (binaryString.charCodeAt(streamStart) === 0x0d) streamStart++;
           if (binaryString.charCodeAt(streamStart) === 0x0a) streamStart++;
           const streamEnd = binaryString.indexOf('endstream', streamStart);
           if (streamEnd !== -1 && streamEnd > streamStart) {
-            const slice = bytes.subarray(streamStart, streamEnd);
-            const streamSize = streamEnd - streamStart;
+            let actualStreamEnd = streamEnd;
+            while (
+              actualStreamEnd > streamStart &&
+              (bytes[actualStreamEnd - 1] === 0x0a || bytes[actualStreamEnd - 1] === 0x0d)
+            ) {
+              actualStreamEnd--;
+            }
+            const slice = bytes.subarray(streamStart, actualStreamEnd);
+            const streamSize = actualStreamEnd - streamStart;
             cumulativeDecompressed += streamSize * 10;
             if (cumulativeDecompressed > MAX_CUMULATIVE_DECOMPRESSED_BYTES) {
               throw new Error(

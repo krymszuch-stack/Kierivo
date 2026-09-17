@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { extractTextFromAnyFile } from '../cvUniversalParser';
 
 /**
@@ -16,6 +17,18 @@ function makeFile(name: string, bytes: Uint8Array, type = 'application/octet-str
 function makeTextFile(name: string, content: string): File {
   const encoder = new TextEncoder();
   return new File([encoder.encode(content)], name, { type: 'text/plain' });
+}
+
+async function createDocxFile(text: string, name = 'cv.docx'): Promise<File> {
+  const doc = new Document({
+    sections: [{ children: [new Paragraph({ children: [new TextRun(text)] })] }],
+  });
+  const buffer = await Packer.toBuffer(doc);
+  return makeFile(
+    name,
+    new Uint8Array(buffer),
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  );
 }
 
 // ---------------------------------------------------------------
@@ -126,45 +139,23 @@ describe('Ochrona 2: walidacja magic bytes', () => {
 // ---------------------------------------------------------------
 describe('Ochrona 3: limit dekompresji DOCX 5 MB', () => {
   it('odrzuca DOCX z tekstem > 5 MB po dekompresji', async () => {
-    // Mockujemy mammoth, aby zwrócić tekst > 5 MB
-    const hugeText = 'A'.repeat(6 * 1024 * 1024); // 6 MB
-
-    vi.doMock('mammoth', () => ({
-      default: {
-        extractRawText: vi.fn().mockResolvedValue({ value: hugeText }),
-      },
-      extractRawText: vi.fn().mockResolvedValue({ value: hugeText }),
-    }));
-
-    // Poprawne magic bytes DOCX (ZIP header)
-    const zipHeader = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]);
-    const file = makeFile('cv.docx', zipHeader, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    // Generujemy prawidłowy kontener DOCX/ZIP zawierający [Content_Types].xml, word/document.xml i relacje,
+    // którego tekst po dekompresji przekracza 5 MB (ok. 5.2 MB), a sam plik dzięki kompresji zajmuje kilkanaście KB.
+    const hugeText = 'A'.repeat(5.2 * 1024 * 1024);
+    const file = await createDocxFile(hugeText, 'cv-huge.docx');
 
     await expect(extractTextFromAnyFile(file)).rejects.toThrow(
-      /za duży po rozpakowaniu|ponad 5 MB/i
+      /za duży po rozpakowaniu|zbyt duży po rozpakowaniu|ponad 5 MB/i
     );
-
-    vi.doUnmock('mammoth');
   });
 
   it('akceptuje DOCX z normalnym tekstem po dekompresji', async () => {
     const normalText = 'Jan Kowalski\nDoświadczenie\nProgramista';
-
-    vi.doMock('mammoth', () => ({
-      default: {
-        extractRawText: vi.fn().mockResolvedValue({ value: normalText }),
-      },
-      extractRawText: vi.fn().mockResolvedValue({ value: normalText }),
-    }));
-
-    const zipHeader = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]);
-    const file = makeFile('cv.docx', zipHeader, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const file = await createDocxFile(normalText, 'cv-normal.docx');
 
     const result = await extractTextFromAnyFile(file);
     expect(result.text).toContain('Jan Kowalski');
     expect(result.format).toBe('DOCX');
-
-    vi.doUnmock('mammoth');
   });
 });
 
@@ -191,9 +182,10 @@ describe('Ochrona 4a: limit stron PDF', () => {
     const pdfHeader = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
     const file = makeFile('cv.pdf', pdfHeader, 'application/pdf');
 
-    await expect(extractTextFromAnyFile(file)).rejects.toThrow(
-      /za wiele stron.*250/i
-    );
+    const promise = extractTextFromAnyFile(file);
+    await expect(promise).rejects.toThrow(/zbyt wiele stron/i);
+    await expect(promise).rejects.toThrow(/250/);
+    await expect(promise).rejects.toThrow(/200/);
 
     vi.doUnmock('pdfjs-dist');
     vi.doUnmock('pdfjs-dist/build/pdf.worker.min.mjs');
@@ -203,17 +195,49 @@ describe('Ochrona 4a: limit stron PDF', () => {
 // ---------------------------------------------------------------
 // 4b. Timeout parsowania PDF (20s)
 // ---------------------------------------------------------------
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('Ochrona 4b: timeout parsowania PDF', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock('pdfjs-dist');
+    vi.doUnmock('pdfjs-dist/build/pdf.worker.min.mjs');
+  });
+
   it('odrzuca PDF gdy parsowanie trwa > 20s', async () => {
-    // Symulujemy powolny getDocument — resolve po 25s
     vi.useFakeTimers();
 
-    const slowPromise = new Promise<never>((resolve) => {
-      setTimeout(() => resolve({ numPages: 1, getPage: vi.fn() } as any), 25_000);
-    });
+    const deferred = createDeferred<{ numPages: number; getPage: () => unknown }>();
+    const documentCalled = createDeferred<void>();
 
-    const mockGetDocument = vi.fn().mockReturnValue({
-      promise: slowPromise,
+    const mockGetDocument = vi.fn().mockImplementation(({ signal }: { signal?: AbortSignal }) => {
+      documentCalled.resolve();
+      if (signal?.aborted) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        deferred.reject(err);
+      } else {
+        signal?.addEventListener('abort', () => {
+          const err = new Error('The operation was aborted');
+          err.name = 'AbortError';
+          deferred.reject(err);
+        });
+      }
+      return { promise: deferred.promise };
     });
 
     vi.doMock('pdfjs-dist', () => ({
@@ -225,17 +249,23 @@ describe('Ochrona 4b: timeout parsowania PDF', () => {
     const pdfHeader = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]);
     const file = makeFile('cv-slow.pdf', pdfHeader, 'application/pdf');
 
-    const promise = extractTextFromAnyFile(file);
+    try {
+      const promise = extractTextFromAnyFile(file);
+      // Rejestrujemy asercję oczekującą odrzucenia z komunikatem timeoutu
+      const rejectionPromise = expect(promise).rejects.toThrow(/za dużo czasu/i);
 
-    // Przesuwamy zegar o 20s — timer abort powinien się odpalić
-    await vi.advanceTimersByTimeAsync(20_000);
+      // Czekamy na dojście do wywołania getDocument, które rejestruje timer 20s
+      await documentCalled.promise;
 
-    await expect(promise).rejects.toThrow(
-      /za dużo czasu/i
-    );
+      // Przesuwamy fake timer o 20 sekund
+      await vi.advanceTimersByTimeAsync(20_000);
 
-    vi.useRealTimers();
-    vi.doUnmock('pdfjs-dist');
-    vi.doUnmock('pdfjs-dist/build/pdf.worker.min.mjs');
+      // Potwierdzamy asercją odrzucenie z komunikatem timeoutu
+      await rejectionPromise;
+    } finally {
+      vi.useRealTimers();
+      vi.doUnmock('pdfjs-dist');
+      vi.doUnmock('pdfjs-dist/build/pdf.worker.min.mjs');
+    }
   });
 });

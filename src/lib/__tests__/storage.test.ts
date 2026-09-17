@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   StorageKeys,
   vaultKeyFor,
@@ -15,6 +15,7 @@ import {
   wipeAppStorage,
 } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
+import { idbBackupRemove, idbBackupSet } from '../idbFallback';
 
 beforeEach(() => {
   (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
@@ -153,7 +154,56 @@ describe('storage.ts - warstwa schowka przeglądarki', () => {
       migrateLegacyKeys();
 
       expect(localStorage.getItem(StorageKeys.theme)).toBe('dark');
-      expect(localStorage.getItem('cvelocity-theme')).toBeNull();
+      expect(localStorage.getItem('cvelocity-theme')).toBe('light');
+    });
+
+    it('konflikt: legacy zostaje zachowany, gdy pod nowym kluczem są różne dane', () => {
+      localStorage.setItem('cvelocity-theme', 'light');
+      localStorage.setItem(StorageKeys.theme, 'dark');
+
+      migrateLegacyKeys();
+
+      expect(localStorage.getItem(StorageKeys.theme)).toBe('dark');
+      expect(localStorage.getItem('cvelocity-theme')).toBe('light');
+    });
+
+    it('awaria zapisu: legacy zostaje zachowany, gdy localStorage.setItem rzuca wyjątkiem', () => {
+      const legacyValue = 'dark';
+      localStorage.setItem('cvelocity-theme', legacyValue);
+
+      const oryginalny = localStorage;
+      const awaryjnySchowek = {
+        getItem: (key: string) => oryginalny.getItem(key),
+        setItem: (key: string, value: string) => {
+          if (key === StorageKeys.theme) throw new Error('QuotaExceededError');
+          oryginalny.setItem(key, value);
+        },
+        removeItem: (key: string) => oryginalny.removeItem(key),
+        key: (index: number) => oryginalny.key(index),
+        get length() {
+          return oryginalny.length;
+        },
+      };
+      (globalThis as { localStorage?: unknown }).localStorage = awaryjnySchowek;
+
+      expect(() => migrateLegacyKeys()).not.toThrow();
+
+      expect(localStorage.getItem('cvelocity-theme')).toBe(legacyValue);
+      expect(localStorage.getItem(StorageKeys.theme)).toBeNull();
+    });
+
+    it('legacy znika tylko, gdy target po zapisie ma dokładnie te same bajty co legacy', () => {
+      const profileId = 'profile-xyz';
+      const legacyVaultKey = `skillvault_vault_active_${profileId}`;
+      const newVaultKey = vaultKeyFor(profileId);
+
+      const vaultData = JSON.stringify({ name: 'Jan', skills: ['TS'] });
+      localStorage.setItem(legacyVaultKey, vaultData);
+
+      migrateLegacyKeys();
+
+      expect(localStorage.getItem(newVaultKey)).toBe(vaultData);
+      expect(localStorage.getItem(legacyVaultKey)).toBeNull();
     });
 
     it('vault profilowy spod skillvault_vault_active_<id> ląduje pod vaultKeyFor(<id>)', () => {
@@ -181,7 +231,7 @@ describe('storage.ts - warstwa schowka przeglądarki', () => {
       migrateLegacyKeys();
 
       expect(localStorage.getItem(newVaultKey)).toBe('{"version":"nowa"}');
-      expect(localStorage.getItem(legacyVaultKey)).toBeNull();
+      expect(localStorage.getItem(legacyVaultKey)).toBe('{"version":"stara"}');
     });
 
     it('pozostałości skillvault_users_db_v1 i skillvault_master_vault_enc_v2 są usuwane bezwarunkowo', () => {

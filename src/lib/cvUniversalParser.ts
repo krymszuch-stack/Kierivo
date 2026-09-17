@@ -154,7 +154,11 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
       // głównej paczki wejściowej dla użytkowników niekorzystających z formatu Word.
       const mammoth = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
+      const nodeBuffer = typeof Buffer !== 'undefined' ? Buffer.from(arrayBuffer) : undefined;
+      const result = await mammoth.extractRawText({
+        arrayBuffer,
+        ...(nodeBuffer ? { buffer: nodeBuffer } : {}),
+      });
 
       // --- Ochrona 3: limit rozmiaru tekstu po dekompresji DOCX ---
       if (result.value && result.value.length > MAX_DECOMPRESSED_TEXT_LENGTH) {
@@ -169,7 +173,7 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
       }
     } catch (err) {
       // Rzuć błąd bezpieczeństwa dalej, inne błędy fallback do text
-      if (err instanceof Error && err.message.includes('za duży')) {
+      if (err instanceof Error && (err.message.includes('za duży') || err.message.includes('zbyt duży'))) {
         throw err;
       }
     }
@@ -210,15 +214,16 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
         data: arrayBuffer,
         // Sygnał abort — pdf.js wspiera go od wersji 4.x
         signal: abortController.signal,
-      }).promise;
-    } catch (err) {
+      } as unknown as Parameters<typeof pdfjsLib.getDocument>[0]).promise;
+    } catch (error) {
       clearTimeout(pdfTimeout);
-      if (err instanceof Error && (err.name === 'AbortError' || err.message?.includes('abort'))) {
+      if (error instanceof Error && (error.name === 'AbortError' || error.message?.includes('abort'))) {
         throw new Error(
-          'Odczyt pliku PDF zajął za dużo czasu. Plik może być uszkodzony lub zawierać złożoną strukturę. Spróbuj wkleić treść CV ręcznie.'
+          'Odczyt pliku PDF zajął za dużo czasu. Plik może być uszkodzony lub zawierać złożoną strukturę. Spróbuj wkleić treść CV ręcznie.',
+          { cause: error }
         );
       }
-      throw err;
+      throw error;
     }
     clearTimeout(pdfTimeout);
 

@@ -345,6 +345,17 @@ if (typeof window !== 'undefined') {
   void preloadIdbMirror();
 }
 
+function migrateLegacyEntry(legacy: string, current: string): void {
+  try {
+    const value = localStorage.getItem(legacy);
+    if (value === null) return;
+    if (localStorage.getItem(current) === null) localStorage.setItem(current, value);
+    if (localStorage.getItem(current) === value) removeRaw(legacy);
+  } catch {
+    return;
+  }
+}
+
 /**
  * Przenosi dane spod starych kluczy pod nowe. Idempotentna: klucz docelowy,
  * który już istnieje, nie jest nadpisywany, więc powtórne wywołanie nie cofa
@@ -354,10 +365,7 @@ export function migrateLegacyKeys(): void {
   if (!isBrowser()) return;
 
   for (const [legacy, current] of Object.entries(LEGACY_KEY_MAP)) {
-    const value = readRaw(legacy);
-    if (value === null) continue;
-    if (readRaw(current) === null) writeRaw(current, value);
-    removeRaw(legacy);
+    migrateLegacyEntry(legacy, current);
   }
 
   // Vaulty profilowe mają w kluczu identyfikator profilu, więc nie da się ich
@@ -372,9 +380,7 @@ export function migrateLegacyKeys(): void {
   }
 
   for (const [legacy, current] of toMigrate) {
-    const value = readRaw(legacy);
-    if (value !== null && readRaw(current) === null) writeRaw(current, value);
-    removeRaw(legacy);
+    migrateLegacyEntry(legacy, current);
   }
 
   // Pozostałości po module udającym system kont: baza „użytkowników" z hashami

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   extractEmbeddedMasterVault,
+  decompressStreamBytes,
   convertResumeDataToParsedCVResult,
   MasterVaultEmbeddedData,
 } from '../portableCvExtractor';
@@ -123,5 +124,100 @@ describe('portableCvExtractor Suite (Smart Portable CV Round-Trip)', () => {
     expect(parsed!.certifications[0].name).toBe('Uprawnienia SEP E+D do 1kV');
     expect(parsed!.education[0].institution).toBe('Politechnika Gdańska');
     expect(parsed!.languages?.[0].language).toBe('angielski');
+  });
+
+  describe('Dekompresja Web API (DecompressionStream) bez modułu zlib', () => {
+    async function compressWithWebStream(text: string, format: 'deflate' | 'deflate-raw'): Promise<Uint8Array> {
+      const cs = new CompressionStream(format);
+      const writer = cs.writable.getWriter();
+      writer.write(new TextEncoder().encode(text));
+      writer.close();
+      const reader = cs.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+      const merged = new Uint8Array(totalLen);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return merged;
+    }
+
+    it('poprawnie dekompresuje dane skompresowane w formacie deflate za pomocą DecompressionStream', async () => {
+      const originalText = JSON.stringify({
+        masterVaultRecord: {
+          resumeData: { name: 'Adam Kowalski', title: 'Monter Konstrukcji Stalowych' },
+        },
+      });
+
+      const compressed = await compressWithWebStream(originalText, 'deflate');
+      const decompressed = await decompressStreamBytes(compressed);
+
+      expect(decompressed).toBe(originalText);
+      expect(JSON.parse(decompressed).masterVaultRecord.resumeData.name).toBe('Adam Kowalski');
+    });
+
+    it('poprawnie dekompresuje dane w formacie deflate-raw za pomocą DecompressionStream', async () => {
+      const originalText = 'Surowy tekst testowy strumienia bez nagłówka zlib';
+      const compressed = await compressWithWebStream(originalText, 'deflate-raw');
+      const decompressed = await decompressStreamBytes(compressed);
+
+      expect(decompressed).toBe(originalText);
+    });
+
+    it('rzuca błąd bezpieczeństwa, gdy zdekompresowany strumień przekracza zdefiniowany limit bajtów', async () => {
+      const longText = 'A'.repeat(5000);
+      const compressed = await compressWithWebStream(longText, 'deflate');
+
+      await expect(decompressStreamBytes(compressed, 1000)).rejects.toThrow(
+        'Zdekompresowany załącznik PDF jest zbyt duży'
+      );
+    });
+
+    it('extractEmbeddedMasterVault poprawnie odczytuje masterVaultRecord ze strumienia PDF bez udziału zlib', async () => {
+      const payload = JSON.stringify({
+        masterVaultRecord: {
+          version: '1.0',
+          resumeData: {
+            name: 'Piotr Nowak',
+            title: 'Spawacz TIG/MAG',
+          },
+        },
+      });
+
+      const compressedStream = await compressWithWebStream(payload, 'deflate');
+      const compressedString = Array.from(compressedStream)
+        .map((b) => String.fromCharCode(b))
+        .join('');
+
+      // Konstrukcja minimalnego kontenera PDF z /Type /EmbeddedFile i stream ... endstream
+      const pdfText = `%PDF-1.7\n` +
+        `1 0 obj\n` +
+        `<< /Type /Filespec /EF << /F 2 0 R >> /F (mastervault.json) >>\n` +
+        `endobj\n` +
+        `2 0 obj\n` +
+        `<< /Type /EmbeddedFile /Subtype /application#2Fjson /Filter /FlateDecode /Length ${compressedStream.length} >>\n` +
+        `stream\r\n` +
+        compressedString +
+        `\r\nendstream\n` +
+        `endobj\n` +
+        `%%EOF`;
+
+      const pdfBytes = new Uint8Array(pdfText.length);
+      for (let i = 0; i < pdfText.length; i++) {
+        pdfBytes[i] = pdfText.charCodeAt(i);
+      }
+
+      const result = await extractEmbeddedMasterVault(pdfBytes);
+      expect(result).not.toBeNull();
+      expect(result?.masterVaultRecord?.resumeData?.name).toBe('Piotr Nowak');
+      expect(result?.masterVaultRecord?.resumeData?.title).toBe('Spawacz TIG/MAG');
+    });
   });
 });
