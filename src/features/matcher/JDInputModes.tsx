@@ -8,6 +8,7 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import { JobOffer } from '../../types';
+import { SAMPLE_MANUAL_JD } from '../../lib/exampleJd';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input, Textarea } from '../../components/ui/Field';
@@ -22,28 +23,6 @@ export interface JDInputModesProps {
   urlError?: string | null;
   className?: string;
 }
-
-/**
- * Ogłoszenie do wypróbowania narzędzia bez szukania własnego.
- *
- * Jawnie oznaczone jako przykład — również w samej treści, żeby nikt nie wziął
- * go za prawdziwą ofertę po skopiowaniu gdzie indziej.
- */
-const SAMPLE_MANUAL_JD = `[PRZYKŁAD — fikcyjne ogłoszenie do przetestowania narzędzia]
-
-Stanowisko: Senior Full-Stack React / Node.js Developer
-Firma: TechScale Dynamics (firma przykładowa)
-Lokalizacja: Warszawa / Zdalnie
-Widełki: 24 000 - 30 000 PLN netto B2B
-
-O projekcie:
-Poszukujemy doświadczonego Inżyniera Oprogramowania do budowy skalowalnych aplikacji webowych w oparciu o React 19, TypeScript oraz rozproszony backend w Node.js i PostgreSQL.
-
-Wymagania kluczowe:
-- Minimum 5 lat komercyjnego doświadczenia w programowaniu (React, TypeScript, Node.js)
-- Dobra znajomość architektur chmurowych (AWS / GCP) i konteneryzacji Docker
-- Doświadczenie w optymalizacji wydajności frontendowej (SSR, LCP, bundle splitting)
-- Znajomość wzorców projektowych i pisania testów jednostkowych (Vitest / Jest)`;
 
 export const JDInputModes: React.FC<JDInputModesProps> = ({
   onMatchManual,

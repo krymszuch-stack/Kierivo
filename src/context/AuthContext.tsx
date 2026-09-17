@@ -20,7 +20,8 @@ import {
 import { MasterVault } from '../types';
 import { getSupabaseBrowserClient } from '../lib/supabaseClient';
 import { authErrorMessage } from '../lib/authErrors';
-import { passwordRecoveryRedirectError, stripAuthErrorParams } from '../lib/authRecovery';
+import { oauthRedirectError, passwordRecoveryRedirectError, stripAuthErrorParams } from '../lib/authRecovery';
+import { oauthProviderById, type OAuthProviderId } from '../lib/oauthProviders';
 import { removeRaw, vaultKeyFor } from '../lib/storage';
 import { showToast } from '../store/useToastStore';
 import { setAccessTokenProvider } from '../lib/apiClient';
@@ -54,11 +55,19 @@ interface AuthContextType {
   passwordRecoveryActive: boolean;
   /** Polski komunikat dla wygasłego lub nieprawidłowego linku recovery. */
   passwordRecoveryError: string | null;
+  /**
+   * Komunikat błędu powrotu OAuth (np. anulowanie w oknie dostawcy), odczytany
+   * z adresu przy starcie. Modal logowania ma obowiązek go pokazać — cisza
+   * po nieudanym logowaniu to kłamstwo przez pominięcie (reguła 2).
+   */
+  oauthNotice: string | null;
+  clearOAuthNotice: () => void;
 
   signInLocally: (name: string, email?: string) => MasterVault;
   signUpCloud: (email: string, password: string, displayName: string) => Promise<AuthActionResult>;
   signInCloud: (email: string, password: string) => Promise<AuthActionResult>;
-  signInWithGoogle: () => Promise<AuthActionResult>;
+  /** Logowanie przez dostawcę z rejestru `oauthProviders` (Google, Microsoft, LinkedIn). */
+  signInWithProvider: (provider: OAuthProviderId) => Promise<AuthActionResult>;
   requestPasswordReset: (email: string) => Promise<AuthActionResult>;
   updateRecoveredPassword: (password: string) => Promise<AuthActionResult>;
   clearPasswordRecoveryError: () => void;
@@ -83,11 +92,24 @@ function redirectTarget(): string {
 }
 
 function profileFromSession(session: Session): LocalProfile {
-  const meta = session.user.user_metadata as { display_name?: string } | undefined;
+  // Klucze dopasowane do tego, co dostawcy OAuth wkładają do user_metadata:
+  // Google → `full_name`, Microsoft → `name`/`preferred_username`, LinkedIn
+  // OIDC → `name`. Ten sam łańcuch fallbacku trzyma migracja triggera
+  // `handle_new_user` — obie strony muszą się zgadzać przy zmianie.
+  const meta = session.user.user_metadata as
+    | { display_name?: string; full_name?: string; name?: string; preferred_username?: string }
+    | undefined;
   const email = session.user.email ?? '';
+  const name =
+    meta?.display_name?.trim() ||
+    meta?.full_name?.trim() ||
+    meta?.name?.trim() ||
+    meta?.preferred_username?.trim() ||
+    email.split('@')[0] ||
+    'Użytkownik';
   return {
     id: session.user.id,
-    name: meta?.display_name?.trim() || email.split('@')[0] || 'Użytkownik',
+    name,
     email,
     createdAt: session.user.created_at ?? new Date().toISOString(),
   };
@@ -107,6 +129,7 @@ export const AuthProvider: React.FC<{
   const [vaultSyncStatus, setVaultSyncStatus] = useState<VaultSyncStatus>('local');
   const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
   const [passwordRecoveryError, setPasswordRecoveryError] = useState<string | null>(null);
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
 
   const supabase = getSupabaseBrowserClient();
   const cloudAvailable = supabase !== null;
@@ -134,6 +157,16 @@ export const AuthProvider: React.FC<{
     if (redirectError) {
       setPasswordRecoveryActive(false);
       setPasswordRecoveryError(redirectError);
+      window.history.replaceState(null, '', stripAuthErrorParams(window.location.href));
+    }
+
+    // Po anulowaniu w oknie dostawcy albo błędzie konfiguracji Supabase
+    // wraca z nas do adresu z `error=...`. Komunikat trzymamy w stanie
+    // (AuthModal pokaże baner) i czyścimy URL — odświeżenie nie może
+    // pokazywać w kółko starego błędu.
+    const oauthError = oauthRedirectError(window.location.search, window.location.hash);
+    if (oauthError) {
+      setOauthNotice(oauthError);
       window.history.replaceState(null, '', stripAuthErrorParams(window.location.href));
     }
 
@@ -252,20 +285,30 @@ export const AuthProvider: React.FC<{
     [supabase]
   );
 
-  const signInWithGoogle = useCallback(async (): Promise<AuthActionResult> => {
-    if (!supabase) return { ok: false, message: CHMURA_NIESKONFIGUROWANA };
+  const signInWithProvider = useCallback(
+    async (providerId: OAuthProviderId): Promise<AuthActionResult> => {
+      if (!supabase) return { ok: false, message: CHMURA_NIESKONFIGUROWANA };
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectTarget(),
-        queryParams: { access_type: 'offline', prompt: 'select_account' },
-      },
-    });
+      const provider = oauthProviderById(providerId);
+      if (!provider) return { ok: false, message: 'Nieznany sposób logowania.' };
 
-    if (error) return { ok: false, message: authErrorMessage(error) };
-    return { ok: true, message: '' };
-  }, [supabase]);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: provider.id,
+        options: {
+          redirectTo: redirectTarget(),
+          queryParams: provider.queryParams,
+        },
+      });
+
+      if (error) return { ok: false, message: authErrorMessage(error) };
+      return { ok: true, message: '' };
+    },
+    [supabase]
+  );
+
+  const clearOAuthNotice = useCallback(() => {
+    setOauthNotice(null);
+  }, []);
 
   const requestPasswordReset = useCallback(
     async (email: string): Promise<AuthActionResult> => {
@@ -329,6 +372,7 @@ export const AuthProvider: React.FC<{
     setVaultSyncStatus('local');
     setPasswordRecoveryActive(false);
     setPasswordRecoveryError(null);
+    setOauthNotice(null);
   }, [mode, supabase, user]);
 
   const deleteAccount = useCallback(async (): Promise<AuthActionResult> => {
@@ -420,10 +464,12 @@ export const AuthProvider: React.FC<{
       vaultSyncStatus,
       passwordRecoveryActive,
       passwordRecoveryError,
+      oauthNotice,
+      clearOAuthNotice,
       signInLocally,
       signUpCloud,
       signInCloud,
-      signInWithGoogle,
+      signInWithProvider,
       requestPasswordReset,
       updateRecoveredPassword,
       clearPasswordRecoveryError,
@@ -442,10 +488,12 @@ export const AuthProvider: React.FC<{
       vaultSyncStatus,
       passwordRecoveryActive,
       passwordRecoveryError,
+      oauthNotice,
+      clearOAuthNotice,
       signInLocally,
       signUpCloud,
       signInCloud,
-      signInWithGoogle,
+      signInWithProvider,
       requestPasswordReset,
       updateRecoveredPassword,
       clearPasswordRecoveryError,

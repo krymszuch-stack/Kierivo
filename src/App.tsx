@@ -354,6 +354,7 @@ function MainApp() {
               vault={vault}
               onNavigate={navigate}
               onOpenAdvisor={handleOpenAdvisor}
+              lockReasons={unlocks.reasons}
               actionSlot={
                 !isFirstVisit ? (
                   <NextActionCard action={nextAction} onNavigate={navigate} />

@@ -102,9 +102,9 @@
 |---|---|
 | **Cel** | Umożliwienie zapisania CV poza urządzeniem, odzyskania go po wyczyszczeniu przeglądarki i pracy na kilku urządzeniach |
 | **Kategorie osób** | Osoby, które świadomie założyły konto. Tryb lokalny (bez konta) działa nadal i nie podlega tej czynności |
-| **Kategorie danych** | Adres e-mail, nazwa wyświetlana, skrót hasła (liczony i przechowywany przez Supabase Auth — administrator nigdy nie widzi hasła), znaczniki czasu logowania, treść Master Vaultu |
+| **Kategorie danych** | Adres e-mail, nazwa wyświetlana, skrót hasła (liczony i przechowywany przez Supabase Auth — administrator nigdy nie widzi hasła; dotyczy wyłącznie kont e-mailowych), znaczniki czasu logowania, treść Master Vaultu. Przy logowaniu dostawcą (Google, Microsoft, LinkedIn) zamiast hasła: identyfikator konta u dostawcy, imię i nazwisko oraz e-mail przekazane w żądaniu logowania — **bez** kontaktów, zdjęć i treści profilu dostawcy |
 | **Podstawa prawna** | Art. 6 ust. 1 lit. b — wykonanie usługi na żądanie osoby |
-| **Odbiorcy** | Supabase (hosting bazy i uwierzytelnianie), Resend (wysyłka wiadomości potwierdzających i resetu hasła) |
+| **Odbiorcy** | Supabase (hosting bazy i uwierzytelnianie), Resend (wysyłka wiadomości potwierdzających i resetu hasła), a przy logowaniu dostawcą: Google / Microsoft / LinkedIn (wyłącznie jako uwierzytelniacz — przekazują to, co niezbędne do zalogowania) |
 | **Transfer poza EOG** | Baza w regionie `eu-central-1`. Wysyłka poczty — wg umowy z Resend |
 | **Termin usunięcia** | Natychmiast na żądanie. Przycisk „Usuń konto” wywołuje funkcję brzegową `usun-konto`, która kasuje dane funkcją `delete_user_data`, a następnie samo konto |
 | **Zabezpieczenia** | RLS na każdej tabeli — użytkownik sięga wyłącznie własnych wierszy; potwierdzanie adresu e-mail; polityka haseł min. 12 znaków; odrzucanie haseł obecnych w znanych wyciekach; komunikaty błędów nieujawniające, czy dany adres ma konto |

@@ -79,10 +79,20 @@ Jeśli założysz konto, dochodzi to:
 - **konto usuwasz sam, jednym przyciskiem**, w menu profilu. Kasujemy wtedy
   dane i samo konto. Operacja jest natychmiastowa i nieodwracalna.
 
+Konto możesz założyć przez e-mail z hasłem albo przez zalogowanie się
+**Google, Microsoft lub LinkedIn**. Logując się dostawcą, przekazujesz
+uwierzytelnienie jemu — my dostajemy od dostawcy (przez Supabase) wyłącznie
+to, co podpisano w logowaniu: **identyfikator konta, imię i nazwisko oraz
+adres e-mail**. Nie czytamy Twoich kontaktów, postów, zdjęć ani żadnej innej
+treści profilu — aplikacja nie prosi dostawcy o takie uprawnienia. Dla
+dostawców logowania obowiązują ich własne polityki prywatności; w naszej
+aplikacji te dane są traktowane dokładnie tak samo jak e-mail podany ręcznie.
+
 Przy zakładaniu konta sprawdzamy, czy podane hasło nie figuruje w znanych
 wyciekach danych. Robimy to tak, że **hasło nigdzie nie jest wysyłane**:
 przeglądarka liczy jego skrót i przekazuje nam wyłącznie pięć pierwszych
-znaków, a porównanie odbywa się z powrotem u Ciebie.
+znaków, a porównanie odbywa się z powrotem u Ciebie. Przy logowaniu dostawcą
+sprawdzenie hasła wycieku nie ma miejsca — hasła po prostu nie podajesz.
 
 Podstawa prawna: art. 6 ust. 1 lit. b RODO (wykonanie usługi na Twoje żądanie).
 

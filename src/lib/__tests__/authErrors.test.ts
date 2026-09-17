@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authErrorMessage, isEmailNotConfirmed } from '../authErrors';
+import { authErrorMessage, isEmailNotConfirmed, oauthErrorMessage } from '../authErrors';
 
 describe('komunikaty błędów logowania', () => {
   it('nie zdradza, czy konto istnieje — złe hasło i nieznany adres dają to samo zdanie', () => {
@@ -47,5 +47,33 @@ describe('komunikaty błędów logowania', () => {
     expect(isEmailNotConfirmed({ message: 'Email not confirmed' })).toBe(true);
     expect(isEmailNotConfirmed({ message: 'Invalid login credentials' })).toBe(false);
     expect(isEmailNotConfirmed(null)).toBe(false);
+  });
+});
+
+describe('komunikaty błędów powrotu OAuth', () => {
+  it('anulowanie w oknie dostawcy dostaje komunikat o akceptacji dostępu', () => {
+    expect(oauthErrorMessage('access_denied', 'User cancelled the flow'))
+      .toContain('anulowane');
+    expect(oauthErrorMessage(null, 'Sign-in cancelled by user')).toContain('anulowane');
+  });
+
+  it('wyłączony dostawca kieruje do e-maila zamiast milczeć', () => {
+    expect(oauthErrorMessage('unsupported_provider', null)).toContain('e-maila');
+    expect(oauthErrorMessage(null, 'Provider is not enabled')).toContain('e-maila');
+  });
+
+  it('nigdy nie pokazuje surowego opisu od dostawcy — nieznane idzie pod komunikat ogólny', () => {
+    const komunikat = oauthErrorMessage(
+      'something_new',
+      'LinkedIn internal error at endpoint /v2/me (trace 8823)'
+    );
+    expect(komunikat).toBe('Coś poszło nie tak. Spróbuj ponownie za chwilę.');
+    expect(komunikat).not.toContain('LinkedIn');
+    expect(komunikat).not.toContain('/v2/me');
+  });
+
+  it('puste parametry dają komunikat ogólny, nie pusty baner', () => {
+    expect(oauthErrorMessage(null, null)).toBeTruthy();
+    expect(oauthErrorMessage('', '')).toBeTruthy();
   });
 });

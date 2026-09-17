@@ -95,7 +95,18 @@ Subskrypcja „Google AI Pro" **nie obejmuje API**. Google pisze to wprost:
 6. **Google OAuth** → *Authentication → Providers → Google*
    Wymaga OAuth Client ID z https://console.cloud.google.com/apis/credentials — użyj **tego samego projektu** co Gemini. Redirect URI podaje Supabase.
 
-7. **CLI:**
+7. **Microsoft OAuth** → *Authentication → Providers → Azure (Microsoft Entra ID)*
+   Rejestracja aplikacji w portalu Azure (Entra ID → App registrations → New registration): konta typu *Accounts in any organizational directory and personal Microsoft accounts* (NIE single-tenant — logują się też osoby prywatne). Redirect URI: `https://TWOJ_REF.supabase.co/auth/v1/callback` (typ: Web). Utwórz **client secret** (*Certificates & secrets*). Client ID i secret wklej w panelu Supabase. Identyfikator dostawcy w kodzie: `azure`.
+
+8. **LinkedIn OAuth** → *Authentication → Providers → LinkedIn (OIDC)*
+   1. Aplikacja na https://www.linkedin.com/developers/apps — wymaga strony firmowej (LinkedIn Page), logo i weryfikacji.
+   2. Zakładka *Products* → zawnioskuj o **„Sign In with LinkedIn using OpenID Connect"** (to jedyny aktualny sposób logowania; stare API `r_liteprofile`/`r_emailaddress` zostało wycofane).
+   3. Zakładka *Auth* → *Authorized redirect URLs* → dodaj `https://TWOJ_REF.supabase.co/auth/v1/callback`.
+   4. Scopes `openid profile email` przychodzi automatycznie z produktem OIDC — niczego nie dopisuj.
+   5. Client ID i Client Secret → panel Supabase. Identyfikator dostawcy w kodzie: **`linkedin_oidc`** (nie `linkedin` — legacy dostawca został usunięty z Supabase 04.01.2024).
+   6. Kliknięcie przycisku „Kontynuuj z LinkedIn" bez włączonego produktu w aplikacji LinkedIn kończy się uczciwym komunikatem błędu na ekranie logowania — kod nie udaje, że działa.
+
+9. **CLI:**
    ```bash
    npm i -g supabase
    supabase login

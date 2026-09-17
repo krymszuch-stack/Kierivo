@@ -9,6 +9,7 @@ import { MasterVault } from '../../types';
 import { showToast } from '../../store/useToastStore';
 import { checkPassword, passwordStrength, STRENGTH_LABELS } from '../../lib/passwordPolicy';
 import { checkLeakedPassword } from '../../lib/leakedPassword';
+import { OAUTH_PROVIDERS, type OAuthProviderId, type OAuthProviderMeta } from '../../lib/oauthProviders';
 
 /**
  * Wejście do aplikacji — dwa tryby, oba prawdziwe.
@@ -73,21 +74,73 @@ const GoogleIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' })
   </svg>
 );
 
-const GoogleButton: React.FC<{
+const MicrosoftIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="1" y="1" width="10.5" height="10.5" fill="#F25022" />
+    <rect x="12.5" y="1" width="10.5" height="10.5" fill="#7FBA00" />
+    <rect x="1" y="12.5" width="10.5" height="10.5" fill="#00A4EF" />
+    <rect x="12.5" y="12.5" width="10.5" height="10.5" fill="#FFB900" />
+  </svg>
+);
+
+const LinkedInIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="#0A66C2"
+      d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05c.47-.9 1.63-1.85 3.36-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.55V9h3.57v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0z"
+    />
+  </svg>
+);
+
+/** Ikona po identyfikatorze dostawcy — jeden przełącznik zamiast rozsianych warunków. */
+const ProviderIcon: React.FC<{ id: OAuthProviderId }> = ({ id }) => {
+  if (id === 'google') return <GoogleIcon />;
+  if (id === 'azure') return <MicrosoftIcon />;
+  return <LinkedInIcon />;
+};
+
+const OAuthButton: React.FC<{
+  provider: OAuthProviderMeta;
   onClick: () => void;
-  loading?: boolean;
-  text?: string;
-}> = ({ onClick, loading, text = 'Kontynuuj z Google' }) => (
+  loading: boolean;
+  disabled: boolean;
+  text: string;
+}> = ({ provider, onClick, loading, disabled, text }) => (
   <button
     type="button"
     onClick={onClick}
-    disabled={loading}
+    disabled={disabled}
     aria-busy={loading || undefined}
     className="flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-line bg-surface px-4 text-sm font-semibold text-ink shadow-xs transition-colors hover:bg-elevated hover:border-ink/20 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]"
   >
-    <GoogleIcon />
-    <span className="truncate">{loading ? 'Łączenie z Google…' : text}</span>
+    <ProviderIcon id={provider.id} />
+    <span className="truncate">{loading ? `Łączenie z ${provider.label}…` : text}</span>
   </button>
+);
+
+/**
+ * Wiersz przycisków dostawców — kolejność i treść z rejestru, nie z trzech
+ * ręcznie sklejonych przycisków. `disabled` dotyczy też pozostałych
+ * dostawców w biegu: dwa równoległe przekierowania OAuth nie mają sensu.
+ */
+const OAuthProviderRow: React.FC<{
+  textFor: (provider: OAuthProviderMeta) => string;
+  busy: OAuthProviderId | null;
+  disabled: boolean;
+  onSelect: (id: OAuthProviderId) => void;
+}> = ({ textFor, busy, disabled, onSelect }) => (
+  <div className="space-y-2">
+    {OAUTH_PROVIDERS.map((provider) => (
+      <OAuthButton
+        key={provider.id}
+        provider={provider}
+        text={textFor(provider)}
+        loading={busy === provider.id}
+        disabled={disabled || busy !== null}
+        onClick={() => onSelect(provider.id)}
+      />
+    ))}
+  </div>
 );
 
 const OrDivider: React.FC<{ text?: string }> = ({ text = 'albo' }) => (
@@ -155,9 +208,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     signInLocally,
     signUpCloud,
     signInCloud,
-    signInWithGoogle,
+    signInWithProvider,
     requestPasswordReset,
     cloudAvailable,
+    oauthNotice,
+    clearOAuthNotice,
   } = useAuth();
 
   const [widok, setWidok] = useState<Widok>(cloudAvailable ? 'wybor' : 'lokalny');
@@ -166,6 +221,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [imie, setImie] = useState('');
   const [blad, setBlad] = useState('');
   const [pracuje, setPracuje] = useState(false);
+  // Który dostawca OAuth ma właśnie bieg — anulowanie Google nie może
+  // zablokować kliknięcia Microsoft, a formularz e-mailowy nie może startować
+  // równolegle z przepływem przekierowania.
+  const [pracujeDostawca, setPracujeDostawca] = useState<OAuthProviderId | null>(null);
 
   const wyczysc = useCallback(() => {
     setBlad('');
@@ -175,9 +234,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const idzDo = useCallback(
     (cel: Widok) => {
       wyczysc();
+      clearOAuthNotice();
       setWidok(cel);
     },
-    [wyczysc]
+    [wyczysc, clearOAuthNotice]
   );
 
   const zamknij = useCallback(() => {
@@ -185,9 +245,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setHaslo('');
     setImie('');
     setBlad('');
+    clearOAuthNotice();
     setWidok(cloudAvailable ? 'wybor' : 'lokalny');
     onClose();
-  }, [cloudAvailable, onClose]);
+  }, [cloudAvailable, onClose, clearOAuthNotice]);
 
   /* --- profil lokalny --- */
 
@@ -229,16 +290,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     [email, haslo, signInCloud, zamknij]
   );
 
-  const zalogujGoogle = useCallback(async () => {
-    setBlad('');
-    setPracuje(true);
-    const wynik = await signInWithGoogle();
-    setPracuje(false);
+  const zalogujDostawca = useCallback(
+    async (providerId: OAuthProviderId) => {
+      setBlad('');
+      clearOAuthNotice();
+      setPracujeDostawca(providerId);
+      const wynik = await signInWithProvider(providerId);
+      setPracujeDostawca(null);
 
-    if (!wynik.ok) {
-      setBlad(wynik.message);
-    }
-  }, [signInWithGoogle]);
+      if (!wynik.ok) {
+        setBlad(wynik.message);
+      }
+    },
+    [signInWithProvider, clearOAuthNotice]
+  );
 
   const zarejestruj = useCallback(
     async (e: React.FormEvent) => {
@@ -324,6 +389,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       {/* Stała wysokość, żeby pojawienie się błędu nie przesuwało formularza. */}
       <div className="mb-4 min-h-[3rem]" aria-live="assertive">
         {blad && <Alert variant="danger">{blad}</Alert>}
+        {!blad && oauthNotice && <Alert variant="info">{oauthNotice}</Alert>}
       </div>
 
       {/* --- wybór trybu --- */}
@@ -331,7 +397,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         <div className="space-y-3">
           {cloudAvailable && (
             <>
-              <GoogleButton onClick={zalogujGoogle} loading={pracuje} text="Kontynuuj z Google" />
+              <OAuthProviderRow
+                textFor={(provider) => `Kontynuuj ${provider.continueWith}`}
+                busy={pracujeDostawca}
+                disabled={pracuje}
+                onSelect={zalogujDostawca}
+              />
               <OrDivider text="lub" />
             </>
           )}
@@ -369,7 +440,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       {/* --- logowanie --- */}
       {widok === 'logowanie' && (
         <div className="space-y-4">
-          <GoogleButton onClick={zalogujGoogle} loading={pracuje} text="Kontynuuj z Google" />
+          {cloudAvailable && (
+            <OAuthProviderRow
+              textFor={(provider) => `Kontynuuj ${provider.continueWith}`}
+              busy={pracujeDostawca}
+              disabled={pracuje}
+              onSelect={zalogujDostawca}
+            />
+          )}
           <OrDivider text="albo e-mail i hasło" />
 
           <form onSubmit={zaloguj} className="space-y-4" noValidate={false}>
@@ -411,7 +489,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       {/* --- rejestracja --- */}
       {widok === 'rejestracja' && (
         <div className="space-y-4">
-          <GoogleButton onClick={zalogujGoogle} loading={pracuje} text="Zarejestruj się przez Google" />
+          {cloudAvailable && (
+            <OAuthProviderRow
+              textFor={(provider) => `Zarejestruj się ${provider.registerVia}`}
+              busy={pracujeDostawca}
+              disabled={pracuje}
+              onSelect={zalogujDostawca}
+            />
+          )}
           <OrDivider text="albo wypełnij formularz" />
 
           <form onSubmit={zarejestruj} className="space-y-4">

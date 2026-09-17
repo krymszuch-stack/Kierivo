@@ -87,3 +87,35 @@ export function authErrorMessage(error: AuthErrorLike | null | undefined): strin
 export function isEmailNotConfirmed(error: AuthErrorLike | null | undefined): boolean {
   return /email not confirmed/i.test(`${error?.code ?? ''} ${error?.message ?? ''}`);
 }
+
+/**
+ * Tłumaczenie błędów, które wracają **parametrami w adresie** po nieudanym
+ * powrocie z dostawcy OAuth (anulowanie w oknie Google/Microsoft/LinkedIn,
+ * wyłączony dostawca po stronie Supabase). Ta sama zasada co wyżej: polski
+ * komunikat, nigdy surowy tekst dostawcy — `error_description` od LinkedIn
+ * potrafi zawierać techniczny opis po angielsku, którego nie wolno pokazać
+ * użytkownikowi wprost.
+ */
+const OAUTH_MAPA: Array<[RegExp, string]> = [
+  // Dostawcy piszą to różnie: „User cancelled", „cancelled by user",
+  // „cancellation" — wspólny mianownik to samo „cancel".
+  [/access_denied|cancel/i,
+    'Logowanie zostało anulowane w oknie dostawcy. Spróbuj ponownie i zaakceptuj dostęp.'],
+  [/unsupported_provider|provider\s+is\s+not\s+enabled|invalid\s+provider/i,
+    'To sposób logowania nie jest jeszcze włączony. Użyj e-maila i hasła albo innego przycisku.'],
+  [/unauthorized_client|invalid_client/i,
+    'Logowanie tym dostawcą jest chwilowo niedostępne po jego stronie. Spróbuj innym sposobem.'],
+  [/redirect_uri|callback/i,
+    'Logowanie tym dostawcą jest źle skonfigurowane. Powiadom nas przez kontakt w stopce.'],
+];
+
+export function oauthErrorMessage(code: string | null | undefined, description: string | null | undefined): string {
+  const text = `${code ?? ''} ${description ?? ''}`.trim();
+  if (!text) return OGOLNY;
+
+  for (const [wzorzec, komunikat] of OAUTH_MAPA) {
+    if (wzorzec.test(text)) return komunikat;
+  }
+
+  return OGOLNY;
+}

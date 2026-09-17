@@ -35,7 +35,10 @@ export const Card: React.FC<CardProps> = ({
   // Pozycja płynie przez zmienne CSS ustawiane bezpośrednio na elemencie.
   const [spotlit, setSpotlit] = useState(false);
 
-  const handleSpotlightMove = (event: React.MouseEvent<HTMLDivElement>) => {
+  // HTMLElement, nie HTMLDivElement: wariant klikalny renderuje <button>,
+  // a handlery muszą pasować do obu elementów (zdarzenie przycisku jest
+  // przypisywalne do szerszego HTMLElement, nie odwrotnie).
+  const handleSpotlightMove = (event: React.MouseEvent<HTMLElement>) => {
     const el = event.currentTarget;
     const { x, y } = spotlightCoords(
       el.getBoundingClientRect(),
@@ -46,7 +49,7 @@ export const Card: React.FC<CardProps> = ({
     el.style.setProperty('--spot-y', `${y}%`);
   };
 
-  const handleSpotlightLeave = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleSpotlightLeave = (event: React.MouseEvent<HTMLElement>) => {
     setSpotlit(false);
     // Plamka ląduje poza kadrem, żeby transition-opacity zaniżał ją łagodnie,
     // a nie ucinał w połowie karty.
@@ -70,6 +73,27 @@ export const Card: React.FC<CardProps> = ({
     ? 'hover:border-brand-500/30 transition-[border-color,box-shadow] duration-150 ease-out'
     : '';
 
+  // Wariant klikalny: ten sam wygląd, ale <button> zamiast <div>, żeby kafelek
+  // był osiągalny z klawiatury (div z onClick nie ma fokusu). Kafelki strony
+  // startowej korzystają z tego zamiast ręcznie powtarzać styl karty.
+  const interactive = Boolean(props.onClick);
+
+  if (interactive) {
+    return (
+      <motion.button
+        type="button"
+        onMouseEnter={spotlight ? () => setSpotlit(true) : undefined}
+        onMouseMove={spotlight ? handleSpotlightMove : undefined}
+        onMouseLeave={spotlight ? handleSpotlightLeave : undefined}
+        className={`relative cursor-pointer rounded-2xl border p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${toneStyles[resolvedTone]} ${hoverStyles} ${className}`}
+        {...(props as unknown as HTMLMotionProps<'button'>)}
+      >
+        {spotlight && <SpotlightLayers spotlit={spotlit} />}
+        {children}
+      </motion.button>
+    );
+  }
+
   return (
     <motion.div
       onMouseEnter={spotlight ? () => setSpotlit(true) : undefined}
@@ -78,39 +102,42 @@ export const Card: React.FC<CardProps> = ({
       className={`relative rounded-2xl border p-5 ${toneStyles[resolvedTone]} ${hoverStyles} ${className}`}
       {...props}
     >
-      {spotlight && (
-        <>
-          {/* Wypełnienie: miękkie światło brandowe za treścią karty.
-              Karta jest relative + overflow-hidden tylko przy spotlight,
-              bo clipowanie zmieniałoby render cieni u pozostałych użyć. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-[var(--duration-ui)]"
-            style={{
-              opacity: spotlit ? 1 : 0,
-              background:
-                'radial-gradient(320px circle at var(--spot-x, -100%) var(--spot-y, -100%), color-mix(in srgb, var(--brand-500) 12%, transparent), transparent 65%)',
-            }}
-          />
-          {/* Obwódka: ten sam gradient, ale zamaskowany do 1px ramki
-              (mask-composite wycina wnętrze). To ona sprzedaje efekt —
-              kontur rozświetla się dokładnie tam, gdzie stoi kursor. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 rounded-2xl p-px opacity-0 transition-opacity duration-[var(--duration-ui)]"
-            style={{
-              opacity: spotlit ? 1 : 0,
-              background:
-                'radial-gradient(220px circle at var(--spot-x, -100%) var(--spot-y, -100%), color-mix(in srgb, var(--brand-500) 45%, transparent), transparent 70%)',
-              WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-              mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
-              WebkitMaskComposite: 'xor',
-              maskComposite: 'exclude',
-            }}
-          />
-        </>
-      )}
+      {spotlight && <SpotlightLayers spotlit={spotlit} />}
       {children}
     </motion.div>
   );
 };
+
+/** Plamka i obwódka spotlightu — wydzielone, by oba warianty karty dzieliły dokładnie ten sam efekt. */
+const SpotlightLayers: React.FC<{ spotlit: boolean }> = ({ spotlit }) => (
+  <>
+    {/* Wypełnienie: miękkie światło brandowe za treścią karty.
+        Karta jest relative + overflow-hidden tylko przy spotlight,
+        bo clipowanie zmieniałoby render cieni u pozostałych użyć. */}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl opacity-0 transition-opacity duration-[var(--duration-ui)]"
+      style={{
+        opacity: spotlit ? 1 : 0,
+        background:
+          'radial-gradient(320px circle at var(--spot-x, -100%) var(--spot-y, -100%), color-mix(in srgb, var(--brand-500) 12%, transparent), transparent 65%)',
+      }}
+    />
+    {/* Obwódka: ten sam gradient, ale zamaskowany do 1px ramki
+        (mask-composite wycina wnętrze). To ona sprzedaje efekt —
+        kontur rozświetla się dokładnie tam, gdzie stoi kursor. */}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl p-px opacity-0 transition-opacity duration-[var(--duration-ui)]"
+      style={{
+        opacity: spotlit ? 1 : 0,
+        background:
+          'radial-gradient(220px circle at var(--spot-x, -100%) var(--spot-y, -100%), color-mix(in srgb, var(--brand-500) 45%, transparent), transparent 70%)',
+        WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+        mask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+        WebkitMaskComposite: 'xor',
+        maskComposite: 'exclude',
+      }}
+    />
+  </>
+);

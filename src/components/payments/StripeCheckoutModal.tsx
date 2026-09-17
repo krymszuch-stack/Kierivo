@@ -76,7 +76,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const { grantDemoPro } = useEntitlements();
-  const { mode, cloudAvailable, signInWithGoogle, user } = useAuth();
+  const { mode, cloudAvailable, signInWithProvider, user } = useAuth();
 
   const paymentsAvailable = clientEnv.backendConfigured;
   const isCloudAccount = mode === 'cloud' && !!user;
@@ -114,7 +114,7 @@ export const StripeCheckoutModal: React.FC<StripeCheckoutModalProps> = ({
   const handleGoogleAuth = async () => {
     setLoading(true);
     setErrorMsg(null);
-    const res = await signInWithGoogle();
+    const res = await signInWithProvider('google');
     setLoading(false);
     if (!res.ok) {
       setErrorMsg(res.message);

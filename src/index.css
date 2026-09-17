@@ -259,16 +259,6 @@ button:focus-visible,
   animation: shimmer 1.8s cubic-bezier(0.19, 1, 0.22, 1) infinite;
 }
 
-/* Instrukcja na starcie ma delikatnie "oddychać", nie odtwarzać reklamę. */
-@keyframes storyboard-float {
-  0%, 100% { transform: translateY(0); filter: saturate(1); }
-  50% { transform: translateY(-3px); filter: saturate(1.04); }
-}
-
-.landing-storyboard {
-  animation: storyboard-float 6s ease-in-out infinite;
-}
-
 /* ============================================================
    REDUCED MOTION
    Honours the OS-level "reduce motion" setting. The ambient aurora and the
@@ -278,8 +268,7 @@ button:focus-visible,
    ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   .aurora-blob,
-  .animate-shimmer,
-  .landing-storyboard {
+  .animate-shimmer {
     animation: none !important;
   }
 
