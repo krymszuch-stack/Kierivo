@@ -142,7 +142,16 @@ const KNOWN_COMPOUND_SKILLS = [
 
   // Finance & Accounting
   'pełna księgowość', 'rachunkowość zarządcza', 'sprawozdawczość finansowa',
-  'kontroling finansowy', 'modelowanie finansowe', 'rozliczenia podatkowe'
+  'kontroling finansowy', 'modelowanie finansowe', 'rozliczenia podatkowe',
+
+  // Prace fizyczne, techniczne i rzemieślnicze (Reguła 8: monter, spawacz, magazynier obok programisty)
+  'spawanie mag', 'spawanie tig', 'konstrukcje stalowe', 'cięcie palnikiem',
+  'instalacje elektryczne', 'instalacje sanitarne', 'montaż pomp ciepła', 'pomiary elektryczne',
+  'obsługa obrabiarek cnc', 'frezowanie cnc', 'toczenie metali', 'obróbka skrawaniem',
+  'gospodarka magazynowa', 'obsługa wózka widłowego', 'wózki widłowe', 'kompletacja zamówień',
+  'tachograf cyfrowy', 'czas pracy kierowców', 'transport międzynarodowy',
+  'receptura apteczna', 'leki magistralne', 'system kamsoft',
+  'murowanie ścian', 'tynki maszynowe', 'czytanie rysunku technicznego', 'czytanie rysunku budowlanego'
 ];
 
 /**
@@ -162,10 +171,17 @@ const KNOWN_HARD_SKILLS = [
   'clean code', 'solid', 'security', 'oauth', 'seo', 'ats', 'analytics', 'etl',
   'kafka', 'rabbitmq', 'prometheus', 'grafana', 'opentelemetry', 'c++', 'swift', 'flutter',
 
+  // Prace fizyczne, przemysłowe, techniczne i medyczne (Reguła 8)
+  'mag', 'tig', 'migomat', 'spawanie', 'szlifowanie', 'cnc', 'fanuc', 'sinumerik',
+  'heidenhain', 'frezowanie', 'toczenie', 'wms', 'adr', 'tacho', 'tachograf',
+  'pex', 'sep', 'f-gazy', 'kamsoft', 'farmacja', 'receptura', 'murowanie',
+  'tynkowanie', 'szpachlowanie', 'rozdzielnice', 'lutowanie',
+
   // Business, Finance, Controlling & Accounting
   'excel', 'power bi', 'tableau', 'vba', 'power query', 'spss', 'sap', 'sap erp',
   'salesforce', 'hubspot', 'księgowość', 'mssf', 'ifrs', 'budżetowanie', 'p&l',
   'analiza finansowa', 'controlling', 'audyt', 'vat', 'cit', 'pit', 'us gaap',
+  'optima', 'symfonia', 'płatnik',
 
   // Marketing, Sales & E-commerce
   'sem', 'google ads', 'meta ads', 'ga4', 'google analytics', 'copywriting',
@@ -268,20 +284,25 @@ export function extractDynamicJdPhrases(jdText: string): {
     ...KNOWN_HARD_SKILLS.map(strippedLower),
     ...FORMAL_REQ_KEYWORDS.map(strippedLower),
   ]);
+  const knownPhrasesList = Array.from(knownPhrases);
   // Token z kropkami tylko wewnątrz (`Node.js`), nie na granicy zdania
   // (`XYZ. Zespół` to dwa trafienia, nie fraza `xyz. zesp`); granice w Unicode,
   // bo ASCII-`\b` łamał słowo przed `ó`/`ł` (`Zespół` → `zesp`).
   const CAP_TOKEN = '[\\p{Lu}][\\p{L}0-9#+-]*(?:\\.[\\p{L}0-9#+-]+)*';
   const capitalizedMatches =
     jdText.match(new RegExp(`(?<![\\p{L}\\p{N}_])${CAP_TOKEN}(?:\\s+${CAP_TOKEN})*(?![\\p{L}\\p{N}_])`, 'gu')) || [];
+  const uniqueCapitalizedMatches = Array.from(new Set(capitalizedMatches));
+  const seenNormPhrases = new Set<string>();
 
-  for (const match of capitalizedMatches) {
+  for (const match of uniqueCapitalizedMatches) {
     const cleaned = match.replace(/[.,;:!?]+$/g, '').trim();
     const lower = cleaned.toLowerCase().trim();
     const norm = strippedLower(cleaned);
 
     if (lower.length < 3 || /^\d+$/.test(lower)) continue;
     if (HR_AND_COMMON_STOP_WORDS.has(lower) || HR_AND_COMMON_STOP_WORDS.has(norm)) continue;
+    if (seenNormPhrases.has(norm)) continue;
+    seenNormPhrases.add(norm);
 
     const words = norm.split(/\s+/).filter(Boolean);
     if (words.length === 0 || words.every((w) => HR_AND_COMMON_STOP_WORDS.has(w) || GENERIC_ROLE_WORDS.has(w))) continue;
@@ -306,7 +327,7 @@ export function extractDynamicJdPhrases(jdText: string): {
     const cleanPhrase = cleanWords.join(' ');
     if (cleanPhrase.length < 3 || HR_AND_COMMON_STOP_WORDS.has(cleanPhrase)) continue;
     // Duplikat czegoś, co słownik już pokrył (`need python` przy `python`).
-    if ([...knownPhrases].some((k) => cleanPhrase !== k && containsPhrase(cleanPhrase, k))) continue;
+    if (knownPhrasesList.some((k) => cleanPhrase !== k && containsPhrase(cleanPhrase, k))) continue;
     if (hardSkills.some((h) => strippedLower(h.phrase) === cleanPhrase)) continue;
 
     // Sygnał techniczny: akronim, cyfra, znak stosu — albo powtórzenie w JD.

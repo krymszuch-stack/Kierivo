@@ -258,6 +258,48 @@ export const ACTION_SKILLS: SkillSeed[] = [
     category: 'Kompetencje',
     altLabels: ['przygotowywanie raportów', 'reporting', 'sprawozdawczość'],
   },
+  // --- Prace fizyczne i techniczne (reguła 8: monter, spawacz i magazynier
+  // obok programisty) ---------------------------------------------------------
+  {
+    canonical: 'spawanie tig',
+    category: 'Kompetencje',
+    altLabels: ['spawanie metodą tig', 'tig 141', 'spawanie nietopliwą elektrodą', 'tig welding'],
+  },
+  {
+    canonical: 'spawanie mag',
+    category: 'Kompetencje',
+    altLabels: ['spawanie metodą mag', 'mag 135', 'spawanie mig', 'migomat', 'mag welding'],
+  },
+  {
+    canonical: 'obsługa obrabiarek cnc',
+    category: 'Kompetencje',
+    altLabels: ['operator cnc', 'obróbka skrawaniem', 'toczenie i frezowanie', 'programowanie cnc', 'cnc'],
+  },
+  {
+    canonical: 'instalacje elektryczne',
+    category: 'Kompetencje',
+    altLabels: ['instalacja elektryczna', 'elektryka budowlana', 'pomiary elektryczne', 'rozdzielnice elektryczne', 'uprawnienia sep'],
+  },
+  {
+    canonical: 'instalacje sanitarne',
+    category: 'Kompetencje',
+    altLabels: ['instalacja sanitarna', 'hydraulika siłowa', 'wod-kan', 'co i cwu', 'montaż kotłów'],
+  },
+  {
+    canonical: 'diagnostyka pojazdów',
+    category: 'Kompetencje',
+    altLabels: ['diagnostyka komputerowa', 'obd2', 'komputer diagnostyczny', 'elektromechanika pojazdowa'],
+  },
+  {
+    canonical: 'gospodarka magazynowa',
+    category: 'Kompetencje',
+    altLabels: ['magazynowanie', 'kompletacja zamówień', 'inwentaryzacja', 'obsługa wózka widłowego', 'wms'],
+  },
+  {
+    canonical: 'księgowość',
+    category: 'Kompetencje',
+    altLabels: ['pełna księgowość', 'księgowanie', 'rozliczenia podatkowe', 'kadry i płace', 'bookkeeping'],
+  },
 ];
 
 /** Pełna lista wpisów tezaurusa offline. */

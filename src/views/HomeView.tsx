@@ -1,182 +1,586 @@
-import React from 'react';
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  CheckCircle2,
-  FileSearch,
-  FileText,
-  FolderCheck,
-  Heart,
-  Lock,
-  ScanSearch,
-  Send,
-  Sparkles,
-  WandSparkles,
-} from 'lucide-react';
+/**
+ * HomeView — strona główna Kierivo (Public Pre-Beta).
+ *
+ * Zasady:
+ * - wyłącznie tokeny z src/styles/tokens.css (surface / elevated / ink / muted /
+ *   line / brand-* / violet / success / warning), zero zaszytych kolorów,
+ *   poprawny wygląd w trybie jasnym i ciemnym;
+ * - jeden <h1>, sekcje z nagłówkami, animacje tylko na CSS;
+ * - żadnych nowych zależności.
+ *
+ * Podmiana 1:1 — zachowuje pełną kompatybilność z App.tsx oraz testami kontraktowymi.
+ */
+
+import type { ReactNode } from 'react';
 import type { MasterVault } from '../types';
 import type { NavTabId, NavSectionId } from '../lib/navigation';
-import { Card } from '../components/ui/Card';
-import { HomeLiveDemo } from '../features/livedemo/HomeLiveDemo';
 
-interface HomeViewProps {
-  vault: MasterVault;
-  onNavigate: (tab: NavTabId) => void;
-  onOpenAdvisor: (question?: string) => void;
-  /**
-   * Powody zamknięcia sekcji (z useUnlocks). Kafelek celujący w zamkniętą
-   * sekcję ma obowiązek powiedzieć o tym ZANIM ktoś kliknie — toast po
-   * kliknięciu to nie kontrola dostępu, tylko zaskoczenie (reguła 2).
-   */
+export type HomeViewProps = {
+  /** Główne wezwanie do działania — wejście w przepływ profilu / CV. */
+  onStart?: () => void;
+  /** Przejście do widoku planów / informacji o cenie. */
+  onViewPricing?: () => void;
+  /** Dane profilu użytkownika przekazywane z App.tsx */
+  vault?: MasterVault;
+  /** Nawigacja po głównych zakładkach aplikacji */
+  onNavigate?: (tab: NavTabId) => void;
+  /** Otwarcie modalnego doradcy */
+  onOpenAdvisor?: (question?: string) => void;
+  /** Powody zablokowania poszczególnych sekcji (np. pipeline bez profilu) */
   lockReasons?: Partial<Record<NavSectionId, string>>;
-  actionSlot?: React.ReactNode;
-  questionsSlot?: React.ReactNode;
+  /** Sloty na rekomendacje następnego kroku i pytania uzupełniające */
+  actionSlot?: ReactNode;
+  questionsSlot?: ReactNode;
+};
+
+/* ------------------------------------------------------------------ dane */
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Zbuduj profil w Master Vault',
+    body: 'Wklej treść CV albo zaimportuj plik. Historia zatrudnienia, projekty, umiejętności i uprawnienia trafiają do jednego uporządkowanego miejsca.',
+    target: 'profil' as NavTabId,
+  },
+  {
+    n: '02',
+    title: 'Wklej konkretne ogłoszenie',
+    body: 'Kierivo porównuje profil z tą jedną ofertą: wykryte frazy, brakujące wymagania, pokrycie umiejętności, sygnały strukturalne.',
+    target: 'aplikuj' as NavTabId,
+  },
+  {
+    n: '03',
+    title: 'Wyślij i prowadź proces',
+    body: 'Zapisujesz aplikację ze snapshotem dokumentu i przesuwasz ją przez własne statusy — od wysłanej do decyzji.',
+    target: 'pipeline' as NavTabId,
+  },
+] as const;
+
+const PILLARS = [
+  {
+    title: 'Master Vault',
+    body: 'Jedno źródło faktów o Twojej karierze. Raz uporządkowane, używane przy każdej kolejnej aplikacji.',
+    target: 'profil' as NavTabId,
+    icon: (
+      <>
+        <path d="M4 7.5 12 3.5l8 4v9L12 20.5l-8-4v-9Z" />
+        <path d="M12 11.5 4 7.5m8 4 8-4m-8 4v9" />
+      </>
+    ),
+  },
+  {
+    title: 'Dopasowanie do oferty',
+    body: 'Pokrycie umiejętności, brakujące wymagania i rekomendacje redakcyjne dla tego jednego ogłoszenia.',
+    target: 'aplikuj' as NavTabId,
+    icon: (
+      <>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="M20.5 20.5 15.7 15.7M11 8v6m-3-3h6" />
+      </>
+    ),
+  },
+  {
+    title: 'Walidator spójności',
+    body: 'Sprawdza przekazane fakty względem Master Vaultu, żeby dokument nie zaczął żyć własnym życiem.',
+    target: 'aplikuj' as NavTabId,
+    icon: (
+      <>
+        <path d="M12 3.5l7 2.5v6c0 4.2-2.9 7.4-7 8.5-4.1-1.1-7-4.3-7-8.5V6l7-2.5Z" />
+        <path d="m8.8 12 2.2 2.2 4.2-4.4" />
+      </>
+    ),
+  },
+  {
+    title: 'Pipeline aplikacji',
+    body: 'Własne statusy procesu i snapshot wysłanego dokumentu, odseparowany od późniejszych zmian profilu.',
+    target: 'pipeline' as NavTabId,
+    icon: (
+      <>
+        <path d="M4 6h16M4 12h10M4 18h6" />
+        <circle cx="18" cy="15.5" r="3" />
+      </>
+    ),
+  },
+] as const;
+
+const FAQ = [
+  {
+    q: 'Ile to kosztuje?',
+    a: 'Public Pre-Beta PB-2026.09 jest bezpłatna — 0 zł. Nie ma checkoutu, subskrypcji Pro ani płatnego okresu próbnego. Funkcje poza zakresem są oznaczane jako niedostępne, a nie prowadzą do martwej kasy.',
+  },
+  {
+    q: 'Co dzieje się z moimi danymi?',
+    a: 'W trybie lokalnym profil roboczy zostaje w pamięci tej przeglądarki. Jeśli świadomie włączysz konto w chmurze, vault jest synchronizowany z bazą przypisaną do Ciebie i chronioną politykami dostępu.',
+  },
+  {
+    q: 'Czy Kierivo dopisuje fakty, których nie podałem?',
+    a: 'Nie. Pracuje na treści, którą wprowadzisz, a walidator spójności zgłasza rozbieżności między dokumentem a Master Vaultem.',
+  },
+  {
+    q: 'Czy wynik oznacza, że przejdę filtr ATS?',
+    a: 'Nie. To własna, deterministyczna ocena Kierivo. Nie mamy dostępu do prywatnych konfiguracji rekrutera w Workday, Greenhouse, Lever czy Taleo i nie obiecujemy zaproszenia na rozmowę.',
+  },
+  {
+    q: 'Czym jest Doradca w interfejsie?',
+    a: 'Obecnie lokalnym modułem regułowym, nie czatem LLM. Dostaje wyłącznie Twoje pytanie lub wybrany szybki prompt — nie czyta sam Master Vaultu ani zapisanych aplikacji.',
+  },
+] as const;
+
+const KEYWORDS = [
+  { label: 'zarządzanie projektem', hit: true },
+  { label: 'Excel / raportowanie', hit: true },
+  { label: 'obsługa klienta B2B', hit: true },
+  { label: 'SAP', hit: false },
+  { label: 'angielski B2', hit: true },
+  { label: 'budżetowanie', hit: false },
+] as const;
+
+/* ------------------------------------------------------- małe komponenty */
+
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
 }
 
-const STEPS: Array<{
-  id: string;
-  number: string;
-  title: string;
-  description: string;
-  action: string;
-  target: NavTabId;
-  icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { id: 'profile', number: '01', title: 'Dodaj swoje fakty', description: 'Wgraj CV albo uzupełnij profil po swojemu. To jest Twoja baza, nie generator bajek.', action: 'Otwórz profil', target: 'profil', icon: FileText },
-  { id: 'match', number: '02', title: 'Wklej ogłoszenie', description: 'Porównaj ofertę z tym, co naprawdę masz w CV. Luki są informacją, nie powodem do dopisywania fikcji.', action: 'Sprawdź dopasowanie', target: 'aplikuj', icon: FileSearch },
-  { id: 'send', number: '03', title: 'Przygotuj wersję do wysłania', description: 'Wybierz prosty dokument, obejrzyj go przed eksportem i zapisz aplikację, gdy faktycznie ją wyślesz.', action: 'Przygotuj dokument', target: 'profil', icon: Send },
-];
-
-const FEATURES: Array<{
-  title: string;
-  description: string;
-  action: string;
-  target: NavTabId;
-  icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { title: 'Jedno CV, wiele ofert', description: 'Master Vault trzyma Twoje potwierdzone doświadczenie, a nie kolekcję plików „final_final2”.', action: 'Otwórz profil', target: 'profil', icon: FolderCheck },
-  { title: 'Własny audyt, bez magii', description: 'Sprawdza układ, nagłówki, tabele, znaki i dopasowanie słów. To wskazówka techniczna, nie decyzja rekrutera.', action: 'Otwórz audyt ATS', target: 'ats-lab', icon: ScanSearch },
-  { title: 'Aplikacje w jednym miejscu', description: 'Zapisuj te CV, które rzeczywiście wysłałeś, z liczbą wersji i etapem. Bez wymyślonych rozmów i statusów.', action: 'Zobacz moje aplikacje', target: 'pipeline', icon: BriefcaseBusiness },
-];
-
-interface TileProps {
-  number?: string;
-  title: string;
-  description: string;
-  action: string;
-  icon: React.ComponentType<{ className?: string }>;
-  /** Uzupełniane, gdy cel kafelka jest sekcją zamkniętą — kafelek mówi o tym wprost. */
-  lockReason?: string;
-  onClick: () => void;
+function PrimaryCta({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-md bg-brand-600 px-6 text-sm font-semibold text-on-brand shadow-raised transition duration-fast hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400 motion-safe:hover:-translate-y-0.5"
+    >
+      {children}
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-4 w-4 transition-transform duration-fast motion-safe:group-hover:translate-x-0.5"
+        aria-hidden="true"
+      >
+        <path d="M5 12h14m-6-6 6 6-6 6" />
+      </svg>
+    </button>
+  );
 }
 
-/** Jedyny kafelek strony startowej: jedna definicja wyglądu dla kroków i cech. */
-const Tile: React.FC<TileProps> = ({ number, title, description, action, icon: Icon, lockReason, onClick }) => (
-  <Card
-    tone="raised"
-    spotlight
-    onClick={onClick}
-    whileHover={{ y: -2 }}
-    className="group"
-  >
-    <div className="flex items-center justify-between">
-      {number
-        ? <span className="font-mono text-xs font-bold text-brand-fg">{number}</span>
-        : <Icon className="h-5 w-5 text-brand-600" aria-hidden="true" />}
-      {number && <Icon className="h-5 w-5 text-muted transition-transform duration-150 group-hover:scale-110 group-hover:text-brand-600" aria-hidden="true" />}
-    </div>
-    <h3 className="mt-7 text-base font-bold text-ink">{title}</h3>
-    <p className="mt-2 min-h-14 text-xs leading-relaxed text-muted">{description}</p>
-    <div className="mt-5 flex items-center justify-between gap-2">
-      <span className="inline-flex items-center gap-1 text-meta font-semibold text-brand-fg">
-        {action}
-        <ArrowRight className="h-3.5 w-3.5 transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden="true" />
-      </span>
-      {lockReason && (
-        <span
-          className="inline-flex items-center gap-1 text-meta text-subtle"
-          title={lockReason}
-        >
-          <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-          Zamknięte
+function GhostCta({ onClick, children }: { onClick?: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-12 cursor-pointer items-center justify-center rounded-md border border-line-strong bg-elevated px-6 text-sm font-semibold text-ink transition duration-fast hover:border-brand-400 hover:text-brand-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-400"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="font-mono text-label uppercase tracking-[0.18em] text-brand-fg">{children}</p>
+  );
+}
+
+/** Makieta wyniku dopasowania — statyczna, poglądowa, bez wykresów z biblioteki. */
+function MatchPanel() {
+  const coverage = 78;
+  return (
+    <figure className="rounded-2xl border border-line bg-elevated p-5 shadow-floating sm:p-6">
+      <figcaption className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-mono text-label uppercase tracking-[0.16em] text-subtle">
+            Wynik dopasowania
+          </p>
+          <p className="mt-1 text-base font-semibold text-ink">
+            Specjalista ds. logistyki · Kraków
+          </p>
+        </div>
+        <span className="shrink-0 rounded-sm bg-brand-50 px-2 py-1 font-mono text-meta uppercase tracking-[0.14em] text-brand-fg">
+          Przykład
         </span>
-      )}
-    </div>
-    {lockReason && <p className="mt-1.5 text-meta leading-snug text-subtle">{lockReason}</p>}
-  </Card>
-);
+      </figcaption>
 
-export const HomeView: React.FC<HomeViewProps> = ({ vault, onNavigate, onOpenAdvisor, lockReasons, actionSlot, questionsSlot }) => {
-  const hasStarted = Boolean(vault.personalInfo.fullName || vault.history.length);
+      <div className="mt-6 flex items-center gap-5">
+        <div
+          className="relative grid h-24 w-24 shrink-0 place-items-center rounded-full"
+          style={{
+            background: `conic-gradient(var(--color-brand-500) ${coverage}%, var(--color-sunken) ${coverage}% 100%)`,
+          }}
+          role="img"
+          aria-label={`Pokrycie umiejętności ${coverage} procent`}
+        >
+          <div className="grid h-[74px] w-[74px] place-items-center rounded-full bg-elevated">
+            <span className="font-mono text-xl font-semibold text-ink">{coverage}%</span>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">Pokrycie umiejętności z ogłoszenia</p>
+          <p className="mt-1 text-sm text-muted">
+            14 z 18 wymagań ma potwierdzenie w Twoim profilu. Cztery pozostałe wskazujemy poniżej —
+            razem z tym, gdzie w CV ich brakuje.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 space-y-3 border-t border-line pt-5">
+        <p className="font-mono text-label uppercase tracking-[0.16em] text-subtle">
+          Brakujące wymagania
+        </p>
+        <ul className="space-y-2">
+          {['SAP (moduł MM)', 'Budżetowanie kosztów transportu', 'Uprawnienia UDT'].map((item) => (
+            <li key={item} className="flex items-center gap-2 text-sm text-ink">
+              <span
+                className="grid h-5 w-5 shrink-0 place-items-center rounded-sm bg-warning-soft text-warning-fg"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-3 w-3">
+                  <path d="M12 7v6.5M12 17h.01" strokeLinecap="round" />
+                </svg>
+              </span>
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-6 space-y-3 border-t border-line pt-5">
+        <p className="font-mono text-label uppercase tracking-[0.16em] text-subtle">Wykryte frazy</p>
+        <ul className="flex flex-wrap gap-2">
+          {KEYWORDS.map((k) => (
+            <li
+              key={k.label}
+              className={[
+                'rounded-sm border px-2.5 py-1 font-mono text-meta',
+                k.hit
+                  ? 'border-transparent bg-success-soft text-success-fg'
+                  : 'border-dashed border-line-strong text-subtle',
+              ].join(' ')}
+            >
+              {k.hit ? '✓ ' : '– '}
+              {k.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </figure>
+  );
+}
+
+/* --------------------------------------------------------------- widok */
+
+export function HomeView({
+  onStart,
+  onViewPricing,
+  vault,
+  onNavigate,
+  onOpenAdvisor,
+  lockReasons,
+  actionSlot,
+  questionsSlot,
+}: HomeViewProps) {
+  const hasStarted = Boolean(vault?.personalInfo?.fullName || (vault?.history && vault.history.length > 0));
+
+  const handleStart = () => {
+    if (onStart) {
+      onStart();
+    } else if (onNavigate) {
+      onNavigate(hasStarted ? 'aplikuj' : 'profil');
+    }
+  };
+
+  const handlePricing = () => {
+    if (onViewPricing) {
+      onViewPricing();
+    } else if (onNavigate) {
+      onNavigate('pricing');
+    }
+  };
+
+  const handleStepClick = (target: NavTabId) => {
+    if (onNavigate) {
+      onNavigate(target);
+    } else {
+      handleStart();
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-14">
-      <section className="overflow-hidden rounded-3xl border border-line bg-elevated">
-        <div className="grid items-stretch lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="relative isolate flex flex-col justify-center overflow-hidden p-6 sm:p-10 lg:p-12">
-            <img
-              src="/brand/kierivo-motif.svg"
-              alt=""
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover opacity-[0.08] dark:opacity-[0.04]"
-            />
-            <p className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-meta font-bold text-brand-fg"><Heart className="h-3.5 w-3.5" aria-hidden="true" />CV bez zadęcia. I bez bajek.</p>
-            <h1 className="max-w-xl text-3xl font-extrabold tracking-tight text-ink sm:text-4xl lg:text-5xl">Wiesz, co umiesz. <span className="text-brand-fg">Pomóżmy to dobrze pokazać.</span></h1>
-            <p className="mt-5 max-w-xl text-sm leading-relaxed text-muted sm:text-base">Kierivo porządkuje Twoje prawdziwe doświadczenie, porównuje CV z ofertą i pomaga przygotować spokojną, czytelną wersję do wysłania. Bez obiecywania pracy za trzy kliknięcia :)</p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <button type="button" onClick={() => onNavigate(hasStarted ? 'aplikuj' : 'profil')} className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-on-brand shadow-raised transition-transform hover:scale-[1.02] hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">{hasStarted ? 'Sprawdź ofertę' : 'Dodaj swoje CV'}<ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
-              <button type="button" onClick={() => onNavigate('porady')} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-5 py-3 text-sm font-semibold text-ink transition-colors hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><Sparkles className="h-4 w-4 text-brand-600" aria-hidden="true" />Zobacz, jak to działa</button>
+    <div className="bg-surface text-ink">
+      {/* ---------------------------------------------------------- hero */}
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-40 left-1/2 h-[560px] w-[900px] -translate-x-1/2 rounded-full opacity-60 blur-3xl"
+          style={{
+            background:
+              'radial-gradient(closest-side, color-mix(in oklab, var(--color-brand-500) 22%, transparent), transparent)',
+          }}
+        />
+        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)] lg:items-center lg:gap-14 lg:pb-24 lg:pt-20">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated/80 px-3 py-1 font-mono text-meta uppercase tracking-[0.16em] text-muted backdrop-blur">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet" aria-hidden="true" />
+              Public Pre-Beta · 0 zł
+            </p>
+
+            <h1 className="mt-5 text-[2.25rem] font-bold leading-[1.02] tracking-[-0.03em] text-ink sm:text-display-md lg:text-[3.5rem]">
+              Jedno CV, jedno ogłoszenie,
+              <br className="hidden sm:block" />{' '}
+              <span className="text-brand-fg">zero zgadywania</span>.
+            </h1>
+
+            <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">
+              Kierivo porządkuje fakty o Twojej karierze, porównuje je z konkretną ofertą i pokazuje
+              czarno na białym, czego w dokumencie brakuje. Potem prowadzi cały proces aplikacyjny w
+              jednym miejscu.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <PrimaryCta onClick={handleStart}>
+                {hasStarted ? 'Sprawdź dopasowanie do oferty' : 'Sprawdź swoje CV — bezpłatnie'}
+              </PrimaryCta>
+              <a
+                href="#jak-to-dziala"
+                className="inline-flex h-12 items-center justify-center rounded-md px-4 text-sm font-semibold text-ink underline decoration-line-strong decoration-2 underline-offset-4 transition duration-fast hover:decoration-brand-400"
+              >
+                Zobacz, jak to działa
+              </a>
             </div>
-            <p className="mt-4 text-meta text-subtle">Konto jest opcjonalne. Przydaje się dopiero, gdy chcesz synchronizować dane między urządzeniami.</p>
+
+            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-subtle">
+              <li>Bez karty płatniczej</li>
+              <li>Profil może zostać w tej przeglądarce</li>
+              <li>Wklejenie treści CV jest bezpłatne</li>
+            </ul>
           </div>
-          <div className="flex items-center border-t border-line bg-sunken p-4 sm:p-6 lg:border-l lg:border-t-0">
-            {/* Demo liczone prawdziwym silnikiem na danych przykładowych —
-                zamiast zdjęcia stockowego (i tak niczego nie dowodziło). */}
-            <HomeLiveDemo onNavigate={onNavigate} className="w-full" />
+
+          <div className="lg:pl-4">
+            <MatchPanel />
           </div>
         </div>
       </section>
 
-      {(actionSlot || questionsSlot) && <section className="space-y-4" aria-label="Twój następny krok">{actionSlot}{questionsSlot}</section>}
+      {/* ------------------------------- sloty operacyjne (rekomendacje) */}
+      {(actionSlot || questionsSlot) && (
+        <section className="mx-auto max-w-6xl px-5 pb-12 sm:px-6 space-y-4" aria-label="Twój następny krok">
+          {actionSlot}
+          {questionsSlot}
+        </section>
+      )}
 
-      <section aria-labelledby="how-it-works">
-        <div className="mb-5 max-w-2xl"><p className="text-label font-bold uppercase tracking-[0.14em] text-brand-fg">Bez instrukcji obsługi wielkości encyklopedii</p><h2 id="how-it-works" className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Trzy ruchy i masz kontrolę nad swoim CV.</h2></div>
-        <div className="grid gap-3 md:grid-cols-3">
-          {STEPS.map((step) => (
-            <Tile
-              key={step.id}
-              number={step.number}
-              title={step.title}
-              description={step.description}
-              action={step.action}
-              icon={step.icon}
-              onClick={() => onNavigate(step.target)}
-            />
-          ))}
+      {/* -------------------------------------------------- jak to działa */}
+      <section id="jak-to-dziala" className="border-t border-line bg-sunken/60 scroll-mt-16">
+        <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 lg:py-20">
+          <SectionLabel>Jak to działa</SectionLabel>
+          <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
+            Trzy ruchy i masz kontrolę nad swoim CV.
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Trzy kroki od bałaganu w plikach do prowadzonego procesu
+          </p>
+
+          <ol className="mt-10 grid gap-4 md:grid-cols-3">
+            {STEPS.map((s) => (
+              <li
+                key={s.n}
+                onClick={() => handleStepClick(s.target)}
+                className="group cursor-pointer rounded-lg border border-line bg-elevated p-6 transition duration-ui hover:border-brand-400 motion-safe:hover:-translate-y-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-label tracking-[0.2em] text-brand-fg">{s.n}</span>
+                  <span className="font-mono text-meta text-subtle group-hover:text-brand-fg transition-colors">
+                    Otwórz →
+                  </span>
+                </div>
+                <h3 className="mt-3 text-base font-semibold text-ink group-hover:text-brand-fg transition-colors">
+                  {s.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted">{s.body}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-line bg-sunken p-5 sm:p-8" aria-labelledby="why-kierivo">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div className="max-w-2xl"><p className="text-label font-bold uppercase tracking-[0.14em] text-brand-fg">Po co to wszystko?</p><h2 id="why-kierivo" className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Żeby mniej zgadywać, a więcej pokazać.</h2><p className="mt-2 text-sm leading-relaxed text-muted">Nie zastępujemy rekrutera, nie wysyłamy aplikacji za Ciebie i nie wpisujemy cudzych umiejętności. Dajemy Ci lepszy porządek, kontekst i chwilę oddechu przed kliknięciem „wyślij”.</p></div><button type="button" onClick={() => onOpenAdvisor()} className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-xs font-semibold text-ink hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"><WandSparkles className="h-4 w-4 text-brand-600" aria-hidden="true" />Pytania? Otwórz FAQ Doradcy</button></div>
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
-          {FEATURES.map((feature) => (
-            <Tile
-              key={feature.title}
-              title={feature.title}
-              description={feature.description}
-              action={feature.action}
-              icon={feature.icon}
-              lockReason={feature.target === 'pipeline' ? lockReasons?.pipeline : undefined}
-              onClick={() => onNavigate(feature.target)}
-            />
-          ))}
+      {/* ------------------------------------------------------- filary */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-6xl px-5 py-16 sm:px-6 lg:py-20">
+          <SectionLabel>Co dostajesz</SectionLabel>
+          <h2 className="mt-3 max-w-2xl text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
+            Cztery rzeczy, które robi Public Pre-Beta
+          </h2>
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            {PILLARS.map((p) => {
+              const lock = p.target === 'pipeline' ? lockReasons?.pipeline : undefined;
+              return (
+                <article
+                  key={p.title}
+                  onClick={() => !lock && handleStepClick(p.target)}
+                  className={`rounded-lg border border-line bg-elevated p-6 transition duration-ui ${
+                    lock ? 'opacity-85' : 'cursor-pointer hover:border-brand-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="grid h-10 w-10 place-items-center rounded-md bg-brand-50 text-brand-fg">
+                      <Icon>{p.icon}</Icon>
+                    </span>
+                    {lock && (
+                      <span className="rounded bg-sunken px-2 py-0.5 font-mono text-meta text-subtle">
+                        {lock}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-4 text-base font-semibold text-ink">{p.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted">{p.body}</p>
+                </article>
+              );
+            })}
+          </div>
         </div>
       </section>
 
-      <section className="flex flex-wrap items-center gap-x-6 gap-y-3 border-y border-line py-5 text-xs text-muted" aria-label="Zasady działania Kierivo">
-        <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Twoje fakty zostają Twoimi faktami.</span>
-        <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Wynik dopasowania jest własną analizą aplikacji.</span>
-        <span className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-success-fg" aria-hidden="true" />Przed eksportem zawsze widzisz dokument.</span>
+      {/* --------------------------------------------- zaufanie i dane */}
+      <section className="border-t border-line bg-sunken/60">
+        <div className="mx-auto grid max-w-6xl gap-8 px-5 py-16 sm:px-6 lg:grid-cols-2 lg:py-20">
+          <div>
+            <SectionLabel>Dane i uczciwość</SectionLabel>
+            <h2 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
+              Wiesz, gdzie leżą Twoje dane i czego wynik nie obiecuje
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-muted">
+              Kierivo ma dwa tryby. Lokalny trzyma profil roboczy w pamięci tej przeglądarki. Konto w
+              chmurze — jeśli je włączysz — synchronizuje vault z bazą przypisaną do Ciebie i
+              chronioną politykami dostępu.
+            </p>
+            <dl className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-line bg-elevated p-5">
+                <dt className="text-sm font-semibold text-ink">Tryb lokalny</dt>
+                <dd className="mt-2 text-sm text-muted">
+                  Profil nie opuszcza przeglądarki. Bez konta, bez rejestracji.
+                </dd>
+              </div>
+              <div className="rounded-lg border border-line bg-elevated p-5">
+                <dt className="text-sm font-semibold text-ink">Konto w chmurze</dt>
+                <dd className="mt-2 text-sm text-muted">
+                  Świadomie włączona synchronizacja, dostęp tylko dla właściciela vaultu.
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <aside className="rounded-lg border border-warning/40 bg-warning-soft/60 p-6">
+            <p className="font-mono text-label uppercase tracking-[0.16em] text-warning-fg">
+              Czego nie obiecujemy
+            </p>
+            <ul className="mt-4 space-y-3 text-sm leading-relaxed text-ink">
+              <li>
+                Wynik Kierivo to <strong className="font-semibold">własna, deterministyczna ocena</strong>{' '}
+                — nie jest wynikiem Workday, Greenhouse, Lever, Taleo ani innego zewnętrznego ATS.
+              </li>
+              <li>
+                Nie mamy dostępu do prywatnej konfiguracji rekrutera i nie gwarantujemy przejścia
+                filtra, zaproszenia na rozmowę ani zatrudnienia.
+              </li>
+              <li>
+                „Brak wykrytych rozbieżności” dotyczy zakresu, który faktycznie trafił do walidatora,
+                a nie całego dokumentu.
+              </li>
+              <li>
+                Doradca w interfejsie jest lokalnym modułem regułowym, nie czatem LLM, i nie czyta
+                sam Twojego vaultu.
+              </li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------- FAQ */}
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-3xl px-5 py-16 sm:px-6 lg:py-20">
+          <SectionLabel>Częste pytania</SectionLabel>
+          <h2 className="mt-3 text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
+            Zanim klikniesz
+          </h2>
+
+          <div className="mt-8 divide-y divide-line border-y border-line">
+            {FAQ.map((item) => (
+              <details key={item.q} className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-ink transition duration-fast hover:text-brand-fg">
+                  {item.q}
+                  <span
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-sm border border-line text-muted transition-transform duration-ui group-open:rotate-45"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
+                      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                </summary>
+                <div className="mt-3 pr-10 text-sm leading-relaxed text-muted space-y-2">
+                  <p>{item.a}</p>
+                  {item.q.includes('Doradca') && onOpenAdvisor && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAdvisor()}
+                      className="cursor-pointer font-semibold text-brand-fg hover:underline"
+                    >
+                      Otwórz pytania Doradcy →
+                    </button>
+                  )}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* -------------------------------------------------- domknięcie */}
+      <section className="border-t border-line bg-sunken/60">
+        <div className="relative mx-auto max-w-6xl overflow-hidden px-5 py-16 text-center sm:px-6 lg:py-24">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-[-30%] mx-auto h-[420px] w-[720px] rounded-full opacity-50 blur-3xl"
+            style={{
+              background:
+                'radial-gradient(closest-side, color-mix(in oklab, var(--color-violet) 20%, transparent), transparent)',
+            }}
+          />
+          <div className="relative">
+            <h2 className="mx-auto max-w-2xl text-2xl font-bold tracking-[-0.02em] text-ink sm:text-display-sm">
+              Sprawdź, jak Twoje CV wygląda przy jednym konkretnym ogłoszeniu
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-base text-muted">
+              Public Pre-Beta jest bezpłatna. Wklej treść CV, wklej ofertę i zobacz wynik w kilka
+              minut.
+            </p>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <PrimaryCta onClick={handleStart}>Sprawdź swoje CV — bezpłatnie</PrimaryCta>
+              <GhostCta onClick={handlePricing}>Co jest w tej wersji</GhostCta>
+            </div>
+            <p className="mt-6 font-mono text-meta uppercase tracking-[0.16em] text-subtle">
+              PB-2026.09 · cena 0 zł · bez checkoutu
+            </p>
+          </div>
+        </div>
       </section>
     </div>
   );
-};
+}
+
+export default HomeView;

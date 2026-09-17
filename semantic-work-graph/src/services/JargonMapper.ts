@@ -12,30 +12,87 @@ export interface JargonMapping {
 
 export const JARGON_DICTIONARY: Record<string, JargonMapping> = {
   // IT & Software Engineering Jargon
-  frontend: { canonical: 'Frontend', category: 'IT', synonyms: ['front-end', 'front end', 'fe', 'interfejs użytkownika'] },
-  backend: { canonical: 'Backend', category: 'IT', synonyms: ['back-end', 'back end', 'be', 'serwer'] },
+  frontend: { canonical: 'Frontend', category: 'IT', synonyms: ['front-end', 'front end', 'fe', 'interfejs użytkownika', 'frontendu'] },
+  backend: { canonical: 'Backend', category: 'IT', synonyms: ['back-end', 'back end', 'be', 'serwer', 'backendu'] },
   fullstack: { canonical: 'Fullstack', category: 'IT', synonyms: ['full-stack', 'full stack', 'programista wszechstronny'] },
   devops: { canonical: 'DevOps', category: 'IT', synonyms: ['dev-ops', 'inżynier operacyjny', 'sysadmin cloud'] },
   sysadmin: { canonical: 'Administrator sieci i systemów', category: 'IT', synonyms: ['admin', 'admin sieci', 'systemowiec'] },
   bug: { canonical: 'błąd oprogramowania', category: 'IT', synonyms: ['usterka', 'defekt', 'bugi'] },
   debugowanie: { canonical: 'debugowanie i optymalizacja', category: 'IT', synonyms: ['szukanie błędów', 'debugin', 'debugowanie'] },
   deploy: { canonical: 'wdrożenie produkcyjne', category: 'IT', synonyms: ['deployowanie', 'deploj', 'publikacja systemowa'] },
+  api: { canonical: 'interfejs programistyczny API', category: 'IT', synonyms: ['rest api', 'usługi sieciowe', 'endpointy'] },
+  cicd: { canonical: 'ciągła integracja i ciągłe wdrażanie (CI/CD)', category: 'IT', synonyms: ['ci/cd', 'ci cd', 'pipeline wdrożeniowy'] },
+  kubernetes: { canonical: 'orkiestracja kontenerów Kubernetes', category: 'IT', synonyms: ['k8s', 'k8', 'kube', 'klaster k8s'] },
+  refaktor: { canonical: 'refaktoryzacja i czyszczenie kodu', category: 'IT', synonyms: ['refaktoring', 'refactoring', 'porządkowanie kodu'] },
+  pull_request: { canonical: 'prośba o włączenie zmian (Pull Request)', category: 'IT', synonyms: ['pr', 'pull request', 'merge request', 'mr'] },
+  code_review: { canonical: 'przegląd kodu (Code Review)', category: 'IT', synonyms: ['review', 'recenzja kodu', 'code-review'] },
+  qa: { canonical: 'zapewnienie jakości i testowanie oprogramowania', category: 'IT', synonyms: ['quality assurance', 'testerka', 'kontrola jakości it'] },
 
   // Construction, HVAC & Plumbing Jargon
   co: { canonical: 'centralne ogrzewanie', category: 'Budownictwo', synonyms: ['c.o.', 'co', 'instalacja co', 'ogrzewanie centralne'] },
   cwu: { canonical: 'ciepła woda użytkowa', category: 'Budownictwo', synonyms: ['c.w.u.', 'cwu', 'woda użytkowa'] },
   hvac: { canonical: 'HVAC i Klimatyzacja', category: 'Budownictwo', synonyms: ['hvac', 'klimatyzacja', 'wentylacja', 'klima'] },
   junkers: { canonical: 'kocioł gazowy / piecyk gazowy', category: 'Budownictwo', synonyms: ['junkers', 'junkersy', 'piecyk gazowy', 'terma gazowa'] },
-  podlogowka: { canonical: 'ogrzewanie podłogowe', category: 'Budownictwo', synonyms: ['podłogówka', 'instalacja podłogowa'] },
+  podlogowka: { canonical: 'ogrzewanie podłogowe', category: 'Budownictwo', synonyms: ['podłogówka', 'instalacja podłogowa', 'ogrzewanie płaszczyznowe'] },
+  sep: { canonical: 'uprawnienia elektryczne SEP (E+D)', category: 'Elektryka', synonyms: ['sep', 'uprawnienia sep', 'sep do 1kv', 'grupa g1'] },
+  udt: { canonical: 'uprawnienia Urzędu Dozoru Technicznego (UDT)', category: 'Technika', synonyms: ['udt', 'uprawnienia udt', 'dozór techniczny'] },
+  fgaz: { canonical: 'certyfikat F-Gazy (substancje zubożające)', category: 'Instalacje', synonyms: ['f-gaz', 'fgazy', 'f-gazy', 'uprawnienia chłodnicze'] },
+  rekuperacja: { canonical: 'wentylacja mechaniczna z odzyskiem ciepła', category: 'Budownictwo', synonyms: ['rekuperator', 'rekuperatory', 'odzysk ciepła'] },
+  pompa_ciepla: { canonical: 'pompa ciepła powietrze-woda / gruntowa', category: 'Budownictwo', synonyms: ['pompa ciepła', 'pompy ciepła', 'pc'] },
+  rozdzielnica: { canonical: 'rozdzielnica elektryczna nN', category: 'Elektryka', synonyms: ['rozdzielnia', 'skrzynka bezpiecznikowa', 'tablica rozdzielcza'] },
+  bezpiecznik: { canonical: 'wyłącznik nadprądowy / bezpiecznik', category: 'Elektryka', synonyms: ['esy', 'bezpieczniki', 'nadprądówka', 'różnicówka', 'rcd'] },
+  pex: { canonical: 'rury wielowarstwowe PEX/Al/PEX', category: 'Instalacje', synonyms: ['pex', 'rura pex', 'instalacja pex'] },
+  geberit: { canonical: 'podtynkowy stelaż sanitarny', category: 'Instalacje', synonyms: ['geberit', 'stelaż podtynkowy', 'spłuczka podtynkowa'] },
+  szpachla: { canonical: 'szpachlowanie i gładź gipsowa', category: 'Budownictwo', synonyms: ['gładzie', 'szpachlowanie ścian', 'szpachla'] },
+  regips: { canonical: 'sucha zabudowa z płyt gipsowo-kartonowych (G-K)', category: 'Budownictwo', synonyms: ['g-k', 'regipsy', 'płyta gipsowa', 'kartongips'] },
+  peszel: { canonical: 'rura osłonowa karbowana (peszel)', category: 'Elektryka', synonyms: ['peszel', 'peszle', 'rura osłonowa'] },
+  dylatacja: { canonical: 'szczelina dylatacyjna', category: 'Budownictwo', synonyms: ['dylatacja', 'szczeliny dylatacyjne', 'taśma dylatacyjna'] },
 
   // Welding & Industrial Jargon
-  tig: { canonical: 'spawanie TIG (metoda 141)', category: 'Technika', synonyms: ['tig', 'spawanie nietopliwą'] },
-  mag: { canonical: 'spawanie MAG (metoda 135)', category: 'Technika', synonyms: ['mag', 'mig', 'migomat', 'półautomat'] },
-  sla: { canonical: 'Service Level Agreement (SLA)', category: 'Serwis', synonyms: ['sla', 'reżim sla', 'umowa serwisowa'] },
+  tig: { canonical: 'spawanie TIG (metoda 141)', category: 'Technika', synonyms: ['tig', 'spawanie nietopliwą', 'metoda 141'] },
+  mag: { canonical: 'spawanie MAG (metoda 135)', category: 'Technika', synonyms: ['mag', 'mig', 'migomat', 'półautomat', 'metoda 135'] },
+  mma: { canonical: 'spawanie elektrodą otuloną (metoda 111)', category: 'Technika', synonyms: ['mma', 'spawanie elektrodą', 'metoda 111'] },
+  cnc: { canonical: 'obrabiarki sterowane numerycznie CNC', category: 'Technika', synonyms: ['cnc', 'maszyny cnc', 'frezarka cnc', 'tokarka cnc'] },
+  plc: { canonical: 'programowalny sterownik logiczny PLC', category: 'Automatyka', synonyms: ['plc', 'sterowniki plc', 'automatyka przemysłowa'] },
+  scada: { canonical: 'system nadzoru i wizualizacji SCADA', category: 'Automatyka', synonyms: ['scada', 'system scada', 'wizualizacja procesów'] },
+  dtr: { canonical: 'Dokumentacja Techniczno-Ruchowa (DTR)', category: 'Technika', synonyms: ['dtr', 'dokumentacja dtr', 'instrukcja stanowiskowa'] },
+  widlak: { canonical: 'wózek jezdniowy podnośnikowy (widłowy)', category: 'Logistyka', synonyms: ['widlak', 'wózek widłowy', 'wózki widłowe', 'sztaplarka'] },
+  suwnica: { canonical: 'suwnica pomostowa sterowana z poziomu roboczego', category: 'Technika', synonyms: ['suwnica', 'obsługa suwnic', 'suwnice'] },
+  tpm: { canonical: 'Total Productive Maintenance (TPM)', category: 'Produkcja', synonyms: ['tpm', 'utrzymanie ruchu', 'prewencyjne utrzymanie maszyn'] },
+  mikrometr: { canonical: 'mikrometr i przyrządy mikrometryczne', category: 'Technika', synonyms: ['mikromierz', 'śruba mikrometryczna'] },
+  suwmiarka: { canonical: 'suwmiarka noniuszowa / cyfrowa', category: 'Technika', synonyms: ['suwmiarki', 'pomiar suwmiarką'] },
 
   // Automotive Jargon
   obd: { canonical: 'diagnostyka komputerowa OBD2', category: 'Motoryzacja', synonyms: ['obd2', 'obd', 'komputer diagnostyczny'] },
-  rozrzad: { canonical: 'układ rozrządu', category: 'Motoryzacja', synonyms: ['rozrząd', 'wymiana rozrządu'] },
+  rozrzad: { canonical: 'układ rozrządu', category: 'Motoryzacja', synonyms: ['rozrząd', 'wymiana rozrządu', 'pasek rozrządu'] },
+  dpf: { canonical: 'filtr cząstek stałych DPF/FAP', category: 'Motoryzacja', synonyms: ['dpf', 'fap', 'czyszczenie dpf', 'wypalanie dpf'] },
+  egr: { canonical: 'zawór recyrkulacji spalin (EGR)', category: 'Motoryzacja', synonyms: ['egr', 'zawór egr', 'recyrkulacja spalin'] },
+  dwumasa: { canonical: 'koło dwumasowe ze sprzęgłem', category: 'Motoryzacja', synonyms: ['dwumasa', 'koło zamachowe dwumasowe'] },
+  can_bus: { canonical: 'magistrala komunikacyjna CAN', category: 'Motoryzacja', synonyms: ['can', 'szyna can', 'can bus'] },
+
+  // Logistics & Transport Jargon
+  wms: { canonical: 'magazynowy system informatyczny (WMS)', category: 'Logistyka', synonyms: ['wms', 'system wms', 'oprogramowanie magazynowe'] },
+  adr: { canonical: 'przewóz towarów niebezpiecznych (ADR)', category: 'Transport', synonyms: ['adr', 'uprawnienia adr', 'przewóz adr'] },
+  tachograf: { canonical: 'tachograf cyfrowy i czas pracy kierowcy', category: 'Transport', synonyms: ['tacho', 'karta kierowcy', 'odczyt tacho'] },
+  picker: { canonical: 'kompletacja zamówień (order picking)', category: 'Logistyka', synonyms: ['picker', 'zbieracz', 'kompletator'] },
+  paleciak: { canonical: 'ręczny / elektryczny wózek paletowy', category: 'Logistyka', synonyms: ['paleciak', 'wózek paletowy', 'transpaleta'] },
+  fifo: { canonical: 'zasada rotacji zapasów FIFO (First In, First Out)', category: 'Logistyka', synonyms: ['fifo', 'metoda fifo', 'rotacja towaru'] },
+  cross_docking: { canonical: 'przeładunek kompletacyjny (Cross-docking)', category: 'Logistyka', synonyms: ['cross-docking', 'crossdocking', 'przeładunek bezmagazynowy'] },
+  cmr: { canonical: 'międzynarodowy list przewozowy CMR', category: 'Transport', synonyms: ['cmr', 'list cmr', 'dokument przewozowy'] },
+
+  // Medical, Lab & Diagnostics Jargon
+  ekg: { canonical: 'elektrokardiografia (badanie EKG)', category: 'Medycyna', synonyms: ['ekg', 'zapis ekg', 'aparat ekg'] },
+  usg: { canonical: 'badanie ultrasonograficzne (USG)', category: 'Medycyna', synonyms: ['usg', 'ultrasonograf', 'badanie usg'] },
+  rtg: { canonical: 'badanie rentgenowskie (RTG)', category: 'Medycyna', synonyms: ['rtg', 'rentgen', 'zdjęcie rtg'] },
+  wklucie: { canonical: 'kaniulacja żył obwodowych (wenflon)', category: 'Medycyna', synonyms: ['wenflon', 'wkłucie dożylne', 'kaniula'] },
+  sterylizacja: { canonical: 'sterylizacja i autoklawowanie narzędzi', category: 'Medycyna', synonyms: ['autoklaw', 'sterylizator', 'dekontaminacja'] },
+  aseptyka: { canonical: 'zasady aseptyki i antyseptyki medycznej', category: 'Medycyna', synonyms: ['antyseptyka', 'pole operacyjne aseptyczne'] },
+
+  // Finance, Administration & Quality Jargon
+  kpi: { canonical: 'kluczowe wskaźniki efektywności (KPI)', category: 'Zarządzanie', synonyms: ['kpi', 'wskaźniki kpi', 'mierniki efektywności'] },
+  crm: { canonical: 'system zarządzania relacjami z klientami (CRM)', category: 'Sprzedaż', synonyms: ['crm', 'system crm', 'baza crm'] },
+  erp: { canonical: 'zintegrowany system zarządzania przedsiębiorstwem (ERP)', category: 'Zarządzanie', synonyms: ['erp', 'system erp', 'oprogramowanie erp'] },
+  iso9001: { canonical: 'system zarządzania jakością ISO 9001', category: 'Jakość', synonyms: ['iso 9001', 'iso9001', 'norma iso'] },
 };
 
 /** Maksymalna długość frazy (w tokenach) sprawdzana w tezaurusie. */

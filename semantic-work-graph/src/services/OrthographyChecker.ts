@@ -3,17 +3,59 @@
  * Handles common orthographic errors: rz / ż, ch / h, ó / u, e.g., pieczyk vs piecyk
  */
 export const COMMON_TYPOS_MAP: Record<string, string> = {
+  // Prace instalacyjne, budowlane i rzemieślnicze
   pieczyk: 'piecyk',
+  piecyck: 'piecyk',
   kociol: 'kocioł',
+  kotol: 'kocioł',
   swawacz: 'spawacz',
   spawac: 'spawacz',
+  spawarke: 'spawarka',
   iunkers: 'junkers',
+  junkes: 'junkers',
   serwisowac: 'serwisować',
+  serwisantem: 'serwisant',
   montaz: 'montaż',
+  montowac: 'montować',
   elektrik: 'elektryk',
-  programista: 'programista',
+  elektyk: 'elektryk',
+  hidraulik: 'hydraulik',
+  hydraolik: 'hydraulik',
+  dekarż: 'dekarz',
+  slusarz: 'ślusarz',
+  szlusarz: 'ślusarz',
+  tokaż: 'tokarz',
+  frezer: 'frezarz',
+  lutowac: 'lutować',
+  spachlowanie: 'szpachlowanie',
+  szpahlowanie: 'szpachlowanie',
+  rekurperacja: 'rekuperacja',
+  klimatyzacjia: 'klimatyzacja',
+  rozdzielnia: 'rozdzielnica',
+  submiarka: 'suwmiarka',
+  widlowy: 'widłowy',
+  wozek: 'wózek',
+
+  // Logistyka, transport i motoryzacja
+  magazynjer: 'magazynier',
+  mehanik: 'mechanik',
+  kierowca: 'kierowca',
+  inwentaryzacjia: 'inwentaryzacja',
+  tahograf: 'tachograf',
+  diagnostycka: 'diagnostyka',
+  rozzad: 'rozrząd',
+
+  // IT, inżynieria i biuro
   fraontend: 'frontend',
-  baza: 'baza',
+  fronted: 'frontend',
+  bekend: 'backend',
+  backned: 'backend',
+  programer: 'programista',
+  arhitektura: 'architektura',
+  wdrozenie: 'wdrożenie',
+  konfigoracja: 'konfiguracja',
+  algorytem: 'algorytm',
+  uprawnenia: 'uprawnienia',
 };
 
 export class OrthographyChecker {

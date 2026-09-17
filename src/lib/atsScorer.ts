@@ -100,6 +100,11 @@ export const STUFFING_DENSITY_THRESHOLD = 3;
  * programisty. Dokonaność potwierdza prefiks (z-, wy-, za-, na-, po-, prze-),
  * którego czasowniki niedokonane zwykle nie mają; heurystyka w
  * `hasPerfectiveVerb` łapie formy spoza listy.
+ *
+ * Utrzymuj w synchronizacji ze słownikiem grafu (`ACTION_VERBS` w
+ * `semantic-work-graph/src/seed/lexicon/PolishMorphology.ts`): każda forma
+ * stąd ma mieć tam swój lemat, inaczej licznik sprawczości i lematyzator
+ * rozjadą się na tym samym CV.
  */
 export const PERFECTIVE_VERBS: ReadonlySet<string> = new Set([
   'wdrożyłem', 'wdrożyłam', 'zbudowałem', 'zbudowałam',

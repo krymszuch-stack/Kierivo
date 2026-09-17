@@ -170,8 +170,83 @@ describe('Leksykon: deterministyczna lematyzacja PL i tezaurus umiejętności ES
       ['programuję', 'programować'],
       ['obsługuję', 'obsługiwać'],
       ['utrzymywałem', 'utrzymywać'],
+      // Naprawiona klasa -ić: 1 os. lp traci „i" (szkolę, nie „szkolię"),
+      // a wygłos mięknie (prowadzę, wożę, płacę).
+      ['szkolę', 'szkolić'],
+      ['szkolą', 'szkolić'],
+      ['szkolenie', 'szkolić'],
+      ['prowadzę', 'prowadzić'],
+      ['prowadzą', 'prowadzić'],
+      ['prowadzenie', 'prowadzić'],
+      ['przewożę', 'przewozić'],
+      ['zbroję', 'zbroić'],
+      ['zbrojenie', 'zbroić'],
+      ['wiercę', 'wiercić'],
+      ['zwiększę', 'zwiększyć'],
+      ['rozliczę', 'rozliczyć'],
+      ['rozliczenie', 'rozliczyć'],
+      // Klasa -jąć i temat -aj-: przyjmę, wydaję (nie „wydawam").
+      ['przyjmę', 'przyjąć'],
+      ['przyjmują', 'przyjmować'],
+      ['przyjęcie', 'przyjąć'],
+      ['wydaję', 'wydawać'],
+      ['wydam', 'wydać'],
+      ['sprzedaję', 'sprzedawać'],
+      ['podaję', 'podawać'],
+      ['pobieram', 'pobierać'],
+      // Oboczność ą→ę: tnę/cięła, podniosłem, docięłem.
+      ['tnę', 'ciąć'],
+      ['tną', 'ciąć'],
+      ['cięła', 'ciąć'],
+      ['cięcie', 'ciąć'],
+      ['docięłem', 'dociąć'],
+      ['dotnę', 'dociąć'],
+      ['gnę', 'giąć'],
+      ['gięła', 'giąć'],
+      ['podniosłem', 'podnieść'],
+      ['podniosą', 'podnieść'],
+      ['przewiozę', 'przewieźć'],
+      ['przewiozła', 'przewieźć'],
+      // Pary aspektowe pod licznik sprawczości ATS (PERFECTIVE_VERBS).
+      ['przeszkoliłem', 'przeszkolić'],
+      ['zakończyłem', 'zakończyć'],
+      ['sprawdziłem', 'sprawdzić'],
+      ['zabezpieczyłem', 'zabezpieczyć'],
+      ['odtworzyłem', 'odtworzyć'],
+      ['zsynchronizowałem', 'zsynchronizować'],
+      ['zdobyłem', 'zdobyć'],
+      ['zdobędę', 'zdobyć'],
+      ['ukończyłem', 'ukończyć'],
+      ['uzyskałem', 'uzyskać'],
+      ['wymieniłem', 'wymienić'],
+      ['wykonałem', 'wykonać'],
+      ['skontrolowałem', 'skontrolować'],
+      ['przyspawałem', 'przyspawać'],
+      ['ustawiłem', 'ustawić'],
+      ['poprowadziłem', 'poprowadzić'],
+      ['zdiagnozowałem', 'zdiagnozować'],
+      ['skróciłem', 'skrócić'],
+      ['wystawiłem', 'wystawić'],
+      ['oddałem', 'oddać'],
+      ['podpiszę', 'podpisać'],
+      // Prace fizyczne: tynkuję, muruję, spawam, toczę, kompletuję.
+      ['tynkuję', 'tynkować'],
+      ['tynkowanie', 'tynkować'],
+      ['murowanie', 'murować'],
+      ['szpachlowaniem', 'szpachlować'],
+      ['toczeniu', 'toczyć'],
+      ['frezowaniu', 'frezować'],
+      ['magazynowaniu', 'magazynować'],
+      ['wożę', 'wozić'],
     ])('sprowadza odmieniony czasownik akcji %s do bezokolicznika %s', (form, lemma) => {
       expect(engine.lemmatize(form)).toBe(lemma);
+    });
+
+    it('nie zawiera nieistniejących form klasy -ić („szkolię", „prowadzią")', () => {
+      // Stara reguła generowała je do słownika; po naprawie lematyzacja
+      // pracuje w trybie tożsamościowym zamiast potwierdzać błąd.
+      expect(engine.lemmatize('szkolię')).toBe('szkolię');
+      expect(engine.lemmatize('prowadzią')).toBe('prowadzią');
     });
 
     it.each([
@@ -192,8 +267,66 @@ describe('Leksykon: deterministyczna lematyzacja PL i tezaurus umiejętności ES
       ['aplikacji', 'aplikacja'],
       ['środowiskach', 'środowisko'],
       ['narzędzi', 'narzędzie'],
+      // Zawody fizyczne i techniczne w przypadkach zależnych.
+      ['spawaczy', 'spawacz'],
+      ['spawaczem', 'spawacz'],
+      ['tokarze', 'tokarz'],
+      ['hydraulikiem', 'hydraulik'],
+      ['monterzy', 'monter'],
+      ['magazynierów', 'magazynier'],
+      ['kierowców', 'kierowca'],
+      ['inżynierowie', 'inżynier'],
+      ['magistra', 'magister'],
+      ['magistrowie', 'magister'],
+      // Formy żeńskie: ogłoszenia i CV kandydatek.
+      ['księgowej', 'księgowa'],
+      ['pielęgniarki', 'pielęgniarka'],
+      ['programistki', 'programistka'],
+      ['sprzedawcy', 'sprzedawca'],
+      // Formalia z ogłoszeń: uprawnienia, wykształcenie, języki.
+      ['uprawnień', 'uprawnienie'],
+      ['licencji', 'licencja'],
+      ['kwalifikacji', 'kwalifikacja'],
+      ['świadectwa', 'świadectwo'],
+      ['studiów', 'studia'],
+      ['uczelni', 'uczelnia'],
+      ['dyplomu', 'dyplom'],
+      ['technikum', 'technikum'],
+      ['kategorii', 'kategoria'],
+      // Narzędzia, materiały i logistyka.
+      ['przewodzie', 'przewód'],
+      ['obwody', 'obwód'],
+      ['kabli', 'kabel'],
+      ['wózkiem', 'wózek'],
+      ['palety', 'paleta'],
+      ['zamówień', 'zamówienie'],
+      ['fakturze', 'faktura'],
+      ['wycenie', 'wycena'],
+      ['kompletacji', 'kompletacja'],
+      ['paletyzacji', 'paletyzacja'],
+      ['inwentaryzacji', 'inwentaryzacja'],
+      ['spedycji', 'spedycja'],
+      ['logistyce', 'logistyka'],
+      ['rozdzielnicy', 'rozdzielnica'],
+      ['suwnicy', 'suwnica'],
+      ['tolerancji', 'tolerancja'],
+      ['przeglądu', 'przegląd'],
+      ['kół', 'koło'],
     ])('sprowadza odmieniony rzeczownik %s do mianownika %s', (form, lemma) => {
       expect(engine.lemmatize(form)).toBe(lemma);
+    });
+
+    it('odmienia przymiotniki domenowe: -ski po spółgłosce, języki, poziomy', () => {
+      expect(engine.lemmatize('tokarskiego')).toBe('tokarski');
+      expect(engine.lemmatize('tokarskim')).toBe('tokarski');
+      expect(engine.lemmatize('spawalniczego')).toBe('spawalniczy');
+      expect(engine.lemmatize('elektrycznym')).toBe('elektryczny');
+      expect(engine.lemmatize('angielskiego')).toBe('angielski');
+      expect(engine.lemmatize('niemieckim')).toBe('niemiecki');
+      expect(engine.lemmatize('zaawansowanym')).toBe('zaawansowany');
+      expect(engine.lemmatize('biegłej')).toBe('biegły');
+      expect(engine.lemmatize('stalowych')).toBe('stalowy');
+      expect(engine.lemmatize('widłowy')).toBe('widłowy');
     });
 
     it('obsługuje formy nieregularne z obocznością tematu (ó→o, ą→ę)', () => {
@@ -420,6 +553,16 @@ describe('Leksykon: deterministyczna lematyzacja PL i tezaurus umiejętności ES
       ['microservices', 'mikroserwis'],
       ['machine learning', 'uczenie maszynowe'],
       ['gdpr', 'rodo'],
+      // Kompetencje fizyczne: żargon warsztatu i budowy na nazwy bazowe.
+      ['tig 141', 'spawanie tig'],
+      ['migomat', 'spawanie mag'],
+      ['operator cnc', 'obsługa obrabiarek cnc'],
+      ['cnc', 'obsługa obrabiarek cnc'],
+      ['uprawnienia sep', 'instalacje elektryczne'],
+      ['wod-kan', 'instalacje sanitarne'],
+      ['obd2', 'diagnostyka pojazdów'],
+      ['wms', 'gospodarka magazynowa'],
+      ['kadry i płace', 'księgowość'],
     ])('mapuje wariant %s na nazwę bazową %s', (term, canonical) => {
       expect(mapper.findCanonicalSkill(term)).toBe(canonical);
     });
@@ -699,6 +842,112 @@ describe('Leksykon: deterministyczna lematyzacja PL i tezaurus umiejętności ES
       expect(result.lemmas.length).toBeGreaterThan(0);
       expect(result.actorProfessions).toContain('serwisant');
       expect(result.verbalNouns).toContain('serwisowanie');
+    });
+
+    it('mapuje czynności na aktorów dla ról testerskich i biurowych', () => {
+      expect(engine.processQuery('testowałem backend aplikacji').actorProfessions).toContain('tester');
+      expect(engine.processQuery('kontrolowałem jakość spoin').actorProfessions).toContain('kontroler');
+      expect(engine.processQuery('szkoliłem nowych pracowników').actorProfessions).toContain('trener');
+      expect(engine.processQuery('rekrutowałem handlowców').actorProfessions).toContain('rekruter');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Reguła 8: domena to prace fizyczne, nie tylko IT
+  //
+  // Miara to pokrycie niesymetryczne (ile wymagań z ogłoszenia pokrywa CV),
+  // nie symetryczny Jaccard — tak samo pyta silnik ATS. Pary dobrane tak, by
+  // różnić się fleksją (osoba, przypadek, gerund), a nie derywacją:
+  // „księgować" i „księgowość" to osobne lematy z definicji (patrz test
+  // „rozróżnia derywację" wyżej), więc scenariusz ich nie miesza.
+  // ---------------------------------------------------------------------------
+
+  describe('scenariusze fizyczne: spawacz, monter, magazynier, księgowa', () => {
+    it('spawacz: CV w 1 os. pokrywa wymagania ogłoszenia', () => {
+      const cv = 'Spawałem konstrukcje stalowe metodą MAG, szlifowałem spoiny i montowałem elementy.';
+      const oferta = 'Spawanie MAG, szlifowanie, montaż konstrukcji stalowych.';
+
+      // „montować" vs „montaż" to derywacja (osobne lematy, jak
+      // „księgować"/„księgowość" w teście derywacyjnym) — pokryte jest 5 z 6.
+      expect(engine.calculateLemmaCoverage(oferta, cv)).toBeGreaterThan(0.7);
+      expect(mapper.findCanonicalSkill('migomat')).toBe('spawanie mag');
+    });
+
+    it('monter: instalacje sanitarne i lutowanie w obu wariantach składni', () => {
+      const cv = 'Montowałem instalacje sanitarne i grzejniki, lutowałem rury miedziane.';
+      const oferta = 'Montaż instalacji sanitarnych, lutowanie, uprawnienia SEP.';
+
+      // Niepokryte: „montaż" (derywacja od „montować", nie fleksja),
+      // „uprawnienie" i „sep" — CV ich nie wymienia, więc pełne pokrycie
+      // byłoby kłamstwem; 3 z 6 wymagań to uczciwe 0.5.
+      expect(engine.calculateLemmaCoverage(oferta, cv)).toBeGreaterThan(0.4);
+      expect(mapper.findCanonicalSkill('uprawnienia sep')).toBe('instalacje elektryczne');
+    });
+
+    it('magazynier: kompletacja, wózek widłowy i paletyzacja', () => {
+      const cv = 'Kompletowałem zamówienia, obsługiwałem wózek widłowy, foliowałem palety.';
+      const oferta = 'Kompletacja zamówień, wózek widłowy, paletyzacja.';
+
+      // „kompletować" vs „kompletacja" i „foliować" vs „paletyzacja" to
+      // derywacja, nie fleksja — pokryte są 3 z 5 wymagań.
+      expect(engine.calculateLemmaCoverage(oferta, cv)).toBeGreaterThan(0.5);
+      expect(mapper.findCanonicalSkill('wms')).toBe('gospodarka magazynowa');
+    });
+
+    it('księgowa: forma żeńska i gerundy z ogłoszenia', () => {
+      const cv = 'Księgowałam faktury, rozliczałam VAT, prowadziłam pełną księgowość.';
+      const oferta = 'Prowadzenie pełnej księgowości, księgowanie faktur, rozliczanie VAT.';
+
+      expect(engine.calculateLemmaCoverage(oferta, cv)).toBeGreaterThan(0.8);
+      expect(mapper.findCanonicalSkill('kadry i płace')).toBe('księgowość');
+    });
+  });
+
+  describe('wzmocnione słownictwo zawodowe i gramatyczne (wzrost 3x)', () => {
+    it.each([
+      ['toczeniem elementów na tokarkach', 'tokarz', 'toczenie'],
+      ['frezowaniem matryc przemysłowych', 'frezarz', 'frezowanie'],
+      ['tynkowaniem ścian i sufitów', 'tynkarz', 'tynkowanie'],
+      ['magazynowaniem towarów i palet', 'magazynier', 'magazynowanie'],
+      ['kompletacją zamówień w systemie wms', 'kompletator', 'kompletacja'],
+      ['księgowaniem faktur vat', 'księgowy', 'księgowość'],
+      ['lutowaniem rur miedzianych', 'lutowacz', 'lutowanie'],
+      ['szlifowaniem odlewów i konstrukcji', 'szlifierz', 'szlifowanie'],
+    ])('przekształca frazę "%s" na profesję "%s" i odsłownik "%s"', (phrase, expectedProfession, expectedNoun) => {
+      const result = engine.processQuery(phrase);
+      expect(result.actorProfessions).toContain(expectedProfession);
+      expect(result.verbalNouns).toContain(expectedNoun);
+    });
+
+    it('lematyzuje narzędzia, aparaturę i instalacje branżowe', () => {
+      expect(engine.lemmatize('falownikiem')).toBe('falownik');
+      expect(engine.lemmatize('rozdzielnicy')).toBe('rozdzielnica');
+      expect(engine.lemmatize('przewodami')).toBe('przewód');
+      expect(engine.lemmatize('siłowniku')).toBe('siłownik');
+      expect(engine.lemmatize('suwmiarką')).toBe('suwmiarka');
+      expect(engine.lemmatize('bruzdownicą')).toBe('bruzdownica');
+      expect(engine.lemmatize('zbrojenia')).toBe('zbroić');
+      expect(engine.lemmatize('manometrem')).toBe('manometr');
+    });
+
+    it('poprawnie odmienia i lematyzuje przymiotniki zawodowe o miękkich tematach', () => {
+      expect(engine.lemmatize('dekarskiego')).toBe('dekarski');
+      expect(engine.lemmatize('ciesielskim')).toBe('ciesielski');
+      expect(engine.lemmatize('hydraulicznych')).toBe('hydrauliczny');
+      expect(engine.lemmatize('spawalniczym')).toBe('spawalniczy');
+      expect(engine.lemmatize('chłodniczej')).toBe('chłodniczy');
+    });
+
+    it('rozpoznaje rozszerzony żargon zawodowy i uprawnienia', () => {
+      const sepRes = mapper.normalizeJargon('posiadam uprawnienia sep oraz udt');
+      expect(sepRes.isJargonMatched).toBe(true);
+      expect(sepRes.canonicalText).toContain('uprawnienia elektryczne SEP');
+      expect(sepRes.canonicalText).toContain('uprawnienia Urzędu Dozoru Technicznego');
+
+      const hvacRes = mapper.normalizeJargon('montaż podlogowka oraz rekuperacja');
+      expect(hvacRes.isJargonMatched).toBe(true);
+      expect(hvacRes.canonicalText).toContain('ogrzewanie podłogowe');
+      expect(hvacRes.canonicalText).toContain('wentylacja mechaniczna z odzyskiem ciepła');
     });
   });
 });

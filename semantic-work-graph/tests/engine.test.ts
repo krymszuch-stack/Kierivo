@@ -47,6 +47,10 @@ describe('Bilingual Polish/English & Morphological Linguistic Suite', () => {
 
     expect(res.hasCorrection).toBe(true);
     expect(res.correctedText).toBe('piecyk gazowy');
+
+    const resTrades = checker.correctOrthography('hidraulik i dekarż wykonali spachlowanie oraz montaz');
+    expect(resTrades.hasCorrection).toBe(true);
+    expect(resTrades.correctedText).toBe('hydraulik i dekarz wykonali szpachlowanie oraz montaż');
   });
 
   it('powinien dokonać transformacji czasownikowo-przypadkowej (np. serwisowanie -> serwisant)', () => {

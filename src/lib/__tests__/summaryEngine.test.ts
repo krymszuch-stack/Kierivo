@@ -5,6 +5,7 @@ import {
   recordPositiveFeedback,
   loadLearnedLexicon,
   harvestNewPatterns,
+  LEXICON,
 } from '../summaryEngine';
 import { MasterVault } from '../../types';
 import { wipeAppStorage } from '../storage';
@@ -156,6 +157,31 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
     const first = suggestions[0].text;
     expect(first).not.toContain('{');
     expect(first.toLowerCase()).toContain('monter');
+  });
+
+  it('zawiera wzmocniony bank leksemów (LEXICON) o objętości powyżej 200 pozycji (wzrost 3x)', () => {
+    expect(LEXICON.adjectives.junior.length).toBeGreaterThanOrEqual(12);
+    expect(LEXICON.adjectives.mid.length).toBeGreaterThanOrEqual(12);
+    expect(LEXICON.adjectives.senior.length).toBeGreaterThanOrEqual(12);
+    expect(LEXICON.adjectives.lead.length).toBeGreaterThanOrEqual(12);
+
+    expect(LEXICON.achieveVerbs.it.length).toBeGreaterThanOrEqual(15);
+    expect(LEXICON.achieveVerbs.trades.length).toBeGreaterThanOrEqual(15);
+    expect(LEXICON.achieveVerbs.medical.length).toBeGreaterThanOrEqual(15);
+    expect(LEXICON.achieveVerbs.sales.length).toBeGreaterThanOrEqual(15);
+    expect(LEXICON.achieveVerbs.general.length).toBeGreaterThanOrEqual(15);
+
+    expect(LEXICON.connectors.length).toBeGreaterThanOrEqual(15);
+    expect(LEXICON.valuePrefixes.length).toBeGreaterThanOrEqual(12);
+
+    const totalEntries =
+      Object.values(LEXICON.adjectives).flat().length +
+      Object.values(LEXICON.achieveVerbs).flat().length +
+      LEXICON.connectors.length +
+      Object.values(LEXICON.impactPhrases).flat().length +
+      LEXICON.valuePrefixes.length;
+
+    expect(totalEntries).toBeGreaterThanOrEqual(200);
   });
 
   describe('Samouczący się bank leksemów i adaptacyjne wagi (RLAIF / Knowledge Distillation)', () => {
