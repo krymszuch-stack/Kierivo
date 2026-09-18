@@ -274,7 +274,8 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
       skill.replace(/[.+]/g, '\\$&');
     const boundary = skill === 'C' ? '(?<![A-Za-z0-9+#])C(?![A-Za-z0-9+#])' :
       `(?<![\\p{L}\\p{N}])${term}(?![\\p{L}\\p{N}])`;
-    return new RegExp(boundary, 'iu').test(source);
+    // Małe „jest” w polskim zdaniu nie może być nazwą frameworka testowego.
+    return skill === 'Jest' ? new RegExp(boundary, 'u').test(source) : new RegExp(boundary, 'iu').test(source);
   });
   const required = Array.from(new Set(findSkills(requiredLines.join('\n'))));
   const nice = Array.from(new Set(findSkills(niceLines.join('\n')))).filter((skill) => !required.includes(skill));
@@ -284,9 +285,11 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
   const softNames = ['Praca zespołowa', 'Komunikatywność', 'Analityczne myślenie', 'Rozwiązywanie problemów', 'Mentoring'];
   const soft = softNames.filter((skill) => new RegExp(skill, 'i').test(requiredLines.join('\n')));
   const niceSoft = softNames.filter((skill) => new RegExp(skill, 'i').test(niceLines.join('\n')));
-  const structuredLanguages = lines.flatMap((line) => {
+  const structuredLanguages = lines.flatMap((line, index) => {
     const match = line.match(/\b(angielski|niemiecki|francuski|hiszpański|polski|english|german|french|spanish)\b(?:\s*\(([^)]*)\))?/i);
-    return match ? [{ language: match[1], level: match[2], required: requiredLines.includes(line) || /wymagan|minimum|min\./i.test(line), sourceText: line }] : [];
+    const previousLine = lines[index - 1] || '';
+    const requiredByHeader = /^wymagane języki\b/i.test(previousLine);
+    return match ? [{ language: match[1], level: match[2], required: requiredLines.includes(line) || /wymagan|minimum|min\./i.test(line) || requiredByHeader, sourceText: line }] : [];
   });
   const lower = text.toLocaleLowerCase('pl-PL');
   const experienceMatch = lower.match(/(?:minimum|min\.?|co najmniej|at least)\s*(\d{1,2})\s*\+?\s*(?:lat|lata|years?)/i) ||

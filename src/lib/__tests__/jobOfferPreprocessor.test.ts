@@ -131,6 +131,31 @@ Dyspozycyjność w weekendy.`);
     expect(parsed[1].seniorityLevel).toBe('SENIOR');
   });
 
+  it('odcina tytuł nieinformatycznej oferty sklejony z profilem poprzedniej firmy', () => {
+    const result = preprocessJobOfferPaste(`Pracownik kuchni
+Restauracja A sp. z o.o.O firmie
+Warszawa
+umowa o pracę
+praca stacjonarna
+Twój zakres obowiązków
+Przygotowanie dań.
+Nasze wymagania
+Chęć do pracy.
+O nas
+Restauracja A działa lokalnie.Kucharz (m/k)
+Restauracja B sp. z o.o.
+Restauracja B sp. z o.o.O firmie
+Warszawa
+umowa zlecenie
+praca stacjonarna
+Twój zakres obowiązków
+Przygotowanie potraw.`);
+    const unique = result.segments.filter((segment) => !segment.duplicateOfSegmentId);
+    expect(unique).toHaveLength(2);
+    expect(unique[0].cleanText).not.toMatch(/Restauracja A działa lokalnie\.Kucharz$/);
+    expect(unique[1].companyCandidate).toBe('Restauracja B sp. z o.o.');
+  });
+
   it('oznacza urwany fragment obowiązków bez wymagań jako częściowy', () => {
     const result = preprocessJobOfferPaste(`Mechanik
 Firma B O firmie

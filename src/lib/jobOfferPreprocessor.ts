@@ -143,6 +143,22 @@ export function preprocessJobOfferPaste(rawText: string): JobOfferPreparation {
     };
   });
 
+  // Kopiowanie z portalu może skleić tytuł następnej oferty z końcem
+  // poprzedniego akapitu profilu. Granicę potwierdza już wykryty nagłówek
+  // firmy następnego segmentu, więc usuwamy wyłącznie jego znany tytuł.
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const title = segments[index].titleCandidate;
+    const linesBeforeBoundary = previous.cleanText.split('\n');
+    const lastLine = linesBeforeBoundary.at(-1);
+    if (!title || !lastLine || lastLine.length <= title.length ||
+      !lastLine.toLocaleLowerCase('pl-PL').endsWith(title.toLocaleLowerCase('pl-PL'))) continue;
+    linesBeforeBoundary[linesBeforeBoundary.length - 1] = lastLine
+      .slice(0, -title.length)
+      .trimEnd();
+    previous.cleanText = linesBeforeBoundary.join('\n').trim();
+  }
+
   // Portale wklejają czasem profil poprzedniej firmy między dwiema ofertami.
   // Marker „Przewiń do profilu firmy” jest wtedy mocniejszą granicą niż
   // kolejny nagłówek „O firmie”: bez odcięcia wymagania następnej oferty
@@ -165,14 +181,23 @@ export function preprocessJobOfferPaste(rawText: string): JobOfferPreparation {
         sourceLines = sourceLines.slice(0, profileIndex);
         break;
       }
-      const bodyStart = lastIndexMatching(sourceLines.slice(0, profileIndex), (line) =>
+      const beforeProfile = sourceLines.slice(0, profileIndex);
+      const attachedTitle = target.titleCandidate;
+      const lastBodyLine = beforeProfile.at(-1);
+      if (attachedTitle && lastBodyLine && lastBodyLine.length > attachedTitle.length &&
+        lastBodyLine.toLocaleLowerCase('pl-PL').endsWith(attachedTitle.toLocaleLowerCase('pl-PL'))) {
+        beforeProfile[beforeProfile.length - 1] = lastBodyLine
+          .slice(0, -attachedTitle.length)
+          .trimEnd();
+      }
+      const bodyStart = lastIndexMatching(beforeProfile, (line) =>
         /^(backend|frontend|technologie, których używamy|technologie|twój zakres obowiązków|nasze wymagania|wymagane)$/i.test(line)
       );
       if (bodyStart >= 0) {
-        target.cleanText = `${target.cleanText}\n${sourceLines.slice(bodyStart, profileIndex).join('\n')}`.trim();
-        sourceLines = [...sourceLines.slice(0, bodyStart), ...sourceLines.slice(profileIndex + 2)];
+        target.cleanText = `${target.cleanText}\n${beforeProfile.slice(bodyStart).join('\n')}`.trim();
+        sourceLines = [...beforeProfile.slice(0, bodyStart), ...sourceLines.slice(profileIndex + 2)];
       } else {
-        sourceLines = sourceLines.slice(0, profileIndex);
+        sourceLines = beforeProfile;
       }
     }
     source.cleanText = sourceLines.join('\n');
