@@ -12,7 +12,7 @@ const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  AI_PROVIDER: z.enum(['azure_openai', 'ollama']).default('ollama'),
+  AI_PROVIDER: z.enum(['azure_openai', 'ollama']).default('azure_openai'),
   AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
   AZURE_OPENAI_DEPLOYMENT: z.string().min(1).optional(),
   AZURE_OPENAI_API_VERSION: z.string().min(1).default('2024-10-21'),

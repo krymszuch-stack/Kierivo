@@ -30,10 +30,16 @@ jobs:
           RUN_PDF_INTEGRATION: '1'
         run: npx vitest run src/server/__tests__/pdf.routes.test.ts
       - run: npm run build
-      - name: Produkcyjny smoke test bez zewnętrznego AI
+      - name: Produkcyjny smoke test — główna ścieżka (Azure OpenAI)
         env:
           NODE_ENV: production
-          AI_PROVIDER: ollama
+          AI_PROVIDER: azure_openai
+          AZURE_OPENAI_ENDPOINT: https://ci-smoke.openai.azure.com
+          AZURE_OPENAI_DEPLOYMENT: gpt-4o
+          BACKEND_MODE: cloud
+          APP_URL: https://app.kierivo.com
+          SUPABASE_URL: https://ci-smoke.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ci-smoke-service-role-key
           PORT: 8099
         run: |
           npm start &
@@ -42,7 +48,20 @@ jobs:
           for i in $(seq 1 20); do curl -sf -m 2 http://localhost:8099/api/health && break || sleep 1; done
           curl -sf -m 5 http://localhost:8099/api/health | grep -q '"status":"ok"'
           test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/)" = "200"
-          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/api/me)" = "501"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8099/api/me)" = "401"
+      - name: Smoke test trybu offline — degradacja bez internetu (Ollama)
+        env:
+          NODE_ENV: development
+          AI_PROVIDER: ollama
+          BACKEND_MODE: local
+          PORT: 8098
+        run: |
+          npm start &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          for i in $(seq 1 20); do curl -sf -m 2 http://localhost:8098/api/health && break || sleep 1; done
+          curl -sf -m 5 http://localhost:8098/api/health | grep -q '"status":"ok"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://localhost:8098/api/me)" = "501"
       - name: Sekrety nie trafiają do przeglądarki
         run: |
           ! grep -rE "service_role|sk_live_|sk_test_|SUPABASE_SERVICE_ROLE|AZURE_OPENAI" dist/client/
