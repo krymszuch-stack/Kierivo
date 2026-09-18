@@ -382,7 +382,7 @@ podpisuje token JWT swoim kluczem prywatnym i dokłada dwa nagłówki:
 | `Authorization` | `WebPush <JWT>` — podpis, adresat (pochodzenie serwisu push), czas wygaśnięcia, kontakt |
 | `Crypto-Key` | `p256ecdsa=<klucz publiczny base64url>` |
 
-Pod `cvelocity.oathcry.com` stoi sam frontend na Firebase Hosting — `/api/*`
+Pod `kierivo.com` działa jeden kontener z frontendem i `/api/*`
 oddaje `index.html`, bo trafia w regułę przepisującą. Nie ma czego podpisać ani
 kto miałby wysłać. Push wchodzi po wdrożeniu z §6.
 

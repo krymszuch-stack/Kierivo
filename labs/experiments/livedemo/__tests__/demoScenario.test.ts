@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { EXAMPLE_CV, EXAMPLE_JD, EXAMPLE_ROLE_TITLE } from '../demoScenario';
-import { runQuickAtsCheck, MIN_CV_CHARS, MIN_JD_CHARS } from '../../../lib/quickAtsCheck';
-import { scoreCanonicalAts } from '../../../lib/canonicalAts';
+import { runQuickAtsCheck, MIN_CV_CHARS, MIN_JD_CHARS } from '../../../../src/lib/quickAtsCheck';
+import { scoreCanonicalAts } from '../../../../src/lib/canonicalAts';
 
 /**
  * Strażnik scenariusza demo (reguła 1 z AGENTS.md).

@@ -1,7 +1,7 @@
 import { ApplicationStatus, JobApplication } from '../../types';
 
 /**
- * Konfiguracja statusów pipeline rekrutacyjnego (CVelocity Tracker).
+ * Konfiguracja statusów pipeline rekrutacyjnego (Kierivo Tracker).
  *
  * Zgodnie z wymaganiem ergonomii UI:
  * Na starcie pipeline prezentuje zredukowaną liczbę 4 kluczowych stanów:

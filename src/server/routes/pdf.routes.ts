@@ -17,6 +17,9 @@ import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter'
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
 import { runAtsExtract } from '../extract/atsExtract';
 import { MasterVault, TailoredResume } from '../../types';
+import { loadConfig } from '../config';
+import { requireAuth } from '../middleware/requireAuth';
+import { pdfEndpointsLimiter } from '../middleware/rateLimiter';
 
 export const pdfRouter = Router();
 
@@ -25,6 +28,54 @@ export const pdfRouter = Router();
  * 60s na PDF + 30s marginesu na zimny start kontenera.
  */
 const PYTHON_TIMEOUT_MS = 90_000;
+const MAX_JSON_DEPTH = 12;
+const MAX_JSON_NODES = 10_000;
+const MAX_STRING_LENGTH = 200_000;
+const MAX_ARRAY_LENGTH = 1_000;
+const MAX_PDF_PROCESSES = 2;
+let activePdfProcesses = 0;
+const pendingPdfProcesses: Array<() => void> = [];
+
+function validatePayloadShape(value: unknown, depth = 0, state = { nodes: 0 }): void {
+  if (++state.nodes > MAX_JSON_NODES || depth > MAX_JSON_DEPTH) {
+    throw new Error('Dane żądania mają zbyt dużą złożoność.');
+  }
+  if (typeof value === 'string' && value.length > MAX_STRING_LENGTH) {
+    throw new Error('Tekst w żądaniu jest zbyt długi.');
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ARRAY_LENGTH) throw new Error('Tablica w żądaniu jest zbyt długa.');
+    value.forEach((item) => validatePayloadShape(item, depth + 1, state));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach((item) => validatePayloadShape(item, depth + 1, state));
+  }
+}
+
+async function acquirePdfProcess(): Promise<() => void> {
+  if (activePdfProcesses < MAX_PDF_PROCESSES) {
+    activePdfProcesses += 1;
+    return () => {
+      activePdfProcesses -= 1;
+      pendingPdfProcesses.shift()?.();
+    };
+  }
+  await new Promise<void>((resolve) => pendingPdfProcesses.push(resolve));
+  activePdfProcesses += 1;
+  return () => {
+    activePdfProcesses -= 1;
+    pendingPdfProcesses.shift()?.();
+  };
+}
+
+function requireCloudAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!loadConfig().backendEnabled) {
+    next();
+    return;
+  }
+  void requireAuth(req, res, next);
+}
 
 /**
  * Wywołuje Pythona z timeoutem i natychmiastowym odrzuceniem gdy brak interpretera.
@@ -153,12 +204,22 @@ pdfRouter.get('/cv/themes', (_req: Request, res: Response) => {
  */
 pdfRouter.post(
   '/cv/validate-ats',
+  requireCloudAuth,
+  pdfEndpointsLimiter,
   async (
     req: Request<unknown, unknown, { extractedText: string; vault: MasterVault; vendorIds?: string[] }>,
     res: Response,
     next: NextFunction
   ) => {
     try {
+      try {
+        validatePayloadShape(req.body);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          error: err instanceof Error ? err.message : 'Nieprawidłowe dane żądania.',
+        });
+      }
       const { extractedText, vault, vendorIds } = req.body;
 
       if (!extractedText || typeof extractedText !== 'string') {
@@ -193,9 +254,20 @@ pdfRouter.post(
  */
 pdfRouter.post(
   '/cv/export-pdf',
+  requireCloudAuth,
+  pdfEndpointsLimiter,
   async (req: Request<unknown, unknown, ExportPdfRequestBody>, res: Response, next: NextFunction) => {
     let tempDir = '';
+    let releasePdfProcess: (() => void) | undefined;
     try {
+      try {
+        validatePayloadShape(req.body);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          error: err instanceof Error ? err.message : 'Nieprawidłowe dane żądania.',
+        });
+      }
        const {
         vault,
         tailoredResume,
@@ -269,8 +341,7 @@ pdfRouter.post(
           } catch {
             profilePayload.photo = '';
           }
-        } else if (!existsSync(rawPhoto)) {
-          // Jeśli podana ścieżka nie istnieje fizycznie na serwerze, zerujemy
+        } else {
           profilePayload.photo = '';
         }
       }
@@ -305,12 +376,15 @@ pdfRouter.post(
 
       const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 
+      releasePdfProcess = await acquirePdfProcess();
       const { code, stderr } = await spawnPythonWithTimeout(
         pythonBin,
         args,
         engineDir,
         { ...process.env, PYTHONPATH: engineDir, PYTHONIOENCODING: 'utf-8' }
       );
+      releasePdfProcess();
+      releasePdfProcess = undefined;
 
       if (code !== 0) {
         throw new Error(`Błąd generatora PDF (kod ${code}): ${stderr}`);
@@ -401,10 +475,9 @@ pdfRouter.post(
       }
       next(err);
     } finally {
+      releasePdfProcess?.();
       if (tempDir) {
-        fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
-          // cichy cleanup
-        });
+        await fs.rm(tempDir, { recursive: true, force: true });
       }
     }
   }

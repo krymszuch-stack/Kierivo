@@ -64,14 +64,6 @@ jobs:
         run: |
           IMAGE="${{ vars.AZURE_ACR_LOGIN_SERVER }}/${{ vars.AZURE_CONTAINER_APP }}:${{ github.sha }}"
 
-          az containerapp update \
-            --name "${{ vars.AZURE_CONTAINER_APP }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --image "$IMAGE"
-
-          # APP_URL musi wskazywać na publiczny FQDN — bez tego OAuth i callbacki
-          # ze Stripe'a lecą w kosmos (placeholder.invalid z pierwszego deployu).
-          # Pobieramy FQDN z Container App i nadpisujemy zmienną środowiskową.
           FQDN=$(az containerapp show \
             --name "${{ vars.AZURE_CONTAINER_APP }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
@@ -79,12 +71,19 @@ jobs:
             -o tsv)
 
           APP_URL="https://${FQDN}"
-          echo "Setting APP_URL=${APP_URL}"
+          echo "Setting APP_URL=${APP_URL} before activating the new image"
 
+          # Ustawienie callbacków przed zmianą obrazu eliminuje rewizję z
+          # placeholderem. Kolejna rewizja dziedziczy już finalny adres.
           az containerapp update \
             --name "${{ vars.AZURE_CONTAINER_APP }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --set-env-vars "APP_URL=${APP_URL}"
+
+          az containerapp update \
+            --name "${{ vars.AZURE_CONTAINER_APP }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE"
 
       - name: Health check
         run: |

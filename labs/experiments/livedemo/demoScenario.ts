@@ -1,4 +1,4 @@
-import { SAMPLE_MANUAL_JD } from '../../lib/exampleJd';
+import { SAMPLE_MANUAL_JD } from '../../../src/lib/exampleJd';
 
 /**
  * Scenariusz demo na stronie startowej: para „CV + ogłoszenie”, na której
