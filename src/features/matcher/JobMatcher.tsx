@@ -204,7 +204,15 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   };
 
   const handleMatchManual = (manualOffer: Partial<JobOffer>) => {
-    const { job, parsed } = buildJobOfferFromManual(manualOffer);
+    const { job, parsed, preparation } = buildJobOfferFromManual(manualOffer);
+    const uniqueSegments = preparation.segments.filter((segment) => !segment.duplicateOfSegmentId);
+    if (uniqueSegments.length > 1) {
+      showToast('Wykryto wiele ofert', {
+        message: `Wklejono ${uniqueSegments.length} odrębnych ofert. Wybierz i wklej jedną ofertę, aby nie mieszać wymagań.`,
+        variant: 'info',
+      });
+      return;
+    }
     setParsedJd(parsed);
     handleMatchJob(job);
   };

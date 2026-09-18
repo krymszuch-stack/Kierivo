@@ -145,7 +145,7 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
 
   // Salary range
   let salaryRange = '';
-  const salaryMatch = text.match(/(\d[\d\s.]+\s*(?:–|-|do)\s*\d[\d\s.]+\s*(?:PLN|EUR|USD|zl|zł))/i);
+  const salaryMatch = text.match(/(\d[\d\s.,]*\s*(?:–|-|do)\s*\d[\d\s.,]*\s*(?:PLN|EUR|USD|zl|zł))/i);
   if (salaryMatch) {
     salaryRange = salaryMatch[0];
   }
