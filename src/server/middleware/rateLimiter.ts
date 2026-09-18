@@ -18,7 +18,12 @@ function evictExpired(store: Map<string, RateLimitRecord>, now: number): void {
   }
 }
 
-export function createRateLimiter(options: RateLimitOptions = {}) {
+export interface RateLimiterMiddleware {
+  (req: Request, res: Response, next: NextFunction): void | Response;
+  reset: () => void;
+}
+
+export function createRateLimiter(options: RateLimitOptions = {}): RateLimiterMiddleware {
   const windowMs = options.windowMs || 60 * 1000;
   const maxRequests = options.maxRequests || 60;
   const message =
@@ -30,7 +35,7 @@ export function createRateLimiter(options: RateLimitOptions = {}) {
   const store = new Map<string, RateLimitRecord>();
   let requestsSinceSweep = 0;
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  const limiter = ((req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const now = Date.now();
 
@@ -58,7 +63,13 @@ export function createRateLimiter(options: RateLimitOptions = {}) {
 
     record.count += 1;
     next();
+  }) as RateLimiterMiddleware;
+
+  limiter.reset = () => {
+    store.clear();
   };
+
+  return limiter;
 }
 
 /** Broad limit for every /api route. */

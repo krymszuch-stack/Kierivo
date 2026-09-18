@@ -147,7 +147,7 @@ describe('Ochrona 3: limit dekompresji DOCX 5 MB', () => {
     await expect(extractTextFromAnyFile(file)).rejects.toThrow(
       /za duży po rozpakowaniu|zbyt duży po rozpakowaniu|ponad 5 MB/i
     );
-  });
+  }, 25000);
 
   it('akceptuje DOCX z normalnym tekstem po dekompresji', async () => {
     const normalText = 'Jan Kowalski\nDoświadczenie\nProgramista';

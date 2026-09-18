@@ -9,6 +9,7 @@ import {
   clearPdfCacheForTesting,
   AVAILABLE_LAYOUTS,
 } from '../routes/pdf.routes';
+import { pdfEndpointsLimiter } from '../middleware/rateLimiter';
 import * as atsExtractModule from '../extract/atsExtract';
 
 const SUCCESS_FIXTURE = {
@@ -60,6 +61,7 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   beforeEach(() => {
+    pdfEndpointsLimiter.reset();
     clearPdfCacheForTesting();
     vi.clearAllMocks();
   });

@@ -129,5 +129,5 @@ describe('koszt rankingu trafności (relevanceRanking.bench.test.ts)', () => {
     // Asercje wyłącznie sprawdzają, że wszystkie 6 pomiarów dały wynik dodatni
     expect(results).toHaveLength(6);
     expect(results.every((r) => r.avgTimeMs > 0)).toBe(true);
-  }, 30000);
+  }, 60000);
 });

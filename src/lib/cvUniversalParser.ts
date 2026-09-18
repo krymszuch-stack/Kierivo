@@ -246,7 +246,7 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
 
     if (pdf.numPages > MAX_PDF_PAGES) {
       throw new Error(
-        `Plik PDF ma za wiele stron (${pdf.numPages}). Maksymalnie obsługujemy ${MAX_PDF_PAGES} stron. Spróbuj przyciąć dokument lub wkleić treść CV ręcznie.`
+        `Plik PDF ma zbyt wiele stron (${pdf.numPages}). Maksymalnie obsługujemy ${MAX_PDF_PAGES} stron. Spróbuj przyciąć dokument lub wkleić treść CV ręcznie.`
       );
     }
 
