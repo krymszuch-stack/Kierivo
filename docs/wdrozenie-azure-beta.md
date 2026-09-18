@@ -34,7 +34,7 @@ tożsamości zarządzanej aplikacji. Po deployu wymaga rzeczywistego JSON-a
 
 ## Domena Cloudflare
 
-1. W Azure rozpocznij dodanie `cvelocity.oathcry.com` do Container App i pobierz
+1. W Azure rozpocznij dodanie `kierivo.com` do Container App i pobierz
    kod weryfikacyjny CNAME/TXT.
 2. Uruchom `prepare-cloudflare-domain.ps1` z FQDN Container App i tym kodem.
    Skrypt zapisuje aktualne rekordy do lokalnego `work/` przed zmianą i ustawia

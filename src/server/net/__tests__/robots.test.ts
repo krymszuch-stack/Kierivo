@@ -8,7 +8,7 @@ import {
   permissiveRules,
 } from '../robots';
 
-const UA = 'KIERIVO/1.0 (+https://cvelocity.pl/bot)';
+const UA = 'KIERIVO/1.0 (+https://kierivo.com/bot)';
 
 beforeEach(() => {
   clearRobotsCache();
@@ -74,7 +74,7 @@ Disallow:
 User-agent: *
 Disallow: /
 
-User-agent: cvelocity
+User-agent: kierivo
 Allow: /job-offer/
 Disallow: /api/
 `);
@@ -86,7 +86,7 @@ Disallow: /api/
   it('łączy kilka linii User-agent w jedną grupę', () => {
     const rules = parseRobotsTxt(`
 User-agent: googlebot
-User-agent: cvelocity
+User-agent: kierivo
 Disallow: /zamkniete/
 `);
 

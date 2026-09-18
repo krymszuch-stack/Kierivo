@@ -9,7 +9,7 @@ import { migrateVault } from './dataMigration';
  * Vault w chmurze — odczyt i zapis wprost z przeglądarki.
  *
  * **Dlaczego nie przez `PUT /api/vault`, skoro ta trasa istnieje.** Pod
- * `cvelocity.oathcry.com` stoi sam frontend na Firebase Hosting: reguła
+ * Stara instalacja frontendowa na Firebase Hosting miała następującą regułę:
  * przepisująca oddaje `index.html` na każdą ścieżkę, więc `/api/*` na
  * produkcji nie istnieje. Serwer Express czeka na wdrożenie kontenerowe
  * opisane w `docs/BACKEND-ROADMAP.md`, a to wymaga karty płatniczej, czyli

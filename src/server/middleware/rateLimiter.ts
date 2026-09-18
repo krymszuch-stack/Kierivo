@@ -92,3 +92,9 @@ export const errorReportsLimiter = createRateLimiter({
   maxRequests: 20,
   message: 'Zbyt wiele zgłoszeń błędów. Wstrzymano przyjmowanie na chwilę.',
 });
+
+export const pdfEndpointsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  message: 'Zbyt wiele operacji PDF. Spróbuj ponownie za chwilę.',
+});

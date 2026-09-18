@@ -226,13 +226,13 @@ describe('Ochrona 4b: timeout parsowania PDF', () => {
     const file = makeFile('cv-slow.pdf', pdfHeader, 'application/pdf');
 
     const promise = extractTextFromAnyFile(file);
+    const rejection = expect(promise).rejects.toThrow(/za dużo czasu/i);
+    await vi.dynamicImportSettled();
 
     // Przesuwamy zegar o 20s — timer abort powinien się odpalić
     await vi.advanceTimersByTimeAsync(20_000);
 
-    await expect(promise).rejects.toThrow(
-      /za dużo czasu/i
-    );
+    await rejection;
 
     vi.useRealTimers();
     vi.doUnmock('pdfjs-dist');

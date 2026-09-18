@@ -174,7 +174,7 @@ Bez poprawnych rekordów maile potwierdzające rejestrację lądują w spamie. T
 
 ### Stan faktyczny: Firebase Hosting, sam frontend
 
-Dziś aplikacja stoi pod **https://cvelocity.oathcry.com** na Firebase Hosting
+Dziś aplikacja stoi pod **https://kierivo.com** na hostingu produkcyjnym
 (projekt `skillvault-99a72`) i jest to **wyłącznie frontend**. Backendu tam nie
 ma: `/api/health` oddaje stronę HTML, bo trafia w regułę przepisującą wszystko
 na `index.html`. Wszystko, co wymaga serwera — Doradca AI, parsowanie ogłoszeń

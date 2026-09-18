@@ -44,7 +44,7 @@ const ALLOWED_PORTS = new Set(['', '80', '443']);
  */
 // Wyłącznie ASCII: nagłówki HTTP są latin1, a polski znak diakrytyczny kończy
 // się błędem ERR_INVALID_CHAR i wywraca każde pobranie.
-const USER_AGENT = 'KIERIVO/1.0 (+https://cvelocity.pl/bot; user-requested job ad parser)';
+const USER_AGENT = 'KIERIVO/1.0 (+https://kierivo.com/bot; user-requested job ad parser)';
 const ROBOTS_TIMEOUT_MS = 4_000;
 
 const ALLOWED_CONTENT_TYPES = [

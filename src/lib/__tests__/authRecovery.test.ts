@@ -57,7 +57,7 @@ describe('stripAuthErrorParams', () => {
   it('usuwa techniczne błędy i zachowuje parametry aplikacji', () => {
     expect(
       stripAuthErrorParams(
-        'https://cvelocity.oathcry.com/?checkout=success&error=access_denied#error_code=otp_expired&tab=profil'
+        'https://kierivo.com/?checkout=success&error=access_denied#error_code=otp_expired&tab=profil'
       )
     ).toBe('/?checkout=success#tab=profil');
   });

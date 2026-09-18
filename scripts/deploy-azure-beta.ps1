@@ -79,20 +79,26 @@ $tag = Get-Date -Format 'yyyyMMddHHmmss'
 az acr build --registry $RegistryName --image "${app}:$tag" --file Dockerfile --build-arg "VITE_SUPABASE_URL=$viteSupabaseUrl" --build-arg "VITE_SUPABASE_ANON_KEY=$viteSupabaseAnonKey" . --only-show-errors
 $registryServer = az acr show --name $RegistryName --resource-group $rg --query loginServer -o tsv
 $image = "${registryServer}/${app}:$tag"
-$envVars = @('NODE_ENV=production','BACKEND_MODE=cloud','TRUST_PROXY=true','AI_PROVIDER=azure_openai',"SUPABASE_URL=$supabaseUrl","AZURE_OPENAI_ENDPOINT=$openAiEndpoint","AZURE_OPENAI_DEPLOYMENT=$AzureOpenAiDeployment",'APP_URL=https://placeholder.invalid')
+$defaultDomain = az containerapp env show --name $environment --resource-group $rg --query properties.defaultDomain -o tsv
+$newAppUrl = "https://$app.$defaultDomain"
+$envVars = @('NODE_ENV=production','BACKEND_MODE=cloud','TRUST_PROXY=true','AI_PROVIDER=azure_openai',"SUPABASE_URL=$supabaseUrl","AZURE_OPENAI_ENDPOINT=$openAiEndpoint","AZURE_OPENAI_DEPLOYMENT=$AzureOpenAiDeployment","APP_URL=$newAppUrl")
 $keyVaultRef = "supabase-service-role=keyvaultref:$secretUri,identityref:$identityId"
 
 if (-not (Exists { az containerapp show --name $app --resource-group $rg --only-show-errors })) {
   az containerapp create --name $app --resource-group $rg --environment $environment --image $image --ingress external --target-port 8080 --transport auto --allow-insecure false --cpu 1.0 --memory 2.0Gi --min-replicas 1 --max-replicas 3 --user-assigned $identityId --registry-identity $identityId --registry-server $registryServer --secrets $keyVaultRef --env-vars $envVars 'SUPABASE_SERVICE_ROLE_KEY=secretref:supabase-service-role' --only-show-errors | Out-Null
+  $fqdn = az containerapp show --name $app --resource-group $rg --query properties.configuration.ingress.fqdn -o tsv
+  $appUrl = "https://$fqdn"
+  if ($appUrl -ne $newAppUrl) {
+    az containerapp update --name $app --resource-group $rg --set-env-vars "APP_URL=$appUrl" --only-show-errors | Out-Null
+  }
 } else {
+  $fqdn = az containerapp show --name $app --resource-group $rg --query properties.configuration.ingress.fqdn -o tsv
+  $appUrl = "https://$fqdn"
   az containerapp registry set --name $app --resource-group $rg --server $registryServer --identity $identityId --only-show-errors | Out-Null
   az containerapp secret set --name $app --resource-group $rg --secrets $keyVaultRef --only-show-errors | Out-Null
-  az containerapp update --name $app --resource-group $rg --image $image --min-replicas 1 --max-replicas 3 --set-env-vars $envVars 'SUPABASE_SERVICE_ROLE_KEY=secretref:supabase-service-role' --only-show-errors | Out-Null
+  az containerapp update --name $app --resource-group $rg --image $image --min-replicas 1 --max-replicas 3 --set-env-vars $envVars "APP_URL=$appUrl" 'SUPABASE_SERVICE_ROLE_KEY=secretref:supabase-service-role' --only-show-errors | Out-Null
 }
 
-$fqdn = az containerapp show --name $app --resource-group $rg --query properties.configuration.ingress.fqdn -o tsv
-$appUrl = "https://$fqdn"
-az containerapp update --name $app --resource-group $rg --set-env-vars "APP_URL=$appUrl" --only-show-errors | Out-Null
 $health = Invoke-RestMethod -Uri "$appUrl/api/health" -TimeoutSec 30
 if ($health.status -ne 'ok') { throw 'Kontrola zdrowia nie zwróciła status=ok.' }
 Write-Host "WDROŻENIE GOTOWE: $appUrl"
