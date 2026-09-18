@@ -27,6 +27,32 @@ export const parsedJobDescriptionSchema = z.object({
   recruitmentMode: z.enum(['ATS_CORPORATE', 'CRAFT_LOCAL', 'HYBRID']).optional(),
   recruitmentModeReason: z.string().optional(),
   sourceUrl: z.string().optional(),
+  niceToHaveHardSkills: z.array(z.string()).optional(),
+  niceToHaveSoftSkills: z.array(z.string()).optional(),
+  formalRequirements: z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+    required: z.boolean(),
+    severity: z.enum(['knockout', 'preferred', 'information']),
+    sourceText: z.string(),
+  })).optional(),
+  experienceMinYears: z.number().nullable().optional(),
+  structuredLanguages: z.array(z.object({
+    language: z.string(),
+    level: z.string().optional(),
+    required: z.boolean(),
+    sourceText: z.string(),
+  })).optional(),
+  location: z.string().optional(),
+  contractTypes: z.array(z.string()).optional(),
+  salary: z.object({
+    min: z.number(),
+    max: z.number(),
+    currency: z.string(),
+    period: z.string(),
+    grossNet: z.string(),
+  }).nullable().optional(),
+  sourceSections: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 /**
