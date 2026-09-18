@@ -3,10 +3,10 @@
  *
  * Cel: ZMIERZYĆ jakość istniejącego potoku `preprocessJobOfferPaste` ->
  * `parseJobDescriptionLocal` na realnym korpusie 6 ofert wklejonych z
- * Pracuj.pl (3 IT + 3 nie-IT), a nie poprawić parser. Ten plik nie zmienia
- * `jdParser.ts` ani `jobOfferPreprocessor.ts` - żadna asercja poniżej nie
- * "naciąga" oczekiwań tak, by sztucznie przejść; wynik odzwierciedla to,
- * co parser faktycznie dziś zwraca (i to jest baseline, nie cel jakości).
+ * Pracuj.pl (3 IT + 3 nie-IT). Produkcyjny parser i preprocesor są naprawiane
+ * obok tego pomiaru; Gold i metodologia są stałą
+ * bramką: po naprawie regresje mierzymy względem utrwalonego baseline, nie
+ * przez zmianę danych wejściowych albo reguł porównania.
  *
  * Metodologia (skrót; pełne dane w `fixtures/jdExtractionBenchmark.fixtures.ts`):
  * - RAW_CORPUS to dosłowna transkrypcja jednego wklejenia z 6 ofertami + 1
@@ -23,11 +23,9 @@
  *   PostgreSQL/Postgres, EF Core/Entity Framework Core, CI/CD warianty)
  *   istnieje WYŁĄCZNIE w tym benchmarku (`jdExtractionBenchmark.harness.ts`)
  *   i nie dotyka produkcyjnego kodu.
- * - Klasyfikacja required/nice: `ParsedJobDescription` nie ma osobnych pól
- *   required/nice (wszystko ląduje w requiredHardSkills/toolsAndTech/
- *   requiredSoftSkills) - wykryta umiejętność z gold "nice" to nadal TP
- *   (skill wykryty), ale ZAWSZE błędnie sklasyfikowany jako required, bo w
- *   strukturze wyniku nie ma miejsca na "nice".
+ * - Legacyjne pola służą do F1 całego zbioru, a pola
+ *   `niceToHaveHardSkills`/`niceToHaveSoftSkills` są używane przez testowy
+ *   pomocniczy pomiar klasyfikacji required/nice.
  *
  * Wyniki bazowe zmierzone przy pisaniu tego testu (patrz też finalny raport
  * w odpowiedzi czatu z dokładnymi liczbami):
@@ -38,10 +36,9 @@
  * - Potwierdzone przeciekanie treści ELEKTROBUDOWA -> segment P&P (fałszywe
  *   "Prawo Jazdy Kat. B" w P&P, brak tego wymogu w ELEKTROBUDOWA).
  *
- * Asercje poniżej NIE są bramką jakości "musi być >= X%" tam, gdzie X byłoby
- * arbitralne - są przypięte (`toBeCloseTo`/`toBe`) do zmierzonych wartości
- * bazowych, żeby przyszła regresja lub poprawa w parserze/preprocesorze była
- * widoczna jako zmiana w tym pliku, a nie cichy dryf.
+ * Wartości baseline zostają tu jako punkt odniesienia. Asercje weryfikują
+ * zachowanie oczekiwane od naprawionego potoku oraz brak regresji względem
+ * pomiaru historycznego, nie wymagają utrzymywania wykrytych defektów.
  */
 import { describe, expect, it } from 'vitest';
 import { parseJobDescriptionLocal } from '../jdParser';
@@ -51,6 +48,27 @@ import { canonicalizeSkill, compareSkillSets, detectedSkillSet, fieldStatus, mac
 
 const IT_KEYS = OFFER_ORDER.filter((k) => GOLD[k].domain === 'IT');
 const NON_IT_KEYS = OFFER_ORDER.filter((k) => GOLD[k].domain === 'NON_IT');
+const BASELINE = {
+  pipelineMacroF1: 0.1687,
+  pipelineItMacroF1: 0.3373,
+  cleanMacroF1: 0.3253,
+  cleanItMacroF1: 0.6506,
+  requiredNiceAccuracy: 0.7143,
+} as const;
+
+function classifiedDetectedSkills(parsed: ReturnType<typeof parseJobDescriptionLocal>) {
+  const nice = new Set((parsed.niceToHaveHardSkills ?? []).map(canonicalizeSkill));
+  const detectedRequired = [
+    ...parsed.requiredHardSkills,
+    ...parsed.toolsAndTech.filter((skill) => !nice.has(canonicalizeSkill(skill))),
+    ...parsed.requiredSoftSkills,
+  ].map(canonicalizeSkill);
+  const detectedNice = [
+    ...(parsed.niceToHaveHardSkills ?? []),
+    ...(parsed.niceToHaveSoftSkills ?? []),
+  ].map(canonicalizeSkill);
+  return { required: new Set(detectedRequired), nice: new Set(detectedNice) };
+}
 
 describe('benchmark jakości ekstrakcji JD: samotestowanie metodologii pomiaru', () => {
   it('kanonikalizacja traktuje zdefiniowane warianty jako to samo pojęcie, ale nie nadnormalizuje innych technologii', () => {
@@ -105,7 +123,7 @@ describe('segmentacja realnego korpusu 6 ofert (preprocessJobOfferPaste)', () =>
     expect(ubicomSegment!.needsUserReview).toBe(true);
   });
 
-  it('DEFEKT: segmentacja przecieka treść ELEKTROBUDOWA do segmentu opisanego jako P&P Solutions', () => {
+  it('nie przecieka treści ELEKTROBUDOWA do segmentu P&P Solutions', () => {
     // Realny paste ma nietypowy układ: pełne obowiązki/wymagania ELEKTROBUDOWA (w tym
     // "prawo jazdy kat. B") fizycznie leżą w tekście PO pierwszym wystąpieniu P&P, a
     // PRZED firmowym blokiem "ELEKTROBUDOWA sp. z o.o. Przewiń do profilu firmy" -
@@ -116,10 +134,9 @@ describe('segmentacja realnego korpusu 6 ofert (preprocessJobOfferPaste)', () =>
     expect(elektrobudowaSegment).toBeDefined();
     expect(ppSegment).toBeDefined();
 
-    // Wymóg prawa jazdy kat. B należy WYŁĄCZNIE do ELEKTROBUDOWA w gold, ale w
-    // segmentacji trafia (błędnie) do treści przypisanej P&P.
-    expect(elektrobudowaSegment!.cleanText.toLowerCase()).not.toContain('prawo jazdy');
-    expect(ppSegment!.cleanText.toLowerCase()).toContain('prawo jazdy');
+    // Wymóg prawa jazdy kat. B należy wyłącznie do ELEKTROBUDOWA.
+    expect(elektrobudowaSegment!.cleanText.toLowerCase()).toContain('prawo jazdy');
+    expect(ppSegment!.cleanText.toLowerCase()).not.toContain('prawo jazdy');
   });
 });
 
@@ -131,38 +148,37 @@ describe('parseJobDescriptionLocal na wyjściu segmentera (scenariusz PIPELINE, 
     parsedByKey[key] = parseJobDescriptionLocal(unique[i].cleanText, unique[i].titleCandidate ?? '');
   });
 
-  it('DEFEKT SYSTEMOWY: jobTitle to nagłówek firmowy ("... O firmie"), nie prawdziwy tytuł oferty, dla wszystkich 6 ofert', () => {
+  it('wyciąga prawidłowy tytuł dla każdej oferty', () => {
     for (const key of OFFER_ORDER) {
-      expect(parsedByKey[key].jobTitle.toLowerCase()).toContain('o firmie');
+      expect(parsedByKey[key].jobTitle).toBe(GOLD[key].title);
     }
   });
 
-  it('DEFEKT SYSTEMOWY: companyName jest zawsze pustym stringiem (pole nigdy nie jest wypełniane)', () => {
+  it('wyciąga pracodawcę dla każdej oferty', () => {
     for (const key of OFFER_ORDER) {
-      expect(parsedByKey[key].companyName).toBe('');
+      expect(parsedByKey[key].companyName).toBe(GOLD[key].company);
     }
   });
 
-  it('DEFEKT: przez przeciek segmentacji P&P fałszywie dziedziczy "Prawo Jazdy Kat. B", a ELEKTROBUDOWA go traci', () => {
+  it('nie przenosi formaliów między ofertami', () => {
     const elektrobudowaReqs = (parsedByKey.elektrobudowa.mandatoryRequirements ?? []).join(' | ').toLowerCase();
     const ppReqs = (parsedByKey.pp_solutions.mandatoryRequirements ?? []).join(' | ').toLowerCase();
-    expect(elektrobudowaReqs).not.toContain('prawo jazdy');
-    expect(ppReqs).toContain('prawo jazdy');
+    expect(elektrobudowaReqs).toContain('prawo jazdy');
+    expect(ppReqs).not.toContain('prawo jazdy');
   });
 
-  it('DEFEKT: mandatoryRequirements nie rozróżnia sekcji "Nasze wymagania" od "Mile widziane" (ORLEN: wykształcenie jest tam nice, nie required)', () => {
-    // Gold jawnie mówi required=false dla degree w ORLEN. Parser i tak wrzuca ten
-    // tekst do mandatoryRequirements, bo regex nie patrzy na sekcję źródłową.
+  it('rozróżnia wymagania od sekcji "Mile widziane" dla ORLEN', () => {
     expect(GOLD.orlen_paczka.formalRequirements.find((f) => f.id === 'degree')?.required).toBe(false);
     const orlenReqs = (parsedByKey.orlen_paczka.mandatoryRequirements ?? []).join(' | ').toLowerCase();
-    expect(orlenReqs).toContain('wykształcenie wyższe');
+    expect(orlenReqs).not.toContain('wykształcenie wyższe');
   });
 
-  it('DEFEKT: mandatoryRequirements nie wykrywa żadnego z 3 jawnych wymogów formalnych Level Work (4 lata, angielski, sanepid)', () => {
-    // Regex lat doświadczenia jest zahardkodowany na "3" i "5" - "4 lata" nie pasuje.
-    // Nie istnieje żadna reguła dla znajomości komunikatywnej języka ani dla sanepidu
-    // (te pojęcia są zdefiniowane osobno w knockouts.ts, ale ta funkcja z nich nie korzysta).
-    expect(parsedByKey.level_work.mandatoryRequirements ?? []).toEqual([]);
+  it('wykrywa jawne formalia Level Work: staż, angielski i sanepid', () => {
+    expect(parsedByKey.level_work.formalRequirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'experience_years', label: expect.stringMatching(/4 lat/) }),
+      expect.objectContaining({ id: 'language_angielski' }),
+      expect.objectContaining({ id: 'sanepid' }),
+    ]));
   });
 
   it('POPRAWNE ZACHOWANIE: workModel dla trybów jednoznacznie podanych w metadanych portalu jest trafny dla 5/6 ofert', () => {
@@ -198,7 +214,7 @@ describe('parseJobDescriptionLocal na ręcznie wyizolowanych, czystych segmentac
       const cmp = compareSkillSets(GOLD[key].requiredSkills, GOLD[key].niceSkills, detectedSkillSet(parsed));
       return cmp.f1;
     });
-    expect(macroF1(cleanF1)).toBeGreaterThan(macroF1(pipelineF1));
+    expect(macroF1(cleanF1)).toBeGreaterThanOrEqual(macroF1(pipelineF1));
   });
 });
 
@@ -214,36 +230,33 @@ describe('makro-wyniki F1 skill precision/recall (wszystkie / IT / nie-IT, obie 
     });
   }
 
-  it('PIPELINE: makro F1 (6 ofert) jest bardzo niskie i zdominowane porażką na ofertach nie-IT (F1=0)', () => {
+  it('PIPELINE: makro F1 jest lepsze od utrwalonego baseline i nie ma kolapsu non-IT', () => {
     const f1s = runScenario(false);
     const byKey = Object.fromEntries(OFFER_ORDER.map((k, i) => [k, f1s[i]]));
     const macroAll = macroF1(f1s);
     const macroIT = macroF1(IT_KEYS.map((k) => byKey[k]));
     const macroNonIT = macroF1(NON_IT_KEYS.map((k) => byKey[k]));
 
-    expect(macroAll).toBeCloseTo(0.1687, 3);
-    expect(macroIT).toBeCloseTo(0.3373, 3);
-    // Zerowy F1 dla wszystkich 3 ofert nie-IT: brak realnych umiejętności w gold,
-    // a parser mimo to "wykrywa" słowa ogólne (np. "wynagrodzenie", "dni") jako
-    // rzekome hard skille - to jest kolaps międzydomenowy (cross-domain collapse).
-    expect(macroNonIT).toBe(0);
+    expect(macroAll).toBeGreaterThan(BASELINE.pipelineMacroF1);
+    expect(macroIT).toBeGreaterThan(BASELINE.pipelineItMacroF1);
+    expect(macroNonIT).toBeGreaterThan(0);
   });
 
-  it('CLEAN: makro F1 (6 ofert) jest wyższe niż PIPELINE, ale wciąż zero na ofertach nie-IT', () => {
+  it('CLEAN: makro F1 jest lepsze od utrwalonego baseline i nie ma kolapsu non-IT', () => {
     const f1s = runScenario(true);
     const byKey = Object.fromEntries(OFFER_ORDER.map((k, i) => [k, f1s[i]]));
     const macroAll = macroF1(f1s);
     const macroIT = macroF1(IT_KEYS.map((k) => byKey[k]));
     const macroNonIT = macroF1(NON_IT_KEYS.map((k) => byKey[k]));
 
-    expect(macroAll).toBeCloseTo(0.3253, 3);
-    expect(macroIT).toBeCloseTo(0.6506, 3);
-    expect(macroNonIT).toBe(0);
+    expect(macroAll).toBeGreaterThan(BASELINE.cleanMacroF1);
+    expect(macroIT).toBeGreaterThan(BASELINE.cleanItMacroF1);
+    expect(macroNonIT).toBeGreaterThan(0);
   });
 });
 
 describe('macierz klasyfikacji required/nice (skill TP ze złą klasyfikacją required/nice)', () => {
-  it('DEFEKT STRUKTURALNY: ~71% dokładności na TP wynika wyłącznie z braku pola "nice" w schemacie - każde trafienie z gold "nice" jest błędnie sklasyfikowane', () => {
+  it('klasyfikuje wymagania i "mile widziane" lepiej niż baseline', () => {
     const prep = preprocessJobOfferPaste(RAW_CORPUS);
     const unique = prep.segments.filter((s) => !s.duplicateOfSegmentId);
     let tpTotal = 0;
@@ -251,20 +264,24 @@ describe('macierz klasyfikacji required/nice (skill TP ze złą klasyfikacją re
     let tpNiceMisTotal = 0;
     OFFER_ORDER.forEach((key, i) => {
       const parsed = parseJobDescriptionLocal(unique[i].cleanText, unique[i].titleCandidate ?? '');
-      const cmp = compareSkillSets(GOLD[key].requiredSkills, GOLD[key].niceSkills, detectedSkillSet(parsed));
-      tpTotal += cmp.tp.length;
-      tpRequiredCorrectTotal += cmp.tpRequiredCorrect;
-      tpNiceMisTotal += cmp.tpNiceMisclassified;
+      const classified = classifiedDetectedSkills(parsed);
+      const required = new Set(GOLD[key].requiredSkills.map(canonicalizeSkill));
+      const nice = new Set(GOLD[key].niceSkills.map(canonicalizeSkill));
+      for (const skill of new Set([...required, ...nice])) {
+        if (classified.required.has(skill) || classified.nice.has(skill)) {
+          tpTotal += 1;
+          if (required.has(skill) && classified.required.has(skill)) tpRequiredCorrectTotal += 1;
+          if (nice.has(skill) && classified.nice.has(skill)) tpRequiredCorrectTotal += 1;
+          if (nice.has(skill) && classified.required.has(skill) && !required.has(skill)) tpNiceMisTotal += 1;
+        }
+      }
     });
 
-    expect(tpTotal).toBe(35);
-    expect(tpNiceMisTotal).toBe(10);
-    expect(tpRequiredCorrectTotal).toBe(25);
     const accuracy = tpRequiredCorrectTotal / tpTotal;
-    expect(accuracy).toBeCloseTo(0.7143, 3);
-    // Bramka jakości z zadania wymaga required/nice >= 90% dla wersji zielonej -
-    // 71% jest wyraźnie poniżej tego progu.
-    expect(accuracy).toBeLessThan(0.9);
+    expect(tpTotal).toBeGreaterThan(0);
+    expect(accuracy).toBeGreaterThan(BASELINE.requiredNiceAccuracy);
+    expect(accuracy).toBeGreaterThanOrEqual(0.9);
+    expect(tpNiceMisTotal).toBe(0);
   });
 });
 
@@ -276,13 +293,15 @@ describe('wymagania formalne/pozamerytoryczne muszą być rozpoznawane, gdy są 
     expect((parsed.mandatoryRequirements ?? []).join(' ').toLowerCase()).toContain('prawo jazdy');
   });
 
-  it('Level Work: 4 lata doświadczenia, komunikatywny angielski i sanepid są jawnymi wymogami w gold, ale parser wykrywa 0 z 3', () => {
+  it('Level Work: wykrywa 4 lata doświadczenia, angielski i sanepid', () => {
     expect(GOLD.level_work.formalRequirements).toHaveLength(3);
     expect(GOLD.level_work.formalRequirements.every((f) => f.required)).toBe(true);
     const parsed = parseJobDescriptionLocal(CLEAN_TEXTS.level_work, GOLD.level_work.title);
-    // Dokumentuje realny stan (regex nie łapie "4 lata", nie ma reguły dla
-    // komunikatywnego angielskiego ani sanepidu) - nie jest to bramka jakości.
-    expect(parsed.mandatoryRequirements ?? []).toEqual([]);
+    expect(parsed.formalRequirements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'experience_years', label: expect.stringMatching(/4 lat/) }),
+      expect.objectContaining({ id: 'language_angielski' }),
+      expect.objectContaining({ id: 'sanepid' }),
+    ]));
   });
 });
 
@@ -341,5 +360,3 @@ describe('kalibracja pewności (confidence)', () => {
     }
   });
 });
-
-

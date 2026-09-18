@@ -91,6 +91,13 @@ function similarity(left: string, right: string): number {
   return intersection / Math.max(1, a.size + b.size - intersection);
 }
 
+function lastIndexMatching<T>(items: T[], predicate: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index])) return index;
+  }
+  return -1;
+}
+
 function validate(lines: string[], title: string | null, company: string | null): Pick<PreparedJobOfferSegment, 'completeness' | 'confidence' | 'needsUserReview'> {
   const hasRequirements = lines.some((line) => REQUIREMENTS.test(line));
   const hasDuties = lines.some((line) => DUTIES.test(line));
@@ -135,6 +142,85 @@ export function preprocessJobOfferPaste(rawText: string): JobOfferPreparation {
       duplicateOfSegmentId: null as string | null,
     };
   });
+
+  // Kopiowanie z portalu może skleić tytuł następnej oferty z końcem
+  // poprzedniego akapitu profilu. Granicę potwierdza już wykryty nagłówek
+  // firmy następnego segmentu, więc usuwamy wyłącznie jego znany tytuł.
+  for (let index = 1; index < segments.length; index += 1) {
+    const previous = segments[index - 1];
+    const title = segments[index].titleCandidate;
+    const linesBeforeBoundary = previous.cleanText.split('\n');
+    const lastLine = linesBeforeBoundary.at(-1);
+    if (!title || !lastLine || lastLine.length <= title.length ||
+      !lastLine.toLocaleLowerCase('pl-PL').endsWith(title.toLocaleLowerCase('pl-PL'))) continue;
+    linesBeforeBoundary[linesBeforeBoundary.length - 1] = lastLine
+      .slice(0, -title.length)
+      .trimEnd();
+    previous.cleanText = linesBeforeBoundary.join('\n').trim();
+  }
+
+  // Portale wklejają czasem profil poprzedniej firmy między dwiema ofertami.
+  // Marker „Przewiń do profilu firmy” jest wtedy mocniejszą granicą niż
+  // kolejny nagłówek „O firmie”: bez odcięcia wymagania następnej oferty
+  // dziedziczyłyby się do bieżącego segmentu. Jeżeli po profilu pojawia się
+  // blok sekcji oferty, przypinamy go do segmentu tej firmy.
+  for (const source of segments) {
+    let sourceLines = source.cleanText.split('\n');
+    for (let profileIndex = sourceLines.findIndex((line) =>
+      segments.some((segment) => segment !== source &&
+        normalize(segment.companyCandidate || '') === normalize(line))
+    ); profileIndex >= 0; profileIndex = sourceLines.findIndex((line) =>
+      segments.some((segment) => segment !== source &&
+        normalize(segment.companyCandidate || '') === normalize(line))
+    )) {
+      const profileCompany = sourceLines[profileIndex].trim();
+      const target = segments.find((segment) =>
+        normalize(segment.companyCandidate || '') === normalize(profileCompany)
+      );
+      if (!target || target === source) {
+        sourceLines = sourceLines.slice(0, profileIndex);
+        break;
+      }
+      const beforeProfile = sourceLines.slice(0, profileIndex);
+      const attachedTitle = target.titleCandidate;
+      const lastBodyLine = beforeProfile.at(-1);
+      if (attachedTitle && lastBodyLine && lastBodyLine.length > attachedTitle.length &&
+        lastBodyLine.toLocaleLowerCase('pl-PL').endsWith(attachedTitle.toLocaleLowerCase('pl-PL'))) {
+        beforeProfile[beforeProfile.length - 1] = lastBodyLine
+          .slice(0, -attachedTitle.length)
+          .trimEnd();
+      }
+      const bodyStart = lastIndexMatching(beforeProfile, (line) =>
+        /^(backend|frontend|technologie, których używamy|technologie|twój zakres obowiązków|nasze wymagania|wymagane)$/i.test(line)
+      );
+      if (bodyStart >= 0) {
+        target.cleanText = `${target.cleanText}\n${beforeProfile.slice(bodyStart).join('\n')}`.trim();
+        sourceLines = [...beforeProfile.slice(0, bodyStart), ...sourceLines.slice(profileIndex + 2)];
+      } else {
+        sourceLines = beforeProfile;
+      }
+    }
+    source.cleanText = sourceLines.join('\n');
+  }
+
+  // Drugi wariant tego samego artefaktu: profil firmy może być sklejony z
+  // poprzednim akapitem, więc czyszczenie linii usunie marker, zanim zobaczymy
+  // granicę. W takim przypadku odtwarzamy blok od ostatniego nagłówka sekcji
+  // do samotnej nazwy firmy — wyłącznie gdy segment docelowy jest samym
+  // nagłówkiem metadanych.
+  for (const target of segments) {
+    if (!target.companyCandidate || target.cleanText.split('\n').length > 15) continue;
+    const marker = lastIndexMatching(lines, (line) => normalize(line) === normalize(target.companyCandidate!));
+    if (marker < 0) continue;
+    const bodyStart = lastIndexMatching(lines.slice(0, marker), (line) =>
+      /^(backend|frontend|technologie, których używamy|technologie|twój zakres obowiązków|nasze wymagania|wymagane)$/i.test(line)
+    );
+    if (bodyStart < 0) continue;
+    const body = lines.slice(bodyStart, marker);
+    if (body.some((line) => /prawo jazdy|nasze wymagania|twój zakres obowiązków/i.test(line))) {
+      target.cleanText = `${target.cleanText}\n${body.join('\n')}`.trim();
+    }
+  }
 
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];
