@@ -1,7 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 256" role="img" aria-labelledby="title">
-  <title id="title">Kierivo — wersja płaska</title>
-  <path fill="#155EEF" d="M64 24h84v52l-44 44q-10 10 0 20l72 92H64q-40 0-40-40V64q0-40 40-40Z"/>
-  <path fill="#19C3E6" d="M169 24h82q15 0 5 11L137 153q-8 8-16 0l-11-11q-8-8 0-17l48-90q5-11 11-11Z"/>
-  <path fill="#155EEF" d="m137 137 119 83q14 12-5 12h-61q-12 0-20-10l-48-62q-9-11 1-20 7-8 14-3Z"/>
-  <text x="310" y="188" fill="#0C1828" font-family="'Helvetica Neue', Arial, sans-serif" font-size="144" font-weight="700" letter-spacing="-7">Kierivo</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" role="img" aria-labelledby="klf-title">
+  <title id="klf-title">Kierivo — wersja płaska</title>
+  <!--
+    Nowe logo Kierivo — wersja płaska (bez gradientu), jednobarwna.
+    Stosowane przy druku jednofarbnym, na bladych tłach.
+    Chevron tył: #155EEF, Chevron przód: #0C1828.
+  -->
+
+  <!-- Sygnet: chevron tył (niebieski) -->
+  <path
+    fill="#155EEF"
+    d="M 28 10 L 10 40 L 28 70 L 40 70 L 22 40 L 40 10 Z"
+  />
+
+  <!-- Sygnet: chevron przód (granatowy) -->
+  <path
+    fill="#0C1828"
+    d="M 48 10 L 30 40 L 48 70 L 60 70 L 42 40 L 60 10 Z"
+  />
+
+  <!-- Napis Kierivo — płaski -->
+  <text
+    x="80"
+    y="55"
+    fill="#0C1828"
+    font-family="'Helvetica Neue', Arial, sans-serif"
+    font-size="44"
+    font-weight="700"
+    letter-spacing="-1.5"
+  >Kierivo</text>
 </svg>

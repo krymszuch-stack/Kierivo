@@ -1,14 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 256" role="img" aria-labelledby="title desc">
-  <title id="title">Kierivo</title>
-  <desc id="desc">Niebiesko-turkusowy sygnet K oraz granatowy napis Kierivo.</desc>
-  <defs>
-    <linearGradient id="blue" x1="24" y1="24" x2="230" y2="232" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0B63F6"/>
-      <stop offset="1" stop-color="#2447E8"/>
-    </linearGradient>
-  </defs>
-  <path fill="url(#blue)" d="M64 24h84v52l-44 44q-10 10 0 20l72 92H64q-40 0-40-40V64q0-40 40-40Z"/>
-  <path fill="#19C3E6" d="M169 24h82q15 0 5 11L137 153q-8 8-16 0l-11-11q-8-8 0-17l48-90q5-11 11-11Z"/>
-  <path fill="url(#blue)" d="m137 137 119 83q14 12-5 12h-61q-12 0-20-10l-48-62q-9-11 1-20 7-8 14-3Z"/>
-  <text x="310" y="188" fill="#0C1828" font-family="'Helvetica Neue', Arial, sans-serif" font-size="144" font-weight="700" letter-spacing="-7">Kierivo</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" role="img" aria-labelledby="kl-title kl-desc">
+  <title id="kl-title">Kierivo</title>
+  <desc id="kl-desc">Logo Kierivo — podwójne K jako chevrony oraz napis Kierivo.</desc>
+  <!--
+    Nowe logo Kierivo — wersja pozioma (sygnet + napis).
+    Wdrożone 2026-09-18.
+    Sygnet: podwójne chevrony K w granacie (#1E3A8A) i niebieskiej poświacie (#6B8AE8).
+    Tekst: granatowy #0C1828, krój bezszeryfowy, bold.
+  -->
+
+  <!-- Sygnet: chevron tył (jaśniejszy, niebieski) -->
+  <path
+    fill="#6B8AE8"
+    d="M 28 10 L 10 40 L 28 70 L 40 70 L 22 40 L 40 10 Z"
+  />
+
+  <!-- Sygnet: chevron przód (główny, granatowy) -->
+  <path
+    fill="#1E3A8A"
+    d="M 48 10 L 30 40 L 48 70 L 60 70 L 42 40 L 60 10 Z"
+  />
+
+  <!-- Napis Kierivo -->
+  <text
+    x="80"
+    y="55"
+    fill="#0C1828"
+    font-family="'Helvetica Neue', Arial, sans-serif"
+    font-size="44"
+    font-weight="700"
+    letter-spacing="-1.5"
+  >Kierivo</text>
 </svg>
