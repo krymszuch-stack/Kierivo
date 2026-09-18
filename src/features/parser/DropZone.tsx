@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle2, AlertCircle, FileCode } from 'lucide-react';
-import { motion } from 'motion/react';
+import { UploadCloud, FileText } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 
 export interface DropZoneProps {
@@ -54,12 +53,12 @@ export const DropZone: React.FC<DropZoneProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-200 ${
+      className={`relative flex min-h-[220px] max-h-[280px] flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all duration-200 ${
         isDragOver
           ? 'border-brand-500 bg-brand-500/5 ring-4 ring-brand-500/10'
           : selectedFile
-          ? 'border-brand-200 bg-brand-50/50'
-          : 'border-line bg-sunken hover:border-brand-300'
+          ? 'border-brand-300 bg-brand-50/40 dark:bg-brand-950/20'
+          : 'border-line bg-sunken/60 hover:border-brand-300 hover:bg-sunken'
       } ${className}`}
     >
       <input
@@ -71,30 +70,30 @@ export const DropZone: React.FC<DropZoneProps> = ({
       />
 
       <div
-        className={`flex h-16 w-16 items-center justify-center rounded-2xl mb-4 transition-transform duration-200 ${
+        className={`flex h-12 w-12 items-center justify-center rounded-2xl mb-3 transition-transform duration-200 ${
           isDragOver
             ? 'scale-110 bg-brand-600 text-on-brand shadow-raised'
             : selectedFile
-            ? 'bg-brand-50 text-brand-600'
-            : 'bg-surface text-subtle shadow-xs'
+            ? 'bg-brand-100 dark:bg-brand-900/50 text-brand-600'
+            : 'bg-surface text-muted shadow-xs border border-line/50'
         }`}
       >
         {selectedFile ? (
-          <FileText className="h-8 w-8" />
+          <FileText className="h-6 w-6" />
         ) : (
-          <UploadCloud className="h-8 w-8" />
+          <UploadCloud className="h-6 w-6" />
         )}
       </div>
 
       {selectedFile ? (
         <div className="space-y-1">
-          <p className="font-sans text-sm font-bold text-ink">
+          <p className="font-sans text-sm font-bold text-ink truncate max-w-xs">
             {selectedFile.name}
           </p>
           <p className="font-mono text-xs text-muted">
-            {(selectedFile.size / 1024).toFixed(1)} KB • Gotowy do parsowania
+            {(selectedFile.size / 1024).toFixed(1)} KB • Gotowy do analizy
           </p>
-          <div className="pt-3">
+          <div className="pt-2">
             <Button
               type="button"
               variant="outline"
@@ -107,18 +106,18 @@ export const DropZone: React.FC<DropZoneProps> = ({
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <p className="font-sans text-sm font-bold text-ink">
             Przeciągnij i upuść plik CV tutaj
           </p>
           <p className="text-xs text-muted max-w-sm">
-            Obsługujemy formaty <span className="font-mono font-bold text-ink">PDF, DOCX, RTF, TXT, JSON</span>. Wszystkie dane są parsowane lokalnie.
+            Formaty: <span className="font-mono font-semibold text-ink">PDF, DOCX, RTF, TXT, JSON</span>
           </p>
-          <div className="pt-2">
+          <div className="pt-1.5">
             <Button
               type="button"
               variant="secondary"
-              size="md"
+              size="sm"
               icon={UploadCloud}
               onClick={() => inputRef.current?.click()}
               disabled={isProcessing}

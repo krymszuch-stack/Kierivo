@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UploadCloud, FileCode, Sparkles } from 'lucide-react';
+import { UploadCloud, FileCode, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react';
 import { MasterVault } from '../../types';
 import { DropZone } from './DropZone';
 import { DiffView, MergeStrategies } from './DiffView';
@@ -43,8 +43,8 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   const { usage, consumeImport } = useEntitlements();
 
   const ingestTabs = [
-    { id: 'file' as IngestMode, label: 'Plik z dysku (PDF/DOCX)', icon: UploadCloud },
-    { id: 'rawText' as IngestMode, label: 'Wklej surowy tekst (bezpłatnie)', icon: FileCode },
+    { id: 'file' as IngestMode, label: 'Prześlij plik', icon: UploadCloud },
+    { id: 'rawText' as IngestMode, label: 'Wklej treść', icon: FileCode },
   ];
 
   const handleStartParsing = async () => {
@@ -143,37 +143,38 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   };
 
   return (
-    <div className={`space-y-6 ${className}`}>
+    <div className={`mx-auto w-full max-w-[820px] px-4 sm:px-6 space-y-6 ${className}`}>
       <PageHeader
-        title="Wczytywanie i scalanie dokumentu CV"
-        description="Zaimportuj CV z pliku albo wklej jego treść. Parser lokalny wyodrębni historię, umiejętności i dane kontaktowe do porównania z Master Vault."
-        badge="Parser Kierivo"
+        title="Importuj swoje CV"
+        description="Dodaj plik lub wklej treść CV. Pokażemy, jakie informacje możesz dodać do swojego profilu."
+        badge="Automatyczne rozpoznawanie treści"
       />
 
       {!parsedResult ? (
-        <div className="space-y-6">
-          <div className="flex flex-col items-center gap-2">
+        <div className="space-y-5">
+          <div className="flex flex-col items-center gap-2.5">
             <Tabs<IngestMode>
               items={ingestTabs}
               active={ingestMode}
               onChange={setIngestMode}
-              className="max-w-md"
+              className="max-w-xs sm:max-w-sm w-full"
             />
 
-            {ingestMode === 'file' && (
-              <div className="flex items-center gap-2 text-[11px] font-mono text-muted">
-                {usage.importUses > 0 ? (
-                  <span>Pozostało importów pliku w tym miesiącu: <b className="text-ink">{usage.importUses}</b></span>
-                ) : (
-                  <span className="text-warning-fg font-bold">
-                    Limit plików wykorzystany. Wklejanie tekstu pozostaje dostępne bez płatności.
-                  </span>
-                )}
+            {ingestMode === 'file' && usage.importUses <= 0 && (
+              <div className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Limit importów plików został wykorzystany. Możesz nadal bezpłatnie wkleić treść CV.</span>
+              </div>
+            )}
+
+            {ingestMode === 'file' && usage.importUses > 0 && (
+              <div className="text-[11px] font-mono text-muted">
+                Pozostało importów plików w tym miesiącu: <b className="text-ink">{usage.importUses}</b>
               </div>
             )}
           </div>
 
-          <Card tone="raised" className="space-y-4">
+          <Card tone="raised" className="p-5 sm:p-6 space-y-4">
             {ingestMode === 'file' ? (
               <DropZone
                 selectedFile={selectedFile}
@@ -183,22 +184,24 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
             ) : (
               <div className="space-y-2">
                 <Textarea
-                  rows={8}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
-                  placeholder="Wklej tutaj pełną treść swojego dokumentu CV..."
-                  className="font-mono text-xs"
+                  placeholder="Wklej tutaj treść swojego dokumentu CV (np. skopiowaną z pliku Word, PDF lub profilu zawodowego)..."
+                  className="h-[300px] min-h-[280px] max-h-[360px] font-mono text-xs w-full resize-y"
                 />
-                <p className="font-mono text-[11px] text-muted">
-                  Znaków: {rawText.length} • Słów: {rawText.trim().split(/\s+/).filter(Boolean).length} • Wklejanie tekstu jest bezpłatne i bez limitu płatnego.
-                </p>
+                <div className="flex items-center justify-between text-[11px] font-mono text-muted px-1">
+                  <span>
+                    Znaków: <b className="text-ink">{rawText.length}</b> • Słów: <b className="text-ink">{rawText.trim().split(/\s+/).filter(Boolean).length}</b>
+                  </span>
+                  <span>Wklejanie tekstu jest bezpłatne</span>
+                </div>
               </div>
             )}
 
             {isProcessing && (
-              <div className="space-y-2 pt-2">
-                <div className="flex items-center justify-between text-xs font-bold text-ink">
-                  <span className="flex items-center gap-1.5 text-brand-fg">
+              <div className="space-y-2 pt-1 border-t border-line/60">
+                <div className="flex items-center justify-between text-xs font-semibold text-ink">
+                  <span className="flex items-center gap-1.5 text-brand-600 dark:text-brand-400">
                     <Sparkles className="h-3.5 w-3.5 animate-spin" />
                     {statusMessage}
                   </span>
@@ -208,16 +211,25 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
               </div>
             )}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-line/50">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted">
+                <ShieldCheck className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0" />
+                <span>Treść jest przetwarzana lokalnie.</span>
+              </div>
+
               <Button
                 variant="primary"
-                size="lg"
+                size="md"
                 icon={Sparkles}
                 loading={isProcessing}
-                disabled={isProcessing || (ingestMode === 'file' && !selectedFile) || (ingestMode === 'rawText' && rawText.length < 30)}
+                disabled={
+                  isProcessing ||
+                  (ingestMode === 'file' && !selectedFile) ||
+                  (ingestMode === 'rawText' && rawText.trim().length < 30)
+                }
                 onClick={handleStartParsing}
               >
-                {isProcessing ? 'Parsowanie dokumentu...' : 'Rozpocznij parsowanie i przygotuj Diff'}
+                {isProcessing ? 'Analizowanie CV...' : 'Przeanalizuj CV i pokaż różnice'}
               </Button>
             </div>
           </Card>
