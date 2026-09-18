@@ -1,0 +1,35 @@
+﻿Run a safe UX audit of the Kierivo application using Playwright MCP.
+
+Application URL: http://localhost:5173
+
+Rules:
+- Do not delete data.
+- Do not submit forms.
+- Do not log in through external providers.
+- Do not export files.
+- Do not modify application code.
+- Do not perform permanent writes.
+
+Check these views if accessible:
+- Start.
+- Profile.
+- CV Library.
+- CV Import.
+- Knowledge Base.
+- Filters and Preferences.
+
+Check layout, accessibility, navigation, wording, responsive behavior,
+empty space, container width, buttons, contrast and console errors.
+
+For every issue report:
+- ID.
+- Priority: P0, P1, P2 or P3.
+- View and URL.
+- Viewport.
+- Description.
+- User impact.
+- Recommended fix.
+- Verification method.
+
+Do not change code. Save the report to:
+C:\Users\Adrian\Desktop\Projekty\kierivo\reports\1234\1234-report.md
