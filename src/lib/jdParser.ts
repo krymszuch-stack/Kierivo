@@ -1,6 +1,10 @@
 import { MasterVault } from '../types';
 import { HR_AND_COMMON_STOP_WORDS, extractDynamicJdPhrases } from './atsSimulator';
 import { auditKnockouts, KNOCKOUT_RULES, type KnockoutSeverity } from './knockouts';
+import {
+  dedupeSkillDefinitions, extractGenericRequirementCandidates, extractNiceLanguageSkills,
+  findSkillDefinitions,
+} from './jdSkillTaxonomy';
 
 export interface StructuredSalary {
   min: number;
@@ -233,15 +237,23 @@ function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-
   };
 }
 
+/**
+ * Granica KAŻDEJ znanej sekcji nagłówkowej ogłoszenia (PL i EN) — używana do
+ * odcięcia sekcji od dołu. Ślepy holdout pokazał, że wersja wyłącznie polska
+ * dawała 35 z 77 FN (kategoria SECTION_EXTRACTION): angielskie "Requirements"/
+ * "Responsibilities"/"Nice to have" nie były w ogóle rozpoznawane, więc dla
+ * sześciu ofert `requiredLines`/`niceLines` wychodziły puste niezależnie od
+ * tego, co zawierał słownik umiejętności.
+ */
+const SECTION_HEADER_PATTERN = /^(mile widziane|nice[- ]to[- ]have|preferred|dodatkowo|nasze wymagania|twoje wymagania|wymagania|wymagane|requirements?|what we (?:expect|require|need)|to oferujemy|we offer|benefity|benefits|perks|twój zakres|zakres obowiązków|obowiązki|responsibilities|what you.?ll do|o projekcie|about the project|o firmie|about us|about the company|technologie|tech stack|technologies)\s*[:.]?\s*$/i;
+
 function parseSectionLines(lines: string[], headers: RegExp[]): string[] {
   let start = -1;
   lines.forEach((line, index) => {
     if (headers.some((pattern) => pattern.test(line))) start = index;
   });
   if (start < 0) return [];
-  const end = lines.slice(start + 1).findIndex((line) =>
-    /^(mile widziane|nasze wymagania|twoje wymagania|wymagania|to oferujemy|benefity|twój zakres|obowiązki|o projekcie|technologie)/i.test(line)
-  );
+  const end = lines.slice(start + 1).findIndex((line) => SECTION_HEADER_PATTERN.test(line));
   return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
 }
 
@@ -254,37 +266,55 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
   const legacy = parseJobDescriptionLocalLegacy(rawJdText, defaultTitle);
   const text = rawJdText.trim();
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const requiredLines = parseSectionLines(lines, [/^(nasze|twoje)?\s*wymagania/i, /^wymagane$/i]);
-  const niceLines = parseSectionLines(lines, [/^mile widziane/i, /^nice[- ]to[- ]have/i, /^preferred/i]);
-  const skillNames = [
-    'TypeScript', 'JavaScript', 'React', 'Node.js', 'Express', 'Python', 'Java', 'C#', '.NET', '.NET Framework',
-    'PostgreSQL', 'Oracle SQL', 'PL/SQL', 'SQL', 'MySQL', 'MongoDB', 'Redis', 'Docker', 'Kubernetes', 'AWS', 'GCP',
-    'Azure', 'GraphQL', 'REST API', 'CI/CD', 'Git', 'Tailwind', 'Next.js', 'NestJS', 'Microservices', 'Mikroserwisy', 'ASP.NET', 'Jest', 'Cypress',
-    'Linux', 'Agile', 'Scrum', 'Jira', 'Terraform', 'Kafka', 'RabbitMQ', 'WinForms', 'WPF', 'MVVM', 'CQRS', 'DDD',
-    'TCP/IP', 'C++', 'C', 'Pascal', 'IEC61850', 'IEC870-5-103', 'DNP3', 'CANBUS', 'MODBUS', 'QT', 'Embedded',
-    'Grafana', 'Prometheus', 'EF Core', 'Entity Framework Core', 'Dapper', 'XPO', 'ERP', 'MVC', 'gRPC', 'MS SQL',
-    'DevExpress WinForms', 'Confluence', 'Bitbucket', 'GitHub', 'Logistyka', 'Wykształcenie wyższe informatyczne',
-  ];
-  const findSkills = (source: string) => skillNames.filter((skill) => {
-    if (skill === 'SQL' && !/(?:baz(?:y|ach) danych|database|ms\s+sql|sql\s*\()/i.test(source)) return false;
-    if (skill === 'Azure' && /azure\s+devops/i.test(source) && !/(?<!devops\s)(?:platforma|chmura|usługa|usługi)\s+azure/i.test(source)) return false;
-    const term = skill === 'ASP.NET' ? 'ASP\\s*\\.\\s*NET' :
-      skill === 'Logistyka' ? 'logistyk\\p{L}*' :
-      skill === 'Wykształcenie wyższe informatyczne' ? 'wykształcenie\\s+wyższe[ ,]+informatyczne' :
-      skill.replace(/[.+]/g, '\\$&');
-    const boundary = skill === 'C' ? '(?<![A-Za-z0-9+#])C(?![A-Za-z0-9+#])' :
-      `(?<![\\p{L}\\p{N}])${term}(?![\\p{L}\\p{N}])`;
-    // Małe „jest” w polskim zdaniu nie może być nazwą frameworka testowego.
-    return skill === 'Jest' ? new RegExp(boundary, 'u').test(source) : new RegExp(boundary, 'iu').test(source);
-  });
-  const required = Array.from(new Set(findSkills(requiredLines.join('\n'))));
-  const nice = Array.from(new Set(findSkills(niceLines.join('\n')))).filter((skill) => !required.includes(skill));
-  const toolPattern = /^(Docker|Kubernetes|AWS|GCP|Azure|Git|Jira|Terraform|Kafka|Redis|Linux|Grafana|Prometheus)$/i;
-  const tools = required.filter((skill) => toolPattern.test(skill));
-  const hard = required.filter((skill) => !tools.includes(skill));
+  const requiredLines = parseSectionLines(lines, [
+    /^(nasze|twoje)?\s*wymagania/i, /^wymagane$/i, /^requirements?$/i, /^what we (?:expect|require|need)/i,
+  ]);
+  const niceLines = parseSectionLines(lines, [
+    /^mile widziane/i, /^nice[- ]to[- ]have/i, /^preferred/i, /^dodatkowo/i, /^additionally/i,
+  ]);
+  const requiredSectionText = requiredLines.join('\n');
+  const niceSectionText = niceLines.join('\n');
+  // Jedno źródło prawdy dla umiejętności/narzędzi — `src/lib/jdSkillTaxonomy.ts`.
+  // Płaska lista `skillNames` obsługiwała tylko IT/.NET; ślepy holdout na 20
+  // ofertach z innych branż pokazał 12 FN samych brakujących kompetencji
+  // domenowych i 19 brakujących narzędzi/platform (reguła 8).
+  const requiredDefs = dedupeSkillDefinitions(findSkillDefinitions(requiredSectionText));
+  const niceDefsRaw = dedupeSkillDefinitions(findSkillDefinitions(niceSectionText))
+    .filter((def) => !requiredDefs.some((r) => r.term === def.term));
+  const requiredTaxonomyTerms = requiredDefs.map((def) => def.term);
+  const tools = requiredDefs.filter((def) => def.kind === 'TOOL').map((def) => def.term);
   const softNames = ['Praca zespołowa', 'Komunikatywność', 'Analityczne myślenie', 'Rozwiązywanie problemów', 'Mentoring'];
-  const soft = softNames.filter((skill) => new RegExp(skill, 'i').test(requiredLines.join('\n')));
-  const niceSoft = softNames.filter((skill) => new RegExp(skill, 'i').test(niceLines.join('\n')));
+  // Bezpieczna ścieżka generyczna: łapie nazwy własne/akronimy z sekcji
+  // wymagań, których nie ma (jeszcze) w dedykowanym słowniku, odrzucając
+  // rzeczowniki pospolite, liczby lat doświadczenia i szum portalowy —
+  // patrz `looksLikeGenericSkillToken` w `jdSkillTaxonomy.ts`. Filtrujemy też
+  // nazwy miękkich kompetencji (`softNames`), żeby nie duplikować ich jako
+  // twardych umiejętności.
+  const genericRequired = extractGenericRequirementCandidates(requiredSectionText)
+    .filter((token) => !requiredTaxonomyTerms.some((skill) => skill.toLowerCase() === token.toLowerCase()))
+    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()));
+  const genericNice = extractGenericRequirementCandidates(niceSectionText)
+    .filter((token) => !requiredTaxonomyTerms.some((skill) => skill.toLowerCase() === token.toLowerCase()))
+    .filter((token) => !genericRequired.some((skill) => skill.toLowerCase() === token.toLowerCase()))
+    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()));
+  // Nazwa języka bez poziomu w sekcji "Mile widziane" liczy się jako dodatkowa
+  // umiejętność (np. „Angielski.”) — ale TYLKO tam. W sekcji wymagań język
+  // pozostaje wyłącznie formalnym progiem (`structuredLanguages`), inaczej
+  // niemal każda oferta zyskałaby fałszywy wpis „Angielski” jako skill.
+  const niceLanguageSkills = extractNiceLanguageSkills(niceSectionText)
+    .filter((language) => !requiredTaxonomyTerms.some((skill) => skill.toLowerCase() === language.toLowerCase()));
+  const nice = Array.from(new Set([
+    ...niceDefsRaw.map((def) => def.term),
+    ...genericNice,
+    ...niceLanguageSkills,
+  ]));
+  const required = Array.from(new Set([...requiredTaxonomyTerms, ...genericRequired]));
+  const hard = Array.from(new Set([
+    ...requiredDefs.filter((def) => def.kind !== 'TOOL').map((def) => def.term),
+    ...genericRequired,
+  ]));
+  const soft = softNames.filter((skill) => new RegExp(skill, 'i').test(requiredSectionText));
+  const niceSoft = softNames.filter((skill) => new RegExp(skill, 'i').test(niceSectionText));
   const structuredLanguages = lines.flatMap((line, index) => {
     const match = line.match(/\b(angielski|niemiecki|francuski|hiszpański|polski|english|german|french|spanish)\b(?:\s*\(([^)]*)\))?/i);
     const previousLine = lines[index - 1] || '';
