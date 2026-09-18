@@ -178,6 +178,7 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
       if (result.value && result.value.trim().length > 20) {
         return { text: result.value, format: 'DOCX' };
       }
+    } catch (err) {
       if (err instanceof DecompressionLimitError || (err instanceof Error && (err.message.includes('za duży') || err.message.includes('zbyt duży')))) {
         throw err;
       }
