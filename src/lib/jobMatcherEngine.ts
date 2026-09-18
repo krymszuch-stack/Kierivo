@@ -21,6 +21,7 @@ import { simulateAtsCheck } from './atsSimulator';
 import { generateAntiTemplateCoverLetter } from './coverLetterEngine';
 import { buildAdvisorContext, type AdvisorContext } from '../features/advisor/advisorContext';
 import { parseJobDescriptionLocal } from './jdParser';
+import { preprocessJobOfferPaste, type JobOfferPreparation } from './jobOfferPreprocessor';
 
 export interface JobMatchCalculationResult {
   tailoredResume: TailoredResume;
@@ -144,11 +145,16 @@ export function buildJobOfferFromScraped({
 export function buildJobOfferFromManual(manualOffer: Partial<JobOffer>): {
   job: JobOffer;
   parsed: ParsedJobDescription;
+  preparation: JobOfferPreparation;
 } {
   const rawText = manualOffer.description || '';
+  const preparation = preprocessJobOfferPaste(rawText);
+  const usableSegments = preparation.segments.filter((segment) => !segment.duplicateOfSegmentId);
+  const preparedSegment = usableSegments.length === 1 ? usableSegments[0] : null;
+  const parserInput = preparedSegment?.cleanText || rawText;
   const parsed =
     manualOffer.parsedJd ||
-    parseJobDescriptionLocal(rawText, manualOffer.title || 'Stanowisko');
+    parseJobDescriptionLocal(parserInput, manualOffer.title || preparedSegment?.titleCandidate || 'Stanowisko');
 
   const job: JobOffer = {
     id: manualOffer.id || `manual-${Date.now()}`,
@@ -156,7 +162,7 @@ export function buildJobOfferFromManual(manualOffer: Partial<JobOffer>): {
     company: manualOffer.company || '',
     salary: manualOffer.salary || '',
     location: manualOffer.location || '',
-    description: manualOffer.description || '',
+    description: parserInput,
     requirements: manualOffer.requirements || [],
     remote: manualOffer.remote ?? false,
     portal: 'Manual',
@@ -164,5 +170,5 @@ export function buildJobOfferFromManual(manualOffer: Partial<JobOffer>): {
     parsedJd: parsed,
   };
 
-  return { job, parsed };
+  return { job, parsed, preparation };
 }

@@ -2,10 +2,10 @@
 
 > Narzędzie do porządkowania profilu zawodowego, dopasowania CV do konkretnego ogłoszenia i prowadzenia własnego procesu aplikacyjnego.
 
-[![CI](https://github.com/krymszuch-stack/cvelocity/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
+[![CI](https://github.com/krymszuch-stack/Kierivo/actions/workflows/ci.yml/badge.svg)](.github/workflows/ci.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](tsconfig.json)
 
-[**🌐 Otwórz Public Pre-Beta**](https://cvelocity.oathcry.com/) • [**📖 Architektura**](./docs/SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
+[**🌐 Otwórz Public Pre-Beta**](https://kierivo.com/) • [**📖 Architektura**](./docs/SYSTEM_ARCHITECTURE_GUIDANCE.md) • [**🛡️ Bezpieczeństwo**](./SECURITY.md)
 
 ## Status produktu
 
@@ -72,8 +72,8 @@ Wymagania:
 - npm 10+.
 
 ```bash
-git clone https://github.com/krymszuch-stack/cvelocity.git
-cd cvelocity
+git clone https://github.com/krymszuch-stack/Kierivo.git
+cd Kierivo
 npm install
 cp .env.example .env
 npm run dev

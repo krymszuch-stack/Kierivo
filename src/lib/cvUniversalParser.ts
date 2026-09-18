@@ -22,6 +22,16 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 /** Maksymalny rozmiar tekstu po dekompresji DOCX (5 MB). */
 const MAX_DECOMPRESSED_TEXT_LENGTH = 5 * 1024 * 1024;
+export class DecompressionLimitError extends Error {
+  readonly code = 'DOCX_DECOMPRESSION_LIMIT';
+
+  constructor() {
+    super(
+      'Dokument jest zbyt duży po rozpakowaniu (ponad 5 MB tekstu). Plik może być uszkodzony lub zawierać zbyt dużo danych. Wklej treść CV ręcznie.'
+    );
+    this.name = 'DecompressionLimitError';
+  }
+}
 
 /** Maksymalna liczba stron PDF przed rozpoczęciem parsowania. */
 const MAX_PDF_PAGES = 200;
@@ -162,18 +172,13 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
 
       // --- Ochrona 3: limit rozmiaru tekstu po dekompresji DOCX ---
       if (result.value && result.value.length > MAX_DECOMPRESSED_TEXT_LENGTH) {
-        const maxMB = Math.round(MAX_DECOMPRESSED_TEXT_LENGTH / (1024 * 1024));
-        throw new Error(
-          `Dokument jest zbyt duży po rozpakowaniu (ponad ${maxMB} MB tekstu). Plik może być uszkodzony lub zawierać zbyt dużo danych. Wklej treść CV ręcznie.`
-        );
+        throw new DecompressionLimitError();
       }
 
       if (result.value && result.value.trim().length > 20) {
         return { text: result.value, format: 'DOCX' };
       }
-    } catch (err) {
-      // Rzuć błąd bezpieczeństwa dalej, inne błędy fallback do text
-      if (err instanceof Error && (err.message.includes('za duży') || err.message.includes('zbyt duży'))) {
+      if (err instanceof DecompressionLimitError || (err instanceof Error && (err.message.includes('za duży') || err.message.includes('zbyt duży')))) {
         throw err;
       }
     }
@@ -206,18 +211,29 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
 
     // --- Ochrona 4a: timeout + limit stron PDF ---
     const abortController = new AbortController();
-    const pdfTimeout = setTimeout(() => abortController.abort(), PDF_PARSE_TIMEOUT_MS);
+    let pdfTimeout: ReturnType<typeof setTimeout> | undefined;
 
     let pdf;
     try {
-      pdf = await pdfjsLib.getDocument({
-        data: arrayBuffer,
-        // Sygnał abort — pdf.js wspiera go od wersji 4.x
-        signal: abortController.signal,
-      } as unknown as Parameters<typeof pdfjsLib.getDocument>[0]).promise;
+      pdf = await Promise.race([
+        pdfjsLib.getDocument({
+          data: arrayBuffer,
+          signal: abortController.signal,
+        } as unknown as Parameters<typeof pdfjsLib.getDocument>[0]).promise,
+        new Promise<never>((_, reject) => {
+          pdfTimeout = setTimeout(() => {
+            abortController.abort();
+            reject(
+              new Error(
+                'Odczyt pliku PDF zajął za dużo czasu. Plik może być uszkodzony lub zawierać złożoną strukturę. Spróbuj wkleić treść CV ręcznie.'
+              )
+            );
+          }, PDF_PARSE_TIMEOUT_MS);
+        }),
+      ]);
     } catch (error) {
-      clearTimeout(pdfTimeout);
-      if (error instanceof Error && (error.name === 'AbortError' || error.message?.includes('abort'))) {
+      if (pdfTimeout) clearTimeout(pdfTimeout);
+      if (error instanceof Error && (error.name === 'AbortError' || error.message?.includes('abort') || error.message?.includes('za dużo czasu'))) {
         throw new Error(
           'Odczyt pliku PDF zajął za dużo czasu. Plik może być uszkodzony lub zawierać złożoną strukturę. Spróbuj wkleić treść CV ręcznie.',
           { cause: error }
@@ -225,11 +241,11 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
       }
       throw error;
     }
-    clearTimeout(pdfTimeout);
+    if (pdfTimeout) clearTimeout(pdfTimeout);
 
     if (pdf.numPages > MAX_PDF_PAGES) {
       throw new Error(
-        `Plik PDF ma zbyt wiele stron (${pdf.numPages}). Maksymalnie obsługujemy ${MAX_PDF_PAGES} stron. Spróbuj przyciąć dokument lub wkleić treść CV ręcznie.`
+        `Plik PDF ma za wiele stron (${pdf.numPages}). Maksymalnie obsługujemy ${MAX_PDF_PAGES} stron. Spróbuj przyciąć dokument lub wkleić treść CV ręcznie.`
       );
     }
 

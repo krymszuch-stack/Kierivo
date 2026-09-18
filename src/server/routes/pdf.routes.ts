@@ -17,6 +17,9 @@ import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter'
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
 import { runAtsExtract } from '../extract/atsExtract';
 import { MasterVault, TailoredResume } from '../../types';
+import { loadConfig } from '../config';
+import { requireAuth } from '../middleware/requireAuth';
+import { pdfEndpointsLimiter } from '../middleware/rateLimiter';
 
 export const pdfRouter = Router();
 
@@ -25,6 +28,54 @@ export const pdfRouter = Router();
  * 60s na PDF + 30s marginesu na zimny start kontenera.
  */
 const PYTHON_TIMEOUT_MS = 90_000;
+const MAX_JSON_DEPTH = 12;
+const MAX_JSON_NODES = 10_000;
+const MAX_STRING_LENGTH = 200_000;
+const MAX_ARRAY_LENGTH = 1_000;
+const MAX_PDF_PROCESSES = 2;
+let activePdfProcesses = 0;
+const pendingPdfProcesses: Array<() => void> = [];
+
+function validatePayloadShape(value: unknown, depth = 0, state = { nodes: 0 }): void {
+  if (++state.nodes > MAX_JSON_NODES || depth > MAX_JSON_DEPTH) {
+    throw new Error('Dane żądania mają zbyt dużą złożoność.');
+  }
+  if (typeof value === 'string' && value.length > MAX_STRING_LENGTH) {
+    throw new Error('Tekst w żądaniu jest zbyt długi.');
+  }
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ARRAY_LENGTH) throw new Error('Tablica w żądaniu jest zbyt długa.');
+    value.forEach((item) => validatePayloadShape(item, depth + 1, state));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach((item) => validatePayloadShape(item, depth + 1, state));
+  }
+}
+
+async function acquirePdfProcess(): Promise<() => void> {
+  if (activePdfProcesses < MAX_PDF_PROCESSES) {
+    activePdfProcesses += 1;
+    return () => {
+      activePdfProcesses -= 1;
+      pendingPdfProcesses.shift()?.();
+    };
+  }
+  await new Promise<void>((resolve) => pendingPdfProcesses.push(resolve));
+  activePdfProcesses += 1;
+  return () => {
+    activePdfProcesses -= 1;
+    pendingPdfProcesses.shift()?.();
+  };
+}
+
+function requireCloudAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!loadConfig().backendEnabled) {
+    next();
+    return;
+  }
+  void requireAuth(req, res, next);
+}
 
 export interface PythonSpawnResult {
   code: number | null;
@@ -234,12 +285,22 @@ pdfRouter.get('/cv/themes', (_req: Request, res: Response) => {
  */
 pdfRouter.post(
   '/cv/validate-ats',
+  requireCloudAuth,
+  pdfEndpointsLimiter,
   async (
     req: Request<unknown, unknown, { extractedText: string; vault: MasterVault; vendorIds?: string[] }>,
     res: Response,
     next: NextFunction
   ) => {
     try {
+      try {
+        validatePayloadShape(req.body);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          error: err instanceof Error ? err.message : 'Nieprawidłowe dane żądania.',
+        });
+      }
       const { extractedText, vault, vendorIds } = req.body;
 
       if (!extractedText || typeof extractedText !== 'string') {
@@ -274,6 +335,8 @@ pdfRouter.post(
  */
 pdfRouter.post(
   '/cv/export-pdf',
+  requireCloudAuth,
+  pdfEndpointsLimiter,
   async (req: Request<unknown, unknown, ExportPdfRequestBody>, res: Response) => {
     const reqWithId = req as unknown as { requestId?: string };
     const requestId =
@@ -283,6 +346,20 @@ pdfRouter.post(
         : randomUUID());
 
     let tempDir = '';
+    let releasePdfProcess: (() => void) | undefined;
+    try {
+      try {
+        validatePayloadShape(req.body);
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          requestId,
+          error: err instanceof Error ? err.message : 'Nieprawidłowe dane żądania.',
+        });
+      }
+    } catch {
+      // fallback
+    }
     const {
       vault,
       tailoredResume,
@@ -525,6 +602,7 @@ pdfRouter.post(
         pythonSpawned: true,
       });
 
+      releasePdfProcess = await acquirePdfProcess();
       let pythonResult: PythonSpawnResult;
       try {
         pythonResult = await pythonRunner.spawn(
@@ -534,6 +612,10 @@ pdfRouter.post(
           { ...process.env, PYTHONPATH: engineDir, PYTHONIOENCODING: 'utf-8' }
         );
       } catch (spawnErr: unknown) {
+        if (releasePdfProcess) {
+          releasePdfProcess();
+          releasePdfProcess = undefined;
+        }
         const errMessage = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
         const isNotFound = errMessage.includes('Python interpreter not found') || errMessage.includes('ENOENT');
         const isTimeout = errMessage.includes('limit czasu') || errMessage.includes('timeout') || errMessage.includes('ETIMEDOUT');
@@ -568,6 +650,10 @@ pdfRouter.post(
       }
 
       const { code, stderr, durationMs } = pythonResult;
+      if (releasePdfProcess) {
+        releasePdfProcess();
+        releasePdfProcess = undefined;
+      }
 
       logPdfExportStage({
         requestId,
@@ -779,10 +865,9 @@ pdfRouter.post(
         error: `Wystąpił nieoczekiwany błąd serwera podczas eksportu PDF: ${errMessage}`,
       });
     } finally {
+      releasePdfProcess?.();
       if (tempDir) {
-        fs.rm(tempDir, { recursive: true, force: true }).catch(() => {
-          // cichy cleanup
-        });
+        await fs.rm(tempDir, { recursive: true, force: true });
       }
     }
   }

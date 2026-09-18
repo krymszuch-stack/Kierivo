@@ -253,6 +253,7 @@ describe('Ochrona 4b: timeout parsowania PDF', () => {
       const promise = extractTextFromAnyFile(file);
       // Rejestrujemy asercję oczekującą odrzucenia z komunikatem timeoutu
       const rejectionPromise = expect(promise).rejects.toThrow(/za dużo czasu/i);
+      await vi.dynamicImportSettled();
 
       // Czekamy na dojście do wywołania getDocument, które rejestruje timer 20s
       await documentCalled.promise;

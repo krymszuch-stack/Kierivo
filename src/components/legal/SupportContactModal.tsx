@@ -54,8 +54,8 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
           </p>
           <div className="flex items-center gap-1.5 pt-1 text-[11px] text-brand-fg font-mono">
             <Mail className="h-3.5 w-3.5" />
-            <a href="mailto:pomoc@cvelocity.pl" className="hover:underline">
-              pomoc@cvelocity.pl
+            <a href="mailto:pomoc@kierivo.com" className="hover:underline">
+              pomoc@kierivo.com
             </a>
           </div>
         </div>
