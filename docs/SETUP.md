@@ -8,7 +8,7 @@ Lista rzeczy do zrobienia ręcznie: konta, klucze, DNS, formalności. Wszystko, 
 
 | Kiedy | Krok | Co blokuje |
 |---|---|---|
-| Teraz | [1 Gemini](#1--google-cloud--gemini-api) · [2 Supabase](#2--supabase) · [3 Stripe test](#3--stripe) | prace nad backendem |
+| Teraz | [1 Azure OpenAI + Ollama](#1--azure-openai--glowna-sciezka-produkcyjna--ollama-alternatywa-dev-offline) · [2 Supabase](#2--supabase) · [3 Stripe test](#3--stripe) | prace nad backendem |
 | Po kluczach | [Poradnik wdrożeniowy](./BACKEND-ROADMAP.md) | migracje, uruchomienie, wdrożenie |
 | Tydzień 1–2 | [4 Domena i poczta](#4--domena-dns-i-poczta) | rejestrację użytkowników |
 | Tydzień 4–5 | [5 Hosting](#5--hosting) | publiczne wystawienie |
@@ -17,57 +17,45 @@ Lista rzeczy do zrobienia ręcznie: konta, klucze, DNS, formalności. Wszystko, 
 
 ---
 
-## 1 · Google Cloud + Gemini API
+## 1 · Azure OpenAI (Główna ścieżka produkcyjna) + Ollama (Alternatywa dev offline)
 
-**Dlaczego to jest pierwsze:** darmowy tier Gemini API wykorzystuje przesłane dane do trenowania modeli. Przy CV realnych osób to nie jest kwestia budżetu, tylko legalności — potrzebny jest tier płatny.
+### Główna ścieżka produkcyjna: Azure OpenAI
 
-Subskrypcja „Google AI Pro" **nie obejmuje API**. Google pisze to wprost:
-> „AI Studio UI only: (…) Direct use of the Gemini API (such as using API keys or external applications) is billed and managed separately."
-> — https://ai.google.dev/gemini-api/docs/google-ai-plans
+W środowisku produkcyjnym aplikacja komunikuje się z modelem przez **Azure OpenAI**.
+- **Bez sekretów API w kodzie i środowisku produkcyjnym:** w chmurze (Azure Container Apps) uwierzytelnianie odbywa się bezkluczykowo za pośrednictwem tożsamości zarządzanej (Managed Identity) oraz roli `Cognitive Services OpenAI User` przy użyciu `@azure/identity` (`DefaultAzureCredential`). W lokalnym środowisku dev deweloper może uwierzytelnić się z Azure poleceniem `az login`.
+- **Domyślna konfiguracja w aplikacji:** `AI_PROVIDER=azure_openai` w `src/server/config.ts`.
+- **Prywatność i RODO:** Wszystkie dane wejściowe kandydatów przechodzą przez twardą granicę pseudonimizacji (`src/server/pseudonymize.ts`) przed wysłaniem do modelu. Modele w ramach dedykowanej subskrypcji Azure OpenAI nie wykorzystują danych użytkowników do dotrenowywania modeli bazowych.
 
-### Kroki
+#### Wymagane zmienne środowiskowe (.env):
+```env
+AI_PROVIDER=azure_openai
+AZURE_OPENAI_ENDPOINT=https://twoj-zasob.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=twoj-deployment-modelu
+AZURE_OPENAI_API_VERSION=2024-10-21
+```
 
-1. **Projekt** → https://console.cloud.google.com/projectcreate
-   Nazwa np. `cvelocity-prod`. Zapisz **Project ID** (różni się od nazwy).
+#### Kroki konfiguracji Azure OpenAI:
+1. **Zasób w Azure:** Utwórz zasób Azure OpenAI w wybranym europejskim regionie obsługiwanym przez subskrypcję (np. `polandcentral` lub `swedencentral`).
+2. **Wdrożenie modelu (Deployment):** W Azure AI Studio wdróż model (np. `gpt-4o` lub `gpt-4o-mini`). Nazwę wdrożenia wpisz do `AZURE_OPENAI_DEPLOYMENT`.
+3. **Uprawnienia IAM:** Przydziel rolę `Cognitive Services OpenAI User` tożsamości zarządzanej Container App (lub swojemu kontu przy dev przez `az login`).
+4. **Budżet i alerty:** Ustaw alerty kosztowe w Azure Cost Management.
 
-2. **⚠️ Najpierw budżet, dopiero potem karta.** Ta kolejność ratuje przed rachunkiem za pomyłkę w pętli.
-   → https://console.cloud.google.com/billing → *Budgets & alerts* → *Create budget*
-   Limit np. 50 zł/mc, alerty na 50 / 90 / 100%.
-   **Budżet Google nie odcina usług** — wysyła tylko maila. Twarde odcięcie wymaga Cloud Function podpiętej pod alert (opcjonalne).
+---
 
-3. **Karta** → https://console.cloud.google.com/billing → *Link a billing account*
+### Alternatywa dla środowiska deweloperskiego: Ollama (tryb lokalny / offline)
 
-4. **Włącz API** → w konsoli wyszukaj „Generative Language API" → *Enable*
+Dla lokalnego developmentu bez konieczności połączenia z chmurą, pracy offline (np. w podróży / bez internetu) lub w scenariuszach, w których żadne dane nie mogą opuścić lokalnego środowiska maszyny operatora, dostępny jest dostawca **Ollama**.
 
-5. **Klucz** → https://aistudio.google.com/apikey
-   ⚠️ Przy tworzeniu wybierz **projekt z billingiem**, nie „nowy projekt". To moment, w którym najłatwiej wylądować na darmowym tierze.
+- **Zasada działania:** W 100% lokalny proces bez konieczności połączenia z internetem i bez zewnętrznych kosztów API.
+- **Wymagania:** Zainstalowana aplikacja Ollama (`ollama serve`) oraz pobrany model (np. `ollama run qwen-chat:latest`).
 
-6. **Zweryfikuj tier** → https://aistudio.google.com/ → sekcja rozliczeń. Szukasz **Tier 1** lub wyżej. „Free" = dane idą do trenowania.
-
-7. **Sprawdź dostępne modele:**
-   ```bash
-   curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=TWOJ_KLUCZ" \
-     | grep -o '"name": "[^"]*"'
-   ```
-   Szukasz `gemini-2.5-flash-lite` — najtańszy zdolny do naszego zadania.
-
-8. **Do `.env`:**
-   ```
-   GEMINI_API_KEY=AIza...
-   GEMINI_MODEL=gemini-2.5-flash-lite
-   ```
-
-9. **Warunki i DPA** → https://ai.google.dev/gemini-api/terms — sprawdź sekcję o wykorzystaniu danych dla płatnego tieru, zrób zrzut ekranu z datą (dowód należytej staranności do dokumentacji RODO).
-
-### Ceny (zweryfikowane 2026-08)
-
-| Model | Input / 1M | Output / 1M |
-|---|---|---|
-| `gemini-2.5-flash-lite` | $0.10 | $0.40 |
-| `gemini-3.1-flash-lite` | $0.25 | $1.50 |
-| `gemini-3.6-flash` | $0.75 | $3.75 → **$1.50 / $7.50 od 1.01.2027** |
-
-**Batch mode = −50%.** Parsowanie ogłoszeń jest asynchroniczne, więc `2.5-flash-lite` w batchu wychodzi $0.05 / $0.20 za milion.
+#### Konfiguracja w `.env`:
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen-chat:latest
+```
+*(Adres `127.0.0.1` jest bezpiecznym domyślnym adresem procesu lokalnego na jednej maszynie; adres LAN dopuszczalny jest wyłącznie w zaufanej sieci prywatnej operatora).*
 
 ---
 
@@ -106,7 +94,15 @@ Subskrypcja „Google AI Pro" **nie obejmuje API**. Google pisze to wprost:
    5. Client ID i Client Secret → panel Supabase. Identyfikator dostawcy w kodzie: **`linkedin_oidc`** (nie `linkedin` — legacy dostawca został usunięty z Supabase 04.01.2024).
    6. Kliknięcie przycisku „Kontynuuj z LinkedIn" bez włączonego produktu w aplikacji LinkedIn kończy się uczciwym komunikatem błędu na ekranie logowania — kod nie udaje, że działa.
 
-9. **CLI:**
+9. **Adresy powrotu (Site URL i Redirect URLs)** → *Authentication → URL Configuration*
+   - **Site URL**: `https://kierivo.com/` (⚠️ krytyczne: jeśli w Supabase widnieje stara domena `cvelocity.oathcry.com`, Supabase w przypadku niezgodności parametru `redirectTo` wykonuje fallback właśnie na `Site URL`!).
+   - **Redirect URLs** (lista dozwolonych celów przekierowania):
+     - `https://kierivo.com/**`
+     - `http://localhost:3000/**`
+     - `http://127.0.0.1:3000/**`
+   > **Uwaga:** Callback Google / Azure / LinkedIn w konsolach zewnętrznych dostawców to ZAWSZE callback Supabase (`https://TWOJ_REF.supabase.co/auth/v1/callback`), a nie domena aplikacji. Zmiana domeny frontendu nie wymaga zmian w Google Console, dopóki projekt Supabase pozostaje ten sam.
+
+10. **CLI:**
    ```bash
    npm i -g supabase
    supabase login
@@ -319,7 +315,7 @@ w [`docs/BACKEND-ROADMAP.md`](./BACKEND-ROADMAP.md) §6; tutaj tylko dlaczego ta
 
 ## Checklista przed pierwszym płacącym klientem
 
-- [ ] Gemini na **płatnym** tierze + budżet z alertami
+- [ ] Azure OpenAI: tożsamość zarządzana (`Cognitive Services OpenAI User`) + budżet z alertami w Azure Cost Management
 - [ ] Supabase **Pro** (kopie zapasowe), region Frankfurt
 - [ ] `grep -r "service_role\|sk_live\|sk_test" dist/client/` → brak trafień (krok automatyczny w CI)
 - [ ] RLS przetestowane na projekcie **zdalnym**, nie tylko lokalnym
@@ -328,7 +324,7 @@ w [`docs/BACKEND-ROADMAP.md`](./BACKEND-ROADMAP.md) §6; tutaj tylko dlaczego ta
 - [ ] Polityka prywatności, regulamin, lista podprocesorów opublikowane
 - [ ] Zgoda na AI **odrębna** od regulaminu; aplikacja działa bez niej
 - [ ] Usuwanie konta czyści wszystko — potwierdzone testem automatycznym
-- [ ] DPA: Google, Supabase, Stripe, dostawca poczty
+- [ ] DPA: Microsoft (Azure), Supabase, Stripe, dostawca poczty
 - [ ] Firma założona, VAT/OSS ustalony
 - [ ] `SECURITY.md` opisuje stan faktyczny, nie życzenia
 
@@ -338,9 +334,9 @@ w [`docs/BACKEND-ROADMAP.md`](./BACKEND-ROADMAP.md) §6; tutaj tylko dlaczego ta
 |---|---|
 | Domena `.pl` | ~60 zł/rok |
 | Supabase Pro | ~100 zł/mc (od 1. klienta) |
-| Gemini API | ~5–30 zł/mc na starcie |
-| Vercel, Cloudflare, Resend, Tailscale | 0 zł |
+| Azure OpenAI | ~10–40 zł/mc (lub 0 zł w dev przy lokalnej Ollamie) |
+| Container Apps, Cloudflare, Resend, Tailscale | 0 zł (w ramach darmowych tierów) |
 | Księgowość JDG | ~150–250 zł/mc |
-| **Razem** | **~250–400 zł/mc** |
+| **Razem** | **~260–400 zł/mc** |
 
 Przy planie ~39–49 zł próg rentowności to 4–6 klientów.

@@ -1,10 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isProStatus, consumeAiLocally, FREE_MONTHLY_IMPORTS, FREE_DAILY_AI_USES } from '../../store/useEntitlements';
+import {
+  isProStatus,
+  consumeAiLocally,
+  FREE_MONTHLY_IMPORTS,
+  FREE_DAILY_AI_USES,
+  setAuthenticatedEntitlements,
+  resetEntitlementsToUnauthenticated,
+  getEntitlementsState,
+} from '../../store/useEntitlements';
 import { StorageKeys, writeJson, wipeAppStorage } from '../storage';
 
 describe('useEntitlements i isProStatus', () => {
   beforeEach(() => {
     wipeAppStorage();
+    resetEntitlementsToUnauthenticated();
   });
 
   it('isProStatus poprawnie rozpoznaje statusy bez rzucania wyjątków na undefined/null', () => {
@@ -23,9 +32,32 @@ describe('useEntitlements i isProStatus', () => {
     expect(FREE_DAILY_AI_USES).toBe(25);
   });
 
-  it('consumeAiLocally działa bezpiecznie i zmniejsza licznik', () => {
+  it('consumeAiLocally dla stanu unauthenticated zwraca false i nie zmienia limitu', () => {
+    resetEntitlementsToUnauthenticated();
     const canConsume = consumeAiLocally();
-    expect(typeof canConsume).toBe('boolean');
+    expect(canConsume).toBe(false);
+    expect(getEntitlementsState().usage.aiUses).toBe(0);
+    expect(getEntitlementsState().source).toBe('unauthenticated');
+  });
+
+  it('po zalogowaniu consumeAiLocally zmniejsza licznik z 25 na 24', () => {
+    setAuthenticatedEntitlements({ status: 'free' }, { aiUses: 25 });
+    expect(getEntitlementsState().usage.aiUses).toBe(25);
+    expect(getEntitlementsState().source).toBe('server');
+
+    const canConsume = consumeAiLocally();
+    expect(canConsume).toBe(true);
+    expect(getEntitlementsState().usage.aiUses).toBe(24);
+  });
+
+  it('resetEntitlementsToUnauthenticated po stanie 24/25 czyści licznik i ustawia stan unauthenticated', () => {
+    setAuthenticatedEntitlements({ status: 'free' }, { aiUses: 24 });
+    expect(getEntitlementsState().usage.aiUses).toBe(24);
+
+    resetEntitlementsToUnauthenticated();
+    expect(getEntitlementsState().source).toBe('unauthenticated');
+    expect(getEntitlementsState().usage.aiUses).toBe(0);
+    expect(consumeAiLocally()).toBe(false);
   });
 
   it('radzi sobie z uszkodzonym lub starym formatem w localStorage', () => {

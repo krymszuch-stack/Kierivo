@@ -123,3 +123,16 @@ describe('kontrast krańców gradientu nagłówka', () => {
     }
   });
 });
+
+describe('kontrast akcentu brandowego i tekstu na nim', () => {
+  it.each([
+    ['jasny', lightBlock],
+    ['ciemny', darkBlock],
+  ])('w motywie %s tekst --on-brand na --brand osiaga co najmniej 4.5:1 (WCAG AA)', (_name, themeBlock) => {
+    const bg = readVar(themeBlock as string, 'brand');
+    const fg = readVar(themeBlock as string, 'on-brand');
+    const val = contrast(fg, bg);
+    expect(val).toBeGreaterThanOrEqual(4.5);
+  });
+});
+

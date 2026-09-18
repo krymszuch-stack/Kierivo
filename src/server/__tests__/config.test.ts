@@ -7,7 +7,16 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
   });
 
   describe('Domyślna konfiguracja deweloperska', () => {
-    it('poprawnie wczytuje bezpieczne wartości domyślne dla trybu local', () => {
+    it('domyślnie przyjmuje azure_openai jako dostawcę AI (główna ścieżka produkcyjna)', () => {
+      const config = validateConfig({
+        NODE_ENV: 'test',
+        BACKEND_MODE: 'local',
+      });
+
+      expect(config.AI_PROVIDER).toBe('azure_openai');
+    });
+
+    it('poprawnie wczytuje bezpieczne wartości domyślne dla trybu local z Ollamą', () => {
       const config = validateConfig({
         NODE_ENV: 'development',
         BACKEND_MODE: 'local',
@@ -29,6 +38,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
     it('poprawnie przetwarza ALLOWED_ORIGINS i TRUST_PROXY', () => {
       const config = validateConfig({
         NODE_ENV: 'development',
+        AI_PROVIDER: 'ollama',
         ALLOWED_ORIGINS: 'https://example.com, https://app.example.com ',
         TRUST_PROXY: 'true',
       });
@@ -43,6 +53,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           BACKEND_MODE: 'cloud',
         })
       ).toThrowError(/BACKEND_MODE=cloud wymaga zmiennych: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY/);
@@ -52,6 +63,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           BACKEND_MODE: 'cloud',
           SUPABASE_URL: 'https://test-project.supabase.co',
         })
@@ -62,6 +74,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           BACKEND_MODE: 'cloud',
           SUPABASE_SERVICE_ROLE_KEY: 'secret-service-role-key',
         })
@@ -71,6 +84,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
     it('przechodzi pomyślnie, gdy obie zmienne Supabase są obecne', () => {
       const config = validateConfig({
         NODE_ENV: 'development',
+        AI_PROVIDER: 'ollama',
         BACKEND_MODE: 'cloud',
         SUPABASE_URL: 'https://test-project.supabase.co',
         SUPABASE_SERVICE_ROLE_KEY: 'secret-service-role-key',
@@ -111,6 +125,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           STRIPE_SECRET_KEY: 'sk_test_12345',
         })
       ).toThrowError(/Zmienna STRIPE_SECRET_KEY jest ustawiona, ale brakuje STRIPE_WEBHOOK_SECRET/);
@@ -120,6 +135,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           STRIPE_WEBHOOK_SECRET: 'whsec_12345',
         })
       ).toThrowError(/Zmienna STRIPE_WEBHOOK_SECRET jest ustawiona, ale brakuje STRIPE_SECRET_KEY/);
@@ -128,6 +144,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
     it('akceptuje parę kluczy Stripe', () => {
       const config = validateConfig({
         NODE_ENV: 'development',
+        AI_PROVIDER: 'ollama',
         BACKEND_MODE: 'cloud',
         SUPABASE_URL: 'https://test-project.supabase.co',
         SUPABASE_SERVICE_ROLE_KEY: 'secret-service-role-key',
@@ -147,6 +164,8 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       APP_URL: 'https://kierivo.com',
       SUPABASE_URL: 'https://prod-project.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'prod-secret-service-role-key',
+      AZURE_OPENAI_ENDPOINT: 'https://kierivo-ai.openai.azure.com',
+      AZURE_OPENAI_DEPLOYMENT: 'gpt-4o',
     };
 
     it('zatrzymuje serwer, gdy APP_URL na produkcji wskazuje na localhost', () => {
@@ -167,9 +186,17 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       ).toThrowError(/Wdrożenie produkcyjne \(NODE_ENV=production\) wymaga BACKEND_MODE=cloud/);
     });
 
-    it('akceptuje w pełni poprawną konfigurację produkcyjną', () => {
+    it('zatrzymuje serwer na produkcji z domyślnym azure_openai, gdy brak endpointu Azure', () => {
+      const { AZURE_OPENAI_ENDPOINT: _, ...envWithoutEndpoint } = validProdEnv;
+      expect(() => validateConfig(envWithoutEndpoint)).toThrowError(
+        /AI_PROVIDER=azure_openai wymaga ustawienia AZURE_OPENAI_ENDPOINT oraz AZURE_OPENAI_DEPLOYMENT/
+      );
+    });
+
+    it('akceptuje w pełni poprawną konfigurację produkcyjną z domyślnym Azure OpenAI', () => {
       const config = validateConfig(validProdEnv);
       expect(config.NODE_ENV).toBe('production');
+      expect(config.AI_PROVIDER).toBe('azure_openai');
       expect(config.APP_URL).toBe('https://kierivo.com');
       expect(config.backendEnabled).toBe(true);
     });
@@ -180,6 +207,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           VITE_SUPABASE_SERVICE_ROLE_KEY: 'dangerous-key-in-bundle',
         })
       ).toThrowError(/Wykryto prywatny sekret z prefiksem VITE_: VITE_SUPABASE_SERVICE_ROLE_KEY/);
@@ -189,6 +217,7 @@ describe('Walidacja konfiguracji serwera (config.ts)', () => {
       expect(() =>
         validateConfig({
           NODE_ENV: 'development',
+          AI_PROVIDER: 'ollama',
           VITE_STRIPE_SECRET_KEY: 'dangerous-stripe-key',
         })
       ).toThrowError(/Wykryto prywatny sekret z prefiksem VITE_: VITE_STRIPE_SECRET_KEY/);

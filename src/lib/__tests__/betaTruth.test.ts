@@ -101,7 +101,8 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     expect(advisor).toContain('bez danych kontaktowych i pełnej treści CV');
     expect(advisor).not.toContain('Doradca AI');
     expect(advisor).toContain('FAQ: co możesz zrobić teraz?');
-    expect(advisor).toContain('Rozmowa działa wyłącznie z dostępną lokalną Ollamą');
+    expect(advisor).toContain('Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama');
+    expect(advisor).toContain('Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji');
     expect(sidebar).toContain('Doradca lokalny');
     expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('Doradcy AI');
