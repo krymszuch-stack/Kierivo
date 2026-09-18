@@ -91,6 +91,13 @@ function similarity(left: string, right: string): number {
   return intersection / Math.max(1, a.size + b.size - intersection);
 }
 
+function lastIndexMatching<T>(items: T[], predicate: (item: T) => boolean): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (predicate(items[index])) return index;
+  }
+  return -1;
+}
+
 function validate(lines: string[], title: string | null, company: string | null): Pick<PreparedJobOfferSegment, 'completeness' | 'confidence' | 'needsUserReview'> {
   const hasRequirements = lines.some((line) => REQUIREMENTS.test(line));
   const hasDuties = lines.some((line) => DUTIES.test(line));
@@ -135,6 +142,60 @@ export function preprocessJobOfferPaste(rawText: string): JobOfferPreparation {
       duplicateOfSegmentId: null as string | null,
     };
   });
+
+  // Portale wklejają czasem profil poprzedniej firmy między dwiema ofertami.
+  // Marker „Przewiń do profilu firmy” jest wtedy mocniejszą granicą niż
+  // kolejny nagłówek „O firmie”: bez odcięcia wymagania następnej oferty
+  // dziedziczyłyby się do bieżącego segmentu. Jeżeli po profilu pojawia się
+  // blok sekcji oferty, przypinamy go do segmentu tej firmy.
+  for (const source of segments) {
+    let sourceLines = source.cleanText.split('\n');
+    for (let profileIndex = sourceLines.findIndex((line) =>
+      segments.some((segment) => segment !== source &&
+        normalize(segment.companyCandidate || '') === normalize(line))
+    ); profileIndex >= 0; profileIndex = sourceLines.findIndex((line) =>
+      segments.some((segment) => segment !== source &&
+        normalize(segment.companyCandidate || '') === normalize(line))
+    )) {
+      const profileCompany = sourceLines[profileIndex].trim();
+      const target = segments.find((segment) =>
+        normalize(segment.companyCandidate || '') === normalize(profileCompany)
+      );
+      if (!target || target === source) {
+        sourceLines = sourceLines.slice(0, profileIndex);
+        break;
+      }
+      const bodyStart = lastIndexMatching(sourceLines.slice(0, profileIndex), (line) =>
+        /^(backend|frontend|technologie, których używamy|technologie|twój zakres obowiązków|nasze wymagania|wymagane)$/i.test(line)
+      );
+      if (bodyStart >= 0) {
+        target.cleanText = `${target.cleanText}\n${sourceLines.slice(bodyStart, profileIndex).join('\n')}`.trim();
+        sourceLines = [...sourceLines.slice(0, bodyStart), ...sourceLines.slice(profileIndex + 2)];
+      } else {
+        sourceLines = sourceLines.slice(0, profileIndex);
+      }
+    }
+    source.cleanText = sourceLines.join('\n');
+  }
+
+  // Drugi wariant tego samego artefaktu: profil firmy może być sklejony z
+  // poprzednim akapitem, więc czyszczenie linii usunie marker, zanim zobaczymy
+  // granicę. W takim przypadku odtwarzamy blok od ostatniego nagłówka sekcji
+  // do samotnej nazwy firmy — wyłącznie gdy segment docelowy jest samym
+  // nagłówkiem metadanych.
+  for (const target of segments) {
+    if (!target.companyCandidate || target.cleanText.split('\n').length > 15) continue;
+    const marker = lastIndexMatching(lines, (line) => normalize(line) === normalize(target.companyCandidate!));
+    if (marker < 0) continue;
+    const bodyStart = lastIndexMatching(lines.slice(0, marker), (line) =>
+      /^(backend|frontend|technologie, których używamy|technologie|twój zakres obowiązków|nasze wymagania|wymagane)$/i.test(line)
+    );
+    if (bodyStart < 0) continue;
+    const body = lines.slice(bodyStart, marker);
+    if (body.some((line) => /prawo jazdy|nasze wymagania|twój zakres obowiązków/i.test(line))) {
+      target.cleanText = `${target.cleanText}\n${body.join('\n')}`.trim();
+    }
+  }
 
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];

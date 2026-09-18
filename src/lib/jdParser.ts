@@ -1,6 +1,29 @@
 import { MasterVault } from '../types';
 import { HR_AND_COMMON_STOP_WORDS, extractDynamicJdPhrases } from './atsSimulator';
-import { auditKnockouts } from './knockouts';
+import { auditKnockouts, KNOCKOUT_RULES, type KnockoutSeverity } from './knockouts';
+
+export interface StructuredSalary {
+  min: number;
+  max: number;
+  currency: string;
+  period: string;
+  grossNet: string;
+}
+
+export interface FormalRequirement {
+  id: string;
+  label: string;
+  required: boolean;
+  severity: KnockoutSeverity | 'information';
+  sourceText: string;
+}
+
+export interface StructuredLanguage {
+  language: string;
+  level?: string;
+  required: boolean;
+  sourceText: string;
+}
 
 export interface ParsedJobDescription {
   jobTitle: string;
@@ -21,6 +44,15 @@ export interface ParsedJobDescription {
   recruitmentMode?: 'ATS_CORPORATE' | 'CRAFT_LOCAL' | 'HYBRID';
   recruitmentModeReason?: string;
   sourceUrl?: string;
+  niceToHaveHardSkills?: string[];
+  niceToHaveSoftSkills?: string[];
+  formalRequirements?: FormalRequirement[];
+  experienceMinYears?: number | null;
+  structuredLanguages?: StructuredLanguage[];
+  location?: string;
+  contractTypes?: string[];
+  salary?: StructuredSalary | null;
+  sourceSections?: Record<string, string[]>;
 }
 
 /** Mapuje regułę knock-outu na kategorię używaną przez interfejs. */
@@ -59,7 +91,7 @@ export interface JDVaultMatchAnalysis {
 /**
  * Local client-side smart parser fallback for Job Descriptions
  */
-export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full-Stack Developer'): ParsedJobDescription {
+function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-Stack Developer'): ParsedJobDescription {
   const text = rawJdText.trim();
   const lower = text.toLowerCase();
 
@@ -198,6 +230,125 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
     mandatoryRequirements: mandatory,
     salaryRange: salaryRange || undefined,
     workModel,
+  };
+}
+
+function parseSectionLines(lines: string[], headers: RegExp[]): string[] {
+  let start = -1;
+  lines.forEach((line, index) => {
+    if (headers.some((pattern) => pattern.test(line))) start = index;
+  });
+  if (start < 0) return [];
+  const end = lines.slice(start + 1).findIndex((line) =>
+    /^(mile widziane|nasze wymagania|twoje wymagania|wymagania|to oferujemy|benefity|twój zakres|obowiązki|o projekcie|technologie)/i.test(line)
+  );
+  return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
+}
+
+/**
+ * Parser lokalny ogranicza ekstrakcję umiejętności do sekcji wymagań. Stary
+ * ekstraktor pozostaje jako fallback dla nietypowych ręcznych ogłoszeń, ale nie
+ * może zasilać ATS rzeczownikami z benefitu ani stopki portalu.
+ */
+export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full-Stack Developer'): ParsedJobDescription {
+  const legacy = parseJobDescriptionLocalLegacy(rawJdText, defaultTitle);
+  const text = rawJdText.trim();
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const requiredLines = parseSectionLines(lines, [/^(nasze|twoje)?\s*wymagania/i, /^wymagane$/i]);
+  const niceLines = parseSectionLines(lines, [/^mile widziane/i, /^nice[- ]to[- ]have/i, /^preferred/i]);
+  const skillNames = [
+    'TypeScript', 'JavaScript', 'React', 'Node.js', 'Express', 'Python', 'Java', 'C#', '.NET', '.NET Framework',
+    'PostgreSQL', 'Oracle SQL', 'PL/SQL', 'SQL', 'MySQL', 'MongoDB', 'Redis', 'Docker', 'Kubernetes', 'AWS', 'GCP',
+    'Azure', 'GraphQL', 'REST API', 'CI/CD', 'Git', 'Tailwind', 'Next.js', 'NestJS', 'Microservices', 'Mikroserwisy', 'ASP.NET', 'Jest', 'Cypress',
+    'Linux', 'Agile', 'Scrum', 'Jira', 'Terraform', 'Kafka', 'RabbitMQ', 'WinForms', 'WPF', 'MVVM', 'CQRS', 'DDD',
+    'TCP/IP', 'C++', 'C', 'Pascal', 'IEC61850', 'IEC870-5-103', 'DNP3', 'CANBUS', 'MODBUS', 'QT', 'Embedded',
+    'Grafana', 'Prometheus', 'EF Core', 'Entity Framework Core', 'Dapper', 'XPO', 'ERP', 'MVC', 'gRPC', 'MS SQL',
+    'DevExpress WinForms', 'Confluence', 'Bitbucket', 'GitHub', 'Logistyka', 'Wykształcenie wyższe informatyczne',
+  ];
+  const findSkills = (source: string) => skillNames.filter((skill) => {
+    if (skill === 'SQL' && !/(?:baz(?:y|ach) danych|database|ms\s+sql|sql\s*\()/i.test(source)) return false;
+    if (skill === 'Azure' && /azure\s+devops/i.test(source) && !/(?<!devops\s)(?:platforma|chmura|usługa|usługi)\s+azure/i.test(source)) return false;
+    const term = skill === 'ASP.NET' ? 'ASP\\s*\\.\\s*NET' :
+      skill === 'Logistyka' ? 'logistyk\\p{L}*' :
+      skill === 'Wykształcenie wyższe informatyczne' ? 'wykształcenie\\s+wyższe[ ,]+informatyczne' :
+      skill.replace(/[.+]/g, '\\$&');
+    const boundary = skill === 'C' ? '(?<![A-Za-z0-9+#])C(?![A-Za-z0-9+#])' :
+      `(?<![\\p{L}\\p{N}])${term}(?![\\p{L}\\p{N}])`;
+    return new RegExp(boundary, 'iu').test(source);
+  });
+  const required = Array.from(new Set(findSkills(requiredLines.join('\n'))));
+  const nice = Array.from(new Set(findSkills(niceLines.join('\n')))).filter((skill) => !required.includes(skill));
+  const toolPattern = /^(Docker|Kubernetes|AWS|GCP|Azure|Git|Jira|Terraform|Kafka|Redis|Linux|Grafana|Prometheus)$/i;
+  const tools = required.filter((skill) => toolPattern.test(skill));
+  const hard = required.filter((skill) => !tools.includes(skill));
+  const softNames = ['Praca zespołowa', 'Komunikatywność', 'Analityczne myślenie', 'Rozwiązywanie problemów', 'Mentoring'];
+  const soft = softNames.filter((skill) => new RegExp(skill, 'i').test(requiredLines.join('\n')));
+  const niceSoft = softNames.filter((skill) => new RegExp(skill, 'i').test(niceLines.join('\n')));
+  const structuredLanguages = lines.flatMap((line) => {
+    const match = line.match(/\b(angielski|niemiecki|francuski|hiszpański|polski|english|german|french|spanish)\b(?:\s*\(([^)]*)\))?/i);
+    return match ? [{ language: match[1], level: match[2], required: requiredLines.includes(line) || /wymagan|minimum|min\./i.test(line), sourceText: line }] : [];
+  });
+  const lower = text.toLocaleLowerCase('pl-PL');
+  const experienceMatch = lower.match(/(?:minimum|min\.?|co najmniej|at least)\s*(\d{1,2})\s*\+?\s*(?:lat|lata|years?)/i) ||
+    lower.match(/\b(\d{1,2})\s*\+?\s*(?:lat|lata|years?)\s*(?:doświadczenia|experience)/i);
+  const experienceMinYears = experienceMatch ? Number(experienceMatch[1]) : null;
+  const salaryMatch = text.match(/(?:od\s*)?(\d[\d\s.]*(?:,\d+)?)\s*(?:–|-|do)\s*(\d[\d\s.]*(?:,\d+)?)\s*(zł|pln|eur|usd)([^.\n]*)/i);
+  const parseNumber = (value: string) => Number(value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
+  const salary = salaryMatch ? {
+    min: parseNumber(salaryMatch[1]), max: parseNumber(salaryMatch[2]), currency: salaryMatch[3].toUpperCase().replace('ZŁ', 'PLN'),
+    period: /godz|h\b/i.test(salaryMatch[4]) ? 'godzina' : /mies/i.test(salaryMatch[4]) ? 'miesiąc' : 'nieokreślony',
+    grossNet: /netto/i.test(salaryMatch[4]) ? 'netto' : /brutto/i.test(salaryMatch[4]) ? 'brutto' : 'nieokreślony',
+  } : null;
+  const formalRequirements: FormalRequirement[] = [];
+  for (const rule of KNOCKOUT_RULES) {
+    const sourceText = requiredLines.find((line) => rule.detect.some((pattern) => pattern.test(line)));
+    if (sourceText) formalRequirements.push({ id: rule.id, label: rule.label, required: true, severity: rule.severity, sourceText });
+  }
+  const degreeLine = lines.find((line) => /wykształcenie wyższe|studia wyższe|bachelor|master degree/i.test(line));
+  if (degreeLine) formalRequirements.push({ id: 'degree', label: degreeLine, required: requiredLines.includes(degreeLine), severity: 'information', sourceText: degreeLine });
+  if (experienceMinYears !== null) formalRequirements.push({ id: 'experience_years', label: `Min. ${experienceMinYears} lat doświadczenia`, required: true, severity: 'information', sourceText: lines.find((line) => /\d+\s*\+?\s*(?:lat|lata|years?)/i.test(line)) || '' });
+  structuredLanguages.filter((language) => language.required).forEach((language) => {
+    formalRequirements.push({
+      id: `language_${language.language.toLowerCase()}`,
+      label: `${language.language}${language.level ? ` (${language.level})` : ''}`,
+      required: true,
+      severity: 'information',
+      sourceText: language.sourceText,
+    });
+  });
+  const companyName = text.match(/^(.{2,100}?)\s*o firmie\s*$/im)?.[1]?.trim() || legacy.companyName;
+  const usefulTitle = defaultTitle.length > 3 && !/^(full-stack developer|stanowisko)$/i.test(defaultTitle);
+  const titleFromText = lines.find((line) => /^(poszukujemy|rekrutacja na|stanowisko:|oferta:)/i.test(line))
+    ?.replace(/^(poszukujemy|rekrutacja na|stanowisko:|oferta:)\s*/i, '').trim();
+  const jobTitle = usefulTitle ? defaultTitle : titleFromText || lines.find((line) => line.length > 3 && line.length < 90 && !/^(firma|wymagania|o firmie)/i.test(line)) || legacy.jobTitle;
+  const mandatoryRequirements = formalRequirements.filter((requirement) => requirement.required).map((requirement) => requirement.label);
+  const location = lines.find((line) => /warszawa|katowice|gliwice|kraków|wrocław|gdańsk|poznań|łódź|szczecin|białołęka|polska/i.test(line));
+  const contractTypes = Array.from(new Set(lines.filter((line) => /umowa o pracę|umowa zlecenie|umowa o dzieło|kontrakt b2b|pełny etat|część etatu/i.test(line))));
+  const workModel: ParsedJobDescription['workModel'] = /praca zdalna|zdalnie|remote/i.test(lower) ? 'REMOTE' : /stacjonarn|z biura|in-office/i.test(lower) ? 'ON_SITE' : legacy.workModel;
+  return {
+    ...legacy,
+    jobTitle,
+    companyName,
+    requiredHardSkills: hard,
+    requiredSoftSkills: soft,
+    // Pole legacyjne pozostaje agregatem rozpoznanych technologii; nowe pola
+    // niceToHaveHardSkills przechowują właściwy podział dla nowych konsumentów.
+    toolsAndTech: Array.from(new Set([...tools, ...nice])),
+    languagesRequired: structuredLanguages.filter((language) => language.required).map((language) => `${language.language}${language.level ? ` (${language.level})` : ''}`),
+    coreResponsibilities: parseSectionLines(lines, [/^(twój|twoje)?\s*zakres obowiązków/i, /^obowiązki/i]).slice(0, 10),
+    keyKeywords: Array.from(new Set([...required, ...nice, ...soft, ...niceSoft, ...mandatoryRequirements])).filter((keyword) => !HR_AND_COMMON_STOP_WORDS.has(keyword.toLowerCase())).slice(0, 30),
+    mandatoryRequirements,
+    salaryRange: salaryMatch?.[0],
+    workModel,
+    niceToHaveHardSkills: nice,
+    niceToHaveSoftSkills: niceSoft,
+    formalRequirements,
+    experienceMinYears,
+    structuredLanguages,
+    location,
+    contractTypes,
+    salary,
+    sourceSections: { required: requiredLines, niceToHave: niceLines },
   };
 }
 
