@@ -269,7 +269,7 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
           type="email"
           value={data.email}
           onChange={(e) => handleChange('email', e.target.value)}
-          placeholder="jan.kowalski@example.com"
+          placeholder="adrian.k@example.com"
           error={!isEmailValid ? 'Niepoprawny format adresu e-mail' : undefined}
           required
         />

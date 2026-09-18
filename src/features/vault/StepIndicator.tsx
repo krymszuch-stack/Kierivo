@@ -7,6 +7,8 @@ export interface StepItem {
   label: string;
   icon: LucideIcon;
   description?: string;
+  estimatedTime?: string;
+  isRequired?: boolean;
 }
 
 export interface StepIndicatorProps {
@@ -22,15 +24,17 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
   onStepClick,
   className = '',
 }) => {
+  const current = steps[activeStep];
+
   return (
     <div className={`w-full ${className}`}>
-      {/* Progress Track */}
+      {/* Progress Track (Desktop) */}
       <div className="relative mb-6 hidden md:block">
-        <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 h-0.5 bg-line" />
+        <div className="absolute top-5 left-0 right-0 h-0.5 bg-line" />
         <div
-          className="absolute top-1/2 left-0 -translate-y-1/2 h-0.5 bg-brand-600 transition-all duration-500 ease-out"
+          className="absolute top-5 left-0 h-0.5 bg-brand-600 transition-all duration-500 ease-out"
           style={{
-            width: `${(activeStep / (steps.length - 1)) * 100}%`,
+            width: `${(activeStep / Math.max(1, steps.length - 1)) * 100}%`,
           }}
         />
 
@@ -45,7 +49,7 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                 key={step.id}
                 type="button"
                 onClick={() => onStepClick(idx)}
-                className="group flex flex-col items-center focus-visible:outline-none"
+                className="group flex flex-col items-center focus-visible:outline-none max-w-[110px]"
               >
                 <div
                   className={`flex h-10 w-10 items-center justify-center rounded-2xl border text-xs font-bold transition-all duration-300 ${
@@ -64,18 +68,32 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                 </div>
 
                 <div className="mt-2 text-center">
+                  <span className="block font-mono text-[10px] text-muted">
+                    Krok {idx + 1}
+                  </span>
                   <span
-                    className={`block font-sans text-xs font-bold transition-colors ${
+                    className={`block font-sans text-xs font-bold transition-colors leading-tight ${
                       isCurrent ? 'text-brand-fg' : 'text-muted group-hover:text-ink'
                     }`}
                   >
                     {step.label}
                   </span>
-                  {step.description && (
-                    <span className="hidden lg:block text-[10px] text-subtle">
-                      {step.description}
+                  <div className="mt-1 flex flex-col items-center gap-0.5">
+                    <span
+                      className={`inline-block rounded-full px-1.5 py-0.2 text-[9px] font-semibold leading-tight ${
+                        step.isRequired
+                          ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300'
+                          : 'bg-sunken text-muted'
+                      }`}
+                    >
+                      {step.isRequired ? 'Wymagana' : 'Opcjonalna'}
                     </span>
-                  )}
+                    {step.estimatedTime && (
+                      <span className="font-mono text-[9px] text-subtle">
+                        {step.estimatedTime}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </button>
             );
@@ -84,16 +102,34 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
       </div>
 
       {/* Mobile Step Counter & Progress */}
-      <div className="md:hidden flex items-center justify-between mb-4 rounded-xl border border-line bg-surface p-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-50 font-mono text-xs font-bold text-brand-600">
-            {activeStep + 1}
+      <div className="md:hidden mb-4 rounded-xl border border-line bg-surface p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-50 font-mono text-xs font-bold text-brand-600">
+              {activeStep + 1}
+            </span>
+            <span className="text-xs font-bold text-ink">{current?.label}</span>
+          </div>
+          <span className="font-mono text-[11px] text-muted">
+            Krok {activeStep + 1} z {steps.length}
           </span>
-          <span className="text-xs font-bold text-ink">{steps[activeStep].label}</span>
         </div>
-        <span className="font-mono text-[11px] text-muted">
-          Krok {activeStep + 1} z {steps.length}
-        </span>
+        <div className="flex items-center gap-2 text-[11px] text-muted pt-1 border-t border-line/60">
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+              current?.isRequired
+                ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-300'
+                : 'bg-sunken text-muted'
+            }`}
+          >
+            {current?.isRequired ? 'Sekcja wymagana' : 'Sekcja opcjonalna'}
+          </span>
+          {current?.estimatedTime && (
+            <span className="font-mono text-[10px] text-subtle">
+              czas: {current.estimatedTime}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

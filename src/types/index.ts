@@ -2,6 +2,24 @@ export type FlagCategory = 'PHYSICAL' | 'OFFICE_IT' | 'CASUAL' | 'REMOTE';
 
 export type ExperienceLevel = 'ENTRY' | 'MID' | 'SENIOR' | 'PIVOT';
 
+/**
+ * Cel zawodowy użytkownika — język naturalny dla każdego fachu,
+ * znoszący korporacyjne szufladkowanie junior/mid/senior.
+ */
+export type CareerGoal =
+  | 'FIRST_JOB'
+  | 'EXPERIENCED_ROLE'
+  | 'MORE_RESPONSIBLE'
+  | 'CAREER_CHANGE'
+  | 'SIDE_OR_CASUAL'
+  | 'UNDECIDED';
+
+/** Staż / lata doświadczenia w danym fachu */
+export type ExperienceYears = 'NONE' | 'UP_TO_2' | '2_TO_5' | 'OVER_5';
+
+/** Oczekiwana samodzielność na stanowisku */
+export type IndependenceLevel = 'TRAINEE' | 'AUTONOMOUS' | 'COORDINATOR';
+
 export interface LocationPreferences {
   city: string;
   radiusKm: number;
@@ -21,7 +39,18 @@ export interface LanguageProficiency {
 
 export interface ProfilerState {
   flags: FlagCategory[];
+  /** Wewnętrzny parametr techniczny dla silnika dopasowania i ATS */
   experienceLevel: ExperienceLevel;
+  /** Główny cel zawodowy użytkownika */
+  careerGoal?: CareerGoal;
+  /** Staż / dotychczasowe doświadczenie */
+  experienceYears?: ExperienceYears;
+  /** Oczekiwana samodzielność */
+  independenceLevel?: IndependenceLevel;
+  /** Gotowość do zmiany branży / fachu */
+  industryChangeReady?: boolean;
+  /** Czy system ma automatycznie dobierać wewnętrzny poziom ATS (domyślnie true) */
+  autoDetermineSeniority?: boolean;
   location: LocationPreferences;
   languages: LanguageProficiency[];
   licenses?: string[];

@@ -17,6 +17,7 @@ import {
   X,
   ExternalLink,
   FileCheck,
+  Search,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { SkillsMatrix as SkillsMatrixType, LanguageProficiency, Certification } from '../../types';
@@ -84,6 +85,18 @@ const COMMON_LICENSES = ALL_LICENSES.map((lic) => ({
   icon: LICENSE_ICONS[lic.iconName] ?? ShieldCheck,
 }));
 
+const POPULAR_LICENSE_IDS = new Set([
+  'b_license',
+  'udt_forklift',
+  'sep_1kv',
+  'sep_g2',
+  'sep_g3',
+  'fgas',
+  'welding_tig_mig',
+  'sanepid',
+  'cloud_cert',
+]);
+
 export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
   skillsMatrix,
   languages,
@@ -98,6 +111,10 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
   const [softSkillInput, setSoftSkillInput] = useState('');
   const [newLangName, setNewLangName] = useState('');
   const [newLangLevel, setNewLangLevel] = useState<LanguageProficiency['level']>('B2');
+
+  // Stan wyszukiwarki i filtra uprawnień
+  const [licenseSearch, setLicenseSearch] = useState('');
+  const [licenseFilter, setLicenseFilter] = useState<'all' | 'selected' | 'popular'>('popular');
 
   // Stan formularza nowego certyfikatu
   const [certName, setCertName] = useState('');
@@ -217,9 +234,14 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
       {/* Hard Skills Section */}
       <Card tone="raised" className="space-y-4">
         <div>
-          <h3 className="text-base font-bold text-ink">Umiejętności Twarde & Technologie</h3>
-          <p className="text-xs text-muted">
-            Języki programowania, frameworki, narzędzia bazodanowe i technologie chmurowe.
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-ink">Umiejętności Twarde & Technologie</h3>
+            <span className="rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:bg-brand-950/40 dark:text-brand-300">
+              Rekomendowane pod ATS
+            </span>
+          </div>
+          <p className="text-xs text-muted mt-0.5">
+            Języki programowania, frameworki, narzędzia bazodanowe, sprzęt i technologie.
           </p>
         </div>
 
@@ -274,8 +296,13 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
       {/* Soft Skills Section */}
       <Card tone="raised" className="space-y-4">
         <div>
-          <h3 className="text-base font-bold text-ink">Kompetencje Miękkie & Przywódcze</h3>
-          <p className="text-xs text-muted">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-ink">Kompetencje Miękkie & Przywódcze</h3>
+            <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-semibold text-muted">
+              Opcjonalne
+            </span>
+          </div>
+          <p className="text-xs text-muted mt-0.5">
             Umiejętności komunikacyjne, współpraca w zespole, zarządzanie czasem i rozwiązywanie problemów.
           </p>
         </div>
@@ -327,8 +354,13 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
       {/* Languages Section */}
       <Card tone="raised" className="space-y-4">
         <div>
-          <h3 className="text-base font-bold text-ink">Języki Obce (Skala CEFR)</h3>
-          <p className="text-xs text-muted">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-ink">Języki Obce (Skala CEFR)</h3>
+            <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-semibold text-muted">
+              Opcjonalne
+            </span>
+          </div>
+          <p className="text-xs text-muted mt-0.5">
             Poziomy biegłości językowej według Europejskiego Systemu Opisu Kształcenia Językowego.
           </p>
         </div>
@@ -410,61 +442,174 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
 
       {/* Formal Licenses & Certifications Grid */}
       <Card tone="raised" className="space-y-4">
-        <div>
-          <h3 className="text-base font-bold text-ink">Uprawnienia Formalne & Certyfikaty</h3>
-          <p className="text-xs text-muted">
-            Kluczowe certyfikaty i uprawnienia wymagane na stanowiskach technicznych.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-ink">Uprawnienia Formalne & Certyfikaty</h3>
+              <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-semibold text-muted">
+                Opcjonalne
+              </span>
+            </div>
+            <p className="text-xs text-muted mt-0.5">
+              Wybierz posiadane uprawnienia (np. SEP, UDT, prawo jazdy). Sekcja jest opcjonalna i nie blokuje ukończenia profilu.
+            </p>
+          </div>
+
+          {/* Filtry */}
+          <div className="flex items-center gap-1 bg-sunken/60 p-1 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setLicenseFilter('popular')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                licenseFilter === 'popular'
+                  ? 'bg-surface text-brand-fg shadow-2xs font-bold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              Popularne
+            </button>
+            <button
+              type="button"
+              onClick={() => setLicenseFilter('selected')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                licenseFilter === 'selected'
+                  ? 'bg-surface text-brand-fg shadow-2xs font-bold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              Wybrane ({licenses.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setLicenseFilter('all')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
+                licenseFilter === 'all'
+                  ? 'bg-surface text-brand-fg shadow-2xs font-bold'
+                  : 'text-muted hover:text-ink'
+              }`}
+            >
+              Wszystkie ({COMMON_LICENSES.length})
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {COMMON_LICENSES.map((lic) => {
-            const isChecked = licenses.includes(lic.id);
-            const Icon = lic.icon;
+        {/* Wyszukiwarka */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <input
+            type="text"
+            value={licenseSearch}
+            onChange={(e) => setLicenseSearch(e.target.value)}
+            placeholder="Szukaj uprawnienia (np. SEP, UDT, Prawo jazdy, F-Gaz)..."
+            className="w-full rounded-xl border border-line bg-surface pl-9 pr-8 py-2 text-xs text-ink placeholder:text-muted focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          {licenseSearch && (
+            <button
+              type="button"
+              onClick={() => setLicenseSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs p-0.5 cursor-pointer"
+              title="Wyczyść wyszukiwanie"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
+        {/* Siatka uprawnień */}
+        {(() => {
+          const filtered = COMMON_LICENSES.filter((lic) => {
+            const matchesSearch = lic.label.toLowerCase().includes(licenseSearch.toLowerCase());
+            if (!matchesSearch) return false;
+
+            if (licenseFilter === 'selected') {
+              return licenses.includes(lic.id);
+            }
+            if (licenseFilter === 'popular') {
+              return POPULAR_LICENSE_IDS.has(lic.id) || licenses.includes(lic.id);
+            }
+            return true;
+          });
+
+          if (filtered.length === 0) {
             return (
-              <motion.button
-                key={lic.id}
-                type="button"
-                onClick={() => handleToggleLicense(lic.id)}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`flex flex-col items-start gap-2.5 rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none ${
-                  isChecked
-                    ? 'border-brand-200 bg-brand-50 text-brand-fg shadow-raised ring-2 ring-brand-500/20'
-                    : 'border-line bg-surface text-muted hover:border-brand-200/50 hover:text-ink'
-                }`}
-              >
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors ${
-                    isChecked ? 'bg-brand-600 text-on-brand' : 'bg-sunken text-muted'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
-
-                <div>
-                  <span className="block text-xs font-bold leading-tight">
-                    {lic.label}
-                  </span>
-                  <span className="font-mono text-[10px] opacity-75">
-                    {isChecked ? 'Zaznaczone' : 'Brak'}
-                  </span>
-                </div>
-              </motion.button>
+              <div className="rounded-xl border border-dashed border-line p-6 text-center text-xs text-muted space-y-2">
+                <p>
+                  {licenseFilter === 'selected'
+                    ? 'Nie zaznaczono jeszcze żadnych uprawnień.'
+                    : `Brak uprawnień pasujących do wyszukiwania „${licenseSearch}”.`}
+                </p>
+                {(licenseSearch || licenseFilter === 'selected') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLicenseSearch('');
+                      setLicenseFilter('all');
+                    }}
+                    className="text-brand-fg font-semibold hover:underline cursor-pointer"
+                  >
+                    Pokaż wszystkie uprawnienia
+                  </button>
+                )}
+              </div>
             );
-          })}
-        </div>
+          }
+
+          return (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              {filtered.map((lic) => {
+                const isChecked = licenses.includes(lic.id);
+                const Icon = lic.icon;
+
+                return (
+                  <motion.button
+                    key={lic.id}
+                    type="button"
+                    onClick={() => handleToggleLicense(lic.id)}
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
+                    className={`flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition-all duration-150 focus-visible:outline-none cursor-pointer ${
+                      isChecked
+                        ? 'border-brand-300 bg-brand-50 text-brand-fg shadow-raised ring-2 ring-brand-500/20 dark:bg-brand-950/40 dark:border-brand-700'
+                        : 'border-line bg-surface text-muted hover:border-brand-200/60 hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                          isChecked ? 'bg-brand-600 text-on-brand' : 'bg-sunken text-muted'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                      <span className="font-mono text-[9px] font-semibold">
+                        {isChecked ? 'Zaznaczone' : 'Brak'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="block text-xs font-bold leading-snug">
+                        {lic.label}
+                      </span>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Card>
 
       {/* Certyfikaty Użytkownika */}
       <Card tone="raised" className="space-y-4">
         <div>
-          <h3 className="text-base font-bold text-ink flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Award className="h-4 w-4 text-brand-600" />
-            Certyfikaty, Szkolenia i Uprawnienia Imienne
-          </h3>
-          <p className="text-xs text-muted">
+            <h3 className="text-base font-bold text-ink">Certyfikaty, Szkolenia i Uprawnienia Imienne</h3>
+            <span className="rounded-full bg-sunken px-2 py-0.5 text-[10px] font-semibold text-muted">
+              Opcjonalne
+            </span>
+          </div>
+          <p className="text-xs text-muted mt-0.5">
             Dodaj zdobyte certyfikaty branżowe, szkolenia specjalistyczne i uprawnienia z datą uzyskania.
           </p>
         </div>

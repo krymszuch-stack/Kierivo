@@ -21,7 +21,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MasterVault, ProfilerState } from '../../types';
+import { MasterVault, ProfilerState, Education } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { DocumentRenderer } from '../matcher/DocumentRenderer';
 import { auditExperienceTimelineAndMetrics } from '../../lib/consistencyGuard';
@@ -41,6 +41,7 @@ import { showToast } from '../../store/useToastStore';
 import { useFieldSuggestions } from '../../hooks/useFieldSuggestions';
 import { bestSubRoleMatch } from '../../lib/specializationIndex';
 import { useAuth } from '../../context/AuthContext';
+import { validateExperienceStep } from './experienceValidation';
 
 export interface MasterVaultEditorProps {
   vault: MasterVault;
@@ -52,12 +53,54 @@ export interface MasterVaultEditorProps {
 type ViewMode = 'stepper' | 'full';
 
 const VAULT_STEPS: StepItem[] = [
-  { id: 'personal', label: 'Dane Osobowe', icon: User, description: 'Kontakt i nagłówek' },
-  { id: 'experience', label: 'Doświadczenie', icon: Briefcase, description: 'Stanowiska & STAR' },
-  { id: 'projects', label: 'Projekty', icon: FolderGit2, description: 'Wdrożenia i portfolio' },
-  { id: 'skills', label: 'Umiejętności', icon: Star, description: 'Tech, soft & języki' },
-  { id: 'education', label: 'Edukacja', icon: GraduationCap, description: 'Uczelnie i stopnie' },
-  { id: 'preferences', label: 'Preferencje', icon: Sliders, description: 'Stawki i dojazd' },
+  {
+    id: 'personal',
+    label: 'Dane Osobowe',
+    icon: User,
+    description: 'Kontakt i nagłówek',
+    estimatedTime: '~1 min',
+    isRequired: true,
+  },
+  {
+    id: 'experience',
+    label: 'Doświadczenie',
+    icon: Briefcase,
+    description: 'Stanowiska & STAR',
+    estimatedTime: '~2-3 min',
+    isRequired: true,
+  },
+  {
+    id: 'projects',
+    label: 'Projekty',
+    icon: FolderGit2,
+    description: 'Wdrożenia i portfolio',
+    estimatedTime: '~1-2 min',
+    isRequired: false,
+  },
+  {
+    id: 'skills',
+    label: 'Umiejętności',
+    icon: Star,
+    description: 'Tech, uprawnienia & języki',
+    estimatedTime: '~2 min',
+    isRequired: false,
+  },
+  {
+    id: 'education',
+    label: 'Edukacja',
+    icon: GraduationCap,
+    description: 'Uczelnie i stopnie',
+    estimatedTime: '~1 min',
+    isRequired: false,
+  },
+  {
+    id: 'preferences',
+    label: 'Preferencje',
+    icon: Sliders,
+    description: 'Stawki i dojazd',
+    estimatedTime: '~1 min',
+    isRequired: false,
+  },
 ];
 
 export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
@@ -97,7 +140,77 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   );
 
   const [activeStep, setActiveStep] = useState(0);
+  const [experienceErrors, setExperienceErrors] = useState<Record<string, { company?: string; role?: string }>>({});
+  const [incompleteEduPrompt, setIncompleteEduPrompt] = useState<Education | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+
+  const handleClearExperienceError = (id: string, field: 'company' | 'role') => {
+    setExperienceErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      next[id] = { ...next[id], [field]: undefined };
+      if (!next[id]?.company && !next[id]?.role) {
+        delete next[id];
+      }
+      return next;
+    });
+  };
+
+  const handleNextStep = () => {
+    if (activeStep === 1) {
+      const result = validateExperienceStep(vault.history);
+      if (!result.isValid) {
+        setExperienceErrors(result.errors);
+        showToast(result.errors && Object.keys(result.errors).length > 0 ? 'Uzupełnij wymagane pola' : 'Wymagane stanowisko', {
+          message: result.message || 'Wpisz nazwę firmy i stanowisko przed przejściem do kolejnego kroku.',
+          variant: 'error',
+        });
+        return;
+      }
+
+      setExperienceErrors({});
+      showToast('Zapisano doświadczenie zawodowe', {
+        message: 'Krok 2 ukończony. Przechodzisz do kolejnego kroku.',
+        variant: 'success',
+      });
+    }
+
+    if (activeStep === 3) {
+      showToast('Zapisano umiejętności i kwalifikacje', {
+        message: 'Krok 4 ukończony. Przechodzisz do edukacji.',
+        variant: 'success',
+      });
+    }
+
+    if (activeStep === 4) {
+      const eduList = vault.education || [];
+      // Sprawdzamy, czy użytkownik ma rozpoczęty wpis, w którym wpisano tylko jedno z wymaganych pól
+      const incomplete = eduList.find(
+        (e) =>
+          (e.institution?.trim() && !e.fieldOfStudy?.trim()) ||
+          (!e.institution?.trim() && e.fieldOfStudy?.trim())
+      );
+      if (incomplete) {
+        setIncompleteEduPrompt(incomplete);
+        return;
+      }
+
+      // Całkowicie puste wpisy (bez instytucji i bez kierunku) czyścimy bez przeszkadzania użytkownikowi
+      const cleanedEdu = eduList.filter(
+        (e) => e.institution?.trim() || e.fieldOfStudy?.trim()
+      );
+      if (cleanedEdu.length !== eduList.length) {
+        onChange({ ...vault, education: cleanedEdu });
+      }
+
+      showToast('Zapisano wykształcenie', {
+        message: 'Krok 5 ukończony. Przechodzisz do preferencji zawodowych.',
+        variant: 'success',
+      });
+    }
+
+    setActiveStep((prev) => Math.min(VAULT_STEPS.length - 1, prev + 1));
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -174,8 +287,9 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               icon={Eye}
               onClick={() => setIsPreviewOpen(true)}
               title="Zobacz gotowy dokument CV na arkuszu A4, zmień szablon i wydrukuj"
+              aria-label="Otwórz Podgląd CV"
             >
-              Podgląd i Druk CV
+              Podgląd CV
             </Button>
 
             <Button
@@ -184,8 +298,9 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
               icon={Download}
               onClick={() => setIsExportModalOpen(true)}
               title="Wygeneruj dwuwarstwowy PDF z 33 motywami"
+              aria-label="Otwórz menu Eksportuj CV"
             >
-              Eksportuj PDF
+              Eksportuj CV
             </Button>
 
             <button
@@ -234,10 +349,10 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
 
       {/* Główny układ 2-kolumnowy: Ściśnięty formularz po lewej + Żywy podgląd CV po prawej */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEWA KOLUMNA: Formularz (7/12 szerokości na desktopie) */}
-        <div className="lg:col-span-7 space-y-6">
+        {/* LEWA KOLUMNA: Formularz (maksymalnie 680-720px na desktopie) */}
+        <div className="lg:col-span-7 space-y-6 max-w-[720px] w-full">
           {viewMode === 'stepper' ? (
-            <div className="space-y-6">
+            <div className="space-y-6 pb-20 sm:pb-24">
               <StepIndicator
                 steps={VAULT_STEPS}
                 activeStep={activeStep}
@@ -268,6 +383,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                       onChange={(history) => onChange({ ...vault, history })}
                       userSkills={vault.skillsMatrix?.hardSkills || []}
                       suggest={suggest}
+                      errors={experienceErrors}
+                      onClearError={handleClearExperienceError}
                     />
                   )}
 
@@ -326,8 +443,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                 </motion.div>
               </AnimatePresence>
 
-              {/* Stepper Navigation Buttons */}
-              <div className="flex items-center justify-between pt-4 border-t border-line/60">
+              {/* Stepper Navigation Buttons - Sticky footer kroku */}
+              <div className="sticky bottom-0 z-20 flex items-center justify-between rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-floating backdrop-blur-md">
                 <Button
                   variant="outline"
                   size="sm"
@@ -338,15 +455,20 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                   Wstecz
                 </Button>
 
-                <span className="font-mono text-xs text-muted">
-                  Krok {activeStep + 1} z {VAULT_STEPS.length}
-                </span>
+                <div className="flex flex-col items-center text-center px-2">
+                  <span className="font-mono text-xs font-semibold text-ink">
+                    Krok {activeStep + 1} z {VAULT_STEPS.length}: {VAULT_STEPS[activeStep]?.label}
+                  </span>
+                  <span className="text-[10px] text-muted">
+                    {VAULT_STEPS[activeStep]?.isRequired ? 'Sekcja wymagana' : 'Sekcja opcjonalna'} • czas: {VAULT_STEPS[activeStep]?.estimatedTime}
+                  </span>
+                </div>
 
                 <Button
                   variant="primary"
                   size="sm"
                   icon={ArrowRight}
-                  onClick={() => setActiveStep((prev) => Math.min(VAULT_STEPS.length - 1, prev + 1))}
+                  onClick={handleNextStep}
                   disabled={activeStep === VAULT_STEPS.length - 1}
                 >
                   Dalej
@@ -369,6 +491,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                 onChange={(history) => onChange({ ...vault, history })}
                 userSkills={vault.skillsMatrix?.hardSkills || []}
                 suggest={suggest}
+                errors={experienceErrors}
+                onClearError={handleClearExperienceError}
               />
 
               <ProjectsSection
@@ -418,8 +542,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
           )}
         </div>
 
-        {/* PRAWA KOLUMNA: Żywy Podgląd CV (5/12 szerokości na desktopie) */}
-        <div className="lg:col-span-5 space-y-3 sticky top-4">
+        {/* PRAWA KOLUMNA: Żywy Podgląd CV (szerokość ok. 360-420px na desktopie) */}
+        <div className="lg:col-span-5 space-y-3 sticky top-4 max-w-[420px] w-full">
           <div className="rounded-3xl border border-line bg-elevated p-4 shadow-floating space-y-3">
             <div className="flex items-center justify-between border-b border-line/60 pb-3">
               <div className="flex items-center gap-2">
@@ -528,30 +652,94 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                   </div>
                 )}
 
-                {/* Live Education */}
-                {vault.education?.length > 0 && (
-                  <div className="space-y-1 border-t border-slate-100 pt-2">
-                    <h5 className="text-[9px] font-bold uppercase tracking-wider text-slate-400 font-mono">
-                      Edukacja
-                    </h5>
-                    <div className="text-[9px] text-slate-600">
-                      <span className="font-bold text-slate-800">{vault.education[0].degree}</span>, {vault.education[0].fieldOfStudy}
-                      <span className="text-slate-400 block">{vault.education[0].institution}</span>
+                {/* Live Education - widoczna tylko gdy istnieje sensowny wpis */}
+                {vault.education &&
+                  vault.education.filter((e) => e.institution?.trim() || e.fieldOfStudy?.trim()).length > 0 && (
+                    <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                      <h5 className="text-[9px] font-bold uppercase tracking-wider text-slate-400 font-mono">
+                        Edukacja
+                      </h5>
+                      <div className="space-y-1.5">
+                        {vault.education
+                          .filter((e) => e.institution?.trim() || e.fieldOfStudy?.trim())
+                          .map((edu) => (
+                            <div key={edu.id} className="text-[9px] text-slate-600 space-y-0.5">
+                              <div className="font-bold text-slate-800">
+                                {edu.degree ? `${edu.degree}, ` : ''}
+                                {edu.fieldOfStudy || edu.institution}
+                              </div>
+                              {edu.degree && edu.fieldOfStudy && edu.institution && (
+                                <span className="text-slate-500 block">{edu.institution}</span>
+                              )}
+                              {(edu.startDate || edu.endDate) && (
+                                <span className="text-[8px] text-slate-400 font-mono block">
+                                  {edu.startDate} {edu.endDate ? `– ${edu.endDate}` : ''}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Modal potwierdzenia dla niekompletnego wpisu edukacji */}
+      {incompleteEduPrompt && (
+        <Modal
+          isOpen={Boolean(incompleteEduPrompt)}
+          onClose={() => setIncompleteEduPrompt(null)}
+          title="Niekompletny wpis edukacji"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-muted">
+              Masz rozpoczęty wpis edukacji (
+              <strong className="text-ink">
+                {incompleteEduPrompt.institution || incompleteEduPrompt.fieldOfStudy || 'Nowa edukacja'}
+              </strong>
+              ), ale brakuje wymaganych danych (szkoła i kierunek). Czy chcesz go usunąć i przejść dalej?
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIncompleteEduPrompt(null)}
+              >
+                Wróć do edycji
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const cleaned = (vault.education || []).filter(
+                    (e) => e.id !== incompleteEduPrompt.id
+                  );
+                  onChange({ ...vault, education: cleaned });
+                  setIncompleteEduPrompt(null);
+                  setActiveStep((prev) => Math.min(VAULT_STEPS.length - 1, prev + 1));
+                }}
+                className="bg-danger-600 hover:bg-danger-700 text-white"
+              >
+                Usuń wpis i przejdź dalej
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Modal pełnego podglądu i druku CV */}
       {isPreviewOpen && (
         <Modal
           isOpen={isPreviewOpen}
           onClose={() => setIsPreviewOpen(false)}
-          title={`Podgląd i Druk CV • ${vault.personalInfo?.fullName || 'Profil Kandydata'}`}
+          title={`Podgląd CV • ${vault.personalInfo?.fullName || 'Profil Kandydata'}`}
           size="full"
         >
           <DocumentRenderer
