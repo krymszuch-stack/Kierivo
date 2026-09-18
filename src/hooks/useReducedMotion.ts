@@ -1,25 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useReducedMotion as useMotionReducedMotion } from 'motion/react';
 
 /**
- * Hook detecting system-level preference for reduced motion (prefers-reduced-motion: reduce)
+ * Hook wykrywający preferencję redukcji ruchu (prefers-reduced-motion: reduce)
+ * zintegrowany z nadrzędnym <MotionConfig reducedMotion="user">.
  */
 export function useReducedMotion(): boolean {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const listener = (event: MediaQueryListEvent) => {
-      setPrefersReducedMotion(event.matches);
-    };
-
-    mediaQuery.addEventListener('change', listener);
-    return () => mediaQuery.removeEventListener('change', listener);
-  }, []);
-
-  return prefersReducedMotion;
+  const motionReduced = useMotionReducedMotion();
+  return Boolean(motionReduced);
 }
+
+export default useReducedMotion;

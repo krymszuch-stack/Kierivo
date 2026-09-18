@@ -7,6 +7,7 @@ import express from "express";
 import path from "path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import helmet from "helmet";
 import { jobsRouter } from "./src/server/routes/jobs.routes";
 import { aiRouter } from "./src/server/routes/ai.routes";
@@ -32,6 +33,18 @@ async function startServer() {
 
   const app = express();
   app.disable("x-powered-by");
+
+  // Rejestracja spójnego requestId dla całego potoku żądań
+  app.use((req, res, next) => {
+    const incomingId = req.headers["x-request-id"];
+    const requestId =
+      typeof incomingId === "string" && incomingId.trim().length > 0
+        ? incomingId.trim()
+        : randomUUID();
+    (req as unknown as { requestId: string }).requestId = requestId;
+    res.setHeader("X-Request-Id", requestId);
+    next();
+  });
 
   // Only meaningful behind a reverse proxy. Enabling it without one would let a
   // client spoof its address through X-Forwarded-For and bypass rate limiting.
@@ -107,6 +120,9 @@ async function startServer() {
   // Vault to całe CV z historią zatrudnienia — 200 kB bywa za mało przy dłuższym
   // przebiegu zawodowym.
   app.use("/api/vault", express.json({ limit: "1mb" }));
+
+  // Weryfikator CV AI 360° przesyła pełny MasterVault do audytu
+  app.use("/api/ai/verify-cv", express.json({ limit: "1mb" }));
 
   // Eksport PDF przesyła pełny obiekt MasterVault i opcjonalny TailoredResume.
   app.use("/api/cv/export-pdf", express.json({ limit: "2mb" }));

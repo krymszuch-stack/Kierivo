@@ -19,6 +19,11 @@ const BRAND_PALETTE = ['#4f46e5', '#10b981', '#f59e0b', '#06b6d4', '#ec4899', '#
 export function triggerConfetti(options: { count?: number; durationMs?: number } = {}) {
   if (typeof window === 'undefined') return;
 
+  // Guard dla preferencji redukcji ruchu — nie odpalamy animacji canvas cząstek confetti
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
+
   const count = options.count || 80;
   const durationMs = options.durationMs || 2500;
 
@@ -94,8 +99,8 @@ export function triggerConfetti(options: { count?: number; durationMs?: number }
       ctx.restore();
     }
 
-    requestAnimationFrame(animate);
+    window.requestAnimationFrame(animate);
   }
 
-  requestAnimationFrame(animate);
+  window.requestAnimationFrame(animate);
 }

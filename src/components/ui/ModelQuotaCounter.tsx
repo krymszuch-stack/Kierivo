@@ -1,6 +1,8 @@
 import React from 'react';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { useEntitlements } from '../../store/useEntitlements';
+import { useOptionalAuth } from '../../context/AuthContext';
+import { setAuthModalOpenGlobal } from '../../store/useAppStore';
 import { Tooltip } from './Tooltip';
 import {
   formatModelQuotaFeedback,
@@ -25,6 +27,44 @@ export interface ModelQuotaCounterProps {
   className?: string;
 }
 
+export interface ModelQuotaResolvedState {
+  isUnauthenticated: boolean;
+  remaining: number;
+  displayText: string;
+}
+
+export function resolveModelQuotaState(params: {
+  source?: 'local' | 'server' | 'unauthenticated';
+  isAuthenticated?: boolean;
+  user?: unknown | null;
+  authIsAuthenticated?: boolean;
+  aiUses?: number;
+  overrideRemaining?: number;
+}): ModelQuotaResolvedState {
+  const isUnauthenticated =
+    params.overrideRemaining === undefined &&
+    (params.source === 'unauthenticated' ||
+      params.isAuthenticated === false ||
+      (params.user !== undefined && !params.user) ||
+      (params.authIsAuthenticated !== undefined && !params.authIsAuthenticated));
+
+  if (isUnauthenticated) {
+    return {
+      isUnauthenticated: true,
+      remaining: 0,
+      displayText: 'Zaloguj się, aby korzystać z analiz AI',
+    };
+  }
+
+  const remaining = params.overrideRemaining !== undefined ? params.overrideRemaining : (params.aiUses ?? 0);
+  const feedback = formatModelQuotaFeedback(remaining);
+  return {
+    isUnauthenticated: false,
+    remaining,
+    displayText: feedback.isExhausted ? 'limit wyczerpany' : `${feedback.shortBadge} analiz AI`,
+  };
+}
+
 export const ModelQuotaCounter: React.FC<ModelQuotaCounterProps> = ({
   variant = 'badge',
   feature = 'general',
@@ -32,10 +72,77 @@ export const ModelQuotaCounter: React.FC<ModelQuotaCounterProps> = ({
   onClick,
   className = '',
 }) => {
-  const { usage } = useEntitlements();
-  const remaining = overrideRemaining !== undefined ? overrideRemaining : usage.aiUses;
+  const auth = useOptionalAuth();
+  const { usage, source, isAuthenticated } = useEntitlements();
+
+  const quotaState = resolveModelQuotaState({
+    source,
+    isAuthenticated,
+    user: auth?.user,
+    authIsAuthenticated: auth?.isAuthenticated,
+    aiUses: usage.aiUses,
+    overrideRemaining,
+  });
+
+  const { isUnauthenticated, remaining } = quotaState;
   const feedback = formatModelQuotaFeedback(remaining);
   const degradation = getModelGracefulDegradationNotice(feature);
+
+  // Stan niezalogowany: neutralny komunikat bez odziedziczonego 24/25
+  if (isUnauthenticated) {
+    const handleAuthClick = onClick ?? (() => setAuthModalOpenGlobal(true));
+
+    if (variant === 'badge') {
+      return (
+        <Tooltip content="Zaloguj się, aby korzystać z analiz AI" side="top">
+          <button
+            type="button"
+            onClick={handleAuthClick}
+            aria-label="Zaloguj się, aby korzystać z analiz AI"
+            className={`group inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-2.5 py-1 text-xs font-semibold text-muted transition-all duration-[var(--duration-fast)] hover:border-brand-400 hover:text-ink cursor-pointer ${className}`}
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-muted group-hover:text-brand-600" aria-hidden="true" />
+            <span className="text-[11px] font-medium">Zaloguj się, aby korzystać z analiz AI</span>
+          </button>
+        </Tooltip>
+      );
+    }
+
+    if (variant === 'banner') {
+      return (
+        <section
+          aria-live="polite"
+          className={`rounded-2xl border border-line bg-surface p-4 text-xs text-ink shadow-xs ${className}`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-4 w-4 shrink-0 text-brand-600" aria-hidden="true" />
+              <div>
+                <h4 className="font-bold text-ink">Zaloguj się, aby korzystać z analiz AI</h4>
+                <p className="text-muted text-[11px] mt-0.5">
+                  Weryfikator CV AI 360° i potrójna pętla audytorska wymagają konta w chmurze (0 zł w Public Pre-Beta).
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAuthClick}
+              className="shrink-0 rounded-xl bg-brand-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-brand-500 shadow-xs cursor-pointer transition-colors"
+            >
+              Zaloguj się
+            </button>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <div className={`flex items-center gap-1.5 text-[11px] text-muted ${className}`}>
+        <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span>Zaloguj się, aby korzystać z analiz AI</span>
+      </div>
+    );
+  }
 
   // Wariant: Kompaktowy Badge (do Topbar i nagłówków)
   if (variant === 'badge') {

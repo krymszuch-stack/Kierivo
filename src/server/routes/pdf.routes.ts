@@ -11,7 +11,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import os from 'os';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter';
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
@@ -26,22 +26,89 @@ export const pdfRouter = Router();
  */
 const PYTHON_TIMEOUT_MS = 90_000;
 
+export interface PythonSpawnResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
+/**
+ * Bezpieczne logowanie etapów eksportu PDF.
+ * Zgodnie z wytycznymi bezpieczeństwa Kierivo:
+ * NIGDY nie loguje treści CV, danych osobowych (PII) ani tokenów.
+ */
+export function logPdfExportStage(params: {
+  requestId: string;
+  stage:
+    | 'received'
+    | 'validated'
+    | 'adapted'
+    | 'spawning_python'
+    | 'python_finished'
+    | 'ats_validated'
+    | 'completed'
+    | 'failed';
+  theme?: string;
+  layout?: string;
+  targetPages?: number;
+  pdfType?: string;
+  pythonSpawned: boolean;
+  exitCode?: number | null;
+  durationMs?: number;
+  statusCode?: number;
+  errorMessage?: string;
+}): void {
+  const parts = [
+    `[PDF Export] requestId=${params.requestId}`,
+    `stage=${params.stage}`,
+    `theme=${params.theme || 'unknown'}`,
+    `layout=${params.layout || 'unknown'}`,
+    `targetPages=${params.targetPages ?? 1}`,
+    `pdfType=${params.pdfType || 'dual-layer'}`,
+    `pythonSpawned=${params.pythonSpawned}`,
+  ];
+  if (params.exitCode !== undefined && params.exitCode !== null) {
+    parts.push(`exitCode=${params.exitCode}`);
+  }
+  if (params.durationMs !== undefined) {
+    parts.push(`durationMs=${params.durationMs}ms`);
+  }
+  if (params.statusCode !== undefined) {
+    parts.push(`statusCode=${params.statusCode}`);
+  }
+  if (params.errorMessage) {
+    const sanitizedError = params.errorMessage.replace(/[\r\n]+/g, ' ').slice(0, 300);
+    parts.push(`error="${sanitizedError}"`);
+  }
+
+  console.log(parts.join(' '));
+}
+
 /**
  * Wywołuje Pythona z timeoutem i natychmiastowym odrzuceniem gdy brak interpretera.
  *
- * Zwraca { code, stdout, stderr }. Timeout odrzuca Promise z błędem opisowym.
- * ENOENT (Python nie znaleziony) odrzuca z `Python interpreter not found`,
- * co caller zamienia na 503.
+ * Zwraca { code, stdout, stderr, durationMs }. Timeout odrzuca Promise z błędem opisowym.
+ * ENOENT (Python nie znaleziony) odrzuca z `Python interpreter not found`.
  */
-function spawnPythonWithTimeout(
+export function spawnPythonWithTimeout(
   bin: string,
   args: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
   timeoutMs: number = PYTHON_TIMEOUT_MS
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
+): Promise<PythonSpawnResult> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(bin, args, { cwd, env });
+    const startTime = Date.now();
+    let proc: ReturnType<typeof spawn>;
+    try {
+      proc = spawn(bin, args, { cwd, env });
+    } catch (spawnErr) {
+      if ((spawnErr as NodeJS.ErrnoException).code === 'ENOENT') {
+        return reject(new Error('Python interpreter not found'));
+      }
+      return reject(spawnErr);
+    }
 
     let stdout = '';
     let stderr = '';
@@ -53,13 +120,18 @@ function spawnPythonWithTimeout(
       reject(new Error(`Proces Pythona przekroczył limit czasu (${timeoutMs}ms).`));
     }, timeoutMs);
 
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.stdout?.on('data', (d) => {
+      stdout += d.toString();
+    });
+    proc.stderr?.on('data', (d) => {
+      stderr += d.toString();
+    });
 
     proc.on('close', (code) => {
       if (killed) return;
       clearTimeout(timer);
-      resolve({ code, stdout, stderr });
+      const durationMs = Date.now() - startTime;
+      resolve({ code, stdout, stderr, durationMs });
     });
 
     proc.on('error', (err) => {
@@ -74,6 +146,10 @@ function spawnPythonWithTimeout(
   });
 }
 
+export const pythonRunner = {
+  spawn: spawnPythonWithTimeout,
+};
+
 interface CachedPdfEntry {
   buffer: Buffer;
   filename: string;
@@ -86,13 +162,17 @@ const PDF_CACHE_MAX_ENTRIES = 50;
 const PDF_CACHE_TTL_MS = 30 * 60 * 1000;
 const pdfCache = new Map<string, CachedPdfEntry>();
 
-function pruneExpiredPdfCache(): void {
+export function pruneExpiredPdfCache(): void {
   const now = Date.now();
   for (const [key, entry] of pdfCache.entries()) {
     if (now - entry.timestamp > PDF_CACHE_TTL_MS) {
       pdfCache.delete(key);
     }
   }
+}
+
+export function clearPdfCacheForTesting(): void {
+  pdfCache.clear();
 }
 
 export interface ExportPdfRequestBody {
@@ -105,6 +185,7 @@ export interface ExportPdfRequestBody {
   summaryOverride?: string;
   targetRole?: string;
   companyName?: string;
+  pdfType?: 'standard' | 'dual-layer';
 }
 
 export const AVAILABLE_THEMES = [
@@ -193,29 +274,112 @@ pdfRouter.post(
  */
 pdfRouter.post(
   '/cv/export-pdf',
-  async (req: Request<unknown, unknown, ExportPdfRequestBody>, res: Response, next: NextFunction) => {
-    let tempDir = '';
-    try {
-       const {
-        vault,
-        tailoredResume,
-        theme = 'parchment',
-        layout = 'sidebar',
-        targetPages = 1,
-        avatar,
-        summaryOverride,
-        targetRole,
-        companyName,
-      } = req.body;
+  async (req: Request<unknown, unknown, ExportPdfRequestBody>, res: Response) => {
+    const reqWithId = req as unknown as { requestId?: string };
+    const requestId =
+      reqWithId.requestId ||
+      (typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id'].trim().length > 0
+        ? req.headers['x-request-id'].trim()
+        : randomUUID());
 
-      if (!vault || !vault.personalInfo) {
+    let tempDir = '';
+    const {
+      vault,
+      tailoredResume,
+      theme = 'parchment',
+      layout = 'sidebar',
+      targetPages = 1,
+      avatar,
+      summaryOverride,
+      targetRole,
+      companyName,
+      pdfType = 'dual-layer',
+    } = req.body || {};
+
+    const safeTargetPages = Math.min(Math.max(Number(targetPages) || 1, 1), 2);
+
+    logPdfExportStage({
+      requestId,
+      stage: 'received',
+      theme,
+      layout,
+      targetPages: safeTargetPages,
+      pdfType,
+      pythonSpawned: false,
+    });
+
+    try {
+      // 1. Walidacja danych wejściowych (KOD 400)
+      if (!vault || typeof vault !== 'object' || !vault.personalInfo || typeof vault.personalInfo !== 'object') {
+        const errorMsg = 'Brak wymaganych danych MasterVault do wygenerowania CV.';
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: false,
+          statusCode: 400,
+          errorMessage: errorMsg,
+        });
         return res.status(400).json({
           success: false,
-          error: 'Brak wymaganych danych MasterVault do wygenerowania CV.',
+          requestId,
+          error: errorMsg,
         });
       }
 
-      // 0. Pamięć podręczna SHA-256 (błyskawiczny response < 2ms dla tych samych parametrów)
+      const validThemeIds = new Set(AVAILABLE_THEMES.map((t) => t.id));
+      const validLayoutIds = new Set(AVAILABLE_LAYOUTS.map((l) => l.id));
+
+      if (theme && !validThemeIds.has(theme)) {
+        const errorMsg = `Nieprawidłowy motyw PDF: ${theme}. Dostępne motywy: ${AVAILABLE_THEMES.map((t) => t.id).join(', ')}`;
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: false,
+          statusCode: 400,
+          errorMessage: errorMsg,
+        });
+        return res.status(400).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
+      }
+
+      if (layout && !validLayoutIds.has(layout)) {
+        const errorMsg = `Nieprawidłowy układ PDF: ${layout}. Dostępne układy: ${AVAILABLE_LAYOUTS.map((l) => l.id).join(', ')}`;
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: false,
+          statusCode: 400,
+          errorMessage: errorMsg,
+        });
+        return res.status(400).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
+      }
+
+      logPdfExportStage({
+        requestId,
+        stage: 'validated',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: false,
+      });
+
+      // 2. Pamięć podręczna SHA-256 (błyskawiczny response < 2ms dla tych samych parametrów)
       const cacheKey = createHash('sha256')
         .update(
           JSON.stringify({
@@ -223,10 +387,11 @@ pdfRouter.post(
             tailoredResume,
             theme,
             layout,
-            targetPages: Number(targetPages) || 1,
+            targetPages: safeTargetPages,
             summaryOverride,
             targetRole,
             companyName,
+            pdfType,
           })
         )
         .digest('hex');
@@ -234,22 +399,54 @@ pdfRouter.post(
       pruneExpiredPdfCache();
       const cached = pdfCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp <= PDF_CACHE_TTL_MS) {
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cached.filename)}"`);
+        logPdfExportStage({
+          requestId,
+          stage: 'completed',
+          theme: cached.theme,
+          layout: cached.layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: false,
+          statusCode: 200,
+        });
+
+        res.setHeader('X-Request-Id', requestId);
         res.setHeader('X-CV-Theme', cached.theme);
         res.setHeader('X-CV-Layout', cached.layout);
         res.setHeader('X-CV-Cache', 'HIT');
-        return res.send(cached.buffer);
+
+        if (req.headers.accept === 'application/pdf') {
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(cached.filename)}"`);
+          return res.send(cached.buffer);
+        }
+
+        res.setHeader('Content-Type', 'application/json');
+        return res.json({
+          success: true,
+          requestId,
+          filename: cached.filename,
+          pdf: cached.buffer.toString('base64'),
+          atsValidation: null,
+        });
       }
 
-      // 1. Adapter: konwersja danych z Kierivo na kontrakt mvcv MasterProfile
+      // 3. Adapter: konwersja danych z Kierivo na kontrakt mvcv MasterProfile
       const profilePayload = adaptMasterVaultToSemanticProfile(vault, tailoredResume, {
         summaryOverride,
         targetRole,
         companyName,
       });
 
-      // 2. Przygotowanie izolowanego katalogu tymczasowego
+      logPdfExportStage({
+        requestId,
+        stage: 'adapted',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: false,
+      });
+
+      // 4. Przygotowanie izolowanego katalogu tymczasowego
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'kierivo-cv-'));
       const profileJsonPath = path.join(tempDir, 'profile.json');
       const outPdfPath = path.join(tempDir, 'cv.pdf');
@@ -270,20 +467,34 @@ pdfRouter.post(
             profilePayload.photo = '';
           }
         } else if (!existsSync(rawPhoto)) {
-          // Jeśli podana ścieżka nie istnieje fizycznie na serwerze, zerujemy
           profilePayload.photo = '';
         }
       }
 
       await fs.writeFile(profileJsonPath, JSON.stringify(profilePayload, null, 2), 'utf-8');
 
-      // 3. Ścieżka do silnika `mastervault-cv`
+      // 5. Ścieżka do silnika `mastervault-cv` (KOD 503 gdy katalog nie istnieje)
       const engineDir = path.resolve(process.cwd(), 'mastervault-cv');
       if (!existsSync(engineDir)) {
-        throw new Error('Katalog silnika mastervault-cv nie został odnaleziony.');
+        const errorMsg = 'Eksport PDF niedostępny: silnik renderowania mastervault-cv nie został odnaleziony w systemie.';
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: false,
+          statusCode: 503,
+          errorMessage: errorMsg,
+        });
+        return res.status(503).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
       }
 
-      // 4. Uruchomienie pipeline'u Pythona
+      // 6. Uruchomienie pipeline'u Pythona
       const args = [
         '-m',
         'mvcv',
@@ -296,7 +507,7 @@ pdfRouter.post(
         '--layout',
         layout,
         '--target-pages',
-        String(Math.min(Math.max(Number(targetPages) || 1, 1), 2)),
+        String(safeTargetPages),
       ];
 
       if (avatar && avatar !== 'none') {
@@ -305,21 +516,149 @@ pdfRouter.post(
 
       const pythonBin = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
 
-      const { code, stderr } = await spawnPythonWithTimeout(
-        pythonBin,
-        args,
-        engineDir,
-        { ...process.env, PYTHONPATH: engineDir, PYTHONIOENCODING: 'utf-8' }
-      );
+      logPdfExportStage({
+        requestId,
+        stage: 'spawning_python',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: true,
+      });
 
-      if (code !== 0) {
-        throw new Error(`Błąd generatora PDF (kod ${code}): ${stderr}`);
+      let pythonResult: PythonSpawnResult;
+      try {
+        pythonResult = await pythonRunner.spawn(
+          pythonBin,
+          args,
+          engineDir,
+          { ...process.env, PYTHONPATH: engineDir, PYTHONIOENCODING: 'utf-8' }
+        );
+      } catch (spawnErr: unknown) {
+        const errMessage = spawnErr instanceof Error ? spawnErr.message : String(spawnErr);
+        const isNotFound = errMessage.includes('Python interpreter not found') || errMessage.includes('ENOENT');
+        const isTimeout = errMessage.includes('limit czasu') || errMessage.includes('timeout') || errMessage.includes('ETIMEDOUT');
+
+        // Rozróżnienie kodów HTTP:
+        // 503 — Python/dependency niedostępne
+        // 504 — timeout procesu
+        // 500 — pozostałe błędy uruchomienia
+        const statusCode = isNotFound ? 503 : isTimeout ? 504 : 500;
+        const clientErrorMsg = isNotFound
+          ? 'Eksport PDF jest chwilowo niedostępny w tym środowisku (brak interpretera Pythona).'
+          : isTimeout
+            ? 'Generowanie PDF przekroczyło limit czasu. Spróbuj wybrać 1 stronę lub prostszy układ.'
+            : `Błąd podczas uruchamiania generatora PDF: ${errMessage}`;
+
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: !isNotFound,
+          statusCode,
+          errorMessage: errMessage,
+        });
+
+        return res.status(statusCode).json({
+          success: false,
+          requestId,
+          error: clientErrorMsg,
+        });
       }
 
-      // 5. Odczyt wygenerowanego bufora PDF
-      const pdfBuffer = await fs.readFile(outPdfPath);
+      const { code, stderr, durationMs } = pythonResult;
 
-      // 6. Walidacja ATS: ekstrakcja tekstu z PDF i porównanie z MasterVault
+      logPdfExportStage({
+        requestId,
+        stage: 'python_finished',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: true,
+        exitCode: code,
+        durationMs,
+      });
+
+      // Jeśli proces zakończył się błędem
+      if (code !== 0) {
+        const isDepMissing =
+          stderr.includes('ModuleNotFoundError') ||
+          stderr.includes('No module named') ||
+          stderr.includes('ImportError');
+
+        // 503 — brak zależności Pythona
+        // 500 — błąd renderera (np. ReportLab syntax error, formatting crash)
+        const statusCode = isDepMissing ? 503 : 500;
+        const errorMsg = isDepMissing
+          ? `Eksport PDF niedostępny (brak wymaganych modułów Pythona): ${stderr.trim()}`
+          : `Błąd silnika renderowania PDF (kod ${code}): ${stderr.trim() || 'Nieznany błąd generatora.'}`;
+
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: true,
+          exitCode: code,
+          durationMs,
+          statusCode,
+          errorMessage: errorMsg,
+        });
+
+        return res.status(statusCode).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
+      }
+
+      // 7. Weryfikacja pliku wyjściowego
+      if (!existsSync(outPdfPath)) {
+        const errorMsg = 'Błąd silnika renderowania PDF: plik wyjściowy PDF nie został utworzony.';
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: true,
+          exitCode: code,
+          durationMs,
+          statusCode: 500,
+          errorMessage: errorMsg,
+        });
+        return res.status(500).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
+      }
+
+      const pdfBuffer = await fs.readFile(outPdfPath);
+      if (pdfBuffer.length === 0) {
+        const errorMsg = 'Błąd silnika renderowania PDF: wygenerowany dokument jest pusty (0 bajtów).';
+        logPdfExportStage({
+          requestId,
+          stage: 'failed',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: true,
+          exitCode: code,
+          durationMs,
+          statusCode: 500,
+          errorMessage: errorMsg,
+        });
+        return res.status(500).json({
+          success: false,
+          requestId,
+          error: errorMsg,
+        });
+      }
+
+      // 8. Walidacja ATS: ekstrakcja tekstu z PDF i porównanie z MasterVault
       let atsValidation = null;
       try {
         const atsExtractData = await runAtsExtract(outPdfPath);
@@ -327,15 +666,37 @@ pdfRouter.post(
           hasActualText: atsExtractData.hasActualText,
           hasInvisibleText: atsExtractData.hasInvisibleText,
         });
-      } catch (err) {
+        logPdfExportStage({
+          requestId,
+          stage: 'ats_validated',
+          theme,
+          layout,
+          targetPages: safeTargetPages,
+          pythonSpawned: true,
+          exitCode: 0,
+          durationMs,
+        });
+      } catch (atsErr) {
         // Brak interpretera Pythona to błąd środowiska — zwracamy 503
-        if (err instanceof Error && err.message.includes('Python interpreter not found')) {
+        if (atsErr instanceof Error && atsErr.message.includes('Python interpreter not found')) {
+          const errorMsg = 'Eksport PDF niedostępny w tym środowisku (brak interpretera Pythona dla walidatora ATS).';
+          logPdfExportStage({
+            requestId,
+            stage: 'failed',
+            theme,
+            layout,
+            targetPages: safeTargetPages,
+            pythonSpawned: true,
+            statusCode: 503,
+            errorMessage: errorMsg,
+          });
           return res.status(503).json({
             success: false,
-            error: 'ATS validation unavailable in this environment',
+            requestId,
+            error: errorMsg,
           });
         }
-        // Inne błędy ATS są niekrytyczne — nie blokują eksportu
+        // Inne błędy ATS są niekrytyczne — nie blokują samego eksportu PDF
         atsValidation = null;
       }
 
@@ -360,46 +721,63 @@ pdfRouter.post(
         timestamp: Date.now(),
       });
 
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+      logPdfExportStage({
+        requestId,
+        stage: 'completed',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: true,
+        exitCode: 0,
+        durationMs,
+        statusCode: 200,
+      });
+
+      res.setHeader('X-Request-Id', requestId);
       res.setHeader('X-CV-Theme', theme);
       res.setHeader('X-CV-Layout', layout);
       res.setHeader('X-CV-Cache', 'MISS');
 
-      // Dodaj wyniki walidacji ATS w headerach (dla klienta)
       if (atsValidation) {
         res.setHeader('X-ATS-Score', String(atsValidation.overallScore));
         res.setHeader('X-ATS-Status', atsValidation.overallStatus);
         res.setHeader('X-ATS-Tagged', String(atsValidation.taggedPdfPresent));
-        // Pełny raport w body — klient go odczyta z JSON
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
-        return res.json({
-          success: true,
-          filename,
-          pdf: pdfBuffer.toString('base64'),
-          atsValidation,
-        });
       }
 
-      res.send(pdfBuffer);
-    } catch (err) {
-      // Python niedostępny (kontener bez python3) lub timeout procesu —
-      // zwracamy 503 zamiast 500, żeby klient wiedział, że to brak usługi,
-      // a nie błąd danych wejściowych.
-      if (err instanceof Error && err.message.includes('Python interpreter not found')) {
-        return res.status(503).json({
-          success: false,
-          error: 'Eksport PDF niedostępny w tym środowisku (brak interpretera Pythona).',
-        });
+      // Jeśli klient jawnie oczekuje binarnego pliku PDF
+      if (req.headers.accept === 'application/pdf') {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+        return res.send(pdfBuffer);
       }
-      if (err instanceof Error && err.message.includes('limit czasu')) {
-        return res.status(503).json({
-          success: false,
-          error: 'Eksport PDF przekroczył limit czasu. Spróbuj z mniejszą liczbą stron.',
-        });
-      }
-      next(err);
+
+      // Domyślna odpowiedź REST/JSON
+      res.setHeader('Content-Type', 'application/json');
+      return res.json({
+        success: true,
+        requestId,
+        filename,
+        pdf: pdfBuffer.toString('base64'),
+        atsValidation,
+      });
+    } catch (unexpectedErr: unknown) {
+      const errMessage = unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr);
+      logPdfExportStage({
+        requestId,
+        stage: 'failed',
+        theme,
+        layout,
+        targetPages: safeTargetPages,
+        pythonSpawned: false,
+        statusCode: 500,
+        errorMessage: errMessage,
+      });
+
+      return res.status(500).json({
+        success: false,
+        requestId,
+        error: `Wystąpił nieoczekiwany błąd serwera podczas eksportu PDF: ${errMessage}`,
+      });
     } finally {
       if (tempDir) {
         fs.rm(tempDir, { recursive: true, force: true }).catch(() => {

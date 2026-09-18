@@ -38,8 +38,9 @@ export interface EntitlementsState {
   usage: Usage;
   /** Historyczny Karnet Aplikacyjny (`profiles.plan_expires_at` w przyszłości). */
   hasActivePass: boolean;
-  /** `server` znaczy: te liczby przyszły z `/api/me` i są prawdziwe. */
-  source: 'local' | 'server';
+  /** `server` znaczy: te liczby przyszły z `/api/me`; `unauthenticated` znaczy: brak aktywnej sesji użytkownika. */
+  source: 'local' | 'server' | 'unauthenticated';
+  isAuthenticated?: boolean;
 }
 
 const FREE_IMPORTS = 1;
@@ -51,24 +52,29 @@ export const FREE_DAILY_AI_USES = FREE_AI_USES;
 const getMonthKey = () => new Date().toISOString().slice(0, 7);
 const getDayKey = () => new Date().toISOString().slice(0, 10);
 
-function freshState(): EntitlementsState {
+export function unauthenticatedState(): EntitlementsState {
   return {
     subscription: { status: 'free' },
     usage: {
-      importUses: FREE_IMPORTS,
-      aiUses: FREE_AI_USES,
+      importUses: 0,
+      aiUses: 0,
       monthKey: getMonthKey(),
       dayKey: getDayKey(),
     },
     hasActivePass: false,
-    source: 'local',
+    source: 'unauthenticated',
+    isAuthenticated: false,
   };
 }
 
+
 function loadInitialState(): EntitlementsState {
   const saved = readJson<Partial<EntitlementsState> | null>(StorageKeys.entitlementsCache, null);
-  if (!saved || typeof saved !== 'object' || !saved.usage || !saved.subscription || !saved.subscription.status) {
-    return freshState();
+  if (!saved || typeof saved !== 'object' || saved.source === 'unauthenticated' || saved.isAuthenticated === false) {
+    return unauthenticatedState();
+  }
+  if (!saved.usage || !saved.subscription || !saved.subscription.status) {
+    return unauthenticatedState();
   }
 
   let usage = saved.usage;
@@ -89,6 +95,7 @@ function loadInitialState(): EntitlementsState {
     usage,
     hasActivePass: saved.hasActivePass === true,
     source: saved.source === 'server' ? 'server' : 'local',
+    isAuthenticated: true,
   };
 }
 
@@ -101,8 +108,41 @@ function setState(updater: (prev: EntitlementsState) => EntitlementsState): void
   listeners.forEach((notify) => notify());
 }
 
+/**
+ * Resetuje stan limitów i uprawnień do stanu niezalogowanego.
+ * Usuwa odziedziczone wartości z poprzedniej sesji.
+ */
+export function resetEntitlementsToUnauthenticated(): void {
+  setState(() => unauthenticatedState());
+}
+
+export function getEntitlementsState(): EntitlementsState {
+  return globalState;
+}
+
+/**
+ * Ustawia stan uprawnień dla zalogowanego użytkownika (np. po refresh z /api/me lub w testach).
+ */
+export function setAuthenticatedEntitlements(
+  subscription: Subscription = { status: 'free' },
+  usage?: Partial<Usage>
+): void {
+  setState(() => ({
+    subscription,
+    usage: {
+      importUses: usage?.importUses ?? FREE_IMPORTS,
+      aiUses: usage?.aiUses ?? FREE_AI_USES,
+      monthKey: usage?.monthKey ?? getMonthKey(),
+      dayKey: usage?.dayKey ?? getDayKey(),
+    },
+    hasActivePass: false,
+    source: 'server',
+    isAuthenticated: true,
+  }));
+}
+
 onAppStorageWiped(() => {
-  globalState = freshState();
+  globalState = unauthenticatedState();
   listeners.forEach((notify) => notify());
 });
 
@@ -121,6 +161,11 @@ interface MeResponse {
 }
 
 function consumeLocal(kind: 'ai' | 'import'): boolean {
+  // Niezalogowany użytkownik nie może lokalnie zużywać ani rezerwować analiz
+  if (globalState.source === 'unauthenticated' || globalState.isAuthenticated === false) {
+    return false;
+  }
+
   if (!FREE_BETA_ACTIVE && isProStatus(globalState?.subscription?.status)) return true;
 
   const field = kind === 'ai' ? 'aiUses' : 'importUses';
@@ -162,11 +207,12 @@ export function useEntitlements() {
           },
           hasActivePass: me.hasActivePass === true,
           source: 'server',
+          isAuthenticated: true,
         }));
       }
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
-        setState(() => freshState());
+        resetEntitlementsToUnauthenticated();
         return;
       }
     }
@@ -179,18 +225,19 @@ export function useEntitlements() {
 
   const grantDemoPro = useCallback(() => {
     if (FREE_BETA_ACTIVE || !import.meta.env.DEV) return;
-    setState((prev) => ({ ...prev, subscription: { status: 'active' }, source: 'local' }));
+    setState((prev) => ({ ...prev, subscription: { status: 'active' }, source: 'local', isAuthenticated: true }));
   }, []);
 
   return {
     subscription: state?.subscription || { status: 'free' },
     usage: state?.usage || {
-      importUses: FREE_IMPORTS,
-      aiUses: FREE_AI_USES,
+      importUses: 0,
+      aiUses: 0,
       monthKey: getMonthKey(),
       dayKey: getDayKey(),
     },
-    source: state?.source || 'local',
+    source: state?.source || 'unauthenticated',
+    isAuthenticated: state?.isAuthenticated ?? (state?.source !== 'unauthenticated'),
     isPro,
     hasActivePass: !FREE_BETA_ACTIVE && state?.hasActivePass === true,
     refresh,

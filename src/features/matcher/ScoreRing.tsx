@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 
 export interface ScoreRingProps {
   score: number;
@@ -16,6 +16,7 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
   label = 'ATS Score',
   className = '',
 }) => {
+  const shouldReduceMotion = useReducedMotion();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const progressOffset = circumference - (score / 100) * circumference;
@@ -50,9 +51,9 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
             stroke={colors.stroke}
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}
-            initial={{ strokeDashoffset: circumference }}
+            initial={shouldReduceMotion ? false : { strokeDashoffset: circumference }}
             animate={{ strokeDashoffset: progressOffset }}
-            transition={{ duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 1.2, ease: [0.19, 1, 0.22, 1] }}
             strokeLinecap="round"
             fill="transparent"
           />
@@ -61,9 +62,9 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
         {/* Inner Score Label */}
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <motion.span
-            initial={{ opacity: 0, scale: 0.5 }}
+            initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.5, delay: 0.2 }}
             className={`font-mono text-4xl font-extrabold tracking-tight ${colors.text}`}
           >
             {score}%

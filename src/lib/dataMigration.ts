@@ -129,6 +129,11 @@ export function migrateVault(raw: unknown): MasterVault {
       languages: Array.isArray(profilerRaw.languages) ? (profilerRaw.languages as any) : empty.profiler.languages,
       ...(Array.isArray(profilerRaw.licenses) ? { licenses: profilerRaw.licenses as string[] } : {}),
       ...(typeof profilerRaw.subRoleId === 'string' ? { subRoleId: profilerRaw.subRoleId } : {}),
+      ...(typeof profilerRaw.careerGoal === 'string' ? { careerGoal: profilerRaw.careerGoal as any } : {}),
+      ...(typeof profilerRaw.experienceYears === 'string' ? { experienceYears: profilerRaw.experienceYears as any } : {}),
+      ...(typeof profilerRaw.independenceLevel === 'string' ? { independenceLevel: profilerRaw.independenceLevel as any } : {}),
+      ...(typeof profilerRaw.industryChangeReady === 'boolean' ? { industryChangeReady: profilerRaw.industryChangeReady } : {}),
+      ...(typeof profilerRaw.autoDetermineSeniority === 'boolean' ? { autoDetermineSeniority: profilerRaw.autoDetermineSeniority } : {}),
     },
     skillsMatrix: {
       hardSkills,

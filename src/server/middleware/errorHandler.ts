@@ -21,7 +21,11 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
-  const requestId = randomUUID();
+  const reqWithId = req as unknown as { requestId?: string };
+  const headerId = req.headers['x-request-id'];
+  const requestId =
+    reqWithId.requestId ||
+    (typeof headerId === 'string' && headerId.trim().length > 0 ? headerId.trim() : randomUUID());
   const status = err.status || err.statusCode || 500;
 
   console.error(

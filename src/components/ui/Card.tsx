@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, HTMLMotionProps } from 'motion/react';
+import { motion, HTMLMotionProps, useReducedMotion } from 'motion/react';
 import { spotlightCoords } from '../../lib/animationMath';
 
 export interface CardProps extends HTMLMotionProps<'div'> {
@@ -23,6 +23,9 @@ export const Card: React.FC<CardProps> = ({
   children,
   ...props
 }) => {
+  const shouldReduceMotion = useReducedMotion();
+  const enableSpotlight = spotlight && !shouldReduceMotion;
+
   const resolvedTone = variant === 'flat' || variant === 'surface'
     ? 'flat'
     : variant === 'sunken'
@@ -39,6 +42,7 @@ export const Card: React.FC<CardProps> = ({
   // a handlery muszą pasować do obu elementów (zdarzenie przycisku jest
   // przypisywalne do szerszego HTMLElement, nie odwrotnie).
   const handleSpotlightMove = (event: React.MouseEvent<HTMLElement>) => {
+    if (shouldReduceMotion) return;
     const el = event.currentTarget;
     const { x, y } = spotlightCoords(
       el.getBoundingClientRect(),
@@ -82,13 +86,13 @@ export const Card: React.FC<CardProps> = ({
     return (
       <motion.button
         type="button"
-        onMouseEnter={spotlight ? () => setSpotlit(true) : undefined}
-        onMouseMove={spotlight ? handleSpotlightMove : undefined}
-        onMouseLeave={spotlight ? handleSpotlightLeave : undefined}
+        onMouseEnter={enableSpotlight ? () => setSpotlit(true) : undefined}
+        onMouseMove={enableSpotlight ? handleSpotlightMove : undefined}
+        onMouseLeave={enableSpotlight ? handleSpotlightLeave : undefined}
         className={`relative cursor-pointer rounded-2xl border p-5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${toneStyles[resolvedTone]} ${hoverStyles} ${className}`}
         {...(props as unknown as HTMLMotionProps<'button'>)}
       >
-        {spotlight && <SpotlightLayers spotlit={spotlit} />}
+        {enableSpotlight && <SpotlightLayers spotlit={spotlit} />}
         {children}
       </motion.button>
     );
@@ -96,13 +100,13 @@ export const Card: React.FC<CardProps> = ({
 
   return (
     <motion.div
-      onMouseEnter={spotlight ? () => setSpotlit(true) : undefined}
-      onMouseMove={spotlight ? handleSpotlightMove : undefined}
-      onMouseLeave={spotlight ? handleSpotlightLeave : undefined}
+      onMouseEnter={enableSpotlight ? () => setSpotlit(true) : undefined}
+      onMouseMove={enableSpotlight ? handleSpotlightMove : undefined}
+      onMouseLeave={enableSpotlight ? handleSpotlightLeave : undefined}
       className={`relative rounded-2xl border p-5 ${toneStyles[resolvedTone]} ${hoverStyles} ${className}`}
       {...props}
     >
-      {spotlight && <SpotlightLayers spotlit={spotlit} />}
+      {enableSpotlight && <SpotlightLayers spotlit={spotlit} />}
       {children}
     </motion.div>
   );

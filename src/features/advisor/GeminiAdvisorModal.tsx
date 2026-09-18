@@ -29,6 +29,11 @@ import {
   writeAdvisorConversation,
   type AdvisorChatMessage,
 } from './advisorConversationCache';
+import {
+  checkOllamaWithTimeout,
+  resolveDefaultAdvisorTab,
+  type OllamaHealthState,
+} from './ollamaHealthChecker';
 
 export interface GeminiAdvisorModalProps {
   isOpen: boolean;
@@ -108,6 +113,62 @@ function createWelcomeMessage(): AdvisorChatMessage {
   };
 }
 
+interface AdvisorFaqSectionProps {
+  selectedFaq: (typeof FAQ_ENTRIES)[0];
+  onSelectFaq: (faq: (typeof FAQ_ENTRIES)[0]) => void;
+  onNavigate?: (target: NavTabId) => void;
+  onClose: () => void;
+}
+
+const AdvisorFaqSection: React.FC<AdvisorFaqSectionProps> = ({
+  selectedFaq,
+  onSelectFaq,
+  onNavigate,
+  onClose,
+}) => (
+  <section className="rounded-2xl border border-line bg-surface p-4" aria-label="Najczęściej zadawane pytania">
+    <div className="mb-3 flex items-center gap-2">
+      <CircleHelp className="h-4 w-4 text-brand-600" aria-hidden="true" />
+      <div>
+        <h3 className="text-sm font-bold text-ink">FAQ: co możesz zrobić teraz?</h3>
+        <p className="text-[11px] text-muted">Kliknij pytanie — pokażę odpowiedź i właściwe miejsce w aplikacji.</p>
+      </div>
+    </div>
+    <div className="grid gap-2 sm:grid-cols-2">
+      {FAQ_ENTRIES.map((entry) => (
+        <button
+          key={entry.question}
+          type="button"
+          onClick={() => onSelectFaq(entry)}
+          className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+            selectedFaq.question === entry.question
+              ? 'border-brand-300 bg-brand-50 text-brand-fg'
+              : 'border-line bg-sunken text-ink hover:border-brand-200'
+          }`}
+        >
+          {entry.question}
+        </button>
+      ))}
+    </div>
+    <div className="mt-3 rounded-xl border border-line bg-sunken p-3">
+      <p className="text-xs leading-relaxed text-ink">{selectedFaq.answer}</p>
+      <Button
+        type="button"
+        variant="primary"
+        size="sm"
+        icon={ExternalLink}
+        onClick={() => {
+          onNavigate?.(selectedFaq.target);
+          onClose();
+        }}
+        className="mt-3"
+      >
+        {selectedFaq.action}
+      </Button>
+    </div>
+  </section>
+);
+
 export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   isOpen,
   onClose,
@@ -126,8 +187,15 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   const [inputVal, setInputVal] = useState(() => initialCache.draft);
   const [isTyping, setIsTyping] = useState(false);
   const [isCheckingOllama, setIsCheckingOllama] = useState(false);
+  const [healthState, setHealthState] = useState<OllamaHealthState>('checking');
   const [selectedFaq, setSelectedFaq] = useState(FAQ_ENTRIES[0]);
-  const [advisorTab, setAdvisorTab] = useState<'chat' | 'rewriter'>('chat');
+  const [advisorTab, setAdvisorTab] = useState<'chat' | 'rewriter'>('rewriter');
+  const userSelectedTabRef = useRef(false);
+
+  const handleTabChange = (tab: 'chat' | 'rewriter') => {
+    userSelectedTabRef.current = true;
+    setAdvisorTab(tab);
+  };
 
   const [ollamaStatus, setOllamaStatus] = useState<{
     checked: boolean;
@@ -156,21 +224,31 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
   const checkOllama = useCallback(async () => {
     setIsCheckingOllama(true);
+    setHealthState('checking');
     try {
-      const res = await api.get<OllamaHealthResponse>('/ai/ollama/health');
-      if (res && res.success) {
-        setOllamaStatus({
-          checked: true,
-          connected: Boolean(res.connected),
-          models: res.models || [],
-          activeModel: res.activeModel || '',
-          error: res.error,
-        });
-        if (!selectedModel && res.activeModel) {
-          setSelectedModel(res.activeModel);
-        }
+      const res = await checkOllamaWithTimeout(
+        (signal) => api.get<OllamaHealthResponse>('/ai/ollama/health', { signal }),
+        5000
+      );
+
+      setHealthState(res.state);
+      setOllamaStatus({
+        checked: true,
+        connected: Boolean(res.connected),
+        models: res.models || [],
+        activeModel: res.activeModel || '',
+        error: res.error,
+      });
+
+      if (!selectedModel && res.activeModel) {
+        setSelectedModel(res.activeModel);
+      }
+
+      if (!userSelectedTabRef.current) {
+        setAdvisorTab(resolveDefaultAdvisorTab(res.state));
       }
     } catch (err: unknown) {
+      setHealthState('unavailable');
       setOllamaStatus({
         checked: true,
         connected: false,
@@ -178,6 +256,9 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         activeModel: '',
         error: err instanceof Error ? err.message : 'Brak odpowiedzi API',
       });
+      if (!userSelectedTabRef.current) {
+        setAdvisorTab('rewriter');
+      }
     } finally {
       setIsCheckingOllama(false);
     }
@@ -185,6 +266,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      userSelectedTabRef.current = false;
       void checkOllama();
       trackProductInsight('advisor_opened');
     }
@@ -297,7 +379,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         isOpen={isOpen}
         onClose={onClose}
         title="Doradca lokalny"
-        description="Rozmowa działa wyłącznie z dostępną lokalną Ollamą. Gdy model jest wyłączony albo niedostępny, zostają konkretne skróty, FAQ oraz regułowy Asystent Rewritingu (bez danych kontaktowych i pełnej treści CV)."
+        description="Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama na Twoim urządzeniu. Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji."
         size="lg"
       >
         <div className="space-y-4">
@@ -305,7 +387,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           <div className="flex items-center gap-2 border-b border-line pb-2.5">
             <button
               type="button"
-              onClick={() => setAdvisorTab('chat')}
+              onClick={() => handleTabChange('chat')}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
                 advisorTab === 'chat'
                   ? 'bg-brand-600 text-on-brand shadow-xs'
@@ -318,7 +400,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
             <button
               type="button"
-              onClick={() => setAdvisorTab('rewriter')}
+              onClick={() => handleTabChange('rewriter')}
               className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
                 advisorTab === 'rewriter'
                   ? 'bg-brand-600 text-on-brand shadow-xs'
@@ -331,32 +413,54 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           </div>
 
           {advisorTab === 'rewriter' ? (
-            <SectionRewriterView
-              initialRole={advisorContext?.offerTitle}
-              onNavigateToProfile={() => {
-                onNavigate?.('profil');
-                onClose();
-              }}
-            />
+            <div className="space-y-6">
+              <SectionRewriterView
+                initialRole={advisorContext?.offerTitle}
+                onNavigateToProfile={() => {
+                  onNavigate?.('profil');
+                  onClose();
+                }}
+              />
+              <AdvisorFaqSection
+                selectedFaq={selectedFaq}
+                onSelectFaq={setSelectedFaq}
+                onNavigate={onNavigate}
+                onClose={onClose}
+              />
+            </div>
           ) : (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-sunken p-3">
-                <div>
+                <div className="max-w-md">
                   <p className="text-xs font-semibold text-ink">
-                    {ollamaStatus.checked ? 'Lokalna Ollama jest teraz niedostępna.' : 'Sprawdzam lokalną Ollamę…'}
+                    {healthState === 'checking'
+                      ? 'Sprawdzam lokalną Ollamę…'
+                      : 'Lokalna Ollama jest teraz niedostępna.'}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-muted">Do rozmowy czatowej potrzebny jest działający model lokalny. Asystent Rewritingu działa natychmiastowo na silniku reguł.</p>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama na Twoim urządzeniu. Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji.
+                  </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  icon={RefreshCw}
-                  onClick={() => void checkOllama()}
-                  disabled={isCheckingOllama}
-                >
-                  Sprawdź ponownie
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleTabChange('rewriter')}
+                  >
+                    Przejdź do Asystenta Rewritingu →
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    icon={RefreshCw}
+                    onClick={() => void checkOllama()}
+                    disabled={healthState === 'checking'}
+                  >
+                    Sprawdź ponownie
+                  </Button>
+                </div>
               </div>
 
               {advisorContext?.suggestions.length ? (
@@ -382,47 +486,12 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 </section>
               ) : null}
 
-              <section className="rounded-2xl border border-line bg-surface p-4" aria-label="Najczęściej zadawane pytania">
-                <div className="mb-3 flex items-center gap-2">
-                  <CircleHelp className="h-4 w-4 text-brand-600" aria-hidden="true" />
-                  <div>
-                    <h3 className="text-sm font-bold text-ink">FAQ: co możesz zrobić teraz?</h3>
-                    <p className="text-[11px] text-muted">Kliknij pytanie — pokażę odpowiedź i właściwe miejsce w aplikacji.</p>
-                  </div>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {FAQ_ENTRIES.map((entry) => (
-                    <button
-                      key={entry.question}
-                      type="button"
-                      onClick={() => setSelectedFaq(entry)}
-                      className={`rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
-                        selectedFaq.question === entry.question
-                          ? 'border-brand-300 bg-brand-50 text-brand-fg'
-                          : 'border-line bg-sunken text-ink hover:border-brand-200'
-                      }`}
-                    >
-                      {entry.question}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-3 rounded-xl border border-line bg-sunken p-3">
-                  <p className="text-xs leading-relaxed text-ink">{selectedFaq.answer}</p>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    icon={ExternalLink}
-                    onClick={() => {
-                      onNavigate?.(selectedFaq.target);
-                      onClose();
-                    }}
-                    className="mt-3"
-                  >
-                    {selectedFaq.action}
-                  </Button>
-                </div>
-              </section>
+              <AdvisorFaqSection
+                selectedFaq={selectedFaq}
+                onSelectFaq={setSelectedFaq}
+                onNavigate={onNavigate}
+                onClose={onClose}
+              />
             </>
           )}
         </div>
@@ -443,7 +512,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         <div className="flex items-center gap-2 border-b border-line pb-2.5 mb-2">
           <button
             type="button"
-            onClick={() => setAdvisorTab('chat')}
+            onClick={() => handleTabChange('chat')}
             className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
               advisorTab === 'chat'
                 ? 'bg-brand-600 text-on-brand shadow-xs'
@@ -456,7 +525,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
 
           <button
             type="button"
-            onClick={() => setAdvisorTab('rewriter')}
+            onClick={() => handleTabChange('rewriter')}
             className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all focus-visible:outline-none ${
               advisorTab === 'rewriter'
                 ? 'bg-brand-600 text-on-brand shadow-xs'
@@ -469,13 +538,19 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         </div>
 
         {advisorTab === 'rewriter' ? (
-          <div className="flex-1 overflow-y-auto p-1">
+          <div className="flex-1 overflow-y-auto space-y-6 p-1">
             <SectionRewriterView
               initialRole={advisorContext?.offerTitle}
               onNavigateToProfile={() => {
                 onNavigate?.('profil');
                 onClose();
               }}
+            />
+            <AdvisorFaqSection
+              selectedFaq={selectedFaq}
+              onSelectFaq={setSelectedFaq}
+              onNavigate={onNavigate}
+              onClose={onClose}
             />
           </div>
         ) : (
@@ -529,11 +604,11 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
               <button
                 type="button"
                 onClick={() => void checkOllama()}
-                disabled={isCheckingOllama}
+                disabled={healthState === 'checking'}
                 title="Sprawdź ponownie połączenie z lokalną instancją Ollama"
-                className="flex cursor-pointer items-center gap-1 text-[11px] text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
+                className="flex cursor-pointer items-center gap-1 text-[11px] text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 disabled:opacity-50"
               >
-                <RefreshCw className={`h-3 w-3 ${isCheckingOllama ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-3 w-3 ${healthState === 'checking' ? 'animate-spin' : ''}`} />
                 <span>Sprawdź lokalne AI</span>
               </button>
             )}

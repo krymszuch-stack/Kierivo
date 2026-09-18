@@ -113,6 +113,14 @@ function setStoreState(updater: Partial<AppStoreState> | ((prev: AppStoreState) 
   listeners.forEach((listener) => listener());
 }
 
+export function setAuthModalOpenGlobal(isAuthModalOpen: boolean): void {
+  setStoreState({ isAuthModalOpen });
+}
+
+export function getAppStoreState(): AppStoreState {
+  return globalState;
+}
+
 export function useAppStore() {
   const [state, setState] = useState<AppStoreState>(globalState);
 

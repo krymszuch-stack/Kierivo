@@ -25,14 +25,14 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
   className,
   format = defaultFormat,
 }) => {
-  const prefersReducedMotion = useReducedMotion();
-  const motionValue = useMotionValue(prefersReducedMotion ? value : 0);
+  const shouldReduceMotion = useReducedMotion();
+  const motionValue = useMotionValue(shouldReduceMotion ? value : 0);
   const text = useTransform(motionValue, format);
 
   useEffect(() => {
     // Przy „redukcji ruchu" licznik ma pokazać wynik od razu — to zmiana stanu,
     // którą trzeba odebrać natychmiast, nie dekoracja do wyłączania.
-    if (prefersReducedMotion) {
+    if (shouldReduceMotion) {
       motionValue.set(value);
       return;
     }
@@ -43,7 +43,11 @@ export const AnimatedNumber: React.FC<AnimatedNumberProps> = ({
       ease: [0.19, 1, 0.22, 1],
     });
     return () => controls.stop();
-  }, [value, prefersReducedMotion, motionValue]);
+  }, [value, shouldReduceMotion, motionValue]);
+
+  if (shouldReduceMotion) {
+    return <span className={className}>{format(value)}</span>;
+  }
 
   return <motion.span className={className}>{text}</motion.span>;
 };

@@ -47,6 +47,7 @@
   --color-line-strong: var(--line-strong);
 
   /* Brand Accents Ramp */
+  --color-brand: var(--brand);
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
   --color-brand-200: var(--brand-200);
@@ -124,6 +125,7 @@
   --line-strong: #d3d3d0;
 
   /* Brand Ramp (Light) */
+  --brand: #155eef;
   --brand-50: #eff6ff;
   --brand-100: #dbeafe;
   --brand-200: #bfdbfe;
@@ -218,6 +220,7 @@
   --line-strong: #2b3047;
 
   /* Brand Ramp (Dark) */
+  --brand: #7dd3fc;
   --brand-50: #0b1d3a;
   --brand-100: #102a56;
   --brand-200: #153b78;

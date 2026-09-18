@@ -24,7 +24,7 @@ const variantStyles: Record<NonNullable<ButtonProps['variant']>, string> = {
 };
 
  const sizeStyles = {
-   sm: 'h-8 py-1 text-xs gap-1.5 rounded-lg font-medium',
+   sm: 'h-11 py-1 text-xs gap-1.5 rounded-lg font-medium',
    md: 'h-11 py-1.5 text-xs font-semibold gap-2 rounded-xl',
    lg: 'h-11 py-2 text-sm font-semibold gap-2.5 rounded-xl',
  };

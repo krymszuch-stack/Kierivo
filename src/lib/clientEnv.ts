@@ -26,12 +26,15 @@ interface ClientEnv {
   stripePublishableKey: string | null;
   /** Publiczny DSN klienta Sentry; brak wartości wyłącza monitoring. */
   sentryDsn: string | null;
+  /** Publiczny adres aplikacji używany do przekierowań OAuth i linków weryfikacyjnych. */
+  publicAppUrl: string | null;
   /** `true`, gdy front ma z czym rozmawiać: adres i klucz publiczny Supabase. */
   backendConfigured: boolean;
 }
 
 function read(name: string): string | null {
-  const raw = (import.meta.env as Record<string, string | undefined>)[name];
+  const envMap = import.meta.env as Record<string, string | undefined>;
+  const raw = envMap[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
   const trimmed = raw?.trim();
   return trimmed ? trimmed : null;
 }
@@ -45,6 +48,7 @@ export const clientEnv: ClientEnv = {
   supabaseAnonKey,
   stripePublishableKey: read('VITE_STRIPE_PUBLISHABLE_KEY'),
   sentryDsn: read('VITE_SENTRY_DSN'),
+  publicAppUrl: read('VITE_PUBLIC_APP_URL') ?? read('PUBLIC_APP_URL'),
   backendConfigured: Boolean(supabaseUrl && supabaseAnonKey),
 };
 

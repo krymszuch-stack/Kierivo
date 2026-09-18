@@ -15,6 +15,10 @@ import {
 import { MasterVault } from '../../types';
 import { api, ApiError } from '../../lib/apiClient';
 import { useEntitlements, consumeAiLocally } from '../../store/useEntitlements';
+import { useOptionalAuth } from '../../context/AuthContext';
+import { setAuthModalOpenGlobal } from '../../store/useAppStore';
+import { showToast } from '../../store/useToastStore';
+import { LocalProfile } from '../../lib/localProfile';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 import { CvVerificationReport } from '../../server/services/cvVerifier.service';
 
@@ -25,6 +29,10 @@ export interface Cv360VerifierModalProps {
   targetRole?: string;
   targetCompany?: string;
   jobDescription?: string;
+  /** Opcjonalne wstrzyknięcie użytkownika (przydatne do testów) */
+  currentUser?: LocalProfile | null;
+  /** Opcjonalny callback wywoływany przy próbie weryfikacji bez sesji */
+  onRequireLogin?: () => void;
 }
 
 export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
@@ -34,14 +42,35 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
   targetRole,
   targetCompany,
   jobDescription,
+  currentUser,
+  onRequireLogin,
 }) => {
+  const auth = useOptionalAuth();
   const { usage, refresh: refreshEntitlements } = useEntitlements();
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<CvVerificationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeLoopTab, setActiveLoopTab] = useState<'ats' | 'recruiter' | 'logic'>('ats');
 
+  const activeUser = currentUser !== undefined ? currentUser : auth?.user;
+  const isAuthed = currentUser !== undefined ? Boolean(currentUser) : Boolean(auth?.isAuthenticated && auth?.user);
+
   const runVerification = async () => {
+    // 1. Sprawdzenie aktywnego użytkownika przed jakimkolwiek loadingiem, lokalnym decrementem i requestem AI
+    if (!isAuthed || !activeUser) {
+      showToast('Wymagane logowanie', {
+        message: 'Zaloguj się, aby uruchomić Weryfikator CV AI 360°.',
+        variant: 'info',
+      });
+      if (onRequireLogin) {
+        onRequireLogin();
+      } else {
+        setAuthModalOpenGlobal(true);
+      }
+      return;
+    }
+
+    // 2. Weryfikacja kwoty i lokalny decrement (tylko zalogowany użytkownik może zużyć lokalny limit)
     if (usage.aiUses <= 0 || !consumeAiLocally()) {
       setError(
         'Dzienny limit zapytań AI w tej becie został wyczerpany (odnowi się o północy). Możesz skorzystać z lokalnego audytu struktury w zakładce Laboratorium Audytu ATS.'
@@ -49,6 +78,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
       return;
     }
 
+    // 3. Rozpoczęcie loadingu i wykonanie zapytania
     setLoading(true);
     setError(null);
     try {
@@ -153,15 +183,15 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
             <button
               type="button"
               onClick={runVerification}
-              disabled={usage.aiUses <= 0}
+              disabled={isAuthed && usage.aiUses <= 0}
               className={`inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-lg transition-all ${
-                usage.aiUses <= 0
+                isAuthed && usage.aiUses <= 0
                   ? 'bg-muted cursor-not-allowed opacity-60'
                   : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20 cursor-pointer'
               }`}
             >
               <Sparkles className="h-4 w-4" />
-              {usage.aiUses <= 0 ? 'Limit audytu AI wyczerpany na dziś' : 'Uruchom Potrójną Pętlę Audytorską'}
+              {isAuthed && usage.aiUses <= 0 ? 'Limit audytu AI wyczerpany na dziś' : 'Uruchom Potrójną Pętlę Audytorską'}
             </button>
           </div>
         )}

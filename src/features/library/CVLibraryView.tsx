@@ -126,7 +126,7 @@ const EditPanel: React.FC<{
           ))}
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <input
             type="text"
             value={newTag}
@@ -141,7 +141,7 @@ const EditPanel: React.FC<{
         </div>
       </div>
 
-      <div className="flex gap-2 justify-end">
+      <div className="flex items-center gap-2 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel}>Anuluj</Button>
         <Button size="sm" variant="primary" onClick={() => onSave(doc.id, title, tags)}>
           <Check className="h-3.5 w-3.5 mr-1" /> Zapisz

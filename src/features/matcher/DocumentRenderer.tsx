@@ -37,7 +37,7 @@ import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
 import { saveCV, PRESET_TAGS } from '../../lib/cvLibraryStorage';
 import { Modal } from '../../components/ui/Modal';
 import { Cv360VerifierModal } from './Cv360VerifierModal';
-import { CVExportModal } from '../../components/ui/CVExportModal';
+import { CVExportModal, CVModalMode } from '../../components/ui/CVExportModal';
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -77,10 +77,12 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
    // Silnik Dual-Layer Semantic PDF (mvcv)
    const [isExportingPdf, setIsExportingPdf] = useState(false);
-   const [pdfTheme] = useState('parchment');
-   const [pdfLayout] = useState('sidebar');
-   const [pdfTargetPages] = useState<1 | 2>(1);
-   const [showPdfSettings, setShowPdfSettings] = useState(false);
+   const [pdfTheme, setPdfTheme] = useState('parchment');
+   const [pdfLayout, setPdfLayout] = useState('sidebar');
+   const [pdfTargetPages, setPdfTargetPages] = useState<1 | 2>(1);
+   const [pdfAvatar, setPdfAvatar] = useState<'circle' | 'square' | 'none'>('none');
+   const [showExportModal, setShowExportModal] = useState(false);
+   const [exportModalMode, setExportModalMode] = useState<CVModalMode>('export');
    const [isVerifierOpen, setIsVerifierOpen] = useState(false);
 
   // Biblioteka CV
@@ -381,8 +383,8 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
           </div>
         </div>
 
-        {/* Action Buttons: Nanieś poprawki, Kopiuj, Drukuj */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons: Nanieś poprawki, Kopiuj, Zapisz kopię w bibliotece | Wygląd CV, Audyt CV 360°, Eksportuj CV */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant={isEditing ? 'primary' : 'secondary'}
@@ -390,6 +392,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             icon={isEditing ? Check : Edit3}
             onClick={() => setIsEditing(!isEditing)}
             className="text-xs"
+            aria-label={isEditing ? 'Zakończ poprawki w dokumencie' : 'Nanieś poprawki w dokumencie'}
           >
             {isEditing ? 'Zakończ poprawki' : 'Nanieś poprawki'}
           </Button>
@@ -401,55 +404,9 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             icon={isCopied ? Check : Copy}
             onClick={handleCopyText}
             className="text-xs"
+            aria-label="Kopiuj treść dokumentu do schowka"
           >
             {isCopied ? 'Skopiowano!' : 'Kopiuj'}
-          </Button>
-
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            icon={Printer}
-            onClick={handlePrint}
-            className="text-xs"
-          >
-            Drukuj
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            icon={Settings2}
-            onClick={() => setShowPdfSettings(!showPdfSettings)}
-            className="text-xs"
-            aria-label="Ustawienia motywu PDF"
-          >
-            Motyw PDF
-          </Button>
-
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            icon={isExportingPdf ? Sparkles : Download}
-            onClick={handleExportSemanticPdf}
-            disabled={isExportingPdf}
-            className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-          >
-            {isExportingPdf ? 'Generowanie...' : 'Dual-Layer PDF'}
-          </Button>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            icon={ShieldCheck}
-            onClick={() => setIsVerifierOpen(true)}
-            className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 font-semibold"
-            aria-label="Weryfikator CV AI 360°"
-          >
-            Audyt AI 360°
           </Button>
 
           <Button
@@ -459,37 +416,56 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
             icon={FolderArchive}
             onClick={openSaveLibraryModal}
             className="text-xs text-brand-fg border-brand-500/30 hover:bg-brand-500/10 font-semibold"
-            aria-label="Zapisz tę wersję do biblioteki CV"
+            aria-label="Zapisz kopię w bibliotece CV"
           >
-            Zapisz w bibliotece
+            Zapisz kopię w bibliotece
+          </Button>
+
+          <div className="hidden sm:block h-4 w-px bg-line mx-1" aria-hidden="true" />
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={Palette}
+            onClick={() => {
+              setExportModalMode('theme');
+              setShowExportModal(true);
+            }}
+            className="text-xs"
+            aria-label="Konfiguracja wyglądu CV"
+          >
+            Wygląd CV
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            icon={ShieldCheck}
+            onClick={() => setIsVerifierOpen(true)}
+            className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 font-semibold"
+            aria-label="Uruchom audyt CV 360°"
+          >
+            Audyt CV 360°
+          </Button>
+
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            icon={Download}
+            onClick={() => {
+              setExportModalMode('export');
+              setShowExportModal(true);
+            }}
+            className="text-xs font-semibold shadow-xs"
+            aria-label="Otwórz menu eksportu CV"
+          >
+            Eksportuj CV
           </Button>
         </div>
       </div>
-
-      {/* Eksport PDF — otwiera CVExportModal */}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        icon={Settings2}
-        onClick={() => setShowPdfSettings(true)}
-        className="text-xs"
-        aria-label="Otwórz eksport PDF z motywami"
-      >
-        Eksportuj PDF
-      </Button>
-
-      <Button
-        type="button"
-        variant="primary"
-        size="sm"
-        icon={isExportingPdf ? Sparkles : Download}
-        onClick={handleExportSemanticPdf}
-        disabled={isExportingPdf}
-        className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs"
-      >
-        {isExportingPdf ? 'Generowanie...' : 'Dual-Layer PDF'}
-      </Button>
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-sunken/40 px-3 py-2 text-xs">
         <LayoutTemplate className="h-4 w-4 text-muted" />
@@ -967,12 +943,25 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         targetCompany={tailoredResume?.companyName}
       />
 
-      {/* Modal Eksportu CV — Silnik Dual-Layer Semantic PDF */}
+      {/* Modal Eksportu i Wyglądu CV — Silnik Dual-Layer Semantic PDF */}
       <CVExportModal
-        isOpen={showPdfSettings}
-        onClose={() => setShowPdfSettings(false)}
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
         vault={docVault}
         tailoredResume={tailoredResume}
+        initialMode={exportModalMode}
+        initialTheme={pdfTheme}
+        initialLayout={pdfLayout}
+        initialTargetPages={pdfTargetPages}
+        initialAvatar={pdfAvatar}
+        onApplyAppearance={(settings) => {
+          setPdfTheme(settings.theme);
+          setPdfLayout(settings.layout);
+          setPdfTargetPages(settings.targetPages);
+          setPdfAvatar(settings.avatar);
+        }}
+        onPrint={handlePrint}
+        onAuditOpen={() => setIsVerifierOpen(true)}
       />
     </div>
   );

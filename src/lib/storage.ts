@@ -59,6 +59,8 @@ export const StorageKeys = {
   cvLibrary: `${PREFIX}cv-library`,
   /** Widok zaawansowany panelu pipeline (pełne rozbicie statusów i kolumn). */
   pipelineAdvancedMode: `${PREFIX}pipeline-advanced-mode`,
+  /** Plan nauki użytkownika (Mój plan nauki / Mój następny krok). */
+  learningPlan: `${PREFIX}learning-plan`,
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];

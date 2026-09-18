@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { useDeferredPersist } from './hooks/useDeferredPersist';
 import { useUnlocks } from './hooks/useUnlocks';
 import { MasterVault } from './types';
@@ -15,7 +15,7 @@ import {
 } from './lib/localProfile';
 import { removeRaw, vaultKeyFor } from './lib/storage';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { useEntitlements, isProStatus } from './store/useEntitlements';
+import { useEntitlements, isProStatus, resetEntitlementsToUnauthenticated } from './store/useEntitlements';
 import { ThemeProvider } from './providers/ThemeProvider';
 import { AccessibilityProvider } from './providers/AccessibilityProvider';
 import { ToastHost } from './components/ui/ToastHost';
@@ -116,7 +116,10 @@ function MainApp() {
       : 'free';
 
   useEffect(() => {
-    if (mode !== 'cloud' || !user) return;
+    if (mode !== 'cloud' || !user) {
+      resetEntitlementsToUnauthenticated();
+      return;
+    }
     void refreshEntitlements();
   }, [mode, user?.id, refreshEntitlements]);
 
@@ -392,7 +395,7 @@ function MainApp() {
 
             {/* Tab: Laboratorium Audytu ATS 360° (Multi-Engine Consensus) */}
             {activeTab === 'ats-lab' && (
-              <AtsLabView vault={vault} />
+              <AtsLabView vault={vault} onNavigate={setActiveTab} />
             )}
 
             {/* TRENUJ — przygotowanie do rozmowy */}
@@ -418,7 +421,7 @@ function MainApp() {
             {activeTab === 'pricing' && <PricingView />}
 
             {/* Porady & Baza wiedzy (Blog/SEO) */}
-            {activeTab === 'porady' && <CareerTipsView />}
+            {activeTab === 'porady' && <CareerTipsView vault={vault} />}
 
             {/* Biblioteka CV — wersje dokumentów, tagi, klonowanie, re-eksport */}
             {activeTab === 'biblioteka' && <CVLibraryView onNavigate={navigate} />}
@@ -500,13 +503,15 @@ function MainApp() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AccessibilityProvider>
-        <AuthProvider>
-          <MainApp />
-          <ToastHost />
-        </AuthProvider>
-      </AccessibilityProvider>
-    </ThemeProvider>
+    <MotionConfig reducedMotion="user">
+      <ThemeProvider>
+        <AccessibilityProvider>
+          <AuthProvider>
+            <MainApp />
+            <ToastHost />
+          </AuthProvider>
+        </AccessibilityProvider>
+      </ThemeProvider>
+    </MotionConfig>
   );
 }

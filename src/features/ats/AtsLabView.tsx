@@ -22,14 +22,27 @@ import { simulateMultiEngineATS, AtsEngineResult } from '../../lib/atsSimulator'
 import { scoreCanonicalAts } from '../../lib/canonicalAts';
 import { formatDecimalPl } from '../../lib/pluralFormat';
 import { buildAtsTelemetryReport, STUFFING_DENSITY_THRESHOLD } from '../../lib/atsScorer';
-import { ScoreRing } from '../../components/ui/ScoreRing';
+import { ScoreRing, EmptyStateScoreRing, ResultScoreRing } from '../../components/ui/ScoreRing';
+import { Button } from '../../components/ui/Button';
+import { ScrollContinuationHint } from '../../components/ui/ScrollContinuationHint';
 import { StorageKeys, readJson, writeJson } from '../../lib/storage';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import type { NavTabId } from '../../lib/navigation';
 
 export interface AtsLabViewProps {
   vault: MasterVault;
   jobOfferText?: string;
   targetRole?: string;
+  onNavigate?: (tab: NavTabId) => void;
 }
+
+const MINI_MAP_SECTIONS = [
+  { id: 'profile-heurystyczne', label: 'Profile heurystyczne' },
+  { id: 'ocena-dopasowania', label: 'Ocena dopasowania' },
+  { id: 'oceny-modulow', label: 'Oceny modułów' },
+  { id: 'szczegoly-modulu', label: 'Szczegóły wybranego modułu' },
+  { id: 'praktyki-redakcyjne', label: 'Praktyki redakcyjne' },
+] as const;
 
 const HEURISTIC_PROFILE_LABELS = [
   {
@@ -50,7 +63,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   vault,
   jobOfferText = '',
   targetRole = '',
+  onNavigate,
 }) => {
+  const shouldReduceMotion = useReducedMotion();
   const savedDraft = useMemo(
     () => readJson<{ jd?: string; role?: string }>(StorageKeys.draftAtsLab, {}),
     []
@@ -64,6 +79,49 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 
   const [selectedEngineId, setSelectedEngineId] = useState<string | null>('konsensus_cvelocity');
   const [openPracticeIdx, setOpenPracticeIdx] = useState<number | null>(0);
+
+  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<string>('profile-heurystyczne');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleScroll = () => {
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      // Widoczna od momentu przewinięcia poza pierwszy ekran
+      setShowMiniMap(scrollY > 320);
+
+      const headerOffset = 180;
+      for (let i = MINI_MAP_SECTIONS.length - 1; i >= 0; i--) {
+        const sec = document.getElementById(MINI_MAP_SECTIONS[i].id);
+        if (sec) {
+          const rect = sec.getBoundingClientRect();
+          if (rect.top <= headerOffset) {
+            setActiveSectionId(MINI_MAP_SECTIONS[i].id);
+            return;
+          }
+        }
+      }
+      setActiveSectionId(MINI_MAP_SECTIONS[0].id);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  const handleScrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({
+      behavior: shouldReduceMotion ? 'auto' : 'smooth',
+      block: 'start',
+    });
+    setActiveSectionId(id);
+  };
 
   const canonical = useMemo(
     () => scoreCanonicalAts(vault, customJdText, customRole),
@@ -85,6 +143,58 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
     [consensus.engines, selectedEngineId]
   );
 
+  const isEmptyProfile = canonical.state === 'INSUFFICIENT_CV';
+
+  const handleGoToProfile = () => {
+    if (onNavigate) {
+      onNavigate('profil');
+    } else if (typeof window !== 'undefined') {
+      window.location.hash = '#profil';
+    }
+  };
+
+  const getScoreTextColor = (val: number, isEmpty: boolean) => {
+    if (isEmpty) return 'text-ink-muted';
+    if (val >= 75) return 'text-emerald-500';
+    if (val >= 50) return 'text-blue-500';
+    return 'text-amber-500';
+  };
+
+  const canonicalPillars = [
+    {
+      id: 'skills',
+      label: 'Umiejętności',
+      weight: 40,
+      value: canonical.components.skills,
+      flexBasis: 'sm:flex-[40_1_0%]',
+      intensity: 'border-brand/20 bg-surface/85 shadow-xs',
+    },
+    {
+      id: 'experience',
+      label: 'Staż i świeżość',
+      weight: 25,
+      value: canonical.components.experience,
+      flexBasis: 'sm:flex-[25_1_0%]',
+      intensity: 'border-ink/10 bg-surface/75',
+    },
+    {
+      id: 'structure',
+      label: 'Struktura',
+      weight: 20,
+      value: canonical.components.structure,
+      flexBasis: 'sm:flex-[20_1_0%]',
+      intensity: 'border-ink/8 bg-surface/65',
+    },
+    {
+      id: 'formal',
+      label: 'Formalia',
+      weight: 15,
+      value: canonical.components.formal,
+      flexBasis: 'sm:flex-[15_1_0%]',
+      intensity: 'border-ink/5 bg-surface/55',
+    },
+  ] as const;
+
   const getStatusColor = (status?: AtsEngineResult['status'] | string) => {
     switch (status) {
       case 'OPTIMAL':
@@ -101,7 +211,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 p-4 sm:p-6 lg:p-8 animate-fade-in">
+    <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6 lg:p-8 animate-fade-in">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-fg">
@@ -129,16 +239,64 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 
       <div className="relative overflow-hidden rounded-3xl border border-brand/20 bg-surface-raised/80 p-6 shadow-card-glass backdrop-blur-xl sm:p-8">
         <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-4 text-center lg:col-span-4">
-            <ScoreRing value={canonical.score} label="Wynik kanoniczny" />
-            <span className="mt-2 block text-[11px] text-ink-faint">
-              kanoniczne dopasowanie do oferty wg reguł Kierivo (D07–D11)
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-5 text-center lg:col-span-4">
+            {isEmptyProfile ? (
+              <EmptyStateScoreRing
+                label="Dopasowanie profilu"
+                message="Brak danych"
+              />
+            ) : (
+              <ResultScoreRing
+                value={canonical.score}
+                label="Dopasowanie profilu"
+              />
+            )}
+
+            <div className="group relative mt-2 flex items-center justify-center gap-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-ink-muted">
+                Dopasowanie profilu
+              </span>
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  className="inline-flex items-center text-ink-faint hover:text-ink focus-visible:outline-none"
+                  aria-label="Wyjaśnienie metodologii oceny"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+                <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface-raised p-3 text-left text-[11px] leading-relaxed text-ink shadow-lg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                  <p className="font-bold text-ink">Metodologia Kierivo (D07–D11):</p>
+                  <p className="mt-1 text-ink-muted">
+                    Ważona ocena 4 filarów profilu: Umiejętności (40%), Staż i świeżość (25%), Struktura dokumentu (20%) oraz Wymagania formalne (15%). Deterministyczny audyt regułowy bez losowości AI.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <span className="mt-1 block text-[11px] text-ink-faint">
+              {isEmptyProfile
+                ? 'wymaga danych w profilu kandydata'
+                : 'zgodność profilu z ofertą wg reguł Kierivo (D07–D11)'}
             </span>
-            {canonical.state !== 'SCORABLE' ? (
+
+            {isEmptyProfile ? (
+              <div className="mt-4 w-full max-w-xs space-y-2">
+                <Button
+                  size="md"
+                  variant="primary"
+                  icon={ArrowRight}
+                  onClick={handleGoToProfile}
+                  className="w-full justify-center shadow-xs font-bold"
+                >
+                  Uzupełnij profil
+                </Button>
+                <p className="text-[11px] leading-relaxed text-ink-muted">
+                  Dodaj doświadczenie, umiejętności lub zaimportuj CV, aby audyt mógł zmierzyć dopasowanie.
+                </p>
+              </div>
+            ) : canonical.state !== 'SCORABLE' ? (
               <span className="mt-4 rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-extrabold text-white">
-                {canonical.state === 'INSUFFICIENT_CV'
-                  ? 'Uzupełnij profil'
-                  : canonical.state === 'INSUFFICIENT_JD'
+                {canonical.state === 'INSUFFICIENT_JD'
                   ? 'Zbyt krótkie ogłoszenie'
                   : 'Brak wykrytych wymagań'}
               </span>
@@ -147,10 +305,10 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 canonical.score >= 80 ? 'bg-emerald-500' : canonical.score >= 65 ? 'bg-blue-500' : 'bg-amber-500'
               }`}>
                 {canonical.score >= 80
-                  ? 'Wysoka zgodność kanoniczna'
+                  ? 'Wysoka zgodność z ofertą'
                   : canonical.score >= 65
-                    ? 'Umiarkowana zgodność kanoniczna'
-                    : 'Niska zgodność kanoniczna'}
+                    ? 'Umiarkowana zgodność z ofertą'
+                    : 'Niska zgodność z ofertą'}
               </span>
             )}
           </div>
@@ -158,55 +316,60 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           <div className="space-y-5 lg:col-span-8">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-ink">
-                <Sparkles className="h-5 w-5 text-brand-fg" /> Rozbicie kanoniczne Kierivo
+                <Sparkles className="h-5 w-5 text-brand-fg" /> Rozbicie wagowe filarów dopasowania
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-                {canonical.reason}
+                {isEmptyProfile
+                  ? 'Profil nie zawiera jeszcze treści do oceny. Każdy z 4 filarów czeka na fakty z Twojego profilu:'
+                  : canonical.reason}
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                <span className="block text-xs text-ink-faint">Umiejętności (40%)</span>
-                <span className={`mt-0.5 block font-mono text-xl font-bold ${
-                  canonical.components.skills >= 75 ? 'text-emerald-500' : canonical.components.skills >= 50 ? 'text-blue-500' : 'text-amber-500'
-                }`}>
-                  {canonical.components.skills}%
-                </span>
-              </div>
-              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                <span className="block text-xs text-ink-faint">Staż i świeżość (25%)</span>
-                <span className={`mt-0.5 block font-mono text-xl font-bold ${
-                  canonical.components.experience >= 75 ? 'text-emerald-500' : canonical.components.experience >= 50 ? 'text-blue-500' : 'text-amber-500'
-                }`}>
-                  {canonical.components.experience}%
-                </span>
-              </div>
-              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                <span className="block text-xs text-ink-faint">Struktura (20%)</span>
-                <span className={`mt-0.5 block font-mono text-xl font-bold ${
-                  canonical.components.structure >= 75 ? 'text-emerald-500' : canonical.components.structure >= 50 ? 'text-blue-500' : 'text-amber-500'
-                }`}>
-                  {canonical.components.structure}%
-                </span>
-              </div>
-              <div className="rounded-xl border border-ink/5 bg-surface/60 p-3 text-center">
-                <span className="block text-xs text-ink-faint">Formalia (15%)</span>
-                <span className={`mt-0.5 block font-mono text-xl font-bold ${
-                  canonical.components.formal >= 75 ? 'text-emerald-500' : canonical.components.formal >= 50 ? 'text-blue-500' : 'text-amber-500'
-                }`}>
-                  {canonical.components.formal}%
-                </span>
-              </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-3">
+              {canonicalPillars.map((pillar) => (
+                <div
+                  key={pillar.id}
+                  className={`rounded-xl border p-3 text-center transition-all min-w-[120px] ${pillar.flexBasis} ${pillar.intensity}`}
+                >
+                  <span className="block text-xs font-medium text-ink-muted">
+                    {pillar.label}
+                  </span>
+                  <span className={`mt-0.5 block font-mono text-xl font-bold ${getScoreTextColor(pillar.value, isEmptyProfile)}`}>
+                    {isEmptyProfile ? '—' : `${pillar.value}%`}
+                  </span>
+                  <div className="mt-2.5 pt-2 border-t border-ink/5">
+                    <div className="flex items-center justify-between text-[10px] text-ink-faint">
+                      <span>Waga</span>
+                      <span className="font-mono font-bold text-ink-muted">{pillar.weight}%</span>
+                    </div>
+                    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink/10">
+                      <div
+                        className={`h-full rounded-full transition-all ${isEmptyProfile ? 'bg-ink/25' : 'bg-brand'}`}
+                        style={{ width: `${pillar.weight}%` }}
+                        title={`Waga w ocenie końcowej: ${pillar.weight}%`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
+
             <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted border-t border-ink/5 pt-3">
               <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
               <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
               <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
-              <span className="ml-auto text-ink-faint">Mediana symulatora: <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
+              {!isEmptyProfile && (
+                <div className="ml-auto flex items-center gap-1.5 text-ink-faint">
+                  <span>Mediana symulatora: <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
+                  <span className="text-[10px] text-ink-faint">(odniesienie z 3 silników heurystycznych)</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      <ScrollContinuationHint targetId="profile-heurystyczne" label="Dalej: Mierzone cechy i profile ↓" />
 
       <div className="rounded-3xl border border-ink/10 bg-surface-raised/80 p-6 shadow-card-glass backdrop-blur-xl sm:p-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -302,9 +465,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           </div>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-line bg-surface/60 p-4">
-          <h3 className="text-sm font-bold text-ink">Trzy profile heurystyczne Kierivo</h3>
-          <p className="mt-1 text-[11px] leading-relaxed text-ink-faint">
+        <div id="profile-heurystyczne" className="mt-6 scroll-mt-24 rounded-2xl border border-line bg-surface/60 p-4">
+          <h3 className="select-none text-sm font-bold text-ink">Trzy profile heurystyczne Kierivo</h3>
+          <p className="select-none mt-1 text-[11px] leading-relaxed text-ink-faint">
             Te profile grupują mierzone cechy dokumentu. Ich liczby nie są wynikami ani prawdopodobieństwami z konkretnych zewnętrznych ATS.
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -314,19 +477,22 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 category: 'wewnętrzna kombinacja cech Kierivo',
               };
               return (
-                <div key={profileResult.systemId} className="space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
+                <div key={profileResult.systemId} className="select-none space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-bold text-ink">{label.name}</p>
                       <p className="text-[11px] text-ink-faint">{label.category}</p>
                     </div>
-                    <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-extrabold text-on-brand">{profileResult.passProbability}%</span>
+                    <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-extrabold text-on-brand shadow-xs">
+                      {profileResult.passProbability}%
+                    </span>
                   </div>
                   {profileResult.criticalRisks.length > 0 && (
                     <ul className="space-y-1.5">
                       {profileResult.criticalRisks.map((risk) => (
                         <li key={risk} className="flex items-start gap-1.5 text-[11px] leading-snug text-ink-muted">
-                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" /> {risk}
+                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" aria-hidden="true" />
+                          <span className="select-text cursor-text">{risk}</span>
                         </li>
                       ))}
                     </ul>
@@ -335,7 +501,8 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                     <ul className="space-y-1.5">
                       {profileResult.complianceReasons.map((reason) => (
                         <li key={reason} className="flex items-start gap-1.5 text-[11px] leading-snug text-ink-muted">
-                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" /> {reason}
+                          <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-500" aria-hidden="true" />
+                          <span className="select-text cursor-text">{reason}</span>
                         </li>
                       ))}
                     </ul>
@@ -347,7 +514,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         </div>
       </div>
 
-      <div className={`rounded-3xl border p-6 ${consensus.careerFitAdvice.isRealisticFit ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/5'}`}>
+      <ScrollContinuationHint targetId="ocena-dopasowania" label="Dalej: Ocena dopasowania profilu ↓" />
+
+      <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${consensus.careerFitAdvice.isRealisticFit ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/5'}`}>
         <div className="flex items-start gap-4">
           <div className="rounded-2xl bg-brand/10 p-3 text-brand-fg"><Compass className="h-6 w-6" /></div>
           <div className="flex-1 space-y-2">
@@ -369,7 +538,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         </div>
       </div>
 
-      <div className="space-y-4">
+      <ScrollContinuationHint targetId="oceny-modulow" label="Dalej: Oceny modułów Kierivo ↓" />
+
+      <div id="oceny-modulow" className="scroll-mt-24 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-ink">
             <Award className="h-5 w-5 text-brand-fg" /> Oceny modułów Kierivo
@@ -402,61 +573,67 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       </div>
 
       {activeEngine && (
-        <motion.div
-          key={activeEngine.id}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-3xl border border-ink/10 bg-surface-raised p-6 shadow-card-glass sm:p-8"
-        >
-          <div className="flex flex-col gap-4 border-b border-ink/5 pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-xl font-bold text-ink">{activeEngine.name}</h3>
-              <p className="mt-1 text-xs text-ink-muted">Kategoria reguły: <strong>{activeEngine.category}</strong></p>
+        <>
+          <ScrollContinuationHint targetId="szczegoly-modulu" label="Dalej: Szczegóły wybranego modułu ↓" />
+          <motion.div
+            id="szczegoly-modulu"
+            key={activeEngine.id}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="scroll-mt-24 rounded-3xl border border-ink/10 bg-surface-raised p-6 shadow-card-glass sm:p-8"
+          >
+            <div className="flex flex-col gap-4 border-b border-ink/5 pb-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-ink">{activeEngine.name}</h3>
+                <p className="mt-1 text-xs text-ink-muted">Kategoria reguły: <strong>{activeEngine.category}</strong></p>
+              </div>
+              <div className="text-right">
+                <span className="block text-xs text-ink-faint">Wynik modułu Kierivo</span>
+                <span className="font-mono text-2xl font-black text-brand-fg">{activeEngine.score}%</span>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="block text-xs text-ink-faint">Wynik modułu Kierivo</span>
-              <span className="font-mono text-2xl font-black text-brand-fg">{activeEngine.score}%</span>
-            </div>
-          </div>
 
-          <div className="mt-4 rounded-xl border border-ink/5 bg-surface/50 p-2.5 font-mono text-xs text-ink-muted">
-            <strong>Kryteria i wagi:</strong> {activeEngine.weightsFocus}
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div className="space-y-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
-              <h4 className="flex items-center gap-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Pozytywne sygnały</h4>
-              <ul className="space-y-2 text-xs text-ink-muted">
-                {activeEngine.keyStrengths.map((strength) => <li key={strength}>• {strength}</li>)}
-              </ul>
+            <div className="mt-4 rounded-xl border border-ink/5 bg-surface/50 p-2.5 font-mono text-xs text-ink-muted">
+              <strong>Kryteria i wagi:</strong> {activeEngine.weightsFocus}
             </div>
-            <div className="space-y-3 rounded-2xl border border-amber-500/15 bg-amber-500/5 p-4">
-              <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-700 dark:text-amber-400"><AlertTriangle className="h-4 w-4" /> Zastrzeżenia reguły</h4>
-              {activeEngine.penaltiesAndFlags.length > 0 ? (
+
+            <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="space-y-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
+                <h4 className="flex items-center gap-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Pozytywne sygnały</h4>
                 <ul className="space-y-2 text-xs text-ink-muted">
-                  {activeEngine.penaltiesAndFlags.map((flag) => <li key={flag} className="flex gap-2"><XCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />{flag}</li>)}
+                  {activeEngine.keyStrengths.map((strength) => <li key={strength}>• {strength}</li>)}
                 </ul>
-              ) : <p className="text-xs text-ink-muted">Brak zastrzeżeń naliczonych przez ten moduł.</p>}
+              </div>
+              <div className="space-y-3 rounded-2xl border border-amber-500/15 bg-amber-500/5 p-4">
+                <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-700 dark:text-amber-400"><AlertTriangle className="h-4 w-4" /> Zastrzeżenia reguły</h4>
+                {activeEngine.penaltiesAndFlags.length > 0 ? (
+                  <ul className="space-y-2 text-xs text-ink-muted">
+                    {activeEngine.penaltiesAndFlags.map((flag) => <li key={flag} className="flex gap-2"><XCircle className="h-3.5 w-3.5 shrink-0 text-amber-500" />{flag}</li>)}
+                  </ul>
+                ) : <p className="text-xs text-ink-muted">Brak zastrzeżeń naliczonych przez ten moduł.</p>}
+              </div>
             </div>
-          </div>
 
-          {activeEngine.proposals?.length > 0 && (
-            <div className="mt-6 space-y-2 rounded-2xl border border-brand/20 bg-surface/80 p-4">
-              <span className="flex items-center gap-1.5 text-xs font-bold text-brand-fg"><Lightbulb className="h-4 w-4" /> Propozycje zmian</span>
-              <ul className="space-y-1.5 text-xs text-ink-muted">
-                {activeEngine.proposals.map((proposal) => <li key={proposal}>→ {proposal}</li>)}
-              </ul>
+            {activeEngine.proposals?.length > 0 && (
+              <div className="mt-6 space-y-2 rounded-2xl border border-brand/20 bg-surface/80 p-4">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-brand-fg"><Lightbulb className="h-4 w-4" /> Propozycje zmian</span>
+                <ul className="space-y-1.5 text-xs text-ink-muted">
+                  {activeEngine.proposals.map((proposal) => <li key={proposal}>→ {proposal}</li>)}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-ink/5 bg-surface p-3.5">
+              <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand-fg" />
+              <p className="text-xs leading-relaxed text-ink-muted">{activeEngine.recommendation}</p>
             </div>
-          )}
-
-          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-ink/5 bg-surface p-3.5">
-            <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-brand-fg" />
-            <p className="text-xs leading-relaxed text-ink-muted">{activeEngine.recommendation}</p>
-          </div>
-        </motion.div>
+          </motion.div>
+        </>
       )}
 
-      <div className="space-y-4 border-t border-ink/5 pt-4">
+      <ScrollContinuationHint targetId="praktyki-redakcyjne" label="Dalej: Praktyki redakcyjne ↓" />
+
+      <div id="praktyki-redakcyjne" className="scroll-mt-24 space-y-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-fg"><BookOpen className="h-4 w-4" /><span>Praktyki redakcyjne</span></div>
           <h2 className="mt-1 text-xl font-bold text-ink">Przykłady poprawy czytelności CV</h2>
@@ -488,6 +665,42 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           })}
         </div>
       </div>
+
+      {/* Sticky pionowa mini-mapa sekcji */}
+      {showMiniMap && (
+        <nav
+          aria-label="Mini-mapa sekcji audytu"
+          className="fixed right-3 top-1/2 z-40 hidden -translate-y-1/2 flex-col gap-1 rounded-2xl border border-line/80 bg-surface/90 p-2 shadow-card-glass backdrop-blur-md transition-all lg:flex animate-fade-in"
+        >
+          <div className="px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-wider text-ink-faint border-b border-ink/5 mb-1">
+            Sekcje audytu
+          </div>
+          {MINI_MAP_SECTIONS.map((sec) => {
+            const isActive = activeSectionId === sec.id;
+            return (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => handleScrollTo(sec.id)}
+                className={`group flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 ${
+                  isActive
+                    ? 'bg-brand text-on-brand shadow-xs'
+                    : 'text-ink-muted hover:bg-surface-raised hover:text-ink'
+                }`}
+                title={`Przejdź do: ${sec.label}`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full transition-all ${
+                    isActive ? 'bg-on-brand scale-125' : 'bg-ink-faint group-hover:bg-brand'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="truncate max-w-[170px]">{sec.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 };
