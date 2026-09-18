@@ -229,7 +229,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Pigułka Konta Użytkownika */}
         <Tooltip
-          content={isAuthenticated ? userEmail : accountLabel}
+          content={
+            isAuthenticated
+              ? `${userEmail} · Dane konta są chronione`
+              : accountLabel
+          }
           side={isCollapsed ? 'right' : 'top'}
           className="w-full"
         >
@@ -242,7 +246,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600 font-bold text-xs">
               {isAuthenticated ? (
-                <ShieldCheck className="h-4 w-4 text-success-fg" />
+                userEmail ? (
+                  <span className="text-[11px] font-bold text-brand-700">
+                    {userEmail.slice(0, 2).toUpperCase()}
+                  </span>
+                ) : (
+                  <User className="h-4 w-4 text-brand-600" />
+                )
               ) : (
                 <LogIn className="h-4 w-4" />
               )}
@@ -250,9 +260,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="min-w-0 flex-1">
-                <p className="truncate text-label font-semibold text-ink">
-                  {isAuthenticated ? userEmail : accountLabel}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-label font-semibold text-ink flex-1">
+                    {isAuthenticated ? userEmail : accountLabel}
+                  </p>
+                  {isAuthenticated && (
+                    <span
+                      title="Dane konta są chronione"
+                      aria-label="Dane konta są chronione"
+                      className="inline-flex items-center text-success-fg shrink-0"
+                    >
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </div>
                 {!isAuthenticated && <p className="truncate text-[10px] text-muted">{accountHint}</p>}
               </div>
             )}

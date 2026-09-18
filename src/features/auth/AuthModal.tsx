@@ -1,5 +1,5 @@
 import React, { useCallback, useId, useState } from 'react';
-import { Cloud, HardDrive, ArrowLeft, MailCheck } from 'lucide-react';
+import { Cloud, HardDrive, ArrowLeft, MailCheck, Info, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Input } from '../../components/ui/Field';
 import { Button } from '../../components/ui/Button';
@@ -36,7 +36,7 @@ export interface AuthModalProps {
 }
 
 const TYTULY: Record<Widok, string> = {
-  wybor: 'Wybierz sposób zapisu',
+  wybor: 'Jak chcesz korzystać z Kierivo?',
   logowanie: 'Zaloguj się',
   rejestracja: 'Załóż konto',
   reset: 'Odzyskaj dostęp',
@@ -47,7 +47,7 @@ const TYTULY: Record<Widok, string> = {
 // Podtytuł prostym językiem — mówi, co się zaraz wydarzy, zanim użytkownik
 // zacznie czytać formularz.
 const OPISY: Partial<Record<Widok, string>> = {
-  wybor: 'Konto synchronizuje CV. Profil lokalny zostaje na tym urządzeniu.',
+  wybor: 'Wybierz, gdzie zapisywać swój profil i CV. Możesz zmienić tę decyzję później.',
   logowanie: 'Wpisz e-mail i hasło, żeby wrócić do swojego CV.',
   rejestracja: 'Załóż darmowe konto, żeby mieć dostęp z każdego urządzenia.',
   lokalny: 'Dane zostają wyłącznie w tej przeglądarce — bez konta i bez hasła.',
@@ -215,7 +215,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     clearOAuthNotice,
   } = useAuth();
 
-  const [widok, setWidok] = useState<Widok>(cloudAvailable ? 'wybor' : 'lokalny');
+  const [widok, setWidok] = useState<Widok>('wybor');
   const [email, setEmail] = useState('');
   const [haslo, setHaslo] = useState('');
   const [imie, setImie] = useState('');
@@ -225,6 +225,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   // zablokować kliknięcia Microsoft, a formularz e-mailowy nie może startować
   // równolegle z przepływem przekierowania.
   const [pracujeDostawca, setPracujeDostawca] = useState<OAuthProviderId | null>(null);
+  const [isLocalInfoOpen, setIsLocalInfoOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setWidok('wybor');
+      setBlad('');
+    }
+  }, [isOpen]);
 
   const wyczysc = useCallback(() => {
     setBlad('');
@@ -246,9 +254,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setImie('');
     setBlad('');
     clearOAuthNotice();
-    setWidok(cloudAvailable ? 'wybor' : 'lokalny');
+    setWidok('wybor');
     onClose();
-  }, [cloudAvailable, onClose, clearOAuthNotice]);
+  }, [onClose, clearOAuthNotice]);
 
   /* --- profil lokalny --- */
 
@@ -394,46 +402,105 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
       {/* --- wybór trybu --- */}
       {widok === 'wybor' && (
-        <div className="space-y-3">
-          {cloudAvailable && (
-            <>
-              <OAuthProviderRow
-                textFor={(provider) => `Kontynuuj ${provider.continueWith}`}
-                busy={pracujeDostawca}
-                disabled={pracuje}
-                onSelect={zalogujDostawca}
-              />
-              <OrDivider text="lub" />
-            </>
-          )}
-
-          <button
-            type="button"
-            onClick={() => idzDo('logowanie')}
-            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
-          >
-            <Cloud className="mt-0.5 h-5 w-5 shrink-0 text-brand-fg" aria-hidden="true" />
-            <span>
-              <span className="block text-sm font-bold text-ink">Konto przez e-mail</span>
-              <span className="mt-0.5 block text-label text-muted">
-                Zaloguj się albo je załóż. CV wróci na innym urządzeniu.
+        <div className="space-y-4">
+          {/* Grupa 1: Polecane */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-brand-600 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                Polecane
               </span>
-            </span>
-          </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => idzDo('logowanie')}
+              className="flex w-full cursor-pointer items-start gap-3 rounded-2xl border-2 border-brand-500/40 bg-brand-50/40 dark:bg-brand-950/20 p-3.5 text-left transition-all hover:border-brand-500 hover:bg-brand-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            >
+              <div className="p-2 rounded-xl bg-brand-600 text-white shrink-0 mt-0.5 shadow-xs">
+                <Cloud className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-ink">Załóż konto lub zaloguj się</span>
+                <span className="mt-0.5 block text-xs text-muted leading-relaxed">
+                  CV i profil będą dostępne na Twoich urządzeniach
+                </span>
+              </div>
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => idzDo('lokalny')}
-            className="flex w-full cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface p-4 text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
-          >
-            <HardDrive className="mt-0.5 h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
-            <span>
-              <span className="block text-sm font-bold text-ink">Profil lokalny</span>
-              <span className="mt-0.5 block text-label text-muted">
-                Bez konta i bez hasła. Dane nie opuszczają tej przeglądarki.
-              </span>
+          {/* Grupa 2: Szybkie logowanie (Google, Microsoft, LinkedIn) */}
+          <div className="space-y-2 pt-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted px-1 block">
+              Szybkie logowanie
             </span>
-          </button>
+            <OAuthProviderRow
+              textFor={(provider) => {
+                if (provider.id === 'google') return 'Zaloguj się kontem Google';
+                if (provider.id === 'azure') return 'Zaloguj się kontem Microsoft';
+                if (provider.id === 'linkedin_oidc') return 'Zaloguj się przez LinkedIn';
+                return `Zaloguj się z ${provider.label}`;
+              }}
+              busy={pracujeDostawca}
+              disabled={pracuje}
+              onSelect={zalogujDostawca}
+            />
+            <p className="text-[11px] text-muted px-1 leading-snug">
+              Przy logowaniu przez LinkedIn pobierane są wyłącznie podstawowe dane profilowe (imię, nazwisko, e-mail). Import danych zawodowych lub CV wymaga Twojej zgody.
+            </p>
+          </div>
+
+          {/* Grupa 3: Bez logowania */}
+          <div className="space-y-1.5 pt-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted px-1 block">
+              Bez logowania
+            </span>
+            <div className="rounded-2xl border border-line bg-surface p-3.5 text-left space-y-2">
+              <button
+                type="button"
+                onClick={() => idzDo('lokalny')}
+                className="flex w-full cursor-pointer items-start gap-3 text-left focus-visible:outline-none"
+              >
+                <div className="p-2 rounded-xl bg-sunken border border-line text-muted shrink-0 mt-0.5">
+                  <HardDrive className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-ink hover:text-brand-600 transition-colors">
+                    Korzystaj bez logowania
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted leading-relaxed">
+                    Dane pozostaną w tej przeglądarce i nie będą synchronizowane
+                  </span>
+                </div>
+              </button>
+
+              <div className="border-t border-line/60 pt-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsLocalInfoOpen(!isLocalInfoOpen)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-600 dark:text-brand-400 hover:underline cursor-pointer"
+                >
+                  <Info className="w-3 h-3" />
+                  <span>Dowiedz się więcej</span>
+                  {isLocalInfoOpen ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+
+                {isLocalInfoOpen && (
+                  <div className="mt-2 rounded-xl bg-sunken/60 p-3 text-[11px] text-muted leading-relaxed border border-line/60 space-y-1">
+                    <p>
+                      <strong>Czy dane opuszczają przeglądarkę?</strong> Nie. Wszystkie wpisywane informacje o Twoim profilu, doświadczeniu i CV są zapisywane wyłącznie w lokalnej pamięci podręcznej tej przeglądarki (<code className="font-mono text-[10px]">localStorage</code>).
+                    </p>
+                    <p>
+                      Nie są przesyłane na żaden zewnętrzny serwer ani synchronizowane w chmurze. Jeśli wyczyścisz historię lub pamięć podręczną przeglądarki, dane zostaną trwale usunięte.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -608,7 +675,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="jan.kowalski@domena.pl"
+            placeholder="adrian.k@example.com"
             hint="Nigdzie go nie wysyłamy — trafia do nagłówka Twojego CV."
           />
 

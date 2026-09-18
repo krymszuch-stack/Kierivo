@@ -22,6 +22,8 @@ import { getSupabaseBrowserClient } from '../lib/supabaseClient';
 import { authErrorMessage } from '../lib/authErrors';
 import { oauthRedirectError, passwordRecoveryRedirectError, stripAuthErrorParams } from '../lib/authRecovery';
 import { oauthProviderById, type OAuthProviderId } from '../lib/oauthProviders';
+import { getAuthRedirectUrl } from '../lib/authRedirect';
+import { resetEntitlementsToUnauthenticated } from '../store/useEntitlements';
 import { removeRaw, vaultKeyFor } from '../lib/storage';
 import { showToast } from '../store/useToastStore';
 import { setAccessTokenProvider } from '../lib/apiClient';
@@ -83,12 +85,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const CHMURA_NIESKONFIGUROWANA = 'Konta w chmurze nie są tu skonfigurowane.';
 
 /**
- * Powrót zawsze prowadzi na bieżący origin. Na produkcji daje to domenę,
- * z której użytkownik faktycznie korzysta (np. domenę własną zamiast technicznej
- * domeny hostingu), a lokalnie ten sam kod wraca do localhosta.
+ * Powrót prowadzi na jawny PUBLIC_APP_URL lub bieżący origin. Na produkcji daje to domenę
+ * https://kierivo.com/, a lokalnie ten sam kod wraca do localhosta.
  */
 function redirectTarget(): string {
-  return `${window.location.origin}/`;
+  return getAuthRedirectUrl();
 }
 
 function profileFromSession(session: Session): LocalProfile {
@@ -204,6 +205,7 @@ export const AuthProvider: React.FC<{
       }
 
       if (event === 'SIGNED_OUT') {
+        resetEntitlementsToUnauthenticated();
         setSession(null);
         setUser(null);
         setMode(null);
@@ -366,6 +368,7 @@ export const AuthProvider: React.FC<{
     }
 
     removeRaw(vaultKeyFor(ANONYMOUS_PROFILE_ID));
+    resetEntitlementsToUnauthenticated();
     setUser(null);
     setMode(null);
     setUserVault(null);
@@ -396,6 +399,7 @@ export const AuthProvider: React.FC<{
     }
 
     deleteLocalProfile();
+    resetEntitlementsToUnauthenticated();
     setUser(null);
     setMode(null);
     setUserVault(null);
@@ -507,8 +511,10 @@ export const AuthProvider: React.FC<{
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+export const useOptionalAuth = () => useContext(AuthContext);
+
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const context = useOptionalAuth();
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

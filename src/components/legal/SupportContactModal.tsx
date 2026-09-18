@@ -7,15 +7,19 @@ import { showToast } from '../../store/useToastStore';
 interface SupportContactModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultCategory?: 'wsparcie' | 'problem';
 }
 
 export const SupportContactModal: React.FC<SupportContactModalProps> = ({
   isOpen,
   onClose,
+  defaultCategory = 'wsparcie',
 }) => {
   const [feedback, setFeedback] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [isSent, setIsSent] = React.useState(false);
+
+  const isProblem = defaultCategory === 'problem';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +40,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Kontakt i Wsparcie Techniczne"
+      title={isProblem ? 'Zgłoś Problem Techniczny' : 'Kontakt i Wsparcie Techniczne'}
       size="md"
     >
       <div className="space-y-4 text-xs text-ink">
@@ -72,7 +76,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="twoj.email@domena.pl"
+                placeholder="adrian.k@example.com"
                 className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500 focus-visible:outline-none"
               />
             </div>
@@ -86,7 +90,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
                 required
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Opisz swoje pytanie, problem lub pomysł na ulepszenie..."
+                placeholder={isProblem ? 'Opisz, co poszło nie tak lub jaki problem wystąpił...' : 'Opisz swoje pytanie, problem lub pomysł na ulepszenie...'}
                 className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500 focus-visible:outline-none"
               />
             </div>

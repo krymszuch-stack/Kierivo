@@ -3,6 +3,7 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { MobileSidebar } from '../MobileSidebar';
 import { VaultSyncIndicator } from '../ui/VaultSyncIndicator';
+import { Footer } from './Footer';
 import { NavSectionId, NavTabId } from '../../lib/navigation';
 import { useAppStore } from '../../store/useAppStore';
 
@@ -147,6 +148,9 @@ export const Shell: React.FC<ShellProps> = ({
         <main className="flex-1 px-4 py-6 sm:px-6 lg:p-8">
           <div className="mx-auto max-w-[1440px] 2xl:max-w-[1680px]">{children}</div>
         </main>
+
+        {/* Globalna stopka aplikacji z czytelnymi linkami prawnymi i wsparcia */}
+        <Footer />
       </div>
     </div>
   );
