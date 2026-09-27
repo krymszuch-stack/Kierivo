@@ -310,9 +310,10 @@ button:focus-visible,
     background: #ffffff !important;
   }
 
-  /* Domyślnie ukrywamy cały chrome i elementy interfejsu */
-  body * {
-    visibility: hidden;
+  /* Ukrycie przez visibility zostawiało układ strony w druku: arkusz CV
+     lądował dopiero na czwartej stronie. Znikają całe gałęzie poza arkuszem. */
+  body:has(:is(#cv-printable-document, #cover-letter-printable-document)) *:not(:has(:is(#cv-printable-document, #cover-letter-printable-document))):not(:is(#cv-printable-document, #cover-letter-printable-document)):not(:is(#cv-printable-document *, #cover-letter-printable-document *)) {
+    display: none !important;
   }
 
   /* Wyłączamy ograniczenia i transformacje kontenerów nadrzędnych (modali, flex-centrowania, overflow-y-auto),
@@ -345,7 +346,6 @@ button:focus-visible,
   #cv-printable-document *,
   #cover-letter-printable-document,
   #cover-letter-printable-document * {
-    visibility: visible;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -368,6 +368,18 @@ button:focus-visible,
     color: #0f172a !important;
   }
 
+  /* Układ boczny jest wariantem podglądu ekranowego. Silnik druku Chromium
+     potrafi zachować jego grid mimo zmiany medium i uciąć kolumnę po prawej.
+     W PDF wymuszamy kolejność DOM oraz jedną kolumnę. */
+  #cv-printable-document[data-cv-layout='sidebar'] {
+    display: block !important;
+  }
+
+  #cv-printable-document[data-cv-layout='sidebar'] [data-cv-section='skills'] {
+    border-right: 0 !important;
+    padding-right: 0 !important;
+  }
+
   /* Pigułki umiejętności na wydruku: czytelne tło i subtelna ramka */
   #cv-printable-document [data-cv-section='skills'] span {
     border: 1px solid #cbd5e1 !important;
@@ -384,6 +396,10 @@ button:focus-visible,
   input,
   textarea,
   .no-print {
+    display: none !important;
+  }
+
+  [data-preview-hint] {
     display: none !important;
   }
 

@@ -22,6 +22,7 @@ import { ApiError } from '../../lib/apiClient';
 import { MasterVault, TailoredResume } from '../../types';
 import { showToast } from '../../store/useToastStore';
 import { AtsValidationPanel } from '../../features/ats/AtsValidationPanel';
+import { useOptionalAuth } from '../../context/AuthContext';
 import type { AtsPdfValidationReport } from '../../lib/atsPdfValidator';
 
 /**
@@ -36,6 +37,11 @@ export function formatPdfExportErrorMessage(err: unknown): { title: string; mess
         return {
           title: 'Nieprawidłowe dane CV',
           message: `${err.message || 'Sprawdź, czy Twój profil zawiera wymagane dane podstawowe.'}${codeSuffix}`,
+        };
+      case 401:
+        return {
+          title: 'Zaloguj się przed eksportem PDF',
+          message: `Pobranie PDF wymaga konta w chmurze. Druk z przeglądarki jest dostępny bez logowania.${codeSuffix}`,
         };
       case 503:
         return {
@@ -103,6 +109,8 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
   onPrint,
   onAuditOpen,
 }) => {
+  const auth = useOptionalAuth();
+  const canExportPdf = auth?.mode === 'cloud' && Boolean(auth.session?.access_token);
   const [currentMode, setCurrentMode] = useState<CVModalMode>(initialMode);
   const [themes, setThemes] = useState<SemanticThemeItem[]>([]);
   const [layouts, setLayouts] = useState<SemanticLayoutItem[]>([]);
@@ -186,6 +194,8 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
       }
       return;
     }
+
+    if (!canExportPdf) return;
 
     setIsExporting(true);
     setAtsValidation(null);
@@ -342,7 +352,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
           <div className="space-y-4">
             <div className="flex items-center gap-2 border-b border-line pb-3">
               <Shield className="h-4 w-4 text-brand-600" />
-              <h4 className="text-sm font-bold text-ink">Walidacja ATS — Wyniki</h4>
+              <h4 className="text-sm font-bold text-ink">Lokalny test parsowalności — wyniki</h4>
             </div>
             <AtsValidationPanel report={atsValidation} />
             <div className="flex justify-end pt-3 border-t border-line">
@@ -379,7 +389,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted leading-relaxed">
-                    Dwuwarstwowy PDF ze znacznikami semantycznymi (Tagged PDF) gwarantujący bezbłędny odczyt przez systemy skanujące ATS przy zachowaniu estetyki.
+                    Dwuwarstwowy PDF ze znacznikami semantycznymi (Tagged PDF). Czytelność przez konkretny system ATS zależy od jego parsera.
                   </p>
                 </div>
               </button>
@@ -433,6 +443,12 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
               </button>
             </div>
 
+            {!canExportPdf && selectedExportFormat !== 'print' && (
+              <p role="status" className="text-xs text-warning-fg">
+                Pobranie PDF wymaga zalogowania do konta w chmurze. Możesz wybrać druk z przeglądarki bez konta.
+              </p>
+            )}
+
             {/* Stopka trybu eksportu */}
             <div className="flex items-center justify-between pt-4 border-t border-line">
               <Button
@@ -461,7 +477,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                   size="md"
                   icon={isExporting ? Loader2 : selectedExportFormat === 'print' ? Printer : Download}
                   onClick={handleExecuteExport}
-                  disabled={isExporting}
+                  disabled={isExporting || (selectedExportFormat !== 'print' && !canExportPdf)}
                   loading={isExporting}
                   className="min-w-[170px]"
                   aria-label={

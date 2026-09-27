@@ -85,6 +85,29 @@ describe('validatePdfTextForAts', () => {
     expect(report.overallStatus).not.toBe('FAIL');
   });
 
+  it('profile reguł rozpoznają nagłówki rozstrzelone przez ekstraktor PDF', async () => {
+    const vault = vaultWith({ hardSkills: ['Windows 11'] });
+    const report = await validatePdfTextForAts(`
+      Jan Kowalski
+      jan@example.com
+      +48 123 456 789
+      K O N T A K T
+      jan@example.com
+      D O Ś W I A D C Z E N I E
+      Specjalista IT — TechCorp (2020–2024)
+      K O M P E T E N C J E
+      Windows 11
+      W Y K S Z T A Ł C E N I E
+      Technikum Informatyczne
+    `, vault);
+
+    for (const vendor of report.vendors) {
+      expect(vendor.extractedFields.sectionHeadersFound).toContain('contact');
+      expect(vendor.extractedFields.sectionHeadersFound).toContain('experience');
+      expect(vendor.extractedFields.sectionHeadersFound).toContain('skills');
+    }
+  });
+
   it('niski wynik dla pustego tekstu', async () => {
     const vault = vaultWith();
     const report = await validatePdfTextForAts('', vault);
@@ -247,6 +270,30 @@ describe('pdfTextExtractor', () => {
 
     expect(sections.some((s) => s.header === 'experience')).toBe(true);
     expect(sections.some((s) => s.header === 'skills')).toBe(true);
+  });
+
+  it('detectSections rozpoznaje nagłówki z trackingiem liter z pdfminer', async () => {
+    const { detectSections } = await import('../pdfTextExtractor');
+    const sections = detectSections([
+      'P R O F I L',
+      'Opis profilu',
+      'D O Ś W I A D C Z E N I E',
+      'Specjalistka wsparcia IT',
+      'K O N T A K T',
+      'janina@example.com',
+      'K O M P E T E N C J E',
+      'Windows 11',
+      'W Y K S Z T A Ł C E N I E',
+      'Technikum Informatyczne',
+    ]);
+
+    expect(sections.map((section) => section.header)).toEqual([
+      'summary',
+      'experience',
+      'contact',
+      'skills',
+      'education',
+    ]);
   });
 });
 

@@ -154,16 +154,22 @@ def detect_sections(text: str) -> dict:
     header_patterns = [
         ("experience", ["doświadczenie", "work experience", "employment", "historia zatrudnienia"]),
         ("education", ["wykształcenie", "education", "edukacja"]),
-        ("skills", ["umiejętności", "skills", "technologie", "competencies"]),
+        ("skills", ["umiejętności", "kompetencje", "skills", "technologie", "competencies"]),
         ("contact", ["kontakt", "contact", "dane osobowe"]),
         ("certifications", ["certyfikaty", "certifications", "uprawnienia"]),
-        ("summary", ["podsumowanie", "summary", "profil zawodowy"]),
+        ("summary", ["podsumowanie", "summary", "profil", "profil zawodowy"]),
         ("projects", ["projekty", "projects"]),
         ("languages", ["języki", "languages"]),
     ]
 
     for line in lines:
         line_lower = line.strip().lower()
+        # Nagłówki renderowane z trackingiem liter trafiają z pdfminer jako
+        # „D O Ś W I A D C Z E N I E”. Do rozpoznania sekcji składamy wyłącznie
+        # ciąg pojedynczych liter; zwykłych zdań i nazw własnych nie zmieniamy.
+        letter_parts = line_lower.split()
+        if len(letter_parts) >= 3 and all(len(part) == 1 and part.isalpha() for part in letter_parts):
+            line_lower = "".join(letter_parts)
         for key, aliases in header_patterns:
             if any(alias in line_lower for alias in aliases):
                 current_section = key

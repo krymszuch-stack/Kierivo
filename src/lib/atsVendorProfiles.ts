@@ -97,7 +97,7 @@ export const WORKDAY_PROFILE: AtsVendorProfile = {
     headerAliases: {
       experience: ['doświadczenie', 'work experience', 'historia zatrudnienia', 'employment history'],
       education: ['wykształcenie', 'education', 'edukacja'],
-      skills: ['umiejętności', 'skills', 'technologie', 'tools'],
+      skills: ['umiejętności', 'kompetencje', 'skills', 'technologie', 'tools'],
       contact: ['kontakt', 'contact', 'dane osobowe'],
     },
     requiresStandardHeaders: true,
@@ -136,7 +136,7 @@ export const GREENHOUSE_PROFILE: AtsVendorProfile = {
     headerAliases: {
       experience: ['doświadczenie', 'work experience', 'employment', 'career'],
       education: ['wykształcenie', 'education'],
-      skills: ['umiejętności', 'skills', 'technologie', 'tools', 'competencies'],
+      skills: ['umiejętności', 'kompetencje', 'skills', 'technologie', 'tools', 'competencies'],
       contact: ['kontakt', 'contact'],
     },
     requiresStandardHeaders: false,
@@ -174,7 +174,7 @@ export const LEVER_PROFILE: AtsVendorProfile = {
     headerAliases: {
       experience: ['doświadczenie', 'work experience', 'employment', 'history'],
       education: ['wykształcenie', 'education'],
-      skills: ['umiejętności', 'skills', 'technologies'],
+      skills: ['umiejętności', 'kompetencje', 'skills', 'technologies'],
       contact: ['kontakt', 'contact'],
     },
     requiresStandardHeaders: true,
@@ -213,7 +213,7 @@ export const ICIMS_PROFILE: AtsVendorProfile = {
     headerAliases: {
       experience: ['doświadczenie', 'work experience', 'employment', 'career history', 'professional experience'],
       education: ['wykształcenie', 'education', 'academic background'],
-      skills: ['umiejętności', 'skills', 'technologies', 'competencies', 'core competencies'],
+      skills: ['umiejętności', 'kompetencje', 'skills', 'technologies', 'competencies', 'core competencies'],
       contact: ['kontakt', 'contact', 'personal information'],
     },
     requiresStandardHeaders: false,
@@ -251,7 +251,7 @@ export const TALEO_PROFILE: AtsVendorProfile = {
     headerAliases: {
       experience: ['doświadczenie', 'work experience', 'employment history'],
       education: ['wykształcenie', 'education'],
-      skills: ['umiejętności', 'skills'],
+      skills: ['umiejętności', 'kompetencje', 'skills'],
       contact: ['kontakt', 'contact'],
     },
     requiresStandardHeaders: true,

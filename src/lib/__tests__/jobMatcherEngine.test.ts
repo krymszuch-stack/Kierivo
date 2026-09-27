@@ -87,6 +87,12 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(result.shouldCelebrate).toBe(result.canonicalResult.score >= 90);
   });
 
+  it('Nie dopisuje podsumowania, gdy CV go nie zawiera', () => {
+    const vault = getTestVault();
+    vault.personalInfo.summary = '';
+    expect(calculateJobMatch(vault, sampleOffer).tailoredResume.summary).toBe('');
+  });
+
   it('buildJobOfferFromScraped - respektuje pierwszeństwo metadanych strukturalnych portalu', () => {
     const fetchedStructured: FetchJdUrlResponse & { success: true } = {
       success: true,

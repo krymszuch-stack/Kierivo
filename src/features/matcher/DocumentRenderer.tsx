@@ -99,12 +99,15 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   }, [docVault, vault]);
 
   const personal = docVault.personalInfo;
+  const wasImportedFromText = 'rawText' in docVault &&
+    typeof docVault.rawText === 'string' && docVault.rawText.trim().length > 0;
   const history = docVault.history || [];
   const education = docVault.education || [];
   const hardSkills = docVault.skillsMatrix?.hardSkills || [];
   const activeTemplate = findCvTemplate(activeTemplateId);
   const templateAssessment = assessCvTemplate(activeTemplate);
-  const previewValue = (value: string | undefined, hint: string) => value || (showEmptyHints ? `[${hint}]` : '');
+  const previewValue = (value: string | undefined, hint: string) => value ||
+    (showEmptyHints ? <span data-preview-hint>[{hint}]</span> : '');
 
   const buildExportMetadata = (): GeneratedCvExport => ({
     templateId: activeTemplate.id,
@@ -349,6 +352,11 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
       )}
 
       {/* Pasek narzędzi dokumentu */}
+      {wasImportedFromText && (
+        <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
+          Ten podgląd powstał z automatycznie rozpoznanego tekstu. Sprawdź nazwę firmy, stanowisko, daty i umiejętności przed eksportem.
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-elevated p-3.5 shadow-raised">
         <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted">
           <input
@@ -566,32 +574,32 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 ) : (
                   <>
                     {personal.email && (
-                      <span className="flex items-center gap-1">
-                        <Mail className="h-3.5 w-3.5 text-subtle" />
+                      <span className="flex min-w-0 items-center gap-1 break-all">
+                        <Mail className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.email}
                       </span>
                     )}
                     {personal.phone && (
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3.5 w-3.5 text-subtle" />
+                      <span className="flex min-w-0 items-center gap-1 break-words">
+                        <Phone className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.phone}
                       </span>
                     )}
                     {personal.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-subtle" />
+                      <span className="flex min-w-0 items-center gap-1 break-words">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.location}
                       </span>
                     )}
                     {personal.linkedin && (
-                      <span className="flex items-center gap-1">
-                        <Linkedin className="h-3.5 w-3.5 text-subtle" />
+                      <span className="flex min-w-0 items-center gap-1 break-all">
+                        <Linkedin className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.linkedin}
                       </span>
                     )}
                     {personal.github && (
-                      <span className="flex items-center gap-1">
-                        <Github className="h-3.5 w-3.5 text-subtle" />
+                      <span className="flex min-w-0 items-center gap-1 break-all">
+                        <Github className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.github}
                       </span>
                     )}
@@ -636,7 +644,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 {hardSkills.map((s, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center gap-1 rounded-md border border-line bg-sunken px-2 py-0.5 font-mono text-[11px] font-bold text-ink"
+                    className="inline-flex max-w-full break-words items-center gap-1 rounded-md border border-line bg-sunken px-2 py-0.5 font-mono text-[11px] font-bold text-ink"
                     style={{
                       borderColor: i < 3 ? selectedColor : undefined,
                       color: i < 3 ? selectedColor : undefined,
@@ -683,11 +691,11 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
               <div className="space-y-4">
                 {history.map((h) => (
                   <div key={h.id} className="page-break-inside-avoid space-y-1.5">
-                    <div className="flex items-baseline justify-between">
-                      <span className="font-bold text-xs text-ink">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="min-w-0 break-words font-bold text-xs text-ink">
                         {h.role} • <span style={{ color: selectedColor }}>{h.company}</span>
                       </span>
-                      <span className="font-mono text-[10px] text-muted">
+                      <span className="shrink-0 font-mono text-[10px] text-muted">
                         {h.startDate} – {h.isCurrent ? 'Obecnie' : h.endDate}
                       </span>
                     </div>
@@ -751,15 +759,15 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 </div>
                 <div className="space-y-2">
                   {education.map((e) => (
-                    <div key={e.id} className="flex items-baseline justify-between text-xs">
-                      <div>
+                    <div key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
+                      <div className="min-w-0 break-words">
                         <span className="font-bold text-ink">
-                          {e.degree}, {e.fieldOfStudy}
+                          {[e.degree, e.fieldOfStudy].filter(Boolean).join(', ')}
                         </span>
-                        <span className="text-muted block">{e.institution}</span>
+                        {e.institution && <span className="text-muted block">{e.institution}</span>}
                       </div>
-                      <span className="font-mono text-[10px] text-muted">
-                        {e.startDate} – {e.endDate}
+                      <span className="shrink-0 font-mono text-[10px] text-muted">
+                        {[e.startDate, e.endDate].filter(Boolean).join(' – ')}
                       </span>
                     </div>
                   ))}

@@ -95,12 +95,21 @@ export function detectSections(lines: string[]): ExtractedSection[] {
     const line = lines[i].trim();
     if (!line) continue;
 
+    // pdfminer zachowuje tracking nagłówków jako osobne litery, np.
+    // „K O M P E T E N C J E”. Składamy tylko linie złożone w całości
+    // z pojedynczych liter, żeby nie zmienić zwykłej treści CV.
+    const letterParts = line.toLowerCase().split(/\s+/);
+    const normalizedHeader = letterParts.length >= 3 &&
+      letterParts.every((part) => part.length === 1 && /^\p{L}$/u.test(part))
+      ? letterParts.join('')
+      : line.toLowerCase();
+
     // Sprawdź czy linia jest nagłówkiem sekcji
     const isHeader = headerPattern.test(line) && line.length < 60;
     const matchedKey = isHeader
       ? Object.keys(STANDARD_SECTION_HEADERS).find((key) =>
           STANDARD_SECTION_HEADERS[key].some(
-            (alias) => line.toLowerCase().includes(alias) || alias.includes(line.toLowerCase())
+            (alias) => normalizedHeader.includes(alias) || alias.includes(normalizedHeader)
           )
         )
       : undefined;
