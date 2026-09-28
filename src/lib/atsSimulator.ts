@@ -161,6 +161,7 @@ const KNOWN_HARD_SKILLS = [
   // IT & Cloud Stack
   'typescript', 'javascript', 'react', 'react.js', 'next.js', 'vue', 'angular',
   'node.js', 'express', 'nest.js', 'python', 'django', 'fastapi', 'c#', '.net',
+  'windows 11', 'microsoft 365', 'tcp/ip', 'intune', 'entra id', 'powershell',
   'java', 'spring', 'spring boot', 'go', 'golang', 'rust', 'php', 'laravel',
   'html', 'css', 'tailwind', 'tailwind css', 'sass', 'redux', 'zustand', 'graphql',
   'rest api', 'websockets', 'sql', 'postgresql', 'mysql', 'mongodb', 'redis',
@@ -223,6 +224,12 @@ export function extractDynamicJdPhrases(jdText: string): {
   softSkills: { phrase: string; weight: number }[];
   allExtractedCount: number;
 } {
+  // „Mile widziane” nie może obniżać pokrycia wymagań obowiązkowych.
+  // Pozostawiamy następne nazwane sekcje, aby nie zgubić ich treści.
+  const requiredText = jdText.replace(
+    /\b(?:mile widziane|nice to have|preferred)\s*:\s*[\s\S]*?(?=(?:\b(?:zakres obowiązków|obowiązki|zadania|oferujemy|benefity)\s*:)|$)/gi,
+    ''
+  );
   const hardSkills: { phrase: string; weight: number }[] = [];
   const formalReqs: { phrase: string; weight: number }[] = [];
   const softSkills: { phrase: string; weight: number }[] = [];
@@ -231,14 +238,14 @@ export function extractDynamicJdPhrases(jdText: string): {
   // `includes` na surowym tekście mylił `cit` w `city` i `go` w `good` —
   // strona ogłoszenia też wymaga granic słów (bez oceny intencji).
   for (const compound of KNOWN_COMPOUND_SKILLS) {
-    if (containsPhrase(jdText, compound)) {
+    if (containsPhrase(requiredText, compound)) {
       hardSkills.push({ phrase: compound, weight: 3.0 });
     }
   }
 
   // 2. Stage 4 Known Hard Skills Dictionary Check
   for (const skill of KNOWN_HARD_SKILLS) {
-    if (containsPhrase(jdText, skill)) {
+    if (containsPhrase(requiredText, skill)) {
       // Avoid adding single word if already covered in a compound
       if (!hardSkills.some((h) => h.phrase !== skill && containsPhrase(h.phrase, skill))) {
         hardSkills.push({ phrase: skill, weight: 3.0 });
@@ -248,14 +255,14 @@ export function extractDynamicJdPhrases(jdText: string): {
 
   // 3. Stage 4 Formal Requirements Check
   for (const req of FORMAL_REQ_KEYWORDS) {
-    if (containsPhrase(jdText, req)) {
+    if (containsPhrase(requiredText, req)) {
       formalReqs.push({ phrase: req, weight: 2.0 });
     }
   }
 
   // 4. Soft Skills Check
   for (const soft of SOFT_SKILLS_NOISE) {
-    if (containsPhrase(jdText, soft)) {
+    if (containsPhrase(requiredText, soft)) {
       softSkills.push({ phrase: soft, weight: 0.5 });
     }
   }
@@ -271,6 +278,7 @@ export function extractDynamicJdPhrases(jdText: string): {
   const GENERIC_ROLE_WORDS = new Set(
     [
       'senior', 'junior', 'mid', 'lead', 'principal', 'staff', 'backend', 'frontend',
+      'specjalista', 'specjalistka', 'it', 'support',
       'fullstack', 'full', 'stack', 'developer', 'developers', 'engineer', 'inzynier',
       'programista', 'firma', 'company', 'team', 'zespol', 'group', 'grupa', 'office',
       'biuro', 'position', 'stanowisko', 'role', 'rola', 'project', 'projekt',
@@ -290,7 +298,7 @@ export function extractDynamicJdPhrases(jdText: string): {
   // bo ASCII-`\b` łamał słowo przed `ó`/`ł` (`Zespół` → `zesp`).
   const CAP_TOKEN = '[\\p{Lu}][\\p{L}0-9#+-]*(?:\\.[\\p{L}0-9#+-]+)*';
   const capitalizedMatches =
-    jdText.match(new RegExp(`(?<![\\p{L}\\p{N}_])${CAP_TOKEN}(?:\\s+${CAP_TOKEN})*(?![\\p{L}\\p{N}_])`, 'gu')) || [];
+    requiredText.match(new RegExp(`(?<![\\p{L}\\p{N}_])${CAP_TOKEN}(?:\\s+${CAP_TOKEN})*(?![\\p{L}\\p{N}_])`, 'gu')) || [];
   const uniqueCapitalizedMatches = Array.from(new Set(capitalizedMatches));
   const seenNormPhrases = new Set<string>();
 
@@ -328,6 +336,7 @@ export function extractDynamicJdPhrases(jdText: string): {
     if (cleanPhrase.length < 3 || HR_AND_COMMON_STOP_WORDS.has(cleanPhrase)) continue;
     // Duplikat czegoś, co słownik już pokrył (`need python` przy `python`).
     if (knownPhrasesList.some((k) => cleanPhrase !== k && containsPhrase(cleanPhrase, k))) continue;
+    if (hardSkills.some((h) => containsPhrase(h.phrase, cleanPhrase))) continue;
     if (hardSkills.some((h) => strippedLower(h.phrase) === cleanPhrase)) continue;
 
     // Sygnał techniczny: akronim, cyfra, znak stosu — albo powtórzenie w JD.
@@ -335,7 +344,7 @@ export function extractDynamicJdPhrases(jdText: string): {
     const hasTechSignal =
       tokens.some((t) => /^[A-ZĄĆĘŁŃÓŚŹŻ]{2,6}$/.test(t) || /[0-9#+./-]/.test(t)) ||
       knownPhrases.has(cleanPhrase);
-    const occurrences = (jdText.match(new RegExp(escapeForCount(cleaned), 'gi')) ?? []).length;
+    const occurrences = (requiredText.match(new RegExp(escapeForCount(cleaned), 'gi')) ?? []).length;
     if (!hasTechSignal && occurrences < 2) continue;
 
     hardSkills.push({ phrase: cleanPhrase, weight: 1.5 });
@@ -423,7 +432,7 @@ export function simulateAtsCheck(
     ...licenseTexts,
     ...languageTexts,
     ...certificationTexts,
-    ...vault.history.flatMap((h) => [h.company, h.role, ...h.highlights.map((hl) => hl.text)]),
+    ...vault.history.flatMap((h) => [h.company, h.role, h.description || '', ...h.highlights.map((hl) => hl.text)]),
     ...vault.education.flatMap((e) => [e.institution, e.degree, e.fieldOfStudy]),
     ...vault.projects.flatMap((p) => [p.name, p.description, ...p.techStack]),
   ];
@@ -576,12 +585,12 @@ export function simulateAtsCheck(
 
     // Check current/most recent role (index 0)
     const currentRoleText = vault.history[0]
-      ? `${vault.history[0].role} ${vault.history[0].company} ${vault.history[0].highlights.map((h) => h.text).join(' ')}`
+      ? `${vault.history[0].role} ${vault.history[0].company} ${vault.history[0].description || ''} ${vault.history[0].highlights.map((h) => h.text).join(' ')}`
       : '';
 
     // Check recent roles (index 1-2)
     const midRoleText = vault.history.slice(1, 3)
-      .map((h) => `${h.role} ${h.company} ${h.highlights.map((hl) => hl.text).join(' ')}`)
+      .map((h) => `${h.role} ${h.company} ${h.description || ''} ${h.highlights.map((hl) => hl.text).join(' ')}`)
       .join(' ');
 
     if (isLemmatizedMatch(kw, currentRoleText)) {

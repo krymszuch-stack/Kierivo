@@ -84,15 +84,15 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
   if (score >= 75) {
     return {
       statusLabel: 'Wysokie dopasowanie',
-      headline: 'Twoje CV ma bardzo wysoką szansę pomyślnego przejścia selekcji ATS',
-      subline: 'Twój profil w przeważającej mierze odpowiada wymaganiom z oferty pracy. Zastosuj poniższe wskazówki, aby znaleźć się na szczycie listy kandydatów.',
+      headline: 'Wysoka zgodność wykrytych wymagań z treścią CV',
+      subline: 'To wynik reguł Kierivo dla tej oferty. Sprawdź rozpoznane dane i wymagania przed wysłaniem CV.',
       cardClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100',
       badgeClass: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
       icon: CheckCircle2,
       tips: [
         {
-          title: 'Dopisz brakujące frazy',
-          desc: 'Uzupełnij 1–2 pojęcia techniczne wykazane w analizie poniżej, aby uzyskać pełną zgodność słów kluczowych.',
+          title: 'Zweryfikuj wykryte frazy',
+          desc: 'Porównaj listę dopasowań i braków z oryginalną ofertą oraz CV.',
         },
         {
           title: 'Wzbogać opisy o liczby',
@@ -109,8 +109,8 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
   if (score >= 50) {
     return {
       statusLabel: 'Wymaga drobnych uzupełnień',
-      headline: 'Dobra baza, ale system selekcji może zatrzymać Twoje CV na wstępnym etapie',
-      subline: 'W Twoim dokumencie brakuje kilku ważnych pojęć lub uprawnień, na które automatyczne skanery rekrutacyjne zwracają kluczową uwagę.',
+      headline: 'Wykryto częściową zgodność CV z ogłoszeniem',
+      subline: 'Sprawdź, czy wskazane braki rzeczywiście nie występują w Twoim CV. Parser może pominąć fragmenty dokumentu.',
       cardClass: 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100',
       badgeClass: 'bg-amber-500/20 text-amber-700 dark:text-amber-300',
       icon: AlertTriangle,
@@ -118,7 +118,7 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
         {
           title: hasFormalIssue ? 'Uzupełnij uprawnienia formalne' : 'Nazwij narzędzia dosłownie',
           desc: hasFormalIssue
-            ? 'Wpisz brakujące certyfikaty (np. SEP, UDT, kat. prawa jazdy) na samej górze CV – bez nich system może odrzucić aplikację.'
+            ? 'Jeśli masz wymagane uprawnienia, wpisz je wyraźnie w CV. Nie dopisuj uprawnień, których nie posiadasz.'
             : 'Użyj w treści dokładnie takiego samego nazewnictwa narzędzi, jakie występuje w ogłoszeniu.',
         },
         {
@@ -127,16 +127,16 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
         },
         {
           title: 'Zadbaj o czytelne sekcje',
-          desc: 'Użyj standardowych nagłówków sekcji (Doświadczenie, Umiejętności, Wykształcenie), które systemy rozpoznają bezbłędnie.',
+          desc: 'Użyj standardowych nagłówków sekcji (Doświadczenie, Umiejętności, Wykształcenie), aby ułatwić odczyt.',
         },
       ],
     };
   }
 
   return {
-    statusLabel: 'Wysokie ryzyko odrzucenia',
-    headline: 'Filtr ATS może zablokować to CV przed przekazaniem do rekrutera',
-    subline: 'Wykryto istotne rozbieżności między treścią CV a ofertą pracy. Dokument wymaga pilnego dopisania kluczowych kompetencji.',
+    statusLabel: 'Niska zgodność w analizie Kierivo',
+    headline: 'Wykryto istotne luki lub nierozpoznane dane',
+    subline: 'Porównaj wynik z oryginalnym CV i ogłoszeniem. Niski wynik może też wynikać z błędnego odczytu treści.',
     cardClass: 'bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-100',
     badgeClass: 'bg-rose-500/20 text-rose-700 dark:text-rose-300',
     icon: AlertCircle,
@@ -144,8 +144,8 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
       {
         title: hasFormalIssue ? 'Krytyczny brak uprawnień' : 'Kluczowe kompetencje',
         desc: hasFormalIssue
-          ? 'Jeśli posiadasz uprawnienia wymagane w ofercie, koniecznie wpisz je wprost. Ich brak powoduje natychmiastowe odrzucenie.'
-          : 'Dopisz w podsumowaniu i sekcji umiejętności kluczowe pojęcia wymienione w ogłoszeniu.',
+          ? 'Jeśli posiadasz wymagane uprawnienia, wpisz je wprost i sprawdź wynik ponownie.'
+          : 'Uzupełnij opis o kompetencje, które rzeczywiście posiadasz, a których aplikacja nie znalazła.',
       },
       {
         title: 'Przejdź do trybu edycji',
@@ -231,19 +231,19 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
   const handleProceedToDetails = () => {
     if (!result) return;
 
-    // Budujemy obiekt JobOffer na podstawie wklejonego ogłoszenia i rozpoznanej roli
-    const inferredTitle =
-      result.detectedSubRole?.subRole.title ||
-      jdText
-        .split('\n')
-        .map((l) => l.trim())
-        .find((l) => l.length > 4 && l.length < 60) ||
-      'Stanowisko z ogłoszenia';
+    // Budujemy ofertę z tekstu wklejonego przez użytkownika.
+    // Samodzielny nagłówek można przenieść dosłownie. Gdy użytkownik wkleił
+    // opis w jednym akapicie, nie zgadujemy tytułu z taksonomii ani z treści zdania.
+    const firstLine = jdText.split('\n')[0]?.trim() || '';
+    const inferredTitle = firstLine.length >= 4 && firstLine.length <= 60 &&
+      !/[.!?:]/.test(firstLine) && !/^(?:szukamy|poszukujemy|wymagania|oferujemy)\b/i.test(firstLine)
+      ? firstLine
+      : '';
 
     const jobOffer: JobOffer = {
       id: `job-quick-${Date.now()}`,
       title: inferredTitle,
-      company: 'Pracodawca z ogłoszenia',
+      company: '',
       salary: '',
       location: '',
       description: jdText.trim(),
@@ -410,7 +410,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                             {statusMeta.statusLabel}
                           </span>
                           <span className="font-mono text-xs font-semibold opacity-90">
-                            Szacunek: <strong className="font-bold">{result.ats.overallScore}%</strong>
+                            Wynik reguł: <strong className="font-bold">{result.ats.overallScore}%</strong>
                           </span>
                         </div>
                         <h3 className="mt-1.5 text-lg font-bold sm:text-xl leading-snug">
@@ -466,7 +466,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                   stabilnego selektora semantycznego (testid jest tylko hakiem technicznym). */}
               <div
                 role="status"
-                aria-label={`Szacowany wynik przejścia filtra ATS ${result.ats.overallScore} procent`}
+                aria-label={`Wynik analizy Kierivo ${result.ats.overallScore} procent`}
                 className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-5">
@@ -493,7 +493,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                         {result.ats.overallScore}%
                       </span>
                       <span className="text-[8px] font-bold uppercase tracking-wider text-muted">
-                        SZANSA
+                        WYNIK
                       </span>
                     </div>
                   </div>
@@ -501,15 +501,15 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                   <div className="space-y-1">
                     <div className="flex items-center gap-1.5">
                       <h4 className="text-sm font-bold text-ink sm:text-base">
-                        Szacowany wynik przejścia filtra ATS
+                        Wynik analizy Kierivo dla tej oferty
                       </h4>
                       <Tooltip
-                        content="System ATS (Applicant Tracking System) to program komputerowy używany przez rekruterów i firmy do wstępnego przesiewania setek nadesłanych CV. Szacujemy, z jakim prawdopodobieństwem Twoje CV zostanie zakwalifikowane do przeczytania przez człowieka na podstawie słów kluczowych, uprawnień i czytelności formatu."
+                        content="Wynik opiera się na regułach Kierivo i danych rozpoznanych z wklejonego tekstu. Nie mierzy prawdopodobieństwa decyzji konkretnego systemu ATS ani rekrutera."
                         side="top"
                       >
                         <button
                           type="button"
-                          aria-label="Informacja o szacowanym wyniku filtra ATS"
+                          aria-label="Informacja o wyniku analizy Kierivo"
                           className="inline-flex items-center justify-center text-muted hover:text-ink transition-colors cursor-help"
                         >
                           <HelpCircle className="h-4 w-4" />
@@ -540,7 +540,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                     3 najważniejsze rzeczy do poprawy w Twoim CV
                   </h4>
                   <span className="text-[11px] text-muted">
-                    Najważniejsze powody, dla których filtr może odrzucić aplikację
+                    Najważniejsze rzeczy do sprawdzenia w CV
                   </span>
                 </div>
 
@@ -610,10 +610,10 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
               <div className="flex flex-col gap-3 rounded-2xl border border-brand-200 bg-brand-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-bold text-ink">
-                    Chcesz automatycznie uzupełnić te braki i przygotować gotowe CV?
+                    Chcesz sprawdzić rozpoznane dane i poprawić CV?
                   </p>
                   <p className="text-[11px] text-muted">
-                    Przejdź do pełnego widoku z edytorem dokumentu, generatorem gotowego CV i listem motywacyjnym.
+                    Przejdź do edytora i podglądu. Przed eksportem sprawdź każdą pozycję przeniesioną z tekstu CV.
                   </p>
                 </div>
 

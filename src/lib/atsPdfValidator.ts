@@ -106,12 +106,18 @@ function simulateVendorExtraction(
   }
 
   const fullText = filteredLines.join('\n').toLowerCase();
+  const sectionText = filteredLines.map((line) => {
+    const parts = line.toLowerCase().trim().split(/\s+/);
+    return parts.length >= 3 && parts.every((part) => part.length === 1 && /^\p{L}$/u.test(part))
+      ? parts.join('')
+      : line.toLowerCase();
+  }).join('\n');
 
   // Ekstrakcja sekcji na podstawie aliasów vendora
   const sectionsFound: string[] = [];
   for (const [key, aliases] of Object.entries(profile.sectionDetection.headerAliases)) {
     const found = aliases.some(
-      (alias) => fullText.includes(alias.toLowerCase())
+      (alias) => sectionText.includes(alias.toLowerCase())
     );
     if (found) sectionsFound.push(key);
   }

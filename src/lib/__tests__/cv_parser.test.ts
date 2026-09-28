@@ -671,4 +671,32 @@ describe('10 Real-World CV Parser & Vault Merger Test Scenarios', () => {
     expect(parsed.education.length).toBe(1);
     expect(parsed.education[0].institution).toContain('Szkoła Główna Handlowa');
   });
+
+  it('oddziela kolejne stanowiska zapisane jako rola i firma przed linią dat', () => {
+    const cv = `
+    Janina Wielostronicowa
+    janina@example.com | Kraków
+
+    DOŚWIADCZENIE
+    Starsza specjalistka wsparcia IT | Przykładowa Firma Alfa Sp. z o.o.
+    01.2023 - obecnie
+    - Pierwszy punkt.
+
+    Specjalistka Service Desk | Przykładowa Firma Beta S.A.
+    06.2020 - 12.2022
+    - Drugi punkt.
+
+    Młodsza specjalistka IT | Przykładowa Firma Gamma Sp. z o.o.
+    08.2017 - 05.2020
+    - Trzeci punkt.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+    expect(parsed.history).toHaveLength(3);
+    expect(parsed.history.map((entry) => entry.company)).toEqual([
+      'Przykładowa Firma Alfa Sp. z o.o.',
+      'Przykładowa Firma Beta S.A.',
+      'Przykładowa Firma Gamma Sp. z o.o.',
+    ]);
+  });
 });

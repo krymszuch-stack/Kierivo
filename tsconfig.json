@@ -36,5 +36,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
+  "include": ["src", "server.ts", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["labs", "mastervault-cv", "supabase/functions", "node_modules", "dist"]
 }

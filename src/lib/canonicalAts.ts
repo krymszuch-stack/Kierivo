@@ -77,6 +77,7 @@ export function buildEvidenceCorpus(vault: MasterVault): string {
     ...(v.history ?? []).flatMap((job) => [
       job?.role || '',
       job?.company || '',
+      job?.description || '',
       ...((job?.highlights ?? []).map((h) =>
         typeof h === 'string' ? h : `${h?.text || ''} ${h?.tool || ''} ${(h?.keywords ?? []).join(' ')}`
       )),
@@ -180,11 +181,11 @@ export function scoreCanonicalAts(
   const matchedHard = hardPhrases.filter((h) => matchedRequirements.includes(h.phrase));
   if (matchedHard.length > 0) {
     const currentText = vault.history[0]
-      ? `${vault.history[0].role} ${vault.history[0].company} ${vault.history[0].highlights.map((h) => typeof h === 'string' ? h : h.text).join(' ')}`
+      ? `${vault.history[0].role} ${vault.history[0].company} ${vault.history[0].description || ''} ${vault.history[0].highlights.map((h) => typeof h === 'string' ? h : h.text).join(' ')}`
       : '';
     const midText = vault.history
       .slice(1, 3)
-      .map((h) => `${h.role} ${h.company} ${h.highlights.map((hl) => typeof hl === 'string' ? hl : hl.text).join(' ')}`)
+      .map((h) => `${h.role} ${h.company} ${h.description || ''} ${h.highlights.map((hl) => typeof hl === 'string' ? hl : hl.text).join(' ')}`)
       .join(' ');
     let sum = 0;
     for (const h of matchedHard) {

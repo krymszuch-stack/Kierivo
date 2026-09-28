@@ -111,6 +111,7 @@ export function vaultFromParsedCv(parsed: ParsedCVResult): MasterVault {
   return {
     ...vault,
     personalInfo: { ...vault.personalInfo, ...parsed.personalInfo },
+    profiler: { ...vault.profiler, languages: parsed.languages || [] },
     skillsMatrix: {
       ...vault.skillsMatrix,
       hardSkills: parsed.hardSkills,
@@ -258,19 +259,36 @@ export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] 
     if (problems.length >= 3) break;
     problems.push({
       id: `skill-${skill.toLowerCase().replace(/\s+/g, '-')}`,
-      title: `Brak umiejętności: ${skill}`,
-      description: `Wymaganie zauważone w ogłoszeniu. Dodaj słowo „${skill}” do opisu doświadczenia lub umiejętności.`,
+      title: `Nie znaleziono w CV: ${skill}`,
+      description: `Sprawdź, czy „${skill}” występuje w oryginalnym CV. Jeśli masz tę umiejętność, opisz ją własnymi słowami.`,
       severity: 'warning',
       category: 'hard_skill',
     });
   }
 
-  // 3. Problemy ze strukturą i formatowaniem ATS
-  if (problems.length < 3 && result.ats?.formattingScore !== undefined && result.ats.formattingScore < 80) {
+  // Wynik „formatowania” obejmuje też kompletność kontaktu i daty. Nie
+  // przypisujemy automatycznie brakującego telefonu do układu graficznego.
+  if (problems.length < 3 && result.ats?.ocrWarnings?.length) {
+    problems.push({
+      id: 'contact-review',
+      title: 'Sprawdź dane kontaktowe',
+      description: result.ats.ocrWarnings.join(' '),
+      severity: 'warning',
+      category: 'structure',
+    });
+  } else if (problems.length < 3 && result.ats?.badDateFormats?.length) {
+    problems.push({
+      id: 'date-review',
+      title: 'Sprawdź zapis dat',
+      description: result.ats.badDateFormats[0],
+      severity: 'warning',
+      category: 'structure',
+    });
+  } else if (problems.length < 3 && result.ats?.layer1Structure?.unparsableElementsWarnings?.length) {
     problems.push({
       id: 'formatting-risk',
-      title: 'Ryzyko problemów z formatowaniem ATS',
-      description: 'Złożony lub niestandardowy układ dokumentu może utrudniać automatyczny odczyt przez systemy rekrutacyjne.',
+      title: 'Sprawdź układ dokumentu',
+      description: result.ats.layer1Structure.unparsableElementsWarnings[0],
       severity: 'warning',
       category: 'structure',
     });

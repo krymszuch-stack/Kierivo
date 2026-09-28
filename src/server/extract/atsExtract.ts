@@ -22,7 +22,7 @@ function getEngineDir(): string {
 }
 
 /**
- * Uruchamia `python -m mvcv tools ats_extract <pdfPath>` i zwraca sparsowany JSON.
+ * Uruchamia moduł ekstraktora PDF i zwraca sparsowany JSON.
  * Wyrzuca błąd, gdy interpreter nie znaleziony lub proces kończy się kodem != 0.
  */
 export async function runAtsExtract(pdfPath: string): Promise<AtsExtractResult> {
@@ -33,7 +33,10 @@ export async function runAtsExtract(pdfPath: string): Promise<AtsExtractResult> 
     throw new Error('Katalog silnika mastervault-cv nie został odnaleziony.');
   }
 
-  const args = ['-m', 'mvcv', 'tools', 'ats_extract', pdfPath];
+  // Ekstraktor jest modułem Pythona, nie komendą głównego CLI `mvcv`.
+  // CLI obsługuje export/gallery/verify/themes/layouts, więc forma
+  // `python -m mvcv tools ...` kończyła się kodem 2 i zerową walidacją ATS.
+  const args = ['-m', 'mvcv.tools.ats_extract', pdfPath];
 
   return new Promise((resolve, reject) => {
     const proc = spawn(pythonBin, args, {

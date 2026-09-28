@@ -517,7 +517,9 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         <Modal
           isOpen={isAtsModalOpen}
           onClose={() => setIsAtsModalOpen(false)}
-          title={`Dopasowanie ATS dla: ${selectedJob.title} (${selectedJob.company})`}
+          title={selectedJob.title
+            ? `Dopasowanie do oferty: ${selectedJob.title}${selectedJob.company ? ` (${selectedJob.company})` : ''}`
+            : 'Dopasowanie do wklejonej oferty'}
           size="xl"
         >
           <div className="space-y-6">

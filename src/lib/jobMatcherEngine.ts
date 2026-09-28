@@ -55,9 +55,7 @@ export function calculateJobMatch(
   const tailored: TailoredResume = {
     targetJobTitle: job.title,
     companyName: job.company,
-    summary: vault.personalInfo?.summary
-      ? vault.personalInfo.summary
-      : `Dopasowany profil zawodowy pod stanowisko ${job.title} w firmie ${job.company}.`,
+    summary: vault.personalInfo?.summary || '',
     selectedHighlights: vault.history.flatMap((h) =>
       h.highlights.map((hl) => ({
         experienceId: h.id,

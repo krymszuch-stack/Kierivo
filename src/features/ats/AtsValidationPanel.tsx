@@ -1,7 +1,8 @@
 /**
- * Panel wyświetlający wyniki walidacji PDF pod kątem kompatybilności z 5 ATS-ami.
+ * Panel wyświetlający lokalny test parsowalności PDF według pięciu profili reguł.
  *
- * Pokazuje per-vendor ocenę parsowalności, wykryte problemy i zalecenia.
+ * Nazwy vendorów identyfikują profil heurystyczny; aplikacja nie łączy się
+ * z ich systemami i nie zna konfiguracji używanej przez konkretnego rekrutera.
  * Nie jest to scoring dopasowania CV do oferty — to walidacja formatu.
  */
 
@@ -65,7 +66,7 @@ function VendorCard({ result }: { result: AtsPdfValidationResult }) {
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-ink">{result.vendorName}</span>
+            <span className="text-sm font-bold text-ink">Profil reguł: {result.vendorName}</span>
             <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${statusConfig.bg} ${statusConfig.color} ${statusConfig.border} border`}>
               <StatusIcon className="h-2.5 w-2.5" />
               {statusConfig.label}
@@ -176,7 +177,7 @@ export const AtsValidationPanel: React.FC<AtsValidationPanelProps> = ({
       <div className="flex items-center gap-2">
         <Shield className="h-4 w-4 text-brand-600" />
         <h3 className="text-sm font-bold text-ink">
-          Walidacja ATS — Kompatybilność parserów
+          Lokalny test parsowalności PDF
         </h3>
       </div>
 
@@ -195,7 +196,7 @@ export const AtsValidationPanel: React.FC<AtsValidationPanelProps> = ({
               {overallStatusConfig.label}
             </span>
             <span className="text-[10px] text-muted">
-              {report.vendors.length} ATS-ów sprawdzonych
+              {report.vendors.length} profili regułowych
             </span>
           </div>
           <p className="mt-1 text-[11px] text-muted">
@@ -232,8 +233,9 @@ export const AtsValidationPanel: React.FC<AtsValidationPanelProps> = ({
 
       {/* Footer */}
       <p className="text-[9px] text-muted text-center">
-        Wyniki oparte na profilach parserów z researchu empirycznego.
-        Nie gwarantują wyniku prawdziwego ATS-a.
+        To heurystyczna symulacja na wyekstrahowanym tekście. Kierivo nie wysyła
+        dokumentu do Workday, Greenhouse, Lever, iCIMS ani Taleo i nie zna ich
+        konfiguracji u konkretnego pracodawcy.
       </p>
     </div>
   );

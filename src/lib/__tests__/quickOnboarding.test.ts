@@ -184,4 +184,28 @@ Wymagania bezwzględne:
     const problems = extractTopThreeProblems(result);
     expect(problems).toHaveLength(3);
   });
+
+  it('Nie zgłasza jako brakujących umiejętności obecnych w długiej linii CV ani opcji „mile widziane”', () => {
+    const cv = [
+      'Alicja Testowa',
+      'Specjalistka wsparcia IT',
+      'Doświadczenie zawodowe:',
+      '2022–2025: Specjalistka wsparcia IT w firmie Testowa Sp. z o.o. Obsługa zgłoszeń użytkowników i diagnozowanie problemów z Windows 11 oraz Microsoft 365.',
+      'Umiejętności: Windows 11, Microsoft 365, Exchange Online, Active Directory, sieci TCP/IP, Excel, obsługa klienta.',
+      'Edukacja: Technik informatyk, 2020.',
+      'Języki: angielski B2.',
+    ].join('\n');
+    const jd = 'Specjalista IT Support. Wymagania: Windows 11, Microsoft 365 i TCP/IP. Mile widziane: Intune, Entra ID i PowerShell. Zakres obowiązków: obsługa zgłoszeń.';
+    const result = runQuickAtsCheck(cv, jd);
+
+    expect(result.vault.skillsMatrix.hardSkills).toEqual(expect.arrayContaining(['Windows 11', 'Microsoft 365', 'sieci TCP/IP']));
+    expect(result.vault.history[0]).toEqual(expect.objectContaining({
+      role: 'Specjalistka wsparcia IT',
+      company: 'Testowa Sp. z o.o.',
+      description: expect.stringContaining('Obsługa zgłoszeń użytkowników'),
+    }));
+    expect(result.ats.layer2Nlp.hardSkillsCoverage).toBe(100);
+    expect(result.vault.profiler.languages).toEqual(expect.arrayContaining([expect.objectContaining({ level: 'B2' })]));
+    expect(result.missingSkills).not.toEqual(expect.arrayContaining(['Intune', 'Entra ID', 'PowerShell']));
+  });
 });

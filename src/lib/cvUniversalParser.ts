@@ -385,6 +385,20 @@ export function unwrapTwoColumnText(text: string): string {
     return parts.length >= 2 && parts[0].trim().length > 0 && parts[1].trim().length > 0;
   });
 
+  // Zapis „rola | firma” jest zwykłym separatorem pola, nie układem dwóch kolumn.
+  // Przy krótkim CV kilka takich wpisów potrafi przekroczyć próg procentowy i
+  // przenieść wszystkie firmy na koniec dokumentu, niszcząc historię zatrudnienia.
+  const roleCompanyRows = pipeLines.filter((line) => {
+    const [left = '', right = ''] = line.split('|').map((part) => part.trim());
+    const looksLikeRole = /\b(?:specjalist(?:a|ka)|kierownik|manager|programista|developer|monter|technik|operator|pracownik|asystent|analityk|administrator|service\s+desk|helpdesk|it\s+support)\b/i.test(left);
+    const looksLikeCompany = /\b(?:firma|sp\.\s*z\s*o\.o\.|s\.a\.|gmbh|llc|inc\.|group|solutions|systems|polska|poland)\b/i.test(right);
+    return looksLikeRole && looksLikeCompany;
+  });
+
+  if (roleCompanyRows.length >= 2 && roleCompanyRows.length / pipeLines.length >= 0.5) {
+    return text;
+  }
+
   if (pipeLines.length / nonEmptyLines.length >= 0.28) {
     const leftCol: string[] = [];
     const rightCol: string[] = [];
@@ -415,7 +429,9 @@ function matchSectionHeading(rawLine: string): { section: string; inlineContent:
   const trimmed = rawLine
     .replace(/<[^>]+>/g, '')
     .trim();
-  if (!trimmed || trimmed.length > 90) return null;
+  // Treść po dwukropku bywa długą listą umiejętności w jednej linii.
+  // Limit dotyczy nagłówka, nie całej linii z danymi.
+  if (!trimmed || (trimmed.length > 90 && !/^.{2,45}:\s*\S/.test(trimmed))) return null;
 
   // Filtrujemy nagłówki paginacji typu "Strona 1 z 2", "Page 2 of 3"
   if (/^(?:strona\s+\d+(?:\s+z\s+\d+)?|page\s+\d+(?:\s+of\s+\d+)?)$/i.test(trimmed)) return null;
@@ -589,7 +605,7 @@ function extractDateRange(text: string): ExtractedDateRange | null {
 
 const ROLE_KEYWORDS = new RegExp(
   '\\b(?:inżynier|programista|developer|monter|spawacz|elektryk|mechanik|kierowca|magazynier|' +
-    'operator|technik|specjalista|kierownik|manager|dyrektor|konsultant|analityk|koordynator|' +
+    'operator|technik|specjalista|specjalistka|kierownik|manager|dyrektor|konsultant|analityk|koordynator|' +
     'pracownik|asystent|lektor|sprzedawca|doradca|serwisant|tokarz|ślusarz|murarz|cieśla|' +
     'hydraulik|lekarz|pielęgniarka|księgowa|księgowy|grafik|architekt|lead|senior|junior|' +
     'mid|head|director|tester|qa|devops|administrator|brygadzista|mistrz|automatyk|laborant|' +
@@ -711,7 +727,7 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
       (ROLE_KEYWORDS.test(line) || COMPANY_KEYWORDS.test(line)) &&
       !/^[a-ząćęłńóśźż]/.test(line) &&
       line.length < 90 &&
-      !line.endsWith('.')
+      (!line.endsWith('.') || COMPANY_KEYWORDS.test(line))
     ) {
       const currentHasRole = currentBlock.headerLines.some((hl) => disambiguateRoleAndCompany(hl).role);
       const currentHasCompany = currentBlock.headerLines.some((hl) => disambiguateRoleAndCompany(hl).company);
@@ -754,12 +770,25 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
     let company = '';
     let role = '';
     let location = '';
+    let inlineDescription = '';
+
+    // Częsty format kopiowany z CV: daty, rola, „w firmie”, nazwa spółki i
+    // opis w jednej linii. Bez rozdzielenia parser uznawał całe zdanie za firmę.
+    const firstHeader = block.headerLines[0]?.replace(DATE_RANGE_REGEX, '').replace(/^[:\s]+/, '').trim() || '';
+    const inlineEntry = firstHeader.match(/^(.+?)\s+w\s+firmie\s+(.+?\b(?:sp\.\s*z\s*o\.o\.|s\.a\.|gmbh|llc|inc\.))\s*(.*)$/i);
+    if (inlineEntry && ROLE_KEYWORDS.test(inlineEntry[1])) {
+      role = inlineEntry[1].trim();
+      company = inlineEntry[2].trim();
+      inlineDescription = inlineEntry[3].trim();
+    }
 
     // Parsujemy nagłówek
-    for (const hLine of block.headerLines) {
-      const { role: r, company: c } = disambiguateRoleAndCompany(hLine);
-      if (r && !role) role = r;
-      if (c && !company) company = c;
+    if (!inlineEntry || !role) {
+      for (const hLine of block.headerLines) {
+        const { role: r, company: c } = disambiguateRoleAndCompany(hLine);
+        if (r && !role) role = r;
+        if (c && !company) company = c;
+      }
     }
 
     // Jeśli brak roli lub firmy w headerLines, szukamy w otherLines
@@ -799,12 +828,13 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
       keywords: [],
     }));
 
-    const description = block.otherLines.filter((l) => !isLocationLine(l)).join('\n').trim() || undefined;
+    const description = [inlineDescription, ...block.otherLines.filter((l) => !isLocationLine(l))]
+      .filter(Boolean).join('\n').trim() || undefined;
 
     entries.push({
       id: `exp_parsed_${Date.now()}_${entries.length}`,
-      company: company || role || 'Firma',
-      role: role || company || 'Stanowisko',
+      company,
+      role,
       location,
       startDate,
       endDate,
@@ -882,9 +912,11 @@ function parseEducationEntries(sectionLines: string[]): Education[] {
     let institution = '';
     let degree = '';
     let fieldOfStudy = '';
+    const explicitYear = block.lines.join(' ').match(/\b(?:19|20)\d{2}\b/)?.[0] || '';
 
     for (const l of block.lines) {
-      const withoutDates = l.replace(DATE_RANGE_REGEX, '').replace(/[()|;,]+$/, '').trim();
+      const withoutDates = l.replace(DATE_RANGE_REGEX, '').replace(/\b(?:19|20)\d{2}\b/g, '')
+        .replace(/[()|;,]+$/, '').trim();
       const parts = withoutDates.split(/\s+[-–—]\s+|\s*\|\s*|\s*,\s*/).map((p) => p.trim()).filter(Boolean);
 
       for (const part of parts) {
@@ -898,17 +930,24 @@ function parseEducationEntries(sectionLines: string[]): Education[] {
       }
     }
 
+    // Nagłówki szkół bywają skrótami (AGH, SGH) albo nazwami spoza słownika.
+    // Pierwsza linia sekcji edukacji nadal jest danym ze źródła, więc można ją
+    // zachować jako instytucję; usuwamy wyłącznie daty, nie dopisujemy zastępczej nazwy.
     if (!institution && block.lines.length > 0) {
-      institution = block.lines[0].replace(DATE_RANGE_REGEX, '').trim();
+      institution = block.lines[0]
+        .replace(DATE_RANGE_REGEX, '')
+        .replace(/\b(?:19|20)\d{2}\b/g, '')
+        .replace(/[()|;,]+$/, '')
+        .trim();
     }
 
     entries.push({
       id: `edu_parsed_${Date.now()}_${entries.length}`,
-      institution: institution || 'Uczelnia / Szkoła',
+      institution,
       degree: degree || '',
       fieldOfStudy: fieldOfStudy || '',
       startDate: block.dateRange?.startDate || '',
-      endDate: block.dateRange?.endDate || '',
+      endDate: block.dateRange?.endDate || explicitYear,
     });
   }
 
@@ -954,8 +993,9 @@ function parseLanguages(sectionLines: string[]): LanguageProficiency[] {
     const parts = clean.split(/\s*[-–—:|]\s*|\s*\(([^)]+)\)/).map((p) => p?.trim()).filter(Boolean);
     if (parts.length === 0) continue;
 
-    const langName = parts[0].replace(/^(?:język|jezyk)\s+/i, '');
-    let level: LanguageProficiency['level'] = 'B2';
+    const langName = parts[0].replace(/^(?:język|jezyk)\s+/i, '')
+      .replace(CEFR_PATTERN, '').replace(/[()\s.,-]+$/g, '').trim();
+    let level: LanguageProficiency['level'] | null = null;
     let context = '';
 
     const cefrMatch = clean.match(CEFR_PATTERN);
@@ -977,6 +1017,8 @@ function parseLanguages(sectionLines: string[]): LanguageProficiency[] {
       context = clean;
     }
 
+    // Brak poziomu w źródle nie oznacza B2 — tego nie wolno dopisywać do CV.
+    if (!level) continue;
     languages.push({
       id: `lang_parsed_${Date.now()}_${languages.length}`,
       language: langName,
@@ -1073,7 +1115,8 @@ function parseSkillList(sectionLines: string[]): string[] {
     if (!cleanLine) continue;
 
     const content = cleanLine.includes(':') ? cleanLine.split(':')[1].trim() : cleanLine;
-    const items = content.split(/[,;/|•►▪●\n]/).map((s) => s.trim()).filter(Boolean);
+    // Slash wewnątrz nazwy (TCP/IP, CI/CD) nie rozdziela dwóch kompetencji.
+    const items = content.split(/[,;|•►▪●\n]|\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
 
     for (const item of items) {
       if (item.length >= 2 && item.length <= 60 && !item.toLowerCase().startsWith('np.') && !isNonSkillMarker(item)) {
@@ -1269,12 +1312,19 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
 
   const certifications = parseCertificationEntries(certLines);
   const languages = parseLanguages(sections.languages ?? []);
+  if ((sections.languages ?? []).length > 0 && languages.length === 0) {
+    warnings.push('Nie rozpoznano poziomu języka; sprawdź sekcję językową ręcznie.');
+  }
   const projects = parseProjects(sections.projects ?? []);
 
   // 6. Ekstrakcja Stanowiska (Title)
   const explicitTitleMatch = clean.match(/(?:stanowisko|tytuł|specjalność|rola|job\s+title):\s*([^\n]+)/i);
+  const headerTitle = headerLines.slice(1).find((line) => line.length < 90 && ROLE_KEYWORDS.test(line))
+    ?.split(',')[0]?.trim();
   const title = explicitTitleMatch
     ? explicitTitleMatch[1].trim()
+    : headerTitle
+    ? headerTitle
     : history.length > 0 && history[0].role
     ? history[0].role
     : (clean.match(ROLE_KEYWORDS)?.[0]?.trim() || '');
