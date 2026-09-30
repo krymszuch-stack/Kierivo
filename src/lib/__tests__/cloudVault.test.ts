@@ -81,9 +81,9 @@ describe('saveCloudVault — właściciel sesji', () => {
     expect(insert.mock.calls[0][0]).toMatchObject({ user_id: 'konto-a' });
   });
 
-  it('łączy pending z bieżącą chmurą zamiast zwracać offline snapshot jako całość', async () => {
+  it('przy tej samej rewizji zachowuje cały pending, także usunięcie umiejętności', async () => {
     const remote = createEmptyVault('Profil z innego urządzenia');
-    remote.skillsMatrix.hardSkills = ['Linux'];
+    remote.skillsMatrix.hardSkills = ['Linux', 'Windows 11'];
     remote.history = [{
       id: 'remote-history', company: 'Firma z chmury', role: 'Technik', location: '',
       startDate: '2020-01', endDate: '2021-01', isCurrent: false, highlights: [],
@@ -106,10 +106,27 @@ describe('saveCloudVault — właściciel sesji', () => {
     expect(snapshot.remoteReadSucceeded).toBe(true);
     expect(snapshot.remoteUpdatedAt).toBe('rev-2');
     expect(snapshot.vault?.personalInfo.summary).toBe('Nowsze podsumowanie offline.');
-    expect(snapshot.vault?.skillsMatrix.hardSkills).toEqual(expect.arrayContaining(['Linux', 'Windows 11']));
-    expect(snapshot.vault?.history).toHaveLength(1);
-    expect(snapshot.vault?.history[0].company).toBe('Firma z chmury');
+    expect(snapshot.vault?.skillsMatrix.hardSkills).toEqual(['Windows 11']);
+    expect(snapshot.vault?.history).toHaveLength(0);
     expect(snapshot.pendingConflict).toBe(false);
+  });
+
+  it('przy innej rewizji nie skleja automatycznie nawet niezależnych list', async () => {
+    const local = createEmptyVault('Lokalna wersja');
+    local.skillsMatrix.hardSkills = ['Windows 11'];
+    enqueueCloudVaultSave('konto-a', local, { baseUpdatedAt: 'rev-1' });
+    const remote = createEmptyVault('Chmurowa wersja');
+    remote.skillsMatrix.hardSkills = ['Linux'];
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { data: remote, updated_at: 'rev-2' }, error: null });
+    mocks.client = {
+      auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'konto-a' } } } }) },
+      from: vi.fn().mockReturnValue({ select: () => ({ maybeSingle }) }),
+    };
+
+    const snapshot = await (await import('../cloudVault')).fetchCloudVault('konto-a');
+    expect(snapshot.pendingConflict).toBe(true);
+    expect(snapshot.vault?.skillsMatrix.hardSkills).toEqual(['Windows 11']);
+    expect(snapshot.conflictRemoteVault?.skillsMatrix.hardSkills).toEqual(['Linux']);
   });
 
   it('różne rewizje z kolidującą edycją zachowują lokalną i chmurową wersję osobno', async () => {

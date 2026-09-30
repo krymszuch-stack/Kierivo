@@ -1,6 +1,5 @@
 import { MasterVault } from '../types';
 import { cloudVaultOutboxKeyFor, cloudVaultRevisionKeyFor } from './cloudVaultKeys';
-import { hasConflictingVaultDuplicates, mergeImportedVault } from './vaultImportMerge';
 import { getSupabaseBrowserClient } from './supabaseClient';
 import { readJson } from './storage';
 import { migrateVault } from './dataMigration';
@@ -128,12 +127,11 @@ export async function fetchCloudVault(expectedOwnerId?: string): Promise<CloudVa
   if (!pending) {
     return { vault: remote, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
   }
-  const collidingEdits = remote ? hasConflictingVaultDuplicates(remote, pending) : false;
   const pendingIsBasedOnCurrentRemote = pendingEnvelope?.baseUpdatedAt === remoteUpdatedAt;
-  if (pendingEnvelope?.conflict || (collidingEdits && !pendingIsBasedOnCurrentRemote)) {
-    // Wybór `remote` jako bazy i zwykłe deduplikowanie list mogły odrzucić
-    // edycję istniejącego wpisu z pendingu. Bez snapshotu wspólnej bazy nie
-    // umiemy rozstrzygnąć, które pole jest nowsze, więc nie składamy wersji.
+  if (pendingEnvelope?.conflict || !pendingIsBasedOnCurrentRemote) {
+    // Outbox zna tylko numer rewizji, nie pełną wspólną bazę. Nawet gdy wpisy
+    // nie mają tego samego klucza, sumowanie list mogłoby cofnąć usunięcie
+    // umiejętności lub projektu wykonane offline.
     return {
       vault: pending,
       remoteReadSucceeded: true,
@@ -142,33 +140,10 @@ export async function fetchCloudVault(expectedOwnerId?: string): Promise<CloudVa
       conflictRemoteVault: remote,
     };
   }
-  if (!remote) {
-    return { vault: pending, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
-  }
-
-  // Jeśli chmura ma tę samą rewizję, na której powstał pending, lokalna edycja
-  // istniejącego wpisu jest jedyną nowszą wersją i musi wygrać deduplikację.
-  // Przy braku kolidujących edycji chmura pozostaje bazą, bo może mieć nowe
-  // wpisy z innego urządzenia.
-  if (collidingEdits) {
-    const merged = mergeImportedVault(pending, remote);
-    return {
-      vault: migrateVault({
-        ...merged,
-        personalInfo: { ...merged.personalInfo, ...pending.personalInfo },
-      }),
-      remoteReadSucceeded: true,
-      remoteUpdatedAt,
-      pendingConflict: false,
-    };
-  }
-
-  return {
-    vault: migrateVault(mergeImportedVault(remote, pending)),
-    remoteReadSucceeded: true,
-    remoteUpdatedAt,
-    pendingConflict: false,
-  };
+  // Gdy rewizja jest identyczna, zdalny snapshot nie zmienił się od chwili
+  // powstania pendingu. Lokalna wersja jest kompletnym następcą, także dla
+  // usunięć i pustych pól; merge przez unię nie byłby odwracalny.
+  return { vault: pending, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
 }
 
 /**

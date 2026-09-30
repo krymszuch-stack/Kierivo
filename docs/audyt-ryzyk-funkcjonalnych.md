@@ -645,6 +645,15 @@ dużych chunkach i mieszanym imporcie `cloudVaultOutbox`; nie blokują kompilacj
   ochronę konfliktu bez wyboru użytkownika, odpowiedź HTTP 409 oraz rewizję kolejnego zapisu po ACK. Nadal nie
   wykonano live testu z dwiema sesjami i prawdziwym Supabase; format i porównanie
   `updated_at` przez bieżącą wersję PostgREST należy potwierdzić na tym wdrożeniu.
+  Odczyt aktywnego projektu Supabase `kierivo` 30.09.2026 potwierdził schemat
+  `vaults` (`user_id`, `data`, `version`, `updated_at`), włączone RLS oraz
+  polityki SELECT/INSERT/UPDATE/DELETE ograniczone przez `auth.uid() = user_id`.
+  Tabela miała w chwili odczytu 0 wierszy, więc samo sprawdzenie schematu nie
+  potwierdza ani zapisu, ani compare-and-swap. Lokalny build dostał testową
+  konfigurację publicznego klucza Supabase poza repozytorium; próba OAuth
+  doszła do ekranu wyboru konta Microsoft, ale rozszerzenie Brave przejęło
+  stronę i wstrzymało automatyzację. Test na fikcyjnych danych zostanie
+  wznowiony po zamknięciu tego okna przez właściciela sesji.
 
 - Scalenie pending z chmurą oraz pierwsze logowanie z lokalnym CV ujawniły
   utratę edycji pola istniejącego wpisu:
@@ -656,6 +665,17 @@ dużych chunkach i mieszanym imporcie `cloudVaultOutbox`; nie blokują kompilacj
   Nie ma automatycznego scalania pól ani zrzutu ekranu z zalogowanego konfliktu;
   nie sprawdzono też przepływu na żywym Supabase, więc ten obszar pozostaje
   **Częściowo**.
+
+- Dalszy test usunięcia ujawnił, że outbox przy identycznej rewizji scalał
+  `hardSkills` przez sumę zbiorów. Usunięty offline Linux wracał z chmury,
+  choć chmura nie zmieniła się od ostatniego odczytu. Teraz przy tej samej
+  rewizji wygrywa cały nowszy lokalny snapshot, łącznie z usunięciami i
+  pustymi polami. Przy innej rewizji obie pełne wersje wymagają jawnego
+  wyboru nawet wtedy, gdy listy nie mają wspólnych wpisów: bez migawki
+  bazowej aplikacja nie potrafi odróżnić nowego dodatku od usunięcia.
+  Regresje syntetyczne obejmują oba przypadki. Pierwsze logowanie z
+  osobnym lokalnym CV nadal korzysta z oddzielnej funkcji scalania i wymaga
+  dalszego audytu usunięć; live konflikt w Supabase pozostaje otwarty.
 
 - Ponowny przejazd szybkiego wyniku w Chromium desktop + mobile ujawnił, że
   selektor w teście E2E nie odpowiadał już aktualnej etykiecie dostępnościowej.

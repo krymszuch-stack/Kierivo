@@ -36,7 +36,9 @@ export interface ResolveAuthRedirectOptions {
  */
 export function resolveAuthRedirectUrl(options?: ResolveAuthRedirectOptions): string {
   // 1. Jawna konfiguracja środowiskowa (PUBLIC_APP_URL / VITE_PUBLIC_APP_URL)
-  const envUrl = options?.envAppUrl ?? clientEnv.publicAppUrl;
+  // Jawne `null` w teście lub wywołaniu oznacza brak konfiguracji, a nie
+  // prośbę o ponowny odczyt globalnego środowiska.
+  const envUrl = options && 'envAppUrl' in options ? options.envAppUrl : clientEnv.publicAppUrl;
   if (envUrl) {
     const sanitized = sanitizeRedirectUrl(envUrl);
     if (sanitized) return sanitized;
