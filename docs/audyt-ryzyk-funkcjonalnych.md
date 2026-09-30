@@ -674,8 +674,12 @@ dużych chunkach i mieszanym imporcie `cloudVaultOutbox`; nie blokują kompilacj
   wyboru nawet wtedy, gdy listy nie mają wspólnych wpisów: bez migawki
   bazowej aplikacja nie potrafi odróżnić nowego dodatku od usunięcia.
   Regresje syntetyczne obejmują oba przypadki. Pierwsze logowanie z
-  osobnym lokalnym CV nadal korzysta z oddzielnej funkcji scalania i wymaga
-  dalszego audytu usunięć; live konflikt w Supabase pozostaje otwarty.
+  osobnym lokalnym CV również nie scala teraz dwóch różnych pełnych wersji:
+  identyczne kopie nie wymagają zapisu, a pozostałe prowadzą do jawnego wyboru.
+  Regresja z usuniętym `Spawanie MIG` potwierdza, że pierwsze logowanie nie
+  przywraca tej umiejętności samo. Wybór jest całym snapshotem, więc użytkownik
+  może utracić niewybrane dodatki; interfejs mówi o tym wprost. Ekranowy test
+  zalogowanego konfliktu i live konflikt w Supabase pozostają otwarte.
 
 - Ponowny przejazd szybkiego wyniku w Chromium desktop + mobile ujawnił, że
   selektor w teście E2E nie odpowiadał już aktualnej etykiecie dostępnościowej.

@@ -347,6 +347,13 @@
   obu tekstów i brak autoscalenia. Nie wykonano zrzutu zalogowanego konfliktu ani
   testu na Supabase; ten przepływ nie scala niezależnych pól automatycznie.
 
+- Pierwsze logowanie z dwiema niepustymi wersjami miało jeszcze osobną ścieżkę
+  `mergeImportedVault`, która łączyła rozłączne listy i mogła odtworzyć wpis
+  usunięty lokalnie. Teraz tylko identyczne snapshoty przechodzą bez pytania;
+  różne wymagają wyboru pełnej wersji. Test z usuniętą umiejętnością i test
+  rozłącznych doświadczeń potwierdzają brak automatycznej sumy. Przeglądarkowy
+  test zalogowanego konfliktu i test w aktywnym Supabase nadal są potrzebne.
+
 - Pełny test szybkiego dopasowania w Chromium wykrył, że nazwa firmy z nagłówka
   oferty mogła zostać sklejona z tytułem i nagłówkiem „Wymagania”, a następnie
   pokazać się jako brakująca umiejętność `testowa`. Wspólna ekstrakcja usuwa teraz

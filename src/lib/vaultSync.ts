@@ -1,6 +1,6 @@
 import { MasterVault } from '../types';
 import { isVaultEmpty } from './vaultCompleteness';
-import { hasConflictingVaultDuplicates, mergeImportedVault } from './vaultImportMerge';
+import { stableStringify } from './audit-core/hash';
 import { ANONYMOUS_PROFILE_ID } from './localProfile';
 import { createEmptyVault } from './sampleVault';
 
@@ -36,9 +36,8 @@ export function getLocalVaultForCloudOwner(
  * naraz dwie wersje — lokalna i ta, którą konto może mieć z innego urządzenia.
  *
  * **Reguła nadrzędna: nigdy nie nadpisujemy niepustej chmury pustym vaultem.**
- * To jedyny scenariusz, w którym ta funkcja mogłaby komuś skasować dorobek —
- * dlatego jest wykluczony wprost, osobnym warunkiem i osobnym testem, a nie
- * przez to, że „tak akurat wychodzi z kolejności ifów".
+ * Dwa różne, niepuste snapshoty też wymagają wyboru: bez wspólnej bazy
+ * automatyczna suma list mogłaby przywrócić usunięty wpis.
  *
  * Czysta funkcja: nie dotyka sieci ani schowka, więc da się ją przetestować
  * w Node bez atrapy czegokolwiek.
@@ -49,10 +48,10 @@ export type VaultSyncAction =
   | 'wyslij-lokalny'
   /** Chmura ma treść, lokalnie pusto — po prostu ją pokazujemy. */
   | 'uzyj-chmury'
-  /** Obie strony mają treść — scalamy i odsyłamy wynik. */
-  | 'scal-i-wyslij'
+  /** Obie strony mają identyczną treść — nie trzeba nic wysyłać. */
+  | 'identyczne'
   /** Nie ma czego przenosić. */
-  /** Te same encje zmieniły się po obu stronach — wymagany jest wybór. */
+  /** Dwie różne pełne wersje — wymagany jest wybór. */
   | 'nic'
   | 'konflikt';
 
@@ -97,18 +96,11 @@ export function resolveVaultOnSignIn(
     return { vault: local, action: 'wyslij-lokalny', shouldUpload: true };
   }
 
-  if (hasConflictingVaultDuplicates(cloud!, local)) {
-    return { vault: local, action: 'konflikt', shouldUpload: false };
+  if (stableStringify(cloud) === stableStringify(local)) {
+    return { vault: cloud!, action: 'identyczne', shouldUpload: false };
   }
 
-  // Obie strony mają treść. Scalamy istniejącym mechanizmem zamiast pisać drugi
-  // (reguła 3): `mergeImportedVault` dokłada wpisy i deduplikuje po kluczu
-  // złożonym, więc nic nie ginie. Chmura jest podstawą, bo zawiera też pracę
-  // z innych urządzeń; `personalInfo` wygrywa lokalne, bo to je użytkownik
-  // widział na ekranie przed chwilą.
-  return {
-    vault: mergeImportedVault(cloud!, local),
-    action: 'scal-i-wyslij',
-    shouldUpload: true,
-  };
+  // Bez bazowego snapshotu nie wiadomo, czy pozycja obecna tylko po jednej
+  // stronie jest nowym dodatkiem, czy została celowo usunięta po drugiej.
+  return { vault: local, action: 'konflikt', shouldUpload: false };
 }

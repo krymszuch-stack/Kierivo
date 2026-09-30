@@ -314,21 +314,15 @@ function MainApp() {
         }
 
         retryCloudBootstrapOnOnline.current = false;
-        // Dopiero scalony snapshot trafia do kolejki. To zamyka wyścig,
+        // Dopiero rozstrzygnięty snapshot trafia do kolejki. To zamyka wyścig,
         // w którym AuthContext mógł wysłać offline kopię przed tym odczytem.
-        const syncStatus = await completeCloudVaultBootstrap(
+        await completeCloudVaultBootstrap(
           user.id,
           wynik.vault,
           wynik.shouldUpload,
           remoteSnapshot.remoteUpdatedAt,
         );
         setVaultProfileId(user.id);
-        if (wynik.action === 'scal-i-wyslij' && syncStatus === 'cloud') {
-          showToast('Połączyliśmy CV z tego urządzenia z tym z konta', {
-            message: 'Wpisy z obu miejsc zostały zsynchronizowane.',
-            variant: 'success',
-          });
-        }
       } catch {
         if (!aktywny) return;
         // Nieudany odczyt nie może skasować tego, co użytkownik ma na ekranie —
@@ -626,7 +620,7 @@ function MainApp() {
             if (!resolvingCloudVaultConflict) setCloudVaultConflict(null);
           }}
           title="Konflikt dwóch wersji CV"
-          description="Oba urządzenia zmieniły CV. Nie połączyliśmy ich automatycznie, bo mogłoby to zgubić poprawkę w istniejącym wpisie. Wybierz jedną pełną wersję do zapisania."
+          description="Lokalne CV i wersja z konta są różne. Bez wspólnej historii zmian połączenie mogłoby przywrócić usunięte wpisy. Wybierz jedną pełną wersję do zapisania."
           size="lg"
         >
           <div className="space-y-4">

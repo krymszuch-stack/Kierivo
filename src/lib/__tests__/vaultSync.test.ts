@@ -80,17 +80,17 @@ describe('rozstrzyganie konfliktu vaultu przy logowaniu', () => {
     expect(wynik.vault.history).toHaveLength(1);
   });
 
-  it('obie strony z treścią → scala i odsyła, nie gubiąc żadnej', () => {
+  it('dwie różne pełne wersje wymagają wyboru nawet przy niezależnych wpisach', () => {
     const cloud = pelny({ history: [job({ id: 'exp-cloud', company: 'Termika' })] });
     const local = pelny({ history: [job({ id: 'exp-local', company: 'GROMGAZ' })] });
 
     const wynik = resolveVaultOnSignIn(local, cloud);
 
-    expect(wynik.action).toBe('scal-i-wyslij');
-    expect(wynik.shouldUpload).toBe(true);
+    expect(wynik.action).toBe('konflikt');
+    expect(wynik.shouldUpload).toBe(false);
     const firmy = wynik.vault.history.map((h) => h.company);
-    expect(firmy).toContain('Termika');
     expect(firmy).toContain('GROMGAZ');
+    expect(firmy).not.toContain('Termika');
   });
 
   it('wstrzymuje pierwsze logowanie, gdy lokalna i chmurowa wersja tej samej pracy różnią się', () => {
@@ -106,26 +106,29 @@ describe('rozstrzyganie konfliktu vaultu przy logowaniu', () => {
     expect(wynik.vault.history[0].highlights[0].text).toBe('Lokalna poprawka osiągnięcia');
   });
 
-  it('scalanie nie dubluje tego samego stanowiska', () => {
+  it('identyczne kopie nie wywołują konfliktu ani zapisu', () => {
     const cloud = pelny();
     const local = pelny();
     const wynik = resolveVaultOnSignIn(local, cloud);
 
+    expect(wynik.action).toBe('identyczne');
+    expect(wynik.shouldUpload).toBe(false);
+    expect(wynik.vault).toBe(cloud);
     expect(wynik.vault.history).toHaveLength(1);
   });
 
-  it('scalanie zachowuje umiejętności z obu stron', () => {
+  it('nie przywraca usuniętej umiejętności przy pierwszym logowaniu', () => {
     const cloud = pelny({
-      skillsMatrix: { ...createEmptyVault().skillsMatrix, hardSkills: ['Spawanie MIG'] },
+      skillsMatrix: { ...createEmptyVault().skillsMatrix, hardSkills: ['Spawanie MIG', 'SEP G3'] },
     });
     const local = pelny({
-      skillsMatrix: { ...createEmptyVault().skillsMatrix, hardSkills: ['Przeglądy kotłów'] },
+      skillsMatrix: { ...createEmptyVault().skillsMatrix, hardSkills: ['SEP G3'] },
     });
 
     const wynik = resolveVaultOnSignIn(local, cloud);
-    expect(wynik.vault.skillsMatrix.hardSkills).toEqual(
-      expect.arrayContaining(['Spawanie MIG', 'Przeglądy kotłów'])
-    );
+    expect(wynik.action).toBe('konflikt');
+    expect(wynik.shouldUpload).toBe(false);
+    expect(wynik.vault.skillsMatrix.hardSkills).toEqual(['SEP G3']);
   });
 
   it('obie strony puste → nic do zrobienia', () => {
