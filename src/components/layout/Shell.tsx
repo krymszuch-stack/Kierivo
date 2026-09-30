@@ -19,6 +19,7 @@ export interface ShellProps {
   unlockedSections?: Partial<Record<NavSectionId, boolean>>;
   lockReasons?: Partial<Record<NavSectionId, string>>;
   isAuthenticated?: boolean;
+  authMode?: 'local' | 'cloud' | null;
   userEmail?: string;
   /** Czy w tym buildzie działa konto z synchronizacją. */
   cloudAvailable?: boolean;
@@ -36,6 +37,7 @@ export const Shell: React.FC<ShellProps> = ({
   unlockedSections,
   lockReasons,
   isAuthenticated = false,
+  authMode = null,
   userEmail,
   cloudAvailable = false,
   planStatus = 'free',
@@ -89,6 +91,7 @@ export const Shell: React.FC<ShellProps> = ({
           unlockedSections={unlockedSections}
           lockReasons={lockReasons}
           isAuthenticated={isAuthenticated}
+          authMode={authMode}
           userEmail={userEmail}
           cloudAvailable={cloudAvailable}
           planStatus={planStatus}
@@ -121,6 +124,7 @@ export const Shell: React.FC<ShellProps> = ({
           unlockedSections={unlockedSections}
           lockReasons={lockReasons}
           isAuthenticated={isAuthenticated}
+          authMode={authMode}
           userEmail={userEmail}
           cloudAvailable={cloudAvailable}
           planStatus={planStatus}

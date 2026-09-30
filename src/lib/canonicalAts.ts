@@ -4,6 +4,7 @@ import { auditKnockouts } from './knockouts';
 import { hasPositiveSkillEvidence, containsPhrase } from './skillEvidence';
 import { unionExperienceYears, employmentIntervalForJob } from './experience';
 import { ALL_LICENSES } from '../data/licenses';
+import { extractRequiredExperienceYears, formatExperienceRequirementLabel } from './jdParser';
 
 /**
  * Kanoniczny wynik ATS — JEDYNA liczba, którą wolno pokazywać jako
@@ -21,7 +22,8 @@ import { ALL_LICENSES } from '../data/licenses';
  * Czasowniki sprawcze wypadają z kanonu (faworyzowały polski 1. os. — F8),
  * a ich 0.15 przejmują wymagania formalne (silnik je mierzył, ale wynik je
  * ignorował — F3). Stąd: skills 0.40, experience 0.25, structure 0.20,
- * formal 0.15. Suma wag = 1.00.
+ * formal 0.15. Wymiary bez wykrytych wymagań nie udają 100%: są wyłączane,
+ * a pozostałe wagi normalizowane do 1.00.
  */
 
 export const CANONICAL_WEIGHTS = {
@@ -38,16 +40,20 @@ export type CanonicalState =
   | 'NO_REQUIREMENTS_DETECTED';
 
 export interface CanonicalComponents {
-  skills: number;
-  experience: number;
-  structure: number;
-  formal: number;
+  skills: number | null;
+  experience: number | null;
+  structure: number | null;
+  formal: number | null;
 }
+
+export type CanonicalEffectiveWeights = Record<keyof CanonicalComponents, number>;
 
 export interface CanonicalAtsScore {
   score: number;
   components: CanonicalComponents;
   weights: typeof CANONICAL_WEIGHTS;
+  /** Wagi faktycznie użyte w sumie; wymiary bez danych są wyłączone. */
+  effectiveWeights: CanonicalEffectiveWeights;
   matchedRequirements: string[];
   missingRequirements: string[];
   formalFindings: Array<{ label: string; satisfied: boolean; severity: string }>;
@@ -62,12 +68,11 @@ function licenseLabel(id: string): string {
   return ALL_LICENSES.find((l) => l.id === id)?.label ?? id;
 }
 
-/** Cały mierzalny tekst kandydata + etykiety typowane (języki, licencje, certyfikaty). */
+/** Treść kandydata + etykiety typowane; nagłówek roli, firmy i instytucji nie dowodzi kompetencji. */
 export function buildEvidenceCorpus(vault: MasterVault): string {
   const v = vault as MasterVault;
   const parts: string[] = [
     v.personalInfo?.summary || '',
-    v.personalInfo?.title || '',
     ...(v.skillsMatrix?.hardSkills ?? []),
     ...(v.skillsMatrix?.toolsAndTech ?? []),
     ...(v.skillsMatrix?.softSkills ?? []),
@@ -76,14 +81,13 @@ export function buildEvidenceCorpus(vault: MasterVault): string {
     ...(v.profiler?.languages ?? []).map((l) => `${l?.language || ''} ${l?.level || ''}`),
     ...(v.history ?? []).flatMap((job) => [
       job?.role || '',
-      job?.company || '',
       job?.description || '',
       ...((job?.highlights ?? []).map((h) =>
         typeof h === 'string' ? h : `${h?.text || ''} ${h?.tool || ''} ${(h?.keywords ?? []).join(' ')}`
       )),
     ]),
     ...(v.projects ?? []).flatMap((p) => [p?.name || '', p?.description || '', ...((p as { techStack?: string[] })?.techStack ?? [])]),
-    ...(v.education ?? []).flatMap((e) => [e?.institution || '', e?.degree || '', e?.fieldOfStudy || '']),
+    ...(v.education ?? []).flatMap((e) => [e?.degree || '', e?.fieldOfStudy || '']),
   ];
   return parts.filter(Boolean).join('\n');
 }
@@ -127,8 +131,19 @@ export function scoreCanonicalAts(
   // Frazy twarde zdublowane z kryteriami formalnymi liczymy raz (formalnie),
   // żeby nie ważyć dwa razy tego samego dowodu (np. SEP jako skill i knockout).
   const knockoutLabels = knockouts.findings.map((f) => f.label);
+  const hasFormalWeldingRequirement = knockouts.findings.some((finding) => finding.ruleId === 'welding');
   const hardPhrases = extraction.hardSkills.filter(
-    (h) => !knockoutLabels.some((label) => containsPhrase(label, h.phrase) || containsPhrase(h.phrase, label))
+    (h) => !knockoutLabels.some((label) => containsPhrase(label, h.phrase) || containsPhrase(h.phrase, label)) &&
+      // Samodzielny skrót metody powtórzony przez ekstraktor umiejętności
+      // pochodzi tu z tej samej frazy „uprawnienia spawalnicze TIG 141”.
+      // Brak formalnego dokumentu pokazujemy tylko jako jedną, typowaną lukę.
+      !(hasFormalWeldingRequirement && /^(?:tig|mag|mig)$/.test(h.phrase.trim().toLowerCase()))
+  );
+  // Ekstraktor ogólny znajduje np. „prawo jazdy” i „certyfikat”, a audyt
+  // zerojedynkowy ma bardziej użyteczne kryteria „kat. B” i „F-Gaz”.
+  // Liczenie obu form dubluje jedną lukę i zawyża mianownik formaliów.
+  const formalRequirements = extraction.formalReqs.filter(
+    (f) => !knockoutLabels.some((label) => containsPhrase(label, f.phrase) || containsPhrase(f.phrase, label))
   );
 
   const matchedRequirements: string[] = [];
@@ -147,7 +162,7 @@ export function scoreCanonicalAts(
   // Formalia z ekstrakcji (tekst/typy) — waga 2.0 jak w ekstraktorze.
   let matchedFormalWeight = 0;
   let totalFormalWeight = 0;
-  for (const f of extraction.formalReqs) {
+  for (const f of formalRequirements) {
     totalFormalWeight += f.weight;
     if (isFormalSatisfied(f.phrase, corpus, satisfiedLabels)) {
       matchedFormalWeight += f.weight;
@@ -158,6 +173,10 @@ export function scoreCanonicalAts(
   }
   // Kryteria zerojedynkowe jako formalia typowane (waga 2.0 za każde).
   for (const finding of knockouts.findings) {
+    // Atuty opcjonalne i wzmianki bez określonego statusu nie są brakami ani
+    // karą. `formalFindings` zachowuje ich status dla widoków informacyjnych.
+    if (finding.severity !== 'knockout') continue;
+
     totalFormalWeight += 2.0;
     if (finding.satisfied) {
       matchedFormalWeight += 2.0;
@@ -171,27 +190,48 @@ export function scoreCanonicalAts(
     return emptyResult('NO_REQUIREMENTS_DETECTED', 'Z ogłoszenia nie wykryto żadnych wymagań — nie ma czego oceniać.');
   }
 
-  const skills = totalWeight === 0 ? 100 : Math.round((matchedWeight / totalWeight) * 100);
+  const skills = totalWeight === 0 ? null : Math.round((matchedWeight / totalWeight) * 100);
 
   // Staż z unii (70%) + świeżość dopasowań w bieżącej roli (30%).
   // Brak dopasowań = świeżość 0, nie bonus 80 jak w symulatorze (F4).
   const years = unionExperienceYears(vault.history);
-  const tenureNorm = Math.min(1, years / MAX_COUNTED_YEARS) * 100;
+  const requiredExperienceYears = extractRequiredExperienceYears(jd);
+  // Gdy oferta podaje próg, porównujemy CV do tego progu. Bez progu zostaje
+  // neutralna skala stażu ogólnego; wymóg zerowy oznacza, że każdy staż go spełnia.
+  const tenureNorm = requiredExperienceYears === null
+    ? Math.min(1, years / MAX_COUNTED_YEARS) * 100
+    : requiredExperienceYears === 0
+      ? 100
+      : Math.min(1, years / requiredExperienceYears) * 100;
+  if (requiredExperienceYears !== null) {
+    const requirementLabel = formatExperienceRequirementLabel(requiredExperienceYears);
+    const destination = requiredExperienceYears === 0 || years >= requiredExperienceYears
+      ? matchedRequirements
+      : missingRequirements;
+    if (!destination.includes(requirementLabel)) destination.push(requirementLabel);
+  }
   let recencyNorm = 0;
   const matchedHard = hardPhrases.filter((h) => matchedRequirements.includes(h.phrase));
   if (matchedHard.length > 0) {
-    const currentText = vault.history[0]
-      ? `${vault.history[0].role} ${vault.history[0].company} ${vault.history[0].description || ''} ${vault.history[0].highlights.map((h) => typeof h === 'string' ? h : h.text).join(' ')}`
-      : '';
-    const midText = vault.history
-      .slice(1, 3)
-      .map((h) => `${h.role} ${h.company} ${h.description || ''} ${h.highlights.map((hl) => typeof hl === 'string' ? hl : hl.text).join(' ')}`)
-      .join(' ');
+    // Użytkownik może przestawiać karty historii; indeks tablicy nie jest datą.
+    // Brak lub błąd daty nie daje bonusu świeżości, a nazwa firmy nie jest dowodem umiejętności.
+    const datedHistory = (vault.history ?? [])
+      .map((job) => ({ job, interval: employmentIntervalForJob(job) }))
+      .filter((entry): entry is {
+        job: MasterVault['history'][number];
+        interval: NonNullable<ReturnType<typeof employmentIntervalForJob>>;
+      } => entry.interval !== null)
+      .sort((a, b) => b.interval.end - a.interval.end || b.interval.start - a.interval.start)
+      .slice(0, 3);
     let sum = 0;
     for (const h of matchedHard) {
-      if (currentText && hasPositiveSkillEvidence(currentText, h.phrase)) sum += 100;
-      else if (midText && hasPositiveSkillEvidence(midText, h.phrase)) sum += 70;
-      else sum += 40;
+      const evidenceRank = datedHistory.findIndex(({ job }) => {
+        const text = `${job.role} ${job.description || ''} ${job.highlights
+          .map((highlight) => typeof highlight === 'string' ? highlight : highlight.text)
+          .join(' ')}`;
+        return hasPositiveSkillEvidence(text, h.phrase);
+      });
+      sum += evidenceRank === 0 ? 100 : evidenceRank > 0 ? 70 : 40;
     }
     recencyNorm = sum / matchedHard.length;
   } else if (totalWeight === 0) {
@@ -228,26 +268,17 @@ export function scoreCanonicalAts(
   const structure = Math.max(0, Math.round(100 - missingHeaders * 12 - penalties.filter((p) => p.startsWith('Brak prawidłowego') || p.startsWith('Brak numeru')).length * 10 - Math.min(24, badDates * 8)));
 
   void targetRoleTitle;
-  const formal = totalFormalWeight === 0 ? 100 : Math.round((matchedFormalWeight / totalFormalWeight) * 100);
+  const formal = totalFormalWeight === 0 ? null : Math.round((matchedFormalWeight / totalFormalWeight) * 100);
 
   const components: CanonicalComponents = { skills, experience, structure, formal };
-  const score = Math.max(
-    0,
-    Math.min(
-      100,
-      Math.round(
-        components.skills * CANONICAL_WEIGHTS.skills +
-          components.experience * CANONICAL_WEIGHTS.experience +
-          components.structure * CANONICAL_WEIGHTS.structure +
-          components.formal * CANONICAL_WEIGHTS.formal
-      )
-    )
-  );
+  const effectiveWeights = calculateEffectiveWeights(components);
+  const score = recomputeCanonicalTotal(components);
 
   return {
     score,
     components,
     weights: CANONICAL_WEIGHTS,
+    effectiveWeights,
     matchedRequirements: [...new Set(matchedRequirements)],
     missingRequirements: [...new Set(missingRequirements)],
     formalFindings: knockouts.findings.map((f) => ({ label: f.label, satisfied: f.satisfied, severity: f.severity })),
@@ -260,8 +291,9 @@ export function scoreCanonicalAts(
 function emptyResult(state: CanonicalState, reason: string): CanonicalAtsScore {
   return {
     score: 0,
-    components: { skills: 0, experience: 0, structure: 0, formal: 0 },
+    components: { skills: null, experience: null, structure: null, formal: null },
     weights: CANONICAL_WEIGHTS,
+    effectiveWeights: { skills: 0, experience: 0, structure: 0, formal: 0 },
     matchedRequirements: [],
     missingRequirements: [],
     formalFindings: [],
@@ -273,16 +305,34 @@ function emptyResult(state: CanonicalState, reason: string): CanonicalAtsScore {
 
 /** Rekonstrukcja do testu uzgodnienia (pokazana suma ≡ składniki). */
 export function recomputeCanonicalTotal(components: CanonicalComponents): number {
+  const effectiveWeights = calculateEffectiveWeights(components);
   return Math.max(
     0,
     Math.min(
       100,
       Math.round(
-        components.skills * CANONICAL_WEIGHTS.skills +
-          components.experience * CANONICAL_WEIGHTS.experience +
-          components.structure * CANONICAL_WEIGHTS.structure +
-          components.formal * CANONICAL_WEIGHTS.formal
+        (components.skills ?? 0) * effectiveWeights.skills +
+          (components.experience ?? 0) * effectiveWeights.experience +
+          (components.structure ?? 0) * effectiveWeights.structure +
+          (components.formal ?? 0) * effectiveWeights.formal
       )
     )
   );
+}
+
+function calculateEffectiveWeights(components: CanonicalComponents): CanonicalEffectiveWeights {
+  const availableWeight = Object.entries(CANONICAL_WEIGHTS).reduce((sum, [key, weight]) => {
+    return components[key as keyof CanonicalComponents] === null ? sum : sum + weight;
+  }, 0);
+
+  if (availableWeight === 0) {
+    return { skills: 0, experience: 0, structure: 0, formal: 0 };
+  }
+
+  return {
+    skills: components.skills === null ? 0 : CANONICAL_WEIGHTS.skills / availableWeight,
+    experience: components.experience === null ? 0 : CANONICAL_WEIGHTS.experience / availableWeight,
+    structure: components.structure === null ? 0 : CANONICAL_WEIGHTS.structure / availableWeight,
+    formal: components.formal === null ? 0 : CANONICAL_WEIGHTS.formal / availableWeight,
+  };
 }

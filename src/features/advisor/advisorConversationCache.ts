@@ -1,11 +1,11 @@
-import { StorageKeys, readSessionJson, removeSession, writeSessionJson } from '../../lib/storage';
+import { StorageKeys, profileDataKeyFor, readSessionJson, removeSession, writeSessionJson } from '../../lib/storage';
 
 export interface AdvisorChatMessage {
   id: string;
   sender: 'ai' | 'user';
   text: string;
   timestamp: string;
-  source?: 'rules' | 'ollama';
+  source?: 'azure_openai';
   model?: string;
 }
 
@@ -28,13 +28,15 @@ function isMessage(value: unknown): value is AdvisorChatMessage {
     typeof message.text === 'string' &&
     message.text.length <= MAX_TEXT_LENGTH &&
     typeof message.timestamp === 'string' &&
-    (message.source === undefined || message.source === 'rules' || message.source === 'ollama') &&
+    // Cache rozmów z poprzedniej wersji (Ollama/reguły lokalne) odrzucamy:
+    // nie wolno wysłać ich po cichu do nowego dostawcy Azure.
+    (message.source === undefined || message.source === 'azure_openai') &&
     (message.model === undefined || typeof message.model === 'string')
   );
 }
 
-export function readAdvisorConversation(): AdvisorConversationCache {
-  const value = readSessionJson<unknown>(StorageKeys.advisorConversation, EMPTY_CACHE);
+export function readAdvisorConversation(profileId: string): AdvisorConversationCache {
+  const value = readSessionJson<unknown>(profileDataKeyFor(StorageKeys.advisorConversation, profileId), EMPTY_CACHE);
   if (!value || typeof value !== 'object') return EMPTY_CACHE;
   const cache = value as Partial<AdvisorConversationCache>;
   if (!Array.isArray(cache.messages) || !cache.messages.every(isMessage)) return EMPTY_CACHE;
@@ -43,14 +45,14 @@ export function readAdvisorConversation(): AdvisorConversationCache {
   return { messages: cache.messages.slice(-MAX_MESSAGES), draft: cache.draft, savedAt: cache.savedAt };
 }
 
-export function writeAdvisorConversation(messages: AdvisorChatMessage[], draft: string): void {
-  writeSessionJson(StorageKeys.advisorConversation, {
+export function writeAdvisorConversation(profileId: string, messages: AdvisorChatMessage[], draft: string): void {
+  writeSessionJson(profileDataKeyFor(StorageKeys.advisorConversation, profileId), {
     messages: messages.slice(-MAX_MESSAGES),
     draft: draft.slice(0, MAX_TEXT_LENGTH),
     savedAt: Date.now(),
   } satisfies AdvisorConversationCache);
 }
 
-export function clearAdvisorConversation(): void {
-  removeSession(StorageKeys.advisorConversation);
+export function clearAdvisorConversation(profileId: string): void {
+  removeSession(profileDataKeyFor(StorageKeys.advisorConversation, profileId));
 }

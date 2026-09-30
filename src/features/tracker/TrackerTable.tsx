@@ -9,12 +9,14 @@ import {
   DollarSign,
   Briefcase,
   Eye,
+  BookOpen,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { JobApplication } from './ApplicationModal';
 import { StatusSelect, ApplicationStatus } from './StatusSelect';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
+import { getApplicationDisplayInfo } from './applicationDisplay';
 
 export interface TrackerTableProps {
   applications: JobApplication[];
@@ -28,6 +30,7 @@ export interface TrackerTableProps {
   onDelete: (id: string) => void;
   onOpenNotes: (app: JobApplication) => void;
   onViewDocument: (app: JobApplication) => void;
+  onOpenCheatSheet: (app: JobApplication) => void;
   className?: string;
   /** Czy pokazywać pełną siatkę kolumn zaawansowanych, czy zredukowany widok na start */
   isAdvancedMode?: boolean;
@@ -41,6 +44,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
   onDelete,
   onOpenNotes,
   onViewDocument,
+  onOpenCheatSheet,
   className = '',
   isAdvancedMode = false,
 }) => {
@@ -80,7 +84,13 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
       <div className="space-y-2">
         <AnimatePresence mode="popLayout">
           {applications.map((app) => {
-            const initial = app.company.charAt(0).toUpperCase();
+            const {
+              companyMissing: companyIsPlaceholder,
+              companyLabel,
+              positionLabel,
+              applicationLabel,
+              initial,
+            } = getApplicationDisplayInfo(app);
             const isHighlighted = app.id === highlightApplicationId;
 
             return (
@@ -107,7 +117,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                       </div>
                       <div className="min-w-0">
                         <span className="truncate font-sans text-sm font-bold text-ink block">
-                          {app.company}
+                          {companyLabel}
                         </span>
                         {app.jobUrl && (
                           <a
@@ -126,13 +136,25 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     {/* 2. Position */}
                     <div className="col-span-3 min-w-0">
                       <span className="truncate text-xs font-semibold text-ink/90 block">
-                        {app.position}
+                        {positionLabel}
                       </span>
-                      {app.documentSnapshot?.exportedCv && (
-                        <span className="mt-1 inline-flex max-w-full truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
-                          CV: {app.documentSnapshot.exportedCv.templateName}
-                        </span>
-                      )}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {app.documentSnapshot?.exportedCv && (
+                          <span className="inline-flex max-w-full truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
+                            CV: {app.documentSnapshot.exportedCv.templateName}
+                          </span>
+                        )}
+                        {app.documentSnapshot?.jobOfferSnapshot.description?.trim() && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenCheatSheet(app)}
+                            className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[10px] font-semibold text-brand-fg hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                            aria-label={`Otwórz ściągę na rozmowę: ${positionLabel || companyLabel}`}
+                          >
+                            <BookOpen className="h-3 w-3" /> Ściąga
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* 3. Salary */}
@@ -166,7 +188,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="truncate font-sans text-sm font-bold text-ink">
-                            {app.company}
+                            {companyLabel}
                           </span>
                           {app.jobUrl && (
                             <a
@@ -182,12 +204,22 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                         </div>
                         <div className="flex flex-wrap items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted font-medium">
-                            {app.position}
+                            {positionLabel}
                           </span>
                           {app.documentSnapshot?.exportedCv && (
                             <span className="inline-flex truncate rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-brand-fg">
                               CV: {app.documentSnapshot.exportedCv.templateName}
                             </span>
+                          )}
+                          {app.documentSnapshot?.jobOfferSnapshot.description?.trim() && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenCheatSheet(app)}
+                              className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50/60 px-1.5 py-0.5 text-[10px] font-semibold text-brand-fg hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                              aria-label={`Otwórz ściągę na rozmowę: ${positionLabel || companyLabel}`}
+                            >
+                              <BookOpen className="h-3 w-3" /> Ściąga
+                            </button>
                           )}
                         </div>
                       </div>
@@ -229,7 +261,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                         ? 'Podgląd wysłanego CV i dokumentów'
                         : 'Brak zapisanego snapshotu dokumentu'
                     }
-                    aria-label={`Podgląd dokumentu: ${app.company}`}
+                    aria-label={`Podgląd dokumentu: ${applicationLabel}`}
                   >
                     <Eye className="h-3.5 w-3.5" />
                   </button>
@@ -242,7 +274,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                       app.notes ? 'text-brand-fg bg-brand-50/50 border-brand-200' : ''
                     }`}
                     title={app.notes ? 'Zobacz notatki' : 'Dodaj notatkę'}
-                    aria-label={`${app.notes ? 'Zobacz notatki' : 'Dodaj notatkę'}: ${app.company}`}
+                    aria-label={`${app.notes ? 'Zobacz notatki' : 'Dodaj notatkę'}: ${applicationLabel}`}
                   >
                     <FileText className="h-4 w-4" />
                     {app.notes && (
@@ -256,7 +288,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     onClick={() => onEdit(app)}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:bg-surface hover:text-ink"
                     title="Edytuj zgłoszenie"
-                    aria-label={`Edytuj zgłoszenie: ${app.company}`}
+                    aria-label={`Edytuj zgłoszenie: ${applicationLabel}`}
                   >
                     <Edit2 className="h-3.5 w-3.5" />
                   </button>
@@ -267,7 +299,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     onClick={() => onDelete(app.id)}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-line text-muted transition-colors hover:border-danger/30 hover:bg-danger-soft hover:text-danger-fg"
                     title="Usuń zgłoszenie"
-                    aria-label={`Usuń zgłoszenie: ${app.company}`}
+                    aria-label={`Usuń zgłoszenie: ${applicationLabel}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

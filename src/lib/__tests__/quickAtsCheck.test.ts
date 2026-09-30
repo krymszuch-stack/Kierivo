@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { runQuickAtsCheck, QuickCheckError, MIN_CV_CHARS } from '../quickAtsCheck';
+import { runQuickAtsCheck, extractTopThreeProblems, QuickCheckError, MIN_CV_CHARS } from '../quickAtsCheck';
+import { calculateJobMatch } from '../jobMatcherEngine';
+import type { JobOffer } from '../../types';
 
 const CV = `
 Anna Kowalska
@@ -50,6 +52,23 @@ describe('Szybkie sprawdzenie CV pod ofertę', () => {
     expect(joined).toMatch(/kubernetes|terraform|aws/);
   });
 
+  it('nie zgłasza odmienionej nazwy stanowiska jako brakującej umiejętności', () => {
+    const jd = `Poszukujemy specjalisty wsparcia IT do naszego zespołu.
+Wymagania: znajomość Windows 11, Microsoft 365, Exchange Online, TCP/IP i obsługa klienta.
+Oferujemy stabilne zatrudnienie i pakiet benefitów.`;
+    const result = runQuickAtsCheck(CV, jd);
+
+    expect(result.canonicalResult.missingRequirements.map((item) => item.toLowerCase()))
+      .not.toContain('specjalisty');
+    expect(result.missingSkills.map((item) => item.toLowerCase()))
+      .not.toContain('specjalisty');
+    expect(result.missingSkills.map((item) => item.toLowerCase()))
+      .toEqual(expect.arrayContaining(['exchange online']));
+    expect(result.missingSkills.map((item) => item.toLowerCase()))
+      .toEqual(expect.arrayContaining(['windows 11', 'microsoft 365', 'tcp/ip']));
+    expect(result.canonicalResult.components.skills).toBeLessThan(100);
+  });
+
   it('NIE zgłasza jako brakującej umiejętności, którą CV wprost zawiera', () => {
     // Regresja: nagłówek sekcji stojący w tej samej linii co treść
     // („Umiejętności: Python, Django, …") nie pasował do żadnego wzorca sekcji,
@@ -88,6 +107,77 @@ describe('Szybkie sprawdzenie CV pod ofertę', () => {
     // Ocena musi być powtarzalna — użytkownik, który poprawi CV i uruchomi
     // ponownie, ma widzieć skutek swojej zmiany, a nie szum.
     expect(runQuickAtsCheck(CV, JD).ats.overallScore).toBe(runQuickAtsCheck(CV, JD).ats.overallScore);
+  });
+
+  it('pokazuje tę samą miarę kanoniczną co tryb zaawansowany dla CV/oferty', () => {
+    const quick = runQuickAtsCheck(CV, JD);
+    const offer: JobOffer = {
+      id: 'synthetic-parity',
+      title: '',
+      company: '',
+      salary: '',
+      location: '',
+      description: JD,
+      requirements: [],
+      remote: false,
+      portal: 'synthetic-test',
+      techStack: [],
+    };
+    const advanced = calculateJobMatch(quick.vault, offer);
+
+    expect(quick.canonicalResult).toEqual(advanced.canonicalResult);
+    expect(quick.canonicalResult.score).toBe(advanced.tailoredResume.atsScore);
+  });
+
+  it('lista braków szybkiego ekranu nie uznaje SAP z nazwy pracodawcy za umiejętność', () => {
+    const cv = `
+Alicja Testowa
+alicia@example.test
+Specjalistka wsparcia operacyjnego
+
+Doświadczenie zawodowe:
+SAP Polska - Specjalistka obsługi klienta, 2021 - 2025
+Obsługa zgłoszeń, organizacja dokumentacji oraz kontakt z klientami.
+
+Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy.
+
+Wykształcenie:
+AWS Academy Kraków - Technik logistyk, 2017 - 2021
+`;
+    const jd = `Wymagania: znajomość SAP i AWS do obsługi systemu firmowego.
+Doświadczenie we wsparciu użytkowników i sprawnej komunikacji z zespołem.`;
+    const result = runQuickAtsCheck(cv, jd);
+
+    expect(result.canonicalResult.missingRequirements).toContain('sap');
+    expect(result.canonicalResult.missingRequirements).toContain('aws');
+    expect(result.canonicalResult.components.skills).toBe(0);
+    expect(result.vault.skillsMatrix.hardSkills).not.toContain('SAP');
+    expect(result.vault.skillsMatrix.toolsAndTech).not.toContain('SAP');
+    expect(result.vault.skillsMatrix.hardSkills).not.toContain('AWS');
+    expect(result.vault.skillsMatrix.toolsAndTech).not.toContain('AWS');
+    expect(result.missingSkills.map((skill) => skill.toLowerCase())).toEqual(expect.arrayContaining(['sap', 'aws']));
+    const problemText = extractTopThreeProblems(result).map((problem) => problem.title.toLowerCase()).join(' ');
+    expect(problemText).toContain('sap');
+    expect(problemText).toContain('aws');
+
+    const cvWithExplicitEvidence = cv.replace(
+      'Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy.',
+      'Umiejętności: SAP, AWS, obsługa klienta, dokumentacja, komunikacja, organizacja pracy.'
+    );
+    const matchedResult = runQuickAtsCheck(cvWithExplicitEvidence, jd);
+    expect(matchedResult.canonicalResult.components.skills).toBe(100);
+    expect(matchedResult.missingSkills.map((skill) => skill.toLowerCase())).not.toEqual(
+      expect.arrayContaining(['sap', 'aws'])
+    );
+  });
+
+  it('nie zamienia ogłoszenia bez wykrytych wymagań na wynik zero procent', () => {
+    const result = runQuickAtsCheck(
+      CV,
+      'Szukamy osoby do miłego zespołu. Oferujemy owoce, kawę, spokojne miejsce pracy i przyjazną atmosferę dla całego zespołu.'
+    );
+
+    expect(result.canonicalResult.state).toBe('NO_REQUIREMENTS_DETECTED');
   });
 
   it('lepiej dopasowane CV dostaje wyższy wynik', () => {
@@ -157,7 +247,7 @@ Diagnostyka pieców gazowych, lutowanie, obsługa manometru.`;
 
   const JD_MONTER = `Poszukujemy serwisanta kotłów gazowych do obsługi klientów indywidualnych.
 Wymagane uprawnienia SEP G3 oraz aktualny certyfikat F-Gaz.
-Konieczne prawo jazdy kat. B. Praca w systemie zmianowym.
+Konieczne prawo jazdy kat. B. Wymagana dyspozycyjność do pracy w systemie zmianowym.
 Mile widziane doświadczenie z markami Junkers i Vaillant.`;
 
   it('wypisuje uprawnienia, których stary audyt nie widział', () => {

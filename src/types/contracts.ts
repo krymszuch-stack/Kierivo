@@ -28,6 +28,8 @@ export type ParseJdInput = z.infer<typeof parseJdSchema>;
  * po cichu obcina dane zapisane przez nowszy front.
  */
 export const vaultPayloadSchema = z.object({
+  /** `null` oznacza: klient odczytał pustą tabelę i próbuje wstawić pierwszy wiersz. */
+  expectedUpdatedAt: z.string().datetime().nullable(),
   vault: z.object({
     schemaVersion: z.number().int().positive().optional(),
     version: z.string(),

@@ -108,7 +108,11 @@ function contentToPrompt(contents: unknown): string {
 }
 
 /** Wspólny punkt wywołań: zachowuje kontrakt dotychczasowych tras i pomiar tokenów. */
-export async function generateWithUsage(params: Record<string, unknown>, context: string): Promise<ModelResponse> {
+export async function generateWithUsage(
+  params: Record<string, unknown>,
+  context: string,
+  options: { recordUsage?: boolean } = {}
+): Promise<ModelResponse> {
   const config = loadConfig();
   const generation = (params.config as GenerationConfig | undefined) ?? {};
   const prompt = contentToPrompt(params.contents);
@@ -149,14 +153,14 @@ export async function generateWithUsage(params: Record<string, unknown>, context
   );
 
   const usage = response.usage;
-  if (usage) {
+  if (usage && options.recordUsage !== false) {
     recordUsage({
       context,
       model,
       promptTokens: usage.prompt_tokens ?? 0,
       outputTokens: usage.completion_tokens ?? 0,
     });
-  } else {
+  } else if (!usage) {
     console.warn(`[ai] Odpowiedź Azure OpenAI bez metadanych użycia (${context}).`);
   }
 

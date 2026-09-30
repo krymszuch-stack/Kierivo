@@ -101,13 +101,25 @@ describe('DrillEngine (Tryb Mock Drill Mode - mock-drill-mode-v1)', () => {
         recordedAt: new Date().toISOString(),
       };
 
-      saveDrillAttempt(dummyAttempt);
-      const history = loadDrillHistory();
+      saveDrillAttempt('profile-a', dummyAttempt);
+      const history = loadDrillHistory('profile-a');
       expect(history.length).toBe(1);
       expect(history[0].id).toBe('drill_123');
 
-      clearDrillHistory();
-      expect(loadDrillHistory().length).toBe(0);
+      clearDrillHistory('profile-a');
+      expect(loadDrillHistory('profile-a').length).toBe(0);
+    });
+
+    it('nie ujawnia transkrypcji ćwiczeń innemu profilowi', () => {
+      const attempt: DrillAttemptRecord = {
+        id: 'private-attempt', questionId: 'q', questionText: 'Pytanie',
+        transcript: 'Prywatna odpowiedź', durationSec: 10,
+        scorecard: analyzeDrillResponse('Prywatna odpowiedź'), recordedAt: new Date().toISOString(),
+      };
+      saveDrillAttempt('profile-a', attempt);
+      expect(loadDrillHistory('profile-b')).toEqual([]);
+      clearDrillHistory('profile-b');
+      expect(loadDrillHistory('profile-a')).toEqual([attempt]);
     });
   });
 });

@@ -2,6 +2,45 @@ import { MasterVault } from '../../types';
 import { stripSensitiveFields, identifyingValues, pseudonymize, assertNoPii } from '../pseudonymize';
 import { generateWithUsage, truncateForModel, parseModelJson } from '../geminiClient';
 import { loadConfig } from '../config';
+import { hasMeasurableMetric } from '../../lib/consistencyGuard/timelineAuditor';
+import { z } from 'zod';
+
+const verificationReportSchema = z.object({
+  overallScore: z.number().finite().min(0).max(100),
+  verdict: z.enum(['READY_TO_APPLY', 'MINOR_IMPROVEMENTS', 'CRITICAL_FIXES_NEEDED']),
+  summary: z.string().min(1),
+  atsLoop: z.object({
+    atsScore: z.number().finite().min(0).max(100),
+    parsedRole: z.string(),
+    recognizedKeywords: z.array(z.string()),
+    missingCriticalKeywords: z.array(z.string()),
+    atsFormatRisks: z.array(z.object({
+      severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+      issue: z.string(),
+      fix: z.string(),
+    })),
+  }),
+  recruiterLoop: z.object({
+    recruiterScore: z.number().finite().min(0).max(100),
+    headlineClarity: z.enum(['POOR', 'AVERAGE', 'EXCELLENT']),
+    strengthsFound: z.array(z.string()),
+    weaknessesOrFluff: z.array(z.string()),
+  }),
+  logicComplianceLoop: z.object({
+    consistencyScore: z.number().finite().min(0).max(100),
+    chronologyValid: z.boolean(),
+    timelineAnomalies: z.array(z.string()),
+    logicalInconsistencies: z.array(z.string()),
+    privacyRisks: z.array(z.string()),
+  }),
+  actionableRecommendations: z.array(z.object({
+    priority: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    category: z.enum(['ATS', 'RECRUITER', 'LOGIC', 'COMPLIANCE']),
+    title: z.string().min(1),
+    description: z.string(),
+    suggestedFix: z.string().optional(),
+  })),
+});
 
 export interface VerifyCvOptions {
   vault: MasterVault;
@@ -27,15 +66,15 @@ export interface VerificationRecruiterLoop {
   headlineClarity: 'POOR' | 'AVERAGE' | 'EXCELLENT';
   strengthsFound: string[];
   weaknessesOrFluff: string[]; // wykryte ogólniki bez metryk
-  achievementMetricRatePct: number; // % punktów z liczbami/%
+  achievementMetricRatePct: number | null; // wyliczone lokalnie; null bez punktów doświadczenia
 }
 
 export interface VerificationLogicComplianceLoop {
-  complianceScore: number; // 0-100
+  consistencyScore: number; // subiektywna ocena modelu, nie ocena prawna
   chronologyValid: boolean;
   timelineAnomalies: string[]; // np. luki w zatrudnieniu, nakładające się daty
   logicalInconsistencies: string[]; // sprzeczne deklaracje
-  rodoCompliant: boolean;
+  rodoCompliant: null; // tekst klauzuli nie jest wejściem tej analizy
   privacyRisks: string[];
 }
 
@@ -60,7 +99,7 @@ export interface CvVerificationReport {
  *
  * Pętla 1: ATS Parser Gate (symulacja ekstrakcji słów kluczowych i podatności formatowania).
  * Pętla 2: Recruiter Eye (6-sekundowy skan, siła nagłówka, gęstość metryk liczbowych vs ogólniki).
- * Pętla 3: Logic & Compliance (spójność chronologii dat, brak sprzeczności, weryfikacja RODO).
+ * Pętla 3: Logic & Consistency (chronologia i spójność danych profilu).
  */
 export async function verifyCvWithTripleLoop(options: VerifyCvOptions): Promise<CvVerificationReport> {
   const { vault, targetRole = '', targetCompany = '', jobDescription = '' } = options;
@@ -90,8 +129,8 @@ export async function verifyCvWithTripleLoop(options: VerifyCvOptions): Promise<
     .filter(Boolean);
 
   const candidatePayload = {
-    targetRole: targetRole || safeVault.personalInfo?.title || 'Specjalista',
-    targetCompany: targetCompany || 'Firma Rekrutująca',
+    targetRole: targetRole?.trim() || safeVault.personalInfo?.title?.trim() || 'nie podano',
+    targetCompany: targetCompany?.trim() || 'nie podano',
     summary: summary.text,
     skills: skillsList,
     certifications: certsList,
@@ -102,7 +141,21 @@ export async function verifyCvWithTripleLoop(options: VerifyCvOptions): Promise<
     languages: safeVault.profiler?.languages || [],
   };
 
-  const jdSnippet = jobDescription ? truncateForModel(jobDescription, 12_000) : 'Brak dedykowanego ogłoszenia (audyt profilu uniwersalnego)';
+  // To jest licznik z treści profilu, nie ocena modelu. Przy braku punktów
+  // pokazujemy brak danych zamiast fikcyjnego 0%.
+  const achievementPoints = (safeVault.history || [])
+    .flatMap((experience) => experience.highlights || [])
+    .filter((point) => Boolean(point.text?.trim() || point.metric?.trim()));
+  const achievementMetricRatePct = achievementPoints.length === 0
+    ? null
+    : Math.round(
+      (achievementPoints.filter((point) => hasMeasurableMetric(point.text, point.metric)).length /
+        achievementPoints.length) * 100
+    );
+
+  const jdSnippet = jobDescription?.trim()
+    ? truncateForModel(jobDescription, 12_000)
+    : 'Nie podano treści ogłoszenia. Nie wyciągaj wniosków o dopasowaniu do konkretnej oferty.';
 
   const prompt = `
 Jesteś bezlitosnym, wielopoziomowym audytorem rekrutacyjnym CV pracującym dla nowoczesnych systemów ATS i czołowych agencji headhunterskich w 2026 roku.
@@ -133,14 +186,12 @@ Wykonaj audyt w trzech niezależnych pętlach i zwróć czysty JSON zgodny z pon
     "headlineClarity": "POOR" | "AVERAGE" | "EXCELLENT",
     "strengthsFound": string[],
     "weaknessesOrFluff": string[],
-    "achievementMetricRatePct": number (szacowany % punktów zawierających wymierne liczby/metryki/%)
   },
   "logicComplianceLoop": {
-    "complianceScore": number (0-100),
+    "consistencyScore": number (subiektywna ocena modelu, 0-100),
     "chronologyValid": boolean,
     "timelineAnomalies": string[],
     "logicalInconsistencies": string[],
-    "rodoCompliant": boolean,
     "privacyRisks": string[]
   },
   "actionableRecommendations": [
@@ -182,40 +233,54 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
     'verify-cv-triple-loop'
   );
 
-  const parsed = parseModelJson<CvVerificationReport>(response.text, 'verify-cv-triple-loop');
+  const candidateReport = parseModelJson<unknown>(response.text, 'verify-cv-triple-loop');
+  const validation = verificationReportSchema.safeParse(candidateReport);
+  if (!validation.success) {
+    // Brak oceny lub flagi zgodności nie oznacza wyniku neutralnego ani pozytywnego.
+    // Odrzucamy niekompletną odpowiedź zamiast maskować błąd modelu stałymi.
+    throw Object.assign(new Error('Model zwrócił niekompletny lub nieprawidłowy raport weryfikacji CV.'), {
+      status: 502,
+      expose: true,
+    });
+  }
+  const parsed = validation.data;
 
-  // Walidacja i normalizacja wyniku
-  const normalizedOverall = Math.min(Math.max(Number(parsed.overallScore) || 70, 0), 100);
-  const normalizedAts = Math.min(Math.max(Number(parsed.atsLoop?.atsScore) || 70, 0), 100);
-  const normalizedRecruiter = Math.min(Math.max(Number(parsed.recruiterLoop?.recruiterScore) || 70, 0), 100);
-  const normalizedCompliance = Math.min(Math.max(Number(parsed.logicComplianceLoop?.complianceScore) || 85, 0), 100);
+  // Zera są prawidłową wartością. Nie używamy `||` ani domyślnych ocen,
+  // bo brak wyniku został już odrzucony przez walidator schematu.
+  const normalizedOverall = parsed.overallScore;
+  const normalizedAts = parsed.atsLoop.atsScore;
+  const normalizedRecruiter = parsed.recruiterLoop.recruiterScore;
+  const normalizedConsistency = parsed.logicComplianceLoop.consistencyScore;
 
   return {
     overallScore: normalizedOverall,
-    verdict: parsed.verdict || (normalizedOverall >= 85 ? 'READY_TO_APPLY' : normalizedOverall >= 60 ? 'MINOR_IMPROVEMENTS' : 'CRITICAL_FIXES_NEEDED'),
-    summary: parsed.summary || 'Audyt profilu zakończony.',
+    // Jedna reguła progów utrzymuje werdykt zgodny z wynikiem liczbowym.
+    verdict: normalizedOverall >= 85 ? 'READY_TO_APPLY' : normalizedOverall >= 60 ? 'MINOR_IMPROVEMENTS' : 'CRITICAL_FIXES_NEEDED',
+    summary: parsed.summary,
     atsLoop: {
       atsScore: normalizedAts,
-      parsedRole: parsed.atsLoop?.parsedRole || candidatePayload.targetRole,
-      recognizedKeywords: Array.isArray(parsed.atsLoop?.recognizedKeywords) ? parsed.atsLoop.recognizedKeywords : [],
-      missingCriticalKeywords: Array.isArray(parsed.atsLoop?.missingCriticalKeywords) ? parsed.atsLoop.missingCriticalKeywords : [],
-      atsFormatRisks: Array.isArray(parsed.atsLoop?.atsFormatRisks) ? parsed.atsLoop.atsFormatRisks : [],
+      parsedRole: parsed.atsLoop.parsedRole,
+      recognizedKeywords: parsed.atsLoop.recognizedKeywords,
+      missingCriticalKeywords: parsed.atsLoop.missingCriticalKeywords,
+      atsFormatRisks: parsed.atsLoop.atsFormatRisks,
     },
     recruiterLoop: {
       recruiterScore: normalizedRecruiter,
-      headlineClarity: parsed.recruiterLoop?.headlineClarity || 'AVERAGE',
-      strengthsFound: Array.isArray(parsed.recruiterLoop?.strengthsFound) ? parsed.recruiterLoop.strengthsFound : [],
-      weaknessesOrFluff: Array.isArray(parsed.recruiterLoop?.weaknessesOrFluff) ? parsed.recruiterLoop.weaknessesOrFluff : [],
-      achievementMetricRatePct: Number(parsed.recruiterLoop?.achievementMetricRatePct) || 50,
+      headlineClarity: parsed.recruiterLoop.headlineClarity,
+      strengthsFound: parsed.recruiterLoop.strengthsFound,
+      weaknessesOrFluff: parsed.recruiterLoop.weaknessesOrFluff,
+      achievementMetricRatePct,
     },
     logicComplianceLoop: {
-      complianceScore: normalizedCompliance,
-      chronologyValid: parsed.logicComplianceLoop?.chronologyValid ?? true,
-      timelineAnomalies: Array.isArray(parsed.logicComplianceLoop?.timelineAnomalies) ? parsed.logicComplianceLoop.timelineAnomalies : [],
-      logicalInconsistencies: Array.isArray(parsed.logicComplianceLoop?.logicalInconsistencies) ? parsed.logicComplianceLoop.logicalInconsistencies : [],
-      rodoCompliant: parsed.logicComplianceLoop?.rodoCompliant ?? true,
-      privacyRisks: Array.isArray(parsed.logicComplianceLoop?.privacyRisks) ? parsed.logicComplianceLoop.privacyRisks : [],
+      consistencyScore: normalizedConsistency,
+      chronologyValid: parsed.logicComplianceLoop.chronologyValid,
+      timelineAnomalies: parsed.logicComplianceLoop.timelineAnomalies,
+      logicalInconsistencies: parsed.logicComplianceLoop.logicalInconsistencies,
+      // MasterVault nie zawiera tekstu klauzuli, więc model nie może ocenić jej
+      // zgodności prawnej na podstawie samego profilu.
+      rodoCompliant: null,
+      privacyRisks: parsed.logicComplianceLoop.privacyRisks,
     },
-    actionableRecommendations: Array.isArray(parsed.actionableRecommendations) ? parsed.actionableRecommendations : [],
+    actionableRecommendations: parsed.actionableRecommendations,
   };
 }

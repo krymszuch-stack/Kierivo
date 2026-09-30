@@ -4,6 +4,7 @@ import { ApplicationStatus, JobApplication } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input, Textarea, Select } from '../../components/ui/Field';
 import { Button } from '../../components/ui/Button';
+import { getApplicationDisplayInfo } from './applicationDisplay';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -26,14 +27,15 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const [position, setPosition] = useState('');
   const [salary, setSalary] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [status, setStatus] = useState<ApplicationStatus>('Wysłana');
+  const [status, setStatus] = useState<ApplicationStatus>('Do wysłania');
   const [jobUrl, setJobUrl] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
     if (initialData) {
-      setCompany(initialData.company);
-      setPosition(initialData.position);
+      const display = getApplicationDisplayInfo(initialData);
+      setCompany(display.company);
+      setPosition(display.position);
       setSalary(initialData.salary || '');
       setDate(initialData.date || new Date().toISOString().split('T')[0]);
       setStatus(initialData.status);
@@ -44,7 +46,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       setPosition('');
       setSalary('');
       setDate(new Date().toISOString().split('T')[0]);
-      setStatus('Wysłana');
+      setStatus('Do wysłania');
       setJobUrl('');
       setNotes('');
     }
@@ -52,7 +54,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!company.trim() || !position.trim()) return;
+    if (!position.trim() || (!initialData && !company.trim())) return;
 
     onSave({
       ...(initialData || {}),
@@ -83,7 +85,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             value={company}
             onChange={(e) => setCompany(e.target.value)}
             placeholder="np. Snowflake, Google, SoftwarePlant"
-            required
+            required={!initialData}
           />
 
           <Input

@@ -52,6 +52,65 @@ function cleanedLines(rawText: string): string[] {
     .filter((line) => line && !UI_LINES.some((pattern) => pattern.test(line)));
 }
 
+function analyzePastedOfferHeader(rawText: string): {
+  title: string;
+  company: string;
+  body: string;
+} {
+  const lines = cleanedLines(rawText);
+  const firstLine = lines[0] || '';
+  // Wklejone treści często sklejają tytuł z nagłówkiem następnej sekcji.
+  // Utnij dopiero przy znanym znaczniku, zamiast odrzucać cały wiersz za jego
+  // długość — inaczej typowe „Stanowisko. Wymagania: ...” zostawia pusty tytuł.
+  const titleCandidate = firstLine
+    .split(/\s+(?=(?:wymagania|nasze wymagania|obowiązki|zakres obowiązków|mile widziane|oferujemy)\s*[:—-]?\s)/i)[0]
+    .replace(/[\s:;,.–—-]+$/u, '')
+    .trim();
+  const title = titleCandidate.length > 0 && titleCandidate.length <= 80 &&
+    !/^(?:wymagania|obowiązki|oferujemy)\b/i.test(titleCandidate)
+    ? titleCandidate
+    : '';
+  if (!title) return { title: '', company: '', body: rawText };
+
+  const explicitCompanyEntry = lines.slice(1, 6).map((line, index) => ({
+    index: index + 1,
+    company: line.match(/^firma\s*:\s*(.{2,100})$/i)?.[1]?.trim() ||
+      line.match(/^(.{2,100}?)\s+o firmie$/i)?.[1]?.trim() || '',
+  })).find((entry) => entry.company);
+  if (explicitCompanyEntry) {
+    return {
+      title,
+      company: explicitCompanyEntry.company,
+      body: lines.filter((_, index) => index !== 0 && index !== explicitCompanyEntry.index).join('\n'),
+    };
+  }
+
+  // Samotna druga linia jest firmą tylko wtedy, gdy po niej zaczyna się
+  // rozpoznawalna sekcja oferty; zwykłe zdanie opisu nie jest metadanymi.
+  const candidate = lines[1] || '';
+  const nextLine = lines[2] || '';
+  const startsOfferBody = /^(?:wymagania|nasze wymagania|obowiązki|zakres obowiązków|mile widziane)\b/i.test(nextLine);
+  const looksLikeMetadata = /(?:@|\d{3,}|\b(?:warszawa|kraków|wrocław|gdańsk|poznań|zdalnie|hybrydowo|stacjonarnie)\b)/i.test(candidate);
+  const looksLikeDescription = /^(?:szukamy|poszukujemy|rekrutujemy|dołącz|dolacz|oferujemy|jesteśmy|jestesmy)\b/i.test(candidate);
+  const company = startsOfferBody && candidate.length <= 100 && !looksLikeMetadata && !looksLikeDescription ? candidate : '';
+  return {
+    title,
+    company,
+    body: company ? lines.filter((_, index) => index !== 0 && index !== 1).join('\n') : lines.join('\n'),
+  };
+}
+
+/** Wyciąga czytelny nagłówek z wklejonej oferty do szybkiego startu. */
+export function inferPastedOfferHeader(rawText: string): { title: string; company: string } {
+  const { title, company } = analyzePastedOfferHeader(rawText);
+  return { title, company };
+}
+
+/** Usuwa wyłącznie jednoznacznie rozpoznany nagłówek, by nie liczyć go jako wymagania. */
+export function stripInferredPastedOfferHeader(rawText: string): string {
+  return analyzePastedOfferHeader(rawText).body;
+}
+
 function metadata(lines: string[]): { location: string; salary: string; workMode: string } {
   return {
     location: lines.find((line) => LOCATION.test(line)) || '',

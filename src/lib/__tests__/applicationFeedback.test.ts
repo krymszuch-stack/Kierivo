@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildApplicationFromPending,
+  buildExistingApplicationFeedbackPatch,
   buildFeedbackPayload,
+  findExistingApplicationForPending,
   guessChannel,
   noteForFailure,
   PendingApplication,
@@ -124,6 +126,80 @@ describe('buildApplicationFromPending', () => {
       fit: 'ats-friendly',
       exportedAt: '2026-09-13T10:00:00.000Z',
     });
+  });
+});
+
+describe('findExistingApplicationForPending', () => {
+  const oldOpening = {
+    ...buildApplicationFromPending(pending, 'Do wysłania'),
+    id: 'old-opening',
+    jobUrl: 'https://jobs.example/old',
+  };
+  const exactOpening = {
+    ...buildApplicationFromPending(pending, 'Do wysłania'),
+    id: pending.jobId,
+    jobUrl: 'https://jobs.example/current',
+  };
+  const currentPending = {
+    ...pending,
+    sourceUrl: 'https://jobs.example/current',
+  };
+
+  it('priorytetyzuje dokładne ID nad wcześniejszym wpisem tej samej firmy i stanowiska', () => {
+    expect(findExistingApplicationForPending([oldOpening, exactOpening], currentPending))
+      .toBe(exactOpening);
+  });
+
+  it('dopasowuje wpis ręczny tylko po firmie, stanowisku i tym samym URL', () => {
+    const manual = { ...oldOpening, id: 'manual-1', jobUrl: currentPending.sourceUrl };
+    expect(findExistingApplicationForPending([manual], currentPending)).toBe(manual);
+  });
+
+  it('nie scala różnych ogłoszeń o tej samej nazwie ani wpisów bez URL', () => {
+    expect(findExistingApplicationForPending([oldOpening], currentPending)).toBeUndefined();
+    expect(findExistingApplicationForPending([{
+      ...oldOpening,
+      jobUrl: undefined,
+    }], { ...currentPending, sourceUrl: undefined })).toBeUndefined();
+  });
+});
+
+describe('buildExistingApplicationFeedbackPatch', () => {
+  const snapshotA = { schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' } as never;
+  const snapshotB = { schemaVersion: 1, createdAt: '2026-02-01T00:00:00.000Z' } as never;
+  const candidate = buildApplicationFromPending({ ...pending, documentSnapshot: snapshotB }, 'Wysłana');
+
+  it('zachowuje postęp i historyczną migawkę przy ponownym eksporcie', () => {
+    const existing = {
+      ...buildApplicationFromPending(pending, 'Rozmowa'),
+      notes: 'Rekruter oddzwonił w czwartek.',
+      documentSnapshot: snapshotA,
+    };
+
+    expect(buildExistingApplicationFeedbackPatch(existing, candidate, 'Wysłana')).toEqual({
+      status: 'Rozmowa',
+      notes: 'Rekruter oddzwonił w czwartek.',
+      documentSnapshot: snapshotA,
+    });
+  });
+
+  it('awansuje wpis roboczy i dołącza snapshot tylko wtedy, gdy brakowało go', () => {
+    const existing = buildApplicationFromPending(pending, 'Do wysłania');
+    expect(buildExistingApplicationFeedbackPatch(existing, candidate, 'Wysłana')).toMatchObject({
+      status: 'Wysłana',
+      documentSnapshot: snapshotB,
+    });
+  });
+
+  it('dopina powód niepowodzenia do notatek zamiast je usuwać i nie dubluje tej samej linii', () => {
+    const existing = { ...buildApplicationFromPending(pending, 'Wysłana'), notes: 'II etap: rozmowa techniczna.' };
+    const note = 'Nie wysłano: oferta wygasła / błąd linku.';
+    const first = buildExistingApplicationFeedbackPatch(existing, candidate, 'Do wysłania', note);
+    const second = buildExistingApplicationFeedbackPatch({ ...existing, ...first }, candidate, 'Do wysłania', note);
+
+    expect(first.notes).toBe(`II etap: rozmowa techniczna.\n${note}`);
+    expect(second.notes).toBe(first.notes);
+    expect(first.status).toBe('Wysłana');
   });
 });
 

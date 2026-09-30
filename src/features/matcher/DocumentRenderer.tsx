@@ -24,7 +24,7 @@ import {
   Tag,
   ShieldCheck,
 } from 'lucide-react';
-import { MasterVault, TailoredResume, HighlightMetric, GeneratedCvExport } from '../../types';
+import { MasterVault, TailoredResume, HighlightMetric, CvExportEvent, GeneratedCvExport } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
@@ -38,6 +38,11 @@ import { saveCV, PRESET_TAGS } from '../../lib/cvLibraryStorage';
 import { Modal } from '../../components/ui/Modal';
 import { Cv360VerifierModal } from './Cv360VerifierModal';
 import { CVExportModal, CVModalMode } from '../../components/ui/CVExportModal';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
+import { applyManualCvOverrides, buildCvPlainText } from '../../lib/cvPlainText';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
+import { ALL_LICENSES } from '../../data/licenses';
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -47,7 +52,7 @@ export interface DocumentRendererProps {
    * Dokument opuścił aplikację (druk/PDF albo skopiowana treść). Woła to ten,
    * kto wie, o którą ofertę chodzi — renderer sam tego nie wie.
    */
-  onExported?: (exportedCv: GeneratedCvExport) => void;
+  onExported?: (event: CvExportEvent) => void;
   className?: string;
 }
 
@@ -68,6 +73,8 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   onExported,
   className = '',
 }) => {
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeTemplateId, setActiveTemplateId] = useState('cv-minimal');
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0].hex);
   const [isCopied, setIsCopied] = useState(false);
@@ -93,6 +100,11 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
   // Lokalna robocza wersja dokumentu z możliwością edycji przed drukiem
   const [docVault, setDocVault] = useState<MasterVault>(() => JSON.parse(JSON.stringify(vault)));
+  const [manualContentOverrides, setManualContentOverrides] = useState<Partial<{ title: string; summary: string }>>({});
+  const effectiveTailoredResume = useMemo(
+    () => applyManualCvOverrides(tailoredResume, manualContentOverrides),
+    [tailoredResume, manualContentOverrides],
+  );
 
   const hasChanges = useMemo(() => {
     return JSON.stringify(docVault) !== JSON.stringify(vault);
@@ -104,6 +116,15 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const history = docVault.history || [];
   const education = docVault.education || [];
   const hardSkills = docVault.skillsMatrix?.hardSkills || [];
+  const additionalSkillGroups = [
+    { title: 'Narzędzia i technologie', items: docVault.skillsMatrix?.toolsAndTech || [] },
+    { title: 'Umiejętności interpersonalne', items: docVault.skillsMatrix?.softSkills || [] },
+  ];
+  const certifications = docVault.skillsMatrix?.certifications || [];
+  const languages = docVault.profiler?.languages || [];
+  const licenseLabels = (docVault.profiler?.licenses || []).map((id) =>
+    ALL_LICENSES.find((license) => license.id === id)?.label || id
+  );
   const activeTemplate = findCvTemplate(activeTemplateId);
   const templateAssessment = assessCvTemplate(activeTemplate);
   const previewValue = (value: string | undefined, hint: string) => value ||
@@ -122,7 +143,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     }
     setTimeout(() => {
       window.print();
-      onExported?.(buildExportMetadata());
+      onExported?.({ exportedCv: buildExportMetadata(), vault: docVault, tailoredResume: effectiveTailoredResume });
     }, 40);
   };
 
@@ -132,7 +153,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     try {
       await downloadSemanticPdf({
         vault: docVault,
-        tailoredResume,
+        tailoredResume: effectiveTailoredResume,
         theme: pdfTheme,
         layout: pdfLayout,
         targetPages: pdfTargetPages,
@@ -142,10 +163,14 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
         variant: 'success',
       });
       onExported?.({
-        templateId: `semantic-${pdfTheme}`,
-        templateName: `Dual-Layer ${pdfTheme} (${pdfLayout})`,
-        fit: 'ats-friendly',
-        exportedAt: new Date().toISOString(),
+        exportedCv: {
+          templateId: `semantic-${pdfTheme}`,
+          templateName: `Dual-Layer ${pdfTheme} (${pdfLayout})`,
+          fit: 'ats-friendly',
+          exportedAt: new Date().toISOString(),
+        },
+        vault: docVault,
+        tailoredResume: effectiveTailoredResume,
       });
     } catch (err) {
       showToast('Błąd generowania PDF', {
@@ -158,12 +183,12 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   };
 
   const openSaveLibraryModal = () => {
-    const role = tailoredResume?.targetJobTitle || docVault.personalInfo?.title || 'CV';
+    const role = effectiveTailoredResume?.targetJobTitle || docVault.personalInfo?.title || 'CV';
     const company = tailoredResume?.companyName ? ` — ${tailoredResume.companyName}` : '';
     const defaultTitle = `${docVault.personalInfo?.fullName ? `${docVault.personalInfo.fullName} — ` : ''}${role}${company} (${new Date().toLocaleDateString('pl-PL')})`;
     setSaveLibraryTitle(defaultTitle);
     const initialTags: string[] = [pdfTargetPages === 1 ? '1-stronicowe' : '2-stronicowe'];
-    if (tailoredResume?.atsScore) {
+    if (effectiveTailoredResume?.atsScore) {
       initialTags.push('Zweryfikowane ATS');
     }
     setSaveLibraryTags(initialTags);
@@ -172,17 +197,17 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
   const handleConfirmSaveToLibrary = () => {
     const finalTitle = saveLibraryTitle.trim() || 'Moje CV';
-    saveCV({
+    saveCV(profileId, {
       title: finalTitle,
       tags: saveLibraryTags,
       theme: pdfTheme,
       layout: pdfLayout,
       targetPages: pdfTargetPages,
-      targetRole: tailoredResume?.targetJobTitle || docVault.personalInfo?.title,
+      targetRole: effectiveTailoredResume?.targetJobTitle || docVault.personalInfo?.title,
       companyName: tailoredResume?.companyName,
-      summaryOverride: tailoredResume?.summary,
+      summaryOverride: effectiveTailoredResume?.summary,
       vault: docVault,
-      tailoredResume,
+      tailoredResume: effectiveTailoredResume,
     });
     setIsSaveLibraryOpen(false);
     showToast('Zapisano w Bibliotece CV', {
@@ -191,37 +216,30 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     });
   };
 
-  const handleCopyText = () => {
-    const textContent = `
-${personal.fullName}
-${personal.title}
-${personal.email} | ${personal.phone} | ${personal.location}
+  const handleCopyText = async () => {
+    const textContent = buildCvPlainText(docVault, effectiveTailoredResume);
 
-PODSUMOWANIE ZAWODOWE:
-${tailoredResume?.summary || personal.summary}
-
-DOŚWIADCZENIE ZAWODOWE:
-${history
-  .map(
-    (h) =>
-      `${h.role} | ${h.company} (${h.startDate} - ${h.isCurrent ? 'Obecnie' : h.endDate})\n${(h.highlights || []).map((hl) => `• ${hl.text}`).join('\n')}`
-  )
-  .join('\n\n')}
-
-UMIEJĘTNOŚCI:
-${hardSkills.join(', ')}
-
-EDUKACJA:
-${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.endDate})`).join('\n')}
-    `.trim();
-
-    navigator.clipboard.writeText(textContent);
-    onExported?.(buildExportMetadata());
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    try {
+      await copyTextAndNotifySuccess(textContent, () => onExported?.({
+        exportedCv: buildExportMetadata(),
+        vault: docVault,
+        tailoredResume: effectiveTailoredResume,
+        document: { kind: 'cv', format: 'plain-text', content: textContent },
+      }));
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      showToast('Nie udało się skopiować CV', {
+        message: 'Przeglądarka nie zapisała tekstu w schowku. Spróbuj ponownie.',
+        variant: 'error',
+      });
+    }
   };
 
   const handleUpdatePersonalInfo = (field: string, value: string) => {
+    if (field === 'title' || field === 'summary') {
+      setManualContentOverrides((previous) => ({ ...previous, [field]: value }));
+    }
     setDocVault((prev) => ({
       ...prev,
       personalInfo: {
@@ -355,6 +373,14 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
       {wasImportedFromText && (
         <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-fg">
           Ten podgląd powstał z automatycznie rozpoznanego tekstu. Sprawdź nazwę firmy, stanowisko, daty i umiejętności przed eksportem.
+        </p>
+      )}
+
+      {effectiveTailoredResume?.summary?.trim() && (
+        <p role="note" className="rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-xs leading-relaxed text-warning-fg">
+          {Object.prototype.hasOwnProperty.call(manualContentOverrides, 'summary')
+            ? 'Podsumowanie zostało ręcznie zmienione w tym dokumencie. Sprawdź jego zgodność z ofertą przed eksportem.'
+            : 'Podsumowanie pochodzi wprost z Master Vaultu i nie zostało automatycznie dopasowane do tej oferty. Sprawdź jego zgodność przed eksportem.'}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-elevated p-3.5 shadow-raised">
@@ -540,7 +566,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                     {previewValue(personal.fullName, 'Imię i nazwisko')}
                   </h1>
                   <p className="mt-0.5 text-sm font-semibold text-muted">
-                    {tailoredResume?.targetJobTitle || previewValue(personal.title, 'Stanowisko')}
+                    {effectiveTailoredResume?.targetJobTitle || previewValue(personal.title, 'Stanowisko')}
                   </p>
                 </>
               )}
@@ -628,12 +654,13 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 />
               ) : (
                 <p className="text-xs leading-relaxed text-ink/90">
-                  {tailoredResume?.summary || previewValue(personal.summary, '2–3 zdania o doświadczeniu i mocnych stronach')}
+                  {effectiveTailoredResume?.summary || previewValue(personal.summary, '2–3 zdania o doświadczeniu i mocnych stronach')}
                 </p>
               )}
             </div>
 
             {/* Skills Matrix */}
+            {(hardSkills.length > 0 || isEditing) && (
             <div data-cv-section="skills" className="space-y-2">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
@@ -679,6 +706,16 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                 )}
               </div>
             </div>
+            )}
+
+            {additionalSkillGroups.map(({ title, items }) => items.length > 0 && (
+              <div key={title} className="space-y-1" data-cv-section="skills-extra">
+                <h3 className="text-[10px] font-extrabold uppercase tracking-wider text-muted font-mono">
+                  {title}
+                </h3>
+                <p className="text-xs leading-relaxed text-ink/90">{items.join(' · ')}</p>
+              </div>
+            ))}
 
             {/* Work Experience */}
             <div data-cv-section="experience" className="space-y-4">
@@ -706,7 +743,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
 
                     {/* Highlights */}
                     <div className="space-y-1">
-                      {(h.highlights || []).map((hl) => (
+                      {(h.highlights || []).filter((hl) => hl.text.trim().length > 0).map((hl) => (
                         <div key={hl.id} className="flex items-start gap-1.5 text-xs text-ink/90">
                           <span className="text-muted mt-0.5">•</span>
                           {isEditing ? (
@@ -762,7 +799,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
                     <div key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
                       <div className="min-w-0 break-words">
                         <span className="font-bold text-ink">
-                          {[e.degree, e.fieldOfStudy].filter(Boolean).join(', ')}
+                          {[e.degree, e.fieldOfStudy].filter(Boolean).join(' — ')}
                         </span>
                         {e.institution && <span className="text-muted block">{e.institution}</span>}
                       </div>
@@ -775,10 +812,41 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
               </div>
             )}
 
-            {/* Footer RODO Clause */}
-            <footer data-cv-section="rodo" className="border-t border-line/50 pt-4 text-[9px] text-subtle leading-tight">
-              Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 (RODO).
-            </footer>
+            {licenseLabels.length > 0 && (
+              <div data-cv-section="licenses" className="space-y-2 border-t border-line/60 pt-4">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
+                  Uprawnienia
+                </h2>
+                <p className="text-xs leading-relaxed text-ink/90">{licenseLabels.join(' · ')}</p>
+              </div>
+            )}
+
+            {certifications.length > 0 && (
+              <div data-cv-section="certifications" className="space-y-2 border-t border-line/60 pt-4">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
+                  Uprawnienia i certyfikaty
+                </h2>
+                <ul className="space-y-1 text-xs text-ink/90">
+                  {certifications.map((cert) => (
+                    <li key={cert.id}>
+                      {cert.name}{cert.issuer ? ` — ${cert.issuer}` : ''}{cert.date ? ` (${cert.date})` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {languages.length > 0 && (
+              <div data-cv-section="languages" className="space-y-2 border-t border-line/60 pt-4">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
+                  Języki
+                </h2>
+                <p className="text-xs leading-relaxed text-ink/90">
+                  {languages.map(({ language, level }) => `${language}${level ? ` — ${level}` : ''}`).join(' · ')}
+                </p>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
@@ -947,7 +1015,7 @@ ${education.map((e) => `${e.degree} - ${e.institution} (${e.startDate} - ${e.end
         isOpen={isVerifierOpen}
         onClose={() => setIsVerifierOpen(false)}
         vault={docVault}
-        targetRole={tailoredResume?.targetJobTitle || docVault.personalInfo?.title}
+        targetRole={effectiveTailoredResume?.targetJobTitle || docVault.personalInfo?.title}
         targetCompany={tailoredResume?.companyName}
       />
 

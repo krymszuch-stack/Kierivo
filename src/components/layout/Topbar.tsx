@@ -254,9 +254,12 @@ export const Topbar: React.FC<TopbarProps> = ({
                           setIsDropdownOpen(false);
                           void deleteAccount().then((wynik) => {
                             showToast(
-                              wynik.ok ? 'Dane zostały usunięte' : 'Nie udało się usunąć konta',
+                              wynik.ok ? 'Dane zostały usunięte' : wynik.message,
                               { variant: wynik.ok ? 'success' : 'error' }
                             );
+                            // Nowy profil zaczyna się po czystym starcie. W tej
+                            // karcie zapis jest zablokowany od chwili wymazywania.
+                            if (wynik.ok) window.setTimeout(() => window.location.reload(), 1200);
                           });
                         }}
                         className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-danger-fg hover:bg-danger-soft transition-colors"

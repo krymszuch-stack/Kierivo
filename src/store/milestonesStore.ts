@@ -12,22 +12,37 @@ import { onAppStorageWiped } from '../lib/storage';
  * strony.
  */
 
-let milestones: UxMilestones = loadMilestones();
-const listeners = new Set<() => void>();
+const milestonesByProfile = new Map<string, UxMilestones>();
+const listenersByProfile = new Map<string, Set<() => void>>();
+
+function currentMilestones(profileId: string): UxMilestones {
+  const cached = milestonesByProfile.get(profileId);
+  if (cached) return cached;
+  const loaded = loadMilestones(profileId);
+  milestonesByProfile.set(profileId, loaded);
+  return loaded;
+}
+
+function notify(profileId: string): void {
+  listenersByProfile.get(profileId)?.forEach((listener) => listener());
+}
 
 /**
  * Migawka. Musi oddawać **tę samą referencję**, dopóki nic się nie zmieniło —
  * `useSyncExternalStore` porównuje wynik tożsamością i nowy obiekt przy każdym
  * wywołaniu wpędziłby go w nieskończoną pętlę renderów.
  */
-export function getMilestones(): UxMilestones {
-  return milestones;
+export function getMilestones(profileId: string): UxMilestones {
+  return currentMilestones(profileId);
 }
 
-export function subscribeMilestones(listener: () => void): () => void {
+export function subscribeMilestones(profileId: string, listener: () => void): () => void {
+  const listeners = listenersByProfile.get(profileId) ?? new Set<() => void>();
   listeners.add(listener);
+  listenersByProfile.set(profileId, listeners);
   return () => {
     listeners.delete(listener);
+    if (listeners.size === 0) listenersByProfile.delete(profileId);
   };
 }
 
@@ -35,28 +50,41 @@ export function subscribeMilestones(listener: () => void): () => void {
  * Dopisuje kamienie milowe wynikające z bieżącego stanu. Bez zmiany — bez
  * powiadomienia, więc wywoływanie tego przy każdym renderze jest bezpieczne.
  */
-export function syncMilestones(state: UxLiveState): void {
-  const next = reconcileMilestones(milestones, state, new Date());
-  if (next === milestones) return;
+export function syncMilestones(profileId: string, state: UxLiveState): void {
+  const current = currentMilestones(profileId);
+  const next = reconcileMilestones(current, state, new Date());
+  if (next === current) return;
 
-  milestones = next;
-  saveMilestones(next);
-  listeners.forEach((notify) => notify());
+  milestonesByProfile.set(profileId, next);
+  saveMilestones(profileId, next);
+  notify(profileId);
+}
+
+/** Odrzuca chwilowy stan starego Vaultu po zmianie aktywnego profilu. */
+export function syncMilestonesForProfile(
+  profileId: string,
+  vaultProfileId: string,
+  state: UxLiveState
+): void {
+  if (profileId !== vaultProfileId) return;
+  syncMilestones(profileId, state);
 }
 
 /** Odhacza jednorazową podpowiedź o skrótach klawiszowych. */
-export function markShortcutsHintSeen(): void {
-  if (milestones.shortcutsHintSeenAt) return;
+export function markShortcutsHintSeen(profileId: string): void {
+  const current = currentMilestones(profileId);
+  if (current.shortcutsHintSeenAt) return;
 
-  milestones = { ...milestones, shortcutsHintSeenAt: new Date().toISOString() };
-  saveMilestones(milestones);
-  listeners.forEach((notify) => notify());
+  const next = { ...current, shortcutsHintSeenAt: new Date().toISOString() };
+  milestonesByProfile.set(profileId, next);
+  saveMilestones(profileId, next);
+  notify(profileId);
 }
 
 // Bez tego resetu pierwszy syncMilestones po „usuń moje dane" porównywałby się
 // z pamięcią sprzed wymazania i odzyskiwał kamienie milowe do schowka — razem
 // z odblokowanymi sekcjami, które miały zniknąć razem z profilem.
 onAppStorageWiped(() => {
-  milestones = loadMilestones();
-  listeners.forEach((notify) => notify());
+  milestonesByProfile.clear();
+  listenersByProfile.forEach((listeners) => listeners.forEach((listener) => listener()));
 });

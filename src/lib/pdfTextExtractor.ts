@@ -176,7 +176,7 @@ export function detectPotentialLosses(text: string): string[] {
 
   // Wskaźniki wizualne (gwiazdki, paski postępu)
   if (/[★☆]{2,}/.test(text) || /[●◐◑]{2,}/.test(text)) {
-    losses.push('Wykryto wskaźniki wizualne (gwiazdki/paski) — ATS nie potrafi ich zinterpretować.');
+    losses.push('Wykryto znaki używane czasem jako wskaźniki wizualne. Sam wyodrębniony tekst nie pokazuje, jak zinterpretuje je konkretny system.');
   }
 
   // Ikony Unicode bez odpowiednika tekstowego

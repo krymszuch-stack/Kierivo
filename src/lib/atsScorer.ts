@@ -74,10 +74,10 @@ export interface AtsTelemetryReport {
     tableCount: number;
     unsupportedCharactersCount: number;
   };
-  systemVulnerabilities: Array<{
-    systemId: 'Struktura_Odczyt' | 'Frazy_Gestosc' | 'Jezyk_Formularz';
-    systemCategory: 'Układ i parsowalność' | 'Frazy i sygnały tekstowe' | 'Polska fleksja i formularze';
-    passProbability: number;
+  heuristicProfiles: Array<{
+    profileId: 'Struktura_Odczyt' | 'Frazy_Gestosc' | 'Jezyk_Formularz';
+    profileCategory: 'Układ i parsowalność' | 'Frazy i sygnały tekstowe' | 'Polska fleksja i formularze';
+    score: number;
     criticalRisks: string[];
     complianceReasons: string[];
   }>;
@@ -314,9 +314,9 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function buildSystemVulnerabilities(
+function buildHeuristicProfiles(
   input: SystemVerdictInput
-): AtsTelemetryReport['systemVulnerabilities'] {
+): AtsTelemetryReport['heuristicProfiles'] {
   /*
    * Profile są lokalnymi perspektywami na te same dane:
    *
@@ -330,7 +330,7 @@ function buildSystemVulnerabilities(
    * doświadczenia i polskiej fleksji. Żaden profil nie jest emulacją vendora.
    */
 
-  const results: AtsTelemetryReport['systemVulnerabilities'] = [];
+  const results: AtsTelemetryReport['heuristicProfiles'] = [];
 
   // --- Struktura / Odczyt ---
   {
@@ -372,7 +372,7 @@ function buildSystemVulnerabilities(
       criticalRisks.push('Hierarchia nagłówków bez jasnego tytułu głównego utrudnia segmentację sekcji.');
     }
 
-    const probability = clampPercent(
+    const score = clampPercent(
       input.structureScore * 0.45 +
         input.hardSkillsScore * 0.35 +
         (100 - input.knockoutPenalties) * 0.2 -
@@ -380,9 +380,9 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'Struktura_Odczyt',
-      systemCategory: 'Układ i parsowalność',
-      passProbability: probability,
+      profileId: 'Struktura_Odczyt',
+      profileCategory: 'Układ i parsowalność',
+      score,
       criticalRisks,
       complianceReasons,
     });
@@ -413,7 +413,7 @@ function buildSystemVulnerabilities(
       criticalRisks.push('Niespełnione twarde wymagania formalne obniżają ocenę niezależnie od dopasowania fraz.');
     }
 
-    const probability = clampPercent(
+    const score = clampPercent(
       input.hardSkillsScore * 0.4 +
         input.actionVerbsScore * 0.25 +
         input.structureScore * 0.2 +
@@ -422,9 +422,9 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'Frazy_Gestosc',
-      systemCategory: 'Frazy i sygnały tekstowe',
-      passProbability: probability,
+      profileId: 'Frazy_Gestosc',
+      profileCategory: 'Frazy i sygnały tekstowe',
+      score,
       criticalRisks,
       complianceReasons,
     });
@@ -458,7 +458,7 @@ function buildSystemVulnerabilities(
       criticalRisks.push('Niska czytelność stażu i metryk utrudnia szybkie odczytanie doświadczenia.');
     }
 
-    const probability = clampPercent(
+    const score = clampPercent(
       input.hardSkillsScore * 0.35 +
         input.structureScore * 0.3 +
         input.experienceScore * 0.2 +
@@ -468,9 +468,9 @@ function buildSystemVulnerabilities(
     );
 
     results.push({
-      systemId: 'Jezyk_Formularz',
-      systemCategory: 'Polska fleksja i formularze',
-      passProbability: probability,
+      profileId: 'Jezyk_Formularz',
+      profileCategory: 'Polska fleksja i formularze',
+      score,
       criticalRisks,
       complianceReasons,
     });
@@ -636,7 +636,7 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
 
   const medianDensityRatio = median(matchedLemmas.map((lemma) => lemma.densityRatio));
 
-  const systemVulnerabilities = buildSystemVulnerabilities({
+  const heuristicProfiles = buildHeuristicProfiles({
     hardSkillsScore,
     experienceScore,
     structureScore,
@@ -673,6 +673,6 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
       tableCount,
       unsupportedCharactersCount,
     },
-    systemVulnerabilities,
+    heuristicProfiles,
   };
 }

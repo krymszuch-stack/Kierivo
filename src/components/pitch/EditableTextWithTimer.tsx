@@ -22,9 +22,7 @@ export type PitchVariant = '1-liner' | '30s' | '90s';
 export interface EditableTextWithTimerProps {
   pitchData: ElevatorPitchOutput;
   /**
-   * Czy tekst powstał z danych użytkownika (metryki/podsumowanie/umiejętności),
-   * czy z szablonów zastępczych. Decyduje o plakietce proweniencji — bez tego
-   * „100% Vault Verified" świeciło też przy pustym profilu.
+   * Czy profil zawiera zawodowe dane, z których generator ułożył szkic.
    */
   verifiedFromVault?: boolean;
   className?: string;
@@ -164,7 +162,7 @@ export const EditableTextWithTimer: React.FC<EditableTextWithTimerProps> = ({
             </Chip>
           ) : (
             <Chip variant="neutral" size="sm">
-              Szablon zastępczy — uzupełnij profil, aby spersonalizować
+              Brak danych do szkicu — uzupełnij profil
             </Chip>
           )}
         </div>

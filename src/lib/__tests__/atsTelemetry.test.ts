@@ -174,12 +174,12 @@ describe('telemetria strukturalna', () => {
 describe('neutralne profile mierzalnych cech', () => {
   it('zwraca trzy profile nazwane cechami, nie vendorami', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
-    expect(report.systemVulnerabilities.map((system) => system.systemId)).toEqual([
+    expect(report.heuristicProfiles.map((profile) => profile.profileId)).toEqual([
       'Struktura_Odczyt',
       'Frazy_Gestosc',
       'Jezyk_Formularz',
     ]);
-    expect(report.systemVulnerabilities.map((system) => system.systemCategory)).toEqual([
+    expect(report.heuristicProfiles.map((profile) => profile.profileCategory)).toEqual([
       'Układ i parsowalność',
       'Frazy i sygnały tekstowe',
       'Polska fleksja i formularze',
@@ -195,11 +195,11 @@ describe('neutralne profile mierzalnych cech', () => {
     });
 
     const spadek = (systemId: string) =>
-      bazowy.systemVulnerabilities.find((system) => system.systemId === systemId)!.passProbability -
-      zepsuty.systemVulnerabilities.find((system) => system.systemId === systemId)!.passProbability;
+      bazowy.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score -
+      zepsuty.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score;
 
     expect(spadek('Struktura_Odczyt')).toBeGreaterThanOrEqual(spadek('Frazy_Gestosc'));
-    expect(zepsuty.systemVulnerabilities.find((system) => system.systemId === 'Struktura_Odczyt')!
+    expect(zepsuty.heuristicProfiles.find((profile) => profile.profileId === 'Struktura_Odczyt')!
       .criticalRisks.length).toBeGreaterThan(0);
   });
 
@@ -213,12 +213,12 @@ describe('neutralne profile mierzalnych cech', () => {
     const normalny = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: krótkieJd });
     const upychanie = buildAtsTelemetryReport({ vault: upychanyVault, jobDescription: krótkieJd });
 
-    const frazyNormalny = normalny.systemVulnerabilities.find((system) => system.systemId === 'Frazy_Gestosc')!;
-    const frazyUpychanie = upychanie.systemVulnerabilities.find((system) => system.systemId === 'Frazy_Gestosc')!;
+    const frazyNormalny = normalny.heuristicProfiles.find((profile) => profile.profileId === 'Frazy_Gestosc')!;
+    const frazyUpychanie = upychanie.heuristicProfiles.find((profile) => profile.profileId === 'Frazy_Gestosc')!;
 
     const maxDensity = Math.max(...upychanie.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.densityRatio));
     if (maxDensity > STUFFING_DENSITY_THRESHOLD) {
-      expect(frazyUpychanie.passProbability).toBeLessThan(frazyNormalny.passProbability);
+      expect(frazyUpychanie.score).toBeLessThan(frazyNormalny.score);
     }
     expect(maxDensity).toBeGreaterThan(normalny.linguisticTelemetry.matchedLemmas.reduce(
       (max, lemma) => Math.max(max, lemma.densityRatio), 0
@@ -227,9 +227,9 @@ describe('neutralne profile mierzalnych cech', () => {
 
   it('wyniki profili mieszczą się w przedziale 0–100', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
-    for (const system of report.systemVulnerabilities) {
-      expect(system.passProbability).toBeGreaterThanOrEqual(0);
-      expect(system.passProbability).toBeLessThanOrEqual(100);
+    for (const profile of report.heuristicProfiles) {
+      expect(profile.score).toBeGreaterThanOrEqual(0);
+      expect(profile.score).toBeLessThanOrEqual(100);
     }
   });
 });

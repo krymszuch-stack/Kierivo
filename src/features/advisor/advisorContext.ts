@@ -1,4 +1,5 @@
 import type { AtsCheckResult, JobOffer, MasterVault } from '../../types';
+import type { CanonicalAtsScore } from '../../lib/canonicalAts';
 import { buildAtsTelemetryReport } from '../../lib/atsScorer';
 import { measureVaultCompleteness, VAULT_SECTIONS } from '../../lib/vaultCompleteness';
 
@@ -14,7 +15,7 @@ export interface AdvisorSuggestion {
 export interface AdvisorContext {
   offerTitle: string;
   score: number;
-  missingHardSkills: string[];
+  missingRequirements: string[];
   matchedKeywords: string[];
   structuralWarnings: string[];
   formattingWarnings: string[];
@@ -34,6 +35,7 @@ export function buildAdvisorContext(
   vault: MasterVault,
   offer: JobOffer,
   ats: AtsCheckResult,
+  canonical: CanonicalAtsScore,
 ): AdvisorContext {
   const completeness = measureVaultCompleteness(vault);
   // Raport śledczy nie jest drugim „wynikiem ATS”. Używamy go wyłącznie do
@@ -49,7 +51,7 @@ export function buildAdvisorContext(
     ...vault.history.map((item) => item.role),
   ]).slice(0, 24);
   const offerTerms = unique([...(offer.requirements ?? []), ...(offer.techStack ?? [])]).slice(0, 24);
-  const missing = unique(ats.missingHardSkills).slice(0, 8);
+  const missing = unique(canonical.missingRequirements).slice(0, 8);
 
   const structuralWarnings = unique([
     ...ats.layer1Structure.missingStandardSections.map((section) => `Brak standardowej sekcji: ${section}.`),
@@ -87,7 +89,7 @@ export function buildAdvisorContext(
       target: 'profil',
     });
   }
-  if (missing.length > 0 || ats.overallScore < 75) {
+  if (missing.length > 0 || canonical.score < 75) {
     suggestions.push({
       id: 'review-match',
       label: 'Wróć do dopasowania',
@@ -98,8 +100,8 @@ export function buildAdvisorContext(
 
   return {
     offerTitle: offer.title || 'aktualna oferta',
-    score: ats.overallScore,
-    missingHardSkills: missing,
+    score: canonical.score,
+    missingRequirements: missing,
     matchedKeywords: unique(ats.matchedKeywords).slice(0, 12),
     structuralWarnings,
     formattingWarnings: unique(ats.badDateFormats),
@@ -142,8 +144,8 @@ export function buildContextualAdvice(query: string, context: AdvisorContext): s
     if (confirmed.length) facts.push(`W profilu są już sygnały związane z: ${confirmed.join(', ')}. Warto umieścić je w konkretnym punkcie doświadczenia, a nie tylko na liście umiejętności.`);
   }
 
-  if (context.missingHardSkills.length > 0 && (asksForAssessment || /brak|luka|czego/.test(q))) {
-    facts.push(`Najważniejsze niepokryte wymagania oferty: ${context.missingHardSkills.slice(0, 3).join(', ')}. Najpierw sprawdź, czy dowód tych kompetencji istnieje w Master Vault; jeśli nie, to luka względem oferty, a nie tekst do dopisania na siłę.`);
+  if (context.missingRequirements.length > 0 && (asksForAssessment || /brak|luka|czego/.test(q))) {
+    facts.push(`Najważniejsze niepokryte wymagania oferty: ${context.missingRequirements.slice(0, 3).join(', ')}. Najpierw sprawdź, czy dowód tych wymagań istnieje w Master Vault; jeśli nie, to luka względem oferty, a nie tekst do dopisania na siłę.`);
   }
   if (context.structuralWarnings.length > 0 && (asksForAssessment || /format|tabel|uklad|data|sekcj/.test(q))) {
     facts.push(`Do poprawy technicznej: ${context.structuralWarnings.slice(0, 2).join(' ')}`);

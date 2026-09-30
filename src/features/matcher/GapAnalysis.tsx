@@ -2,9 +2,12 @@ import React from 'react';
 import { AtsCheckResult } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
+import type { CanonicalAtsScore } from '../../lib/canonicalAts';
+import { buildGapMetrics } from './gapAnalysisData';
 
 export interface GapAnalysisProps {
   result: AtsCheckResult;
+  canonicalResult?: CanonicalAtsScore;
   className?: string;
 }
 
@@ -39,43 +42,26 @@ const GapRow: React.FC<{ label: string; value?: number }> = ({ label, value }) =
 
 export const GapAnalysis: React.FC<GapAnalysisProps> = ({
   result,
+  canonicalResult,
   className = '',
 }) => {
-  // Pokrycie twardej wiedzy ma dwa źródła: warstwę NLP albo mierzalne
-  // pokrycie słów kluczowych z szybkiego sprawdzenia. Gdy nie ma żadnego,
-  // zostaje undefined — nie wymyślamy liczby.
-  const hardCoverage =
-    result.layer2Nlp?.hardSkillsCoverage ?? result.keywordCoverageScore;
+  const metrics = buildGapMetrics(result, canonicalResult);
 
   return (
     <div className={`space-y-4 ${className}`}>
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
-          Analiza Luk Kompetencyjnych (Gap Analysis)
+          {canonicalResult ? 'Składniki kanonicznej oceny dopasowania' : 'Diagnostyka zapisanej migawki'}
         </h4>
         <p className="text-[11px] text-subtle">
-          Rozkład wag składowych według algebry scoringowej ATS. Wiersze oznaczone
-          „brak danych" nie zostały policzone dla tej oferty.
+          {canonicalResult
+            ? 'Te same składowe, które tworzą wynik główny. Wymiary bez danych są pominięte w wyniku.'
+            : 'Wartości z historycznego symulatora; nie są ponownie liczone jako kanoniczny wynik.'}
         </p>
       </div>
 
       <div className="space-y-3.5 rounded-2xl border border-line bg-surface p-4">
-        <GapRow
-          label="Kompetencje Twarde & Technologie"
-          value={hardCoverage}
-        />
-        <GapRow
-          label="Wymogi Formalne & Wykształcenie"
-          value={result.layer2Nlp?.formalReqsCoverage}
-        />
-        <GapRow
-          label="Świeżość Umiejętności (Recency Bias)"
-          value={result.layer3Scoring?.recencyScore}
-        />
-        <GapRow
-          label="Dopasowanie Tytułu Stanowiska (Title Density)"
-          value={result.layer3Scoring?.titleMatchScore}
-        />
+        {metrics.map(({ label, value }) => <GapRow key={label} label={label} value={value} />)}
       </div>
     </div>
   );

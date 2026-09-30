@@ -37,10 +37,12 @@ describe('Audyt i weryfikacja przeprojektowania AuthModal oraz stopki aplikacji'
     expect(authModalSrc).not.toContain('Konto synchronizuje CV. Profil Lokalny zostaje na tym urządzeniu.');
   });
 
-  it('7: link Dowiedz się więcej przy profilu lokalnym wyjaśnia kwestię opuszczania przeglądarki', () => {
+  it('7: link Dowiedz się więcej rozdziela lokalny profil od osobnych funkcji serwerowych', () => {
     expect(authModalSrc).toContain('Dowiedz się więcej');
-    expect(authModalSrc).toContain('Czy dane opuszczają przeglądarkę?');
-    expect(authModalSrc).toContain('localStorage');
+    expect(authModalSrc).toContain('Co dzieje się z danymi bez logowania?');
+    expect(authModalSrc).toContain('pamięci tej przeglądarki i nie jest synchronizowany');
+    expect(authModalSrc).toContain('późniejsze, osobno potwierdzane funkcje serwerowe mogą wysyłać wskazany tekst');
+    expect(authModalSrc).toContain('Wyczyszczenie pamięci przeglądarki usuwa lokalną kopię');
   });
 
   it('8: informacja przy logowaniu LinkedIn o pobieranych danych i braku importu bez zgody', () => {
@@ -49,10 +51,18 @@ describe('Audyt i weryfikacja przeprojektowania AuthModal oraz stopki aplikacji'
     );
   });
 
-  it('9 & 10: brak tarczy jako zwykłego awatara konta; tarcza ma tooltip „Dane konta są chronione”', () => {
+  it('9 & 10: tarcza bezpieczeństwa jest przypisana do konta chmurowego, nie do profilu lokalnego', () => {
     expect(sidebarSrc).toContain('Dane konta są chronione');
+    expect(sidebarSrc).toContain('getAccountPresentation');
+    expect(sidebarSrc).toContain('showProtectionShield');
     // Awatar użytkownika używa inicjału lub ikony User, nie samej tarczy
     expect(sidebarSrc).toContain('userEmail.slice(0, 2).toUpperCase()');
+  });
+
+  it('w wyborze trybu pozwala wznowić zapisany profil lokalny na tym urządzeniu', () => {
+    expect(authModalSrc).toContain('Wznów zapisany profil lokalny');
+    expect(authModalSrc).toContain('resumeLocalProfile(profileId)');
+    expect(authModalSrc).toContain('Nie mają hasła ani osobnej blokady.');
   });
 
   it('11, 12, 13: stopka zawiera 4 czytelne linki oraz układ siatki na mobile', () => {

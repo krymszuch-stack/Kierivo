@@ -18,6 +18,7 @@
       content="Kierivo pomaga uporządkować CV, porównać je z ofertą, przećwiczyć rozmowę i śledzić aplikacje. Dane profilu mogą pozostać w tej przeglądarce."
     />
     <link rel="canonical" href="https://kierivo.com/" />
+    <script src="/theme-init.js"></script>
 
     <!-- Open Graph / Facebook -->
     <title>Kierivo – CV pod ATS, symulator wywiadów i optymalizacja kariery</title>
@@ -63,27 +64,6 @@
     </script>
   </head>
   <body class="bg-surface text-ink antialiased font-sans selection:bg-brand-200">
-    <script>
-      // Apply the saved theme before first paint. Without this the document renders
-      // with the dark default above and then snaps to light after hydration.
-      (function () {
-        try {
-          var stored = localStorage.getItem('cvelocity-theme');
-          var resolved =
-            stored === 'light' || stored === 'dark'
-              ? stored
-              : stored === 'system' || !stored
-                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-                : 'dark';
-          // No stored preference at all means the dark-first default wins.
-          if (!stored) resolved = 'dark';
-          document.documentElement.setAttribute('data-theme', resolved);
-          document.documentElement.classList.toggle('dark', resolved === 'dark');
-        } catch (e) {
-          /* localStorage unavailable (private mode) — keep the dark default */
-        }
-      })();
-    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

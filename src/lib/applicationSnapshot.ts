@@ -2,6 +2,8 @@ import {
   ApplicationDocumentSnapshot,
   AtsCheckResult,
   CoverLetter,
+  CvExportEvent,
+  ExportedDocumentSnapshot,
   GeneratedCvExport,
   JobApplication,
   JobOffer,
@@ -43,6 +45,46 @@ export interface SnapshotIntegrityReport {
   brokenExperienceOrderLinks: string[];
   brokenClaimLinks: string[];
   missingRequiredFields: string[];
+}
+
+/**
+ * Znajduje jednoznaczny odpowiednik punktu doświadczenia po zmianie ID.
+ * Firma i rola nie wystarczają: ta sama osoba może wrócić do tego samego
+ * pracodawcy na tym samym stanowisku. Gdy takich wpisów jest kilka, tekst
+ * źródłowego punktu rozstrzyga; przy nadal niejednoznacznym wyniku nie zgadujemy.
+ */
+function findMatchingExperience(
+  history: MasterVault['history'],
+  highlight: TailoredResume['selectedHighlights'][number],
+): MasterVault['history'][number] | undefined {
+  const company = highlight.company?.trim().toLocaleLowerCase('pl-PL') ?? '';
+  const role = highlight.role?.trim().toLocaleLowerCase('pl-PL') ?? '';
+  const originalText = highlight.originalText?.trim().toLocaleLowerCase('pl-PL') ?? '';
+  const sourceMatches = originalText
+    ? history.filter((experience) => experience.highlights.some(
+      (item) => item.text?.trim().toLocaleLowerCase('pl-PL') === originalText
+    ))
+    : [];
+  if (sourceMatches.length === 1) return sourceMatches[0];
+  if (sourceMatches.length > 1) {
+    const contextualMatches = sourceMatches.filter((experience) =>
+      (experience.company?.trim().toLocaleLowerCase('pl-PL') ?? '') === company &&
+      (experience.role?.trim().toLocaleLowerCase('pl-PL') ?? '') === role
+    );
+    if (contextualMatches.length === 1) return contextualMatches[0];
+    return undefined;
+  }
+
+  const companyMatches = history.filter((experience) =>
+    (experience.company?.trim().toLocaleLowerCase('pl-PL') ?? '') === company
+  );
+  const roleMatches = companyMatches.filter((experience) =>
+    (experience.role?.trim().toLocaleLowerCase('pl-PL') ?? '') === role
+  );
+
+  if (roleMatches.length === 1) return roleMatches[0];
+  if (companyMatches.length === 1) return companyMatches[0];
+  return undefined;
 }
 
 /**
@@ -99,13 +141,14 @@ export function validateSnapshotIntegrity(
       : [];
 
     highlights.forEach((sh, index) => {
-      if (!sh.experienceId || !validHistoryIds.has(sh.experienceId)) {
-        // Poszukiwanie pasującego wpisu po nazwie firmy i stanowisku
-        const matched = historyList.find(
-          (exp) =>
-            exp.company?.toLowerCase().trim() === sh.company?.toLowerCase().trim() &&
-            exp.role?.toLowerCase().trim() === sh.role?.toLowerCase().trim()
-        );
+      const linkedExperience = historyList.find((experience) => experience.id === sh.experienceId);
+      const originalText = sh.originalText?.trim().toLocaleLowerCase('pl-PL') ?? '';
+      const sourceMatchesLinkedExperience = !originalText || !linkedExperience || linkedExperience.highlights.some(
+        (item) => item.text?.trim().toLocaleLowerCase('pl-PL') === originalText
+      );
+
+      if (!sh.experienceId || !validHistoryIds.has(sh.experienceId) || !sourceMatchesLinkedExperience) {
+        const matched = findMatchingExperience(historyList, sh);
 
         brokenExperienceLinks.push({
           highlightIndex: index,
@@ -153,8 +196,9 @@ export function validateSnapshotIntegrity(
 
 /**
  * Naprawia uszkodzone lub nieaktualne referencje w snapshocie aplikacji.
- * Jeśli `experienceId` w zoptymalizowanym osiągnięciu nie pasuje do żadnego rekordu
- * z `vaultSnapshot.history`, próbuje odnaleźć właściwy rekord na podstawie firmy i roli.
+ * Jeśli `experienceId` nie prowadzi do wpisu zawierającego oryginalny tekst punktu,
+ * próbuje odnaleźć źródło po tym tekście. Firma i rola są fallbackiem tylko wtedy,
+ * gdy wskazują jednoznaczny rekord.
  */
 export function repairSnapshotReferences(
   snapshot: ApplicationDocumentSnapshot
@@ -173,16 +217,14 @@ export function repairSnapshotReferences(
   // Naprawa selectedHighlights
   if (Array.isArray(tailored.selectedHighlights)) {
     tailored.selectedHighlights = tailored.selectedHighlights.map((sh) => {
-      if (!sh.experienceId || !validHistoryIds.has(sh.experienceId)) {
-        const candidate =
-          historyList.find(
-            (exp) =>
-              exp.company?.toLowerCase().trim() === sh.company?.toLowerCase().trim() &&
-              exp.role?.toLowerCase().trim() === sh.role?.toLowerCase().trim()
-          ) ||
-          historyList.find(
-            (exp) => exp.company?.toLowerCase().trim() === sh.company?.toLowerCase().trim()
-          );
+      const linkedExperience = historyList.find((experience) => experience.id === sh.experienceId);
+      const originalText = sh.originalText?.trim().toLocaleLowerCase('pl-PL') ?? '';
+      const sourceMatchesLinkedExperience = !originalText || !linkedExperience || linkedExperience.highlights.some(
+        (item) => item.text?.trim().toLocaleLowerCase('pl-PL') === originalText
+      );
+
+      if (!sh.experienceId || !validHistoryIds.has(sh.experienceId) || !sourceMatchesLinkedExperience) {
+        const candidate = findMatchingExperience(historyList, sh);
 
         if (candidate) {
           return {
@@ -222,6 +264,7 @@ export interface CreateApplicationDocumentSnapshotParams {
   atsResult?: AtsCheckResult | null;
   coverLetter?: CoverLetter | null;
   exportedCv?: GeneratedCvExport | null;
+  exportedDocument?: ExportedDocumentSnapshot | null;
   createdAt?: string;
 }
 
@@ -242,6 +285,7 @@ export function createApplicationDocumentSnapshot(
   const clonedCoverLetter = params.coverLetter ? deepClone(params.coverLetter) : undefined;
   const clonedAtsResult = params.atsResult ? deepClone(params.atsResult) : undefined;
   const clonedExportedCv = params.exportedCv ? deepClone(params.exportedCv) : undefined;
+  const clonedExportedDocument = params.exportedDocument ? deepClone(params.exportedDocument) : undefined;
 
   const rawSnapshot: ApplicationDocumentSnapshot = {
     schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
@@ -260,9 +304,25 @@ export function createApplicationDocumentSnapshot(
     },
     atsResultSnapshot: clonedAtsResult,
     exportedCv: clonedExportedCv,
+    exportedDocument: clonedExportedDocument,
   };
 
   return repairSnapshotReferences(rawSnapshot);
+}
+
+/** Buduje snapshot z dokładnie tych danych, które przekazał zakończony eksport. */
+export function createApplicationDocumentSnapshotFromExport(
+  params: Omit<CreateApplicationDocumentSnapshotParams, 'exportedCv' | 'exportedDocument'>,
+  event: CvExportEvent,
+): ApplicationDocumentSnapshot {
+  return createApplicationDocumentSnapshot({
+    ...params,
+    vault: event.vault ?? params.vault,
+    tailoredResume: event.tailoredResume ?? params.tailoredResume,
+    coverLetter: event.coverLetter ?? params.coverLetter,
+    exportedCv: event.exportedCv,
+    exportedDocument: event.document,
+  });
 }
 
 /**
@@ -283,4 +343,29 @@ export function resolveApplicationVault(
     return deepClone(fallbackVault);
   }
   return createEmptyVault();
+}
+
+/**
+ * Odtwarza ofertę, na podstawie której zapisano aplikację. Ściąga na rozmowę
+ * ma używać tego snapshotu, a nie oferty, którą użytkownik analizuje później.
+ */
+export function resolveApplicationJobOffer(application: JobApplication | null | undefined): JobOffer | null {
+  const snapshot = application?.documentSnapshot?.jobOfferSnapshot;
+  if (!snapshot) return null;
+
+  const description = snapshot.description?.trim() || '';
+  // Starsza migracja zapisywała placeholder „Nieznana firma” jako fakt.
+  // Nie przekazujemy go dalej do pytań rekrutacyjnych ani wzbogacania AI.
+  const storedCompany = snapshot.company || application?.company || '';
+  const company = storedCompany === 'Nieznana firma' ? '' : storedCompany;
+  return {
+    id: snapshot.id || application?.id || '',
+    title: snapshot.title || application?.position || '',
+    company,
+    salary: snapshot.salary || '',
+    location: snapshot.location || '',
+    description,
+    rawDescription: description,
+    url: snapshot.url || application?.jobUrl || '',
+  };
 }

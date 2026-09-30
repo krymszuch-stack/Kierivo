@@ -1,4 +1,5 @@
 import { GrammarNarrativeStyle } from './types';
+import { getPolishStem, stripDiacriticsLower } from '../skillEvidence';
 
 export interface ActionFormMapping {
   noun: string; // Bezokolicznik / Rzeczownik odsłowny (np. Projektowanie)
@@ -292,17 +293,54 @@ export function formatActionWord(action: string, style: GrammarNarrativeStyle): 
   if (!action) return '';
   const norm = action.trim().toLowerCase();
   const mapping = POLISH_VERB_FORMS[norm];
-  if (!mapping) {
-    // Fallback: jeśli kończy się na -łem -> stwórz wersję męską/żeńską
-    if (style === 'first_person_f' && norm.endsWith('łem')) {
-      return norm.slice(0, -3) + 'łam';
-    }
-    return action.charAt(0).toUpperCase() + action.slice(1);
-  }
+  const mapped = mapping
+    ? style === 'impersonal'
+      ? mapping.noun
+      : style === 'first_person_f'
+        ? mapping.female
+        : mapping.male
+    : '';
 
-  if (style === 'impersonal') return mapping.noun;
-  if (style === 'first_person_f') return mapping.female;
-  return mapping.male;
+  if (mapped) {
+    const grounded = keepActionWordsFromSource(mapped, action);
+    if (grounded) return grounded;
+  }
+  if (mapping && style === 'first_person_f') {
+    const femaleVerb = mapping.female.trim().split(/\s+/)[0];
+    const sourceRemainder = action.trim().split(/\s+/).slice(1).join(' ');
+    return [femaleVerb, sourceRemainder].filter(Boolean).join(' ');
+  }
+  // Gdy gotowa forma dodaje rzeczownik lub narzędzie, zachowujemy czynność
+  // użytkownika. Odmiana nie może dopowiadać, czym się zajmował.
+  if (style === 'first_person_f' && norm.endsWith('łem')) {
+    return norm.slice(0, -3) + 'łam';
+  }
+  return action.charAt(0).toUpperCase() + action.slice(1);
+}
+
+const ACTION_GLUE = new Set(
+  ['i', 'oraz', 'w', 'we', 'z', 'ze', 'na', 'do', 'od', 'po', 'za', 'o', 'przy', 'dla', 'nad']
+    .map((token) => getPolishStem(stripDiacriticsLower(token))),
+);
+
+function actionTokens(text: string): string[] {
+  return stripDiacriticsLower(text)
+    .split(/[^\p{L}\p{N}+#.]+/u)
+    .filter(Boolean)
+    .map(getPolishStem);
+}
+
+/** Formy słownikowe mogą zmieniać fleksję, ale nie dopisywać nowych faktów. */
+function keepActionWordsFromSource(candidate: string, action: string): string {
+  const sourceTokens = new Set(actionTokens(action));
+  const rawTokens = candidate.match(/[\p{L}\p{N}+#.]+/gu) ?? [];
+  const candidateTokens = rawTokens.map((token) => getPolishStem(stripDiacriticsLower(token)));
+  // Pierwszy token to sama odmieniona czynność; wszystkie dalsze muszą
+  // pochodzić z podanej frazy albo być neutralnym łącznikiem gramatycznym.
+  const hasUnsupportedClaim = candidateTokens.slice(1).some((token) =>
+    !ACTION_GLUE.has(token) && !sourceTokens.has(token)
+  );
+  return hasUnsupportedClaim ? '' : rawTokens.join(' ');
 }
 
 /**

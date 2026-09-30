@@ -61,6 +61,7 @@ export function suggestTagsForSTARStory(
     story.task || '',
     story.action || '',
     story.result || '',
+    story.sourceEvidence || '',
     ...(story.metrics || []),
   ].join(' ');
 
@@ -89,47 +90,46 @@ export function suggestTagsForSTARStory(
 }
 
 /**
- * Buduje bazowe historie STAR na podstawie MasterVault (z historii zatrudnienia i projektów).
+ * Tworzy szkice historii z jawnych wpisów profilu. Sam punkt CV nie dowodzi
+ * sytuacji, zakresu odpowiedzialności ani rezultatu, więc te pola pozostają puste.
  */
 export function buildStarStoriesFromVault(vault: MasterVault): STARStory[] {
   const stories: STARStory[] = [];
 
-  // 1. Z historii zatrudnienia
+  // 1. Punkty doświadczenia pozostają materiałem źródłowym, nie gotową historią STAR.
   if (Array.isArray(vault?.history)) {
     vault.history.forEach((exp) => {
       if (Array.isArray(exp?.highlights)) {
         exp.highlights.forEach((hl, hlIdx) => {
-          const metrics: string[] = [];
           const hlText = typeof hl === 'string' ? hl : (hl?.text || '');
           const hlMetric = typeof hl === 'object' && hl !== null ? hl.metric : undefined;
           const hlAction = typeof hl === 'object' && hl !== null ? hl.action : undefined;
           const hlTarget = typeof hl === 'object' && hl !== null ? hl.target : undefined;
           const hlTool = typeof hl === 'object' && hl !== null ? hl.tool : undefined;
           const hlKeywords = typeof hl === 'object' && hl !== null && Array.isArray(hl.keywords) ? hl.keywords : [];
+          const sourceEvidence = [
+            hlText.trim(),
+            hlAction && `Działanie zapisane w profilu: ${hlAction}`,
+            hlTarget && `Zakres zapisany w profilu: ${hlTarget}`,
+            hlTool && `Narzędzie zapisane w profilu: ${hlTool}`,
+            hlMetric && `Metryka zapisana w profilu: ${hlMetric}`,
+          ].filter((part): part is string => Boolean(part && part.trim()));
 
-          if (hlMetric) {
-            metrics.push(hlMetric);
-          } else if (hlText) {
-            const digitMatch = hlText.match(/\d+[%kKmM+xX]?/g);
-            if (digitMatch) {
-              metrics.push(...digitMatch);
-            }
-          }
+          // Puste rekordy highlight nie mogą produkować kart wyglądających jak historie.
+          if (sourceEvidence.length === 0) return;
 
-          const tags = hlKeywords.length > 0
-            ? [...hlKeywords]
-            : [exp.role || 'Specjalista', exp.company || 'Firma'];
+          const tags = hlKeywords.filter((tag): tag is string => typeof tag === 'string' && Boolean(tag.trim()));
+          const roleAndCompany = [exp.role, exp.company].filter(Boolean).join(' — ');
 
           const story: STARStory = {
             id: `star_exp_${exp.id || 'exp'}_${hlIdx}`,
-            title: `${exp.role || 'Specjalista'} @ ${exp.company || 'Firma'} — ${hlAction || 'Wdrożenie'} ${hlTarget || 'Projektu'}`,
-            situation: `W firmie ${exp.company || 'poprzedniej'} na stanowisku ${exp.role || 'specjalisty'} zidentyfikowano potrzebę optymalizacji w obszarze: ${hlTarget || hlText || 'procesów operacyjnych'}.`,
-            task: `Moim zadaniem było ${hlAction ? `${hlAction.toLowerCase()} ${hlTarget || ''}` : 'zrealizowanie kluczowego usprawnienia'} przy użyciu ${hlTool || 'dedykowanych narzędzi'}.`,
-            action: `Zastosowałem ${hlTool || 'odpowiednie technologie'} (${tags.slice(0, 3).join(', ')}), przeprowadzając analizę, projekt techniczny i bezpieczne wdrożenie.`,
-            result: hlMetric
-              ? `Osiągnięto wymierny rezultat: ${hlMetric}. Pełny opis: ${hlText}`
-              : `Projekt zakończył się sukcesem: ${hlText || 'osiągnięto założone cele projektowe'}`,
-            metrics,
+            title: roleAndCompany || 'Punkt doświadczenia z profilu',
+            situation: '',
+            task: '',
+            action: '',
+            result: '',
+            sourceEvidence: sourceEvidence.join(' • '),
+            metrics: hlMetric ? [hlMetric] : [],
             tags,
             projectId: exp.id || `exp_${hlIdx}`,
             durationSec: 90, // Domyślny czas prezentacji STAR = 90 sekund (1.5 minuty)
@@ -145,24 +145,29 @@ export function buildStarStoriesFromVault(vault: MasterVault): STARStory[] {
     });
   }
 
-  // 2. Z projektów
+  // 2. Z projektów bierzemy tylko opisane fakty; nie zakładamy wdrożenia ani sukcesu.
   if (Array.isArray(vault.projects)) {
     vault.projects.forEach((proj, projIdx) => {
-      const metrics: string[] = [];
-      if (proj.metrics) {
-        metrics.push(proj.metrics);
-      }
+      const sourceEvidence = [
+        proj.description && `Opis zapisany w profilu: ${proj.description}`,
+        proj.role && `Rola zapisana w profilu: ${proj.role}`,
+        Array.isArray(proj.techStack) && proj.techStack.length > 0
+          ? `Technologie zapisane w profilu: ${proj.techStack.join(', ')}`
+          : '',
+        proj.metrics && `Metryka zapisana w profilu: ${proj.metrics}`,
+      ].filter((part): part is string => Boolean(part && part.trim()));
+
+      if (sourceEvidence.length === 0) return;
 
       const story: STARStory = {
         id: `star_proj_${proj.id || projIdx}`,
-        title: `Projekt: ${proj.name} (${proj.role})`,
-        situation: `W ramach projektu „${proj.name}” istniało zapotrzebowanie na: ${proj.description || 'nowe rozwiązanie techniczne'}.`,
-        task: `Jako ${proj.role} odpowiadałem za zaprojektowanie i dostarczenie skalowalnej architektury.`,
-        action: `Zbudowałem rozwiązanie z wykorzystaniem: ${proj.techStack?.join(', ') || 'kluczowego stosu technologicznego'}.`,
-        result: proj.metrics
-          ? `Wdrożenie przyniosło wynik: ${proj.metrics}.`
-          : 'System został z powodzeniem wdrożony i spełnił wszystkie założenia wydajnościowe.',
-        metrics,
+        title: proj.name ? `Projekt: ${proj.name}` : 'Projekt z profilu',
+        situation: '',
+        task: '',
+        action: '',
+        result: '',
+        sourceEvidence: sourceEvidence.join(' • '),
+        metrics: proj.metrics ? [proj.metrics] : [],
         tags: Array.isArray(proj.techStack) ? [...proj.techStack] : [],
         projectId: proj.id || `proj_${projIdx}`,
         durationSec: 90,

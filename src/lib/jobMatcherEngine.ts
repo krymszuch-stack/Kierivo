@@ -23,6 +23,13 @@ import { buildAdvisorContext, type AdvisorContext } from '../features/advisor/ad
 import { parseJobDescriptionLocal } from './jdParser';
 import { preprocessJobOfferPaste, type JobOfferPreparation } from './jobOfferPreprocessor';
 
+/** Źródłowy znacznik dla lokalnych, jawnie syntetycznych kart szybkiego startu. */
+export const SYNTHETIC_JOB_OFFER_PORTAL = 'Przykładowe ogłoszenie';
+
+export function isSyntheticJobOffer(job: Pick<JobOffer, 'portal'>): boolean {
+  return job.portal === SYNTHETIC_JOB_OFFER_PORTAL;
+}
+
 export interface JobMatchCalculationResult {
   tailoredResume: TailoredResume;
   canonicalResult: CanonicalAtsScore;
@@ -84,7 +91,7 @@ export function calculateJobMatch(
   tailored.atsScore = canonical.score;
 
   // 3. Kontekst doradcy oraz list motywacyjny
-  const advisorContext = buildAdvisorContext(vault, job, ats);
+  const advisorContext = buildAdvisorContext(vault, job, ats, canonical);
   const coverLetter = generateAntiTemplateCoverLetter(
     job.title,
     job.company,
@@ -163,7 +170,7 @@ export function buildJobOfferFromManual(manualOffer: Partial<JobOffer>): {
     description: parserInput,
     requirements: manualOffer.requirements || [],
     remote: manualOffer.remote ?? false,
-    portal: 'Manual',
+    portal: manualOffer.portal || 'Manual',
     techStack: manualOffer.requirements || [],
     parsedJd: parsed,
   };

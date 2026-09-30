@@ -1,7 +1,7 @@
-export type OllamaHealthState = 'checking' | 'available' | 'unavailable';
+export type AdvisorAvailabilityState = 'checking' | 'available' | 'unavailable';
 
-export interface OllamaHealthResult {
-  state: OllamaHealthState;
+export interface AdvisorAvailabilityResult {
+  state: AdvisorAvailabilityState;
   connected: boolean;
   models: Array<{ name: string }>;
   activeModel: string;
@@ -10,17 +10,17 @@ export interface OllamaHealthResult {
 
 export const OLLAMA_HEALTH_TIMEOUT_MS = 5000;
 
-export async function checkOllamaWithTimeout(
+export async function checkAdvisorWithTimeout(
   healthFetcher: (signal?: AbortSignal) => Promise<any>,
   timeoutMs: number = OLLAMA_HEALTH_TIMEOUT_MS
-): Promise<OllamaHealthResult> {
+): Promise<AdvisorAvailabilityResult> {
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timeoutId: any;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       controller?.abort();
-      reject(new Error('Przekroczono limit czasu oczekiwania na odpowiedź Ollamy (5s).'));
+      reject(new Error('Przekroczono limit czasu oczekiwania na status Doradcy Azure (5s).'));
     }, timeoutMs);
   });
 
@@ -30,7 +30,7 @@ export async function checkOllamaWithTimeout(
       timeoutPromise,
     ]);
 
-    if (res && res.success && res.connected) {
+    if (res && res.success && (res.available === true || res.connected === true)) {
       return {
         state: 'available',
         connected: true,
@@ -45,15 +45,24 @@ export async function checkOllamaWithTimeout(
       connected: false,
       models: res?.models || [],
       activeModel: res?.activeModel || '',
-      error: res?.error || 'Lokalny model Ollama nie jest połączony.',
+      error: res?.error || 'Doradca Azure nie jest dostępny w tej instalacji.',
     };
   } catch (err: unknown) {
+    const status = typeof err === 'object' && err !== null && 'status' in err
+      ? (err as { status?: unknown }).status
+      : undefined;
+    const error = status === 501
+      ? 'Tryb lokalny nie obsługuje Doradcy Azure. Wymagane są konto chmurowe i logowanie.'
+      : status === 401
+        ? 'Zaloguj się, aby korzystać z Doradcy Azure.'
+        : err instanceof Error ? err.message : 'Brak odpowiedzi API';
+
     return {
       state: 'unavailable',
       connected: false,
       models: [],
       activeModel: '',
-      error: err instanceof Error ? err.message : 'Brak odpowiedzi API',
+      error,
     };
   } finally {
     clearTimeout(timeoutId);
@@ -61,10 +70,8 @@ export async function checkOllamaWithTimeout(
 }
 
 /**
- * Ustala domyślną zakładkę Doradcy na podstawie stanu Ollamy.
- * W Public Pre-Beta Ollama jest opcjonalną funkcją lokalną — przy jej niedostępności
- * Asystent Rewritingu (regułowy, deterministyczny) staje się domyślnym i promowanym kanałem.
+ * Otwiera rozmowę, gdy Azure jest skonfigurowane; w innym przypadku pokazuje brak konfiguracji.
  */
-export function resolveDefaultAdvisorTab(healthState: OllamaHealthState): 'chat' | 'rewriter' {
+export function resolveDefaultAdvisorTab(healthState: AdvisorAvailabilityState): 'chat' | 'rewriter' {
   return healthState === 'available' ? 'chat' : 'rewriter';
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import express from 'express';
 import type { Server } from 'node:http';
 import fs from 'node:fs/promises';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createEmptyVault } from '../../lib/sampleVault';
 import {
   pdfRouter,
@@ -289,6 +290,55 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Sukces (200) i poprawny format odpowiedzi', () => {
+    it('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {
+      // ATS jest tu odizolowany od testu renderowania. Trasa, adapter oraz
+      // proces Python/ReportLab/pikepdf pozostają prawdziwe.
+      vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValueOnce(SUCCESS_FIXTURE);
+
+      const vault = baseVault();
+      const tailoredResume = {
+        targetJobTitle: 'Ręczny tytuł testowy',
+        companyName: '',
+        summary: 'Ręczne podsumowanie testowe bez dopisanych osiągnięć.',
+        selectedHighlights: [],
+        skillsMatched: { hardSkills: [], toolsAndTech: [], softSkills: [] },
+        atsScore: 0,
+      };
+
+      const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req-real-pdf-manual-edit' },
+        body: JSON.stringify({ vault, tailoredResume, theme: 'classic', layout: 'sidebar' }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json() as { success: boolean; pdf: string; filename: string };
+      expect(data.success).toBe(true);
+      expect(data.filename).toBe('CV_Adam_Nowak.pdf');
+
+      const pdfBytes = Buffer.from(data.pdf, 'base64');
+      expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+      const loadingTask = getDocument({ data: new Uint8Array(pdfBytes), useSystemFonts: true });
+      const parsed = await loadingTask.promise;
+      const extracted = (await Promise.all(
+        Array.from({ length: parsed.numPages }, async (_, index) => {
+          const page = await parsed.getPage(index + 1);
+          const content = await page.getTextContent();
+          return content.items
+            .map((item) => ('str' in item ? item.str : ''))
+            .join(' ');
+        })
+      )).join('\n');
+      await loadingTask.destroy();
+
+      // Wybrany motyw drukuje nagłówki z odstępem między glifami; porównujemy
+      // znormalizowaną formę tytułu, a podsumowanie zachowuje zwykłe odstępy.
+      expect(extracted.replace(/\s+/g, '').toLocaleLowerCase('pl-PL'))
+        .toContain('ręcznytytułtestowy');
+      expect(extracted).toContain('Ręczne podsumowanie testowe bez dopisanych osiągnięć.');
+      expect(extracted).not.toContain('Doświadczony mechanik urządzeń przemysłowych.');
+    }, 30_000);
+
     it('sukces 200 ze zmockowanym procesem Pythona — zwraca JSON z base64 i requestId', async () => {
       vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValueOnce(SUCCESS_FIXTURE);
 
@@ -328,6 +378,69 @@ describe('pdf.routes API Suite (unit)', () => {
       const pdfText = Buffer.from(data.pdf, 'base64').toString('ascii');
       expect(pdfText.startsWith('%PDF-')).toBe(true);
       expect(data.atsValidation).toBeDefined();
+    });
+
+    it('nie używa pliku z cache bez wybranego zdjęcia przy eksporcie z avatarem', async () => {
+      vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValue(SUCCESS_FIXTURE);
+      const spawn = vi.spyOn(pythonRunner, 'spawn').mockImplementation(async (_bin, args) => {
+        const outPdfPath = args[args.indexOf('-o') + 1];
+        await fs.writeFile(outPdfPath, Buffer.from(`%PDF-1.4\n% avatar=${args.includes('--avatar')}\n%%EOF`));
+        return { code: 0, stdout: 'OK', stderr: '', durationMs: 10 };
+      });
+      const vault = baseVault();
+      const exportPdf = (avatar?: 'circle' | 'square' | 'none') => fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vault,
+          theme: 'parchment',
+          layout: 'sidebar',
+          ...(avatar ? { avatar } : {}),
+        }),
+      });
+
+      const withoutAvatar = await exportPdf('none');
+      const withAvatar = await exportPdf('circle');
+      const firstPdf = Buffer.from(((await withoutAvatar.json()) as { pdf: string }).pdf, 'base64').toString();
+      const secondPdf = Buffer.from(((await withAvatar.json()) as { pdf: string }).pdf, 'base64').toString();
+
+      expect(withoutAvatar.headers.get('x-cv-cache')).toBe('MISS');
+      expect(withAvatar.headers.get('x-cv-cache')).toBe('MISS');
+      expect(spawn).toHaveBeenCalledTimes(2);
+      expect(spawn.mock.calls[1]?.[1]).toContain('--avatar');
+      expect(firstPdf).toContain('avatar=false');
+      expect(secondPdf).toContain('avatar=true');
+    });
+
+    it('do silnika PDF przekazuje umiejętności bez dopisanych twierdzeń o doświadczeniu', async () => {
+      vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValueOnce(SUCCESS_FIXTURE);
+      const vault = baseVault();
+      vault.skillsMatrix.hardSkills = ['SQL'];
+      vault.skillsMatrix.toolsAndTech = ['Docker'];
+      vault.skillsMatrix.softSkills = ['Komunikacja techniczna'];
+      vault.skillsMatrix.certifications = [{ id: 'cert-1', name: 'Certyfikat XYZ', issuer: '', date: '' }];
+
+      vi.spyOn(pythonRunner, 'spawn').mockImplementationOnce(async (_bin, args) => {
+        // Czytamy payload przed sprzątnięciem katalogu tymczasowego w finally trasy.
+        const profile = JSON.parse(await fs.readFile(args[3], 'utf8')) as {
+          skills: Array<{ label: string; semantic: string }>;
+          certifications: Array<{ name: string; semantic: string }>;
+        };
+        expect(profile.skills.map((skill) => skill.semantic)).toEqual(['SQL', 'Docker', 'Komunikacja techniczna']);
+        expect(profile.certifications[0]).toMatchObject({ name: 'Certyfikat XYZ', semantic: 'Certyfikat XYZ' });
+
+        const outPdfPath = args[args.indexOf('-o') + 1];
+        await fs.writeFile(outPdfPath, Buffer.from('%PDF-1.4\n%%EOF'));
+        return { code: 0, stdout: 'OK', stderr: '', durationMs: 10 };
+      });
+
+      const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req-truthful-semantic-pdf' },
+        body: JSON.stringify({ vault, theme: 'parchment', layout: 'sidebar' }),
+      });
+
+      expect(res.status).toBe(200);
     });
   });
 

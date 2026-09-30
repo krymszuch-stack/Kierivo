@@ -15,13 +15,15 @@ import {
   removeMaterialFromPlan,
   togglePlanStep,
 } from '../../../lib/learningPlanStorage';
-import { StorageKeys } from '../../../lib/storage';
+import { profileDataKeyFor, resetLastGoodCache, StorageKeys } from '../../../lib/storage';
 
 describe('Baza Wiedzy i Poradnik Kariery — rzetelność, struktura i plan nauki', () => {
   beforeEach(() => {
+    resetLastGoodCache();
     // Reset testowego stanu localStorage
     if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem(StorageKeys.learningPlan);
+      localStorage.removeItem(profileDataKeyFor(StorageKeys.learningPlan, 'profile-a'));
+      localStorage.removeItem(profileDataKeyFor(StorageKeys.learningPlan, 'profile-b'));
     }
   });
 
@@ -131,7 +133,7 @@ describe('Baza Wiedzy i Poradnik Kariery — rzetelność, struktura i plan nauk
 
     it('dodaje materiał do planu i zapobiega duplikatom', () => {
       const sample = INITIAL_MATERIALS[0];
-      const res1 = addMaterialToPlan(sample, 'Sprawdzić termin w urzędzie');
+      const res1 = addMaterialToPlan('profile-a', sample, 'Sprawdzić termin w urzędzie');
       expect(res1.isNew).toBe(true);
       expect(res1.plan.items).toHaveLength(1);
       expect(res1.plan.items[0].materialId).toBe(sample.id);
@@ -139,39 +141,46 @@ describe('Baza Wiedzy i Poradnik Kariery — rzetelność, struktura i plan nauk
       expect(res1.plan.items[0].notes).toBe('Sprawdzić termin w urzędzie');
 
       // Powtórne dodanie aktualizuje notatkę bez duplikowania rekordu
-      const res2 = addMaterialToPlan(sample, 'Zaktualizowana notatka');
+      const res2 = addMaterialToPlan('profile-a', sample, 'Zaktualizowana notatka');
       expect(res2.isNew).toBe(false);
       expect(res2.plan.items).toHaveLength(1);
       expect(res2.plan.items[0].notes).toBe('Zaktualizowana notatka');
     });
 
+    it('nie udostępnia planu ani notatek innemu profilowi', () => {
+      const sample = INITIAL_MATERIALS[0];
+      addMaterialToPlan('profile-a', sample, 'Prywatna notatka');
+      expect(getLearningPlan('profile-b').items).toEqual([]);
+      expect(getLearningPlan('profile-a').items[0].notes).toBe('Prywatna notatka');
+    });
+
     it('aktualizuje status, notatkę i pozwala usunąć materiał z planu', () => {
       const sample = INITIAL_MATERIALS[0];
-      addMaterialToPlan(sample);
+      addMaterialToPlan('profile-a', sample);
 
       // Zmiana statusu
-      const planWithStatus = updatePlanItemStatus(sample.id, 'in_progress');
+      const planWithStatus = updatePlanItemStatus('profile-a', sample.id, 'in_progress');
       expect(planWithStatus.items[0].status).toBe('in_progress');
       expect(planWithStatus.items[0].statusLabel).toBe('W trakcie');
 
       // Zmiana notatki i przypomnienia
-      const planWithNotes = updatePlanItemNotes(sample.id, 'Termin za 2 dni', '2026-04-15');
+      const planWithNotes = updatePlanItemNotes('profile-a', sample.id, 'Termin za 2 dni', '2026-04-15');
       expect(planWithNotes.items[0].notes).toBe('Termin za 2 dni');
       expect(planWithNotes.items[0].reminderDate).toBe('2026-04-15');
 
       // Usunięcie z planu
-      const planAfterRemove = removeMaterialFromPlan(sample.id);
+      const planAfterRemove = removeMaterialFromPlan('profile-a', sample.id);
       expect(planAfterRemove.items).toHaveLength(0);
     });
 
     it('pozwala odhaczać kolejne kroki w checklisty działania', () => {
-      const plan = getLearningPlan();
+      const plan = getLearningPlan('profile-a');
       const firstStepId = plan.steps[0].id;
 
-      const updated = togglePlanStep(firstStepId);
+      const updated = togglePlanStep('profile-a', firstStepId);
       expect(updated.steps[0].completed).toBe(true);
 
-      const toggledBack = togglePlanStep(firstStepId);
+      const toggledBack = togglePlanStep('profile-a', firstStepId);
       expect(toggledBack.steps[0].completed).toBe(false);
     });
   });

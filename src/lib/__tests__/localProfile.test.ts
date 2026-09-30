@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   createLocalProfile,
   getActiveProfile,
+  listSavedLocalProfiles,
+  activateLocalProfile,
   signOutLocalProfile,
   deleteLocalProfile,
   loadProfileVault,
@@ -26,30 +28,30 @@ beforeEach(() => {
 });
 
 describe('Profil lokalny', () => {
-  it('zapisuje profil i odczytuje go po ponownym wejściu', () => {
-    const { profile } = createLocalProfile('Jan Kowalski', 'jan@example.pl');
+  it('zapisuje profil i odczytuje go po ponownym wejściu', async () => {
+    const { profile } = await createLocalProfile('Jan Kowalski', 'jan@example.pl');
 
     expect(profile.name).toBe('Jan Kowalski');
     expect(profile.email).toBe('jan@example.pl');
     expect(getActiveProfile()?.id).toBe(profile.id);
   });
 
-  it('nie wymaga adresu e-mail', () => {
-    const { profile } = createLocalProfile('Anna Nowak');
+  it('nie wymaga adresu e-mail', async () => {
+    const { profile } = await createLocalProfile('Anna Nowak');
 
     expect(profile.email).toBeUndefined();
     expect(getActiveProfile()?.name).toBe('Anna Nowak');
   });
 
-  it('nie tworzy dwóch profili o tym samym identyfikatorze', () => {
-    const first = createLocalProfile('Jan').profile;
-    const second = createLocalProfile('Jan').profile;
+  it('nie tworzy dwóch profili o tym samym identyfikatorze', async () => {
+    const first = (await createLocalProfile('Jan')).profile;
+    const second = (await createLocalProfile('Jan')).profile;
 
     expect(first.id).not.toBe(second.id);
   });
 
-  it('wylogowanie usuwa profil, ale zostawia zapisany vault na urządzeniu', () => {
-    const { profile } = createLocalProfile('Jan');
+  it('wylogowanie usuwa profil, ale zostawia zapisany vault na urządzeniu', async () => {
+    const { profile } = await createLocalProfile('Jan');
     saveProfileVault(profile.id, createEmptyVault('Jan', 'jan@example.pl'));
 
     signOutLocalProfile();
@@ -58,11 +60,64 @@ describe('Profil lokalny', () => {
     expect(loadProfileVault(profile.id)).not.toBeNull();
   });
 
-  it('usunięcie profilu czyści WSZYSTKIE dane aplikacji, nie tylko wyliczone klucze', () => {
+  it('po zamknięciu lokalnego profilu można wznowić dokładnie ten sam vault', async () => {
+    const { profile } = await createLocalProfile('Jan Kowalski', 'jan@example.pl');
+    const savedVault = createEmptyVault('Jan Kowalski', 'jan@example.pl');
+    savedVault.skillsMatrix.hardSkills = ['Windows 11', 'TCP/IP'];
+    saveProfileVault(profile.id, savedVault);
+
+    signOutLocalProfile();
+    expect(getActiveProfile()).toBeNull();
+
+    const savedProfiles = await listSavedLocalProfiles();
+    expect(savedProfiles.map((item) => item.id)).toContain(profile.id);
+
+    const resumed = activateLocalProfile(profile.id);
+    expect(resumed?.profile.id).toBe(profile.id);
+    expect(getActiveProfile()?.id).toBe(profile.id);
+    expect(resumed?.vault.skillsMatrix.hardSkills).toEqual(['Windows 11', 'TCP/IP']);
+  });
+
+  it('profile o tej samej nazwie pozostają rozdzielone i można wznowić właściwy', async () => {
+    const first = await createLocalProfile('Jan Kowalski');
+    const firstVault = createEmptyVault('Jan Kowalski');
+    firstVault.personalInfo.summary = 'Profil pierwszy';
+    saveProfileVault(first.profile.id, firstVault);
+    signOutLocalProfile();
+
+    const second = await createLocalProfile('Jan Kowalski');
+    const secondVault = createEmptyVault('Jan Kowalski');
+    secondVault.personalInfo.summary = 'Profil drugi';
+    saveProfileVault(second.profile.id, secondVault);
+    signOutLocalProfile();
+
+    const savedProfiles = await listSavedLocalProfiles();
+    expect(savedProfiles.filter((item) => item.name === 'Jan Kowalski')).toHaveLength(2);
+    expect(activateLocalProfile(first.profile.id)?.vault.personalInfo.summary).toBe('Profil pierwszy');
+    signOutLocalProfile();
+    expect(activateLocalProfile(second.profile.id)?.vault.personalInfo.summary).toBe('Profil drugi');
+  });
+
+  it('odkrywa starszy zapisany vault bez indeksu profili', async () => {
+    const { profile } = await createLocalProfile('Anna Nowak', 'anna@example.pl');
+    saveProfileVault(profile.id, createEmptyVault('Anna Nowak', 'anna@example.pl'));
+    localStorage.removeItem(StorageKeys.localProfiles);
+    signOutLocalProfile();
+
+    const savedProfiles = await listSavedLocalProfiles();
+    expect(savedProfiles).toContainEqual(expect.objectContaining({
+      id: profile.id,
+      name: 'Anna Nowak',
+      email: 'anna@example.pl',
+    }));
+    expect(activateLocalProfile(profile.id)?.vault.personalInfo.fullName).toBe('Anna Nowak');
+  });
+
+  it('usunięcie profilu czyści WSZYSTKIE dane aplikacji, nie tylko wyliczone klucze', async () => {
     // Poprzednia implementacja kasowała zakodowaną na sztywno listę kluczy i
     // zostawiała za sobą m.in. stan subskrypcji. „Usuń moje dane", które czegoś
     // nie usuwa, jest gorsze niż brak takiej funkcji.
-    const { profile } = createLocalProfile('Jan');
+    const { profile } = await createLocalProfile('Jan');
     saveProfileVault(profile.id, createEmptyVault('Jan'));
     localStorage.setItem(StorageKeys.entitlementsCache, '{"subscription":{"status":"active"}}');
     localStorage.setItem(StorageKeys.favoriteTips, '["tip-1"]');
@@ -75,17 +130,18 @@ describe('Profil lokalny', () => {
     expect(loadProfileVault(profile.id)).toBeNull();
     expect(localStorage.getItem(StorageKeys.entitlementsCache)).toBeNull();
     expect(localStorage.getItem(StorageKeys.favoriteTips)).toBeNull();
+    expect(localStorage.getItem(StorageKeys.localProfiles)).toBeNull();
     expect(localStorage.getItem('skillvault_users_db_v1')).toBeNull();
 
     // Motyw to ustawienie interfejsu, nie dane osobowe — zostaje.
     expect(localStorage.getItem(StorageKeys.theme)).toBe('dark');
   });
 
-  it('zapisuje vault czystym tekstem — bez udawania szyfrowania', () => {
+  it('zapisuje vault czystym tekstem — bez udawania szyfrowania', async () => {
     // Świadoma decyzja, opisana w SECURITY.md. Poprzednia wersja zapisywała
     // obok kopię "zaszyfrowaną" kluczem 'default_key' zaszytym w bundlu, co przy
     // XSS nie chroni przed niczym, a mnożyło kopie tych samych danych.
-    const { profile } = createLocalProfile('Jan');
+    const { profile } = await createLocalProfile('Jan');
     saveProfileVault(profile.id, createEmptyVault('Sean O’Brien', 'sean@example.pl'));
 
     const stored = localStorage.getItem(vaultKeyFor(profile.id));
@@ -142,25 +198,25 @@ describe('Migracja ze starych kluczy', () => {
 });
 
 describe('Praca sprzed założenia profilu', () => {
-  it('przenosi vault z profilu anonimowego na nowo założony profil', () => {
+  it('przenosi vault z profilu anonimowego na nowo założony profil', async () => {
     // Klin ATS działa bez rejestracji. Gdyby wynik przepadał w chwili podania
     // imienia, cała propozycja „sprawdź najpierw, zarejestruj się potem"
     // rozpadałaby się dokładnie w momencie konwersji.
     saveProfileVault(ANONYMOUS_PROFILE_ID, createEmptyVault('Sean O’Brien', 'sean@example.pl'));
 
-    const { profile, vault } = createLocalProfile('Sean O’Brien');
+    const { profile, vault } = await createLocalProfile('Sean O’Brien');
 
     expect(vault.personalInfo.email).toBe('sean@example.pl');
     expect(loadProfileVault(profile.id)?.personalInfo.email).toBe('sean@example.pl');
     expect(loadProfileVault(ANONYMOUS_PROFILE_ID)).toBeNull();
   });
 
-  it('przenosi anonimową historię Pipeline do nowego profilu', () => {
+  it('przenosi anonimową historię Pipeline do nowego profilu', async () => {
     writeJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), [
       { id: 'anon-1', company: 'Firma testowa', position: 'Monter', salary: '', date: '2026-09-10', status: 'Wysłana' },
     ]);
 
-    const { profile } = createLocalProfile('Jan Kowalski');
+    const { profile } = await createLocalProfile('Jan Kowalski');
 
     expect(readJson<Array<{ company: string }>>(applicationsKeyFor(profile.id), [])).toEqual([
       expect.objectContaining({ company: 'Firma testowa' }),
@@ -170,8 +226,8 @@ describe('Praca sprzed założenia profilu', () => {
 });
 
 describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszczenie', () => {
-  it('Użytkownik A → wylogowanie → stan anonimowy jest pusty i ANONYMOUS_PROFILE_ID nie zawiera danych A', () => {
-    const { profile } = createLocalProfile('Jan Kowalski', 'jan.kowalski@example.com');
+  it('Użytkownik A → wylogowanie → stan anonimowy jest pusty i ANONYMOUS_PROFILE_ID nie zawiera danych A', async () => {
+    const { profile } = await createLocalProfile('Jan Kowalski', 'jan.kowalski@example.com');
     const janVault = createEmptyVault('Jan Kowalski', 'jan.kowalski@example.com');
     janVault.personalInfo.title = 'Monter HVAC';
     janVault.history = [
@@ -197,8 +253,8 @@ describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszcz
     expect(loadProfileVault(ANONYMOUS_PROFILE_ID)).toBeNull();
   });
 
-  it('Użytkownik A → wylogowanie → utworzenie Użytkownika B → B otrzymuje czysty profil bez danych A', () => {
-    const { profile: janProfile } = createLocalProfile('Jan Kowalski', 'jan@example.pl');
+  it('Użytkownik A → wylogowanie → utworzenie Użytkownika B → B otrzymuje czysty profil bez danych A', async () => {
+    const { profile: janProfile } = await createLocalProfile('Jan Kowalski', 'jan@example.pl');
     const janVault = createEmptyVault('Jan Kowalski', 'jan@example.pl');
     janVault.history = [
       {
@@ -219,7 +275,7 @@ describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszcz
     signOutLocalProfile();
 
     // Anna tworzy profil na tym samym urządzeniu
-    const { profile: annaProfile, vault: annaVault } = createLocalProfile('Anna Nowak', 'anna@example.pl');
+    const { profile: annaProfile, vault: annaVault } = await createLocalProfile('Anna Nowak', 'anna@example.pl');
 
     expect(annaProfile.name).toBe('Anna Nowak');
     expect(annaVault.personalInfo.fullName).toBe('Anna Nowak');
@@ -273,8 +329,8 @@ describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszcz
     expect(savedUserVault).toBeNull();
   });
 
-  it('Istniejące zapisywanie aktywnego profilu nadal poprawnie utrwala dane', () => {
-    const { profile } = createLocalProfile('Piotr');
+  it('Istniejące zapisywanie aktywnego profilu nadal poprawnie utrwala dane', async () => {
+    const { profile } = await createLocalProfile('Piotr');
     const vault = createEmptyVault('Piotr');
     vault.skillsMatrix.hardSkills = ['TypeScript', 'React'];
 

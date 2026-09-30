@@ -190,8 +190,9 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const position = typeof raw.position === 'string' ? raw.position.trim() : '';
   if (!company && !position) return null;
 
-  const rawStatus = typeof raw.status === 'string' ? raw.status : 'Wysłana';
-  const status: ApplicationStatus = STATUS_MAPPING[rawStatus] ?? 'Wysłana';
+  // Brak albo nieznany status nie jest dowodem, że kandydat wysłał aplikację.
+  const rawStatus = typeof raw.status === 'string' ? raw.status : 'Do wysłania';
+  const status: ApplicationStatus = STATUS_MAPPING[rawStatus] ?? 'Do wysłania';
   const salary = typeof raw.salary === 'string' ? raw.salary.trim() : '';
   const date = normalizeDate(raw.date || (raw as any).applied_at);
 
@@ -204,8 +205,8 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const app: JobApplication = {
     schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
     id,
-    company: company || 'Nieznana firma',
-    position: position || 'Stanowisko',
+    company,
+    position,
     salary,
     date,
     status,

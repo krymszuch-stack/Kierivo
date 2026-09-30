@@ -20,8 +20,17 @@ const STORE_NAME = 'kv';
 /** Klucze, które trafiły do IndexedDB i tam trzeba ich szukać przy odczycie. */
 const mirroredKeys = new Set<string>();
 const mirrorCache = new Map<string, string>();
+/** Wpisy zapisane jako fallback w tej sesji są nowsze niż stary localStorage. */
+const preferredMirrorKeys = new Set<string>();
+/** Wersje blokują spóźnione odczyty startowe przed cofnięciem zmian z tej sesji. */
+const keyVersions = new Map<string, number>();
+let clearVersion = 0;
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
+
+function bumpKeyVersion(key: string): void {
+  keyVersions.set(key, (keyVersions.get(key) ?? 0) + 1);
+}
 
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
@@ -63,11 +72,17 @@ function withStore<T>(
           resolve(null);
           return;
         }
+        let result: T | null = null;
         try {
           const tx = db.transaction(STORE_NAME, mode);
           const request = operation(tx.objectStore(STORE_NAME));
-          request.onsuccess = () => resolve(request.result ?? null);
+          request.onsuccess = () => {
+            result = request.result ?? null;
+          };
           request.onerror = () => resolve(null);
+          tx.oncomplete = () => resolve(result);
+          tx.onerror = () => resolve(null);
+          tx.onabort = () => resolve(null);
         } catch {
           resolve(null);
         }
@@ -76,15 +91,32 @@ function withStore<T>(
 }
 
 /** Zapis awaryjny. Zwraca `true`, gdy dane faktycznie dotarły do IndexedDB. */
-export function idbBackupSet(key: string, value: string): boolean {
+export function idbBackupSet(key: string, value: string): Promise<boolean> {
+  bumpKeyVersion(key);
   mirrorCache.set(key, value);
   mirroredKeys.add(key);
+  preferredMirrorKeys.add(key);
 
-  void withStore('readwrite', (store) => store.put(value, key));
+  return withStore<IDBValidKey>('readwrite', (store) => store.put(value, key)).then(
+    (result) => result !== null,
+  );
 
-  // Cache pamięciowy jest aktualny od razu, więc odczyty synchroniczne mają
-  // świeże dane niezależnie od tego, czy transakcja zdążyła się zamknąć.
+}
+
+/** Zapis migracyjny: lustro uznajemy za gotowe dopiero po zatwierdzeniu transakcji IDB. */
+export async function idbBackupSetDurably(key: string, value: string): Promise<boolean> {
+  bumpKeyVersion(key);
+  const persisted = await withStore<IDBValidKey>('readwrite', (store) => store.put(value, key));
+  if (persisted === null) return false;
+  mirrorCache.set(key, value);
+  mirroredKeys.add(key);
+  preferredMirrorKeys.add(key);
   return true;
+}
+
+/** Wartość zapisana jako fallback w tej sesji wygrywa ze starszą kopią LS. */
+export function idbBackupGetPreferred(key: string): string | null {
+  return preferredMirrorKeys.has(key) ? mirrorCache.get(key) ?? null : null;
 }
 
 /** Szybki odczyt z lustra pamięciowego; asynchroniczne DOBicie do IndexedDB tylko przy chłodnym starcie. */
@@ -102,27 +134,71 @@ export function idbBackupGet(key: string): string | null {
 
 /** Zasila lustro pamięciowe wszystkimi kluczami zapasowymi. Wywoływane raz przy starcie modułu storage. */
 export async function preloadIdbMirror(): Promise<void> {
+  const preloadClearVersion = clearVersion;
   const keys = await withStore<IDBValidKey[]>('readonly', (store) => store.getAllKeys());
   if (!keys) return;
 
   for (const key of keys) {
     if (typeof key !== 'string') continue;
+    const preloadKeyVersion = keyVersions.get(key) ?? 0;
     mirroredKeys.add(key);
     const value = await withStore<string>('readonly', (store) => store.get(key));
-    if (typeof value === 'string') mirrorCache.set(key, value);
+    if (
+      typeof value === 'string' &&
+      preloadClearVersion === clearVersion &&
+      preloadKeyVersion === (keyVersions.get(key) ?? 0) &&
+      !preferredMirrorKeys.has(key)
+    ) {
+      mirrorCache.set(key, value);
+    }
   }
+}
+
+/** Klucze IndexedDB pod danym prefiksem, np. stare Vaulty przekroczonego limitu localStorage. */
+export async function idbBackupKeys(prefix: string): Promise<string[]> {
+  await preloadIdbMirror();
+  const keys = await withStore<IDBValidKey[]>('readonly', (store) => store.getAllKeys());
+  if (!keys) return [];
+  return keys.filter((key): key is string => typeof key === 'string' && key.startsWith(prefix));
 }
 
 /** Usuwa wpis zapasowy (np. przy „usuń moje dane"). */
 export function idbBackupRemove(key: string): void {
+  bumpKeyVersion(key);
   mirrorCache.delete(key);
   mirroredKeys.delete(key);
+  preferredMirrorKeys.delete(key);
   void withStore('readwrite', (store) => store.delete(key));
 }
 
-/** Czyści całą kopię zapasową — wołane przez `wipeAppStorage`. */
-export function idbBackupClearAll(): void {
+/** Potwierdza wymazanie kopii przed zgłoszeniem użytkownikowi sukcesu usunięcia danych. */
+export async function idbBackupClearAllDurably(): Promise<boolean> {
+  clearVersion += 1;
   mirrorCache.clear();
   mirroredKeys.clear();
-  void withStore('readwrite', (store) => store.clear());
+  preferredMirrorKeys.clear();
+
+  // Gdy API nie istnieje, aplikacja nie mogła zapisać tu danych. Błąd otwarcia
+  // istniejącej bazy jest inny: nie wolno go uznać za potwierdzone usunięcie.
+  if (typeof indexedDB === 'undefined') return true;
+  const db = await openDb();
+  if (!db) return false;
+
+  return new Promise<boolean>((resolve) => {
+    try {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const request = tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      tx.onabort = () => resolve(false);
+      request.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/** Synchroniczna ścieżka resetu stanu; usunięcie konta czeka na wariant trwały. */
+export function idbBackupClearAll(): void {
+  void idbBackupClearAllDurably();
 }

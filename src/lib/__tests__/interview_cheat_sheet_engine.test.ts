@@ -152,13 +152,18 @@ describe('buildLocalStarSeeds', () => {
     expect(buildLocalStarSeeds(jd, vault)).toEqual([]);
   });
 
-  it('maps the candidate real highlight fields into a STAR quadrant', () => {
+  it('keeps the source highlight and leaves unsupported STAR quadrants empty', () => {
     const jd = makeParsedJD();
     const vault = makeVault();
     const seeds = buildLocalStarSeeds(jd, vault);
     expect(seeds.length).toBeGreaterThan(0);
     expect(seeds[0].sourceExperienceId).toBe('exp1');
-    expect(seeds[0].result).toMatch(/30% szybsze ładowanie/);
+    expect(seeds[0].sourceEvidence).toMatch(/30% szybsze ładowanie/);
+    expect(seeds[0].situation).toBe('');
+    expect(seeds[0].task).toBe('');
+    expect(seeds[0].action).toBe('');
+    expect(seeds[0].result).toBe('');
+    expect(seeds[0].sourceEvidence).not.toMatch(/zidentyfikowano potrzebę|odpowiadałem za|Efekt:/i);
   });
 });
 

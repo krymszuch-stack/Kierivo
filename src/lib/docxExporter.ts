@@ -44,7 +44,6 @@ export const FONT_SIZES_HALF_POINTS = {
   heading3: 22, // 11 pt
   body: 21, // 10,5 pt
   small: 18, // 9 pt
-  finePrint: 16, // 8 pt
 } as const;
 
 const BLACK = '000000';
@@ -172,14 +171,6 @@ function contactLineOptions(text: string): CvParagraphOptions {
   };
 }
 
-function finePrintOptions(text: string): CvParagraphOptions {
-  return {
-    widowControl: true,
-    spacing: { before: 240 },
-    children: [{ text, italics: true, size: FONT_SIZES_HALF_POINTS.finePrint, color: BLACK, font: FONT }],
-  };
-}
-
 function datesOf(start: string, end: string, isCurrent: boolean): string {
   return `${start || '—'} – ${isCurrent ? 'obecnie' : end || '—'}`;
 }
@@ -197,7 +188,7 @@ export function buildCvDocument(
   vault: MasterVault,
   layeredFacts: LayeredFactItem[],
   targetRole: string,
-  companyName: string,
+  _companyName: string,
   options: BuildCvDocumentOptions = {}
 ): Document {
   const name = vault.personalInfo?.fullName?.trim() || 'Kandydat';
@@ -208,8 +199,11 @@ export function buildCvDocument(
   // --- Nagłówek kandydata (jedyny Heading 1 w dokumencie) ---
   paragraphs.push(h1NameOptions(name));
 
-  if (docTitle || companyName) {
-    paragraphs.push(bodyOptions([docTitle, companyName].filter(Boolean).join(' — '), { after: 40 }));
+  if (docTitle) {
+    // Firma z oferty jest metadanymi aplikacji, nie faktem o kandydacie.
+    // Wstawienie jej pod nazwiskiem sugerowało związek z pracodawcą i różniło
+    // DOCX od podglądu DocumentRenderer, który pokazuje tu samo stanowisko.
+    paragraphs.push(bodyOptions(docTitle, { after: 40 }));
   }
 
   // Kontakt pod linią oddzielającą — jeden akapit, zero tabel układu.
@@ -251,7 +245,7 @@ export function buildCvDocument(
               typeof highlight === 'string' ? highlight : highlight.text
             );
 
-      for (const text of bullets.filter(Boolean)) {
+      for (const text of bullets.filter((text) => Boolean(text?.trim()))) {
         paragraphs.push(bulletOptions(text));
       }
     }
@@ -309,13 +303,6 @@ export function buildCvDocument(
     if (licenses) paragraphs.push(bodyOptions(licenses, { boldPrefix: 'Uprawnienia' }));
     if (certifications) paragraphs.push(bodyOptions(certifications, { boldPrefix: 'Certyfikaty', after: 160 }));
   }
-
-  // --- Klauzula RODO ---
-  paragraphs.push(
-    finePrintOptions(
-      'Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z rozporządzeniem RODO.'
-    )
-  );
 
   return new Document({
     sections: [

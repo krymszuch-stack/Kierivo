@@ -113,7 +113,7 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
     pdf = pikepdf.open(io.BytesIO(r.pdf_bytes()))
     build_structure(pdf, result.sem)
     title = f"CV — {resolved.name}"
-    jsonld = inject_metadata(pdf, resolved, title=title, attach_master_json=True)
+    jsonld = inject_metadata(pdf, resolved, title=title)
     pdf.save(out_path)
     pdf.close()
 

@@ -775,9 +775,9 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
     // Częsty format kopiowany z CV: daty, rola, „w firmie”, nazwa spółki i
     // opis w jednej linii. Bez rozdzielenia parser uznawał całe zdanie za firmę.
     const firstHeader = block.headerLines[0]?.replace(DATE_RANGE_REGEX, '').replace(/^[:\s]+/, '').trim() || '';
-    const inlineEntry = firstHeader.match(/^(.+?)\s+w\s+firmie\s+(.+?\b(?:sp\.\s*z\s*o\.o\.|s\.a\.|gmbh|llc|inc\.))\s*(.*)$/i);
-    if (inlineEntry && ROLE_KEYWORDS.test(inlineEntry[1])) {
-      role = inlineEntry[1].trim();
+    const inlineEntry = firstHeader.match(/^(?:(.+?)\s+)?w\s+firmie\s+(.+?\b(?:sp\.\s*z\s*o\.o\.|s\.a\.|gmbh|llc|inc\.))\s*(.*)$/i);
+    if (inlineEntry && (!inlineEntry[1] || ROLE_KEYWORDS.test(inlineEntry[1]))) {
+      role = inlineEntry[1]?.trim() ?? '';
       company = inlineEntry[2].trim();
       inlineDescription = inlineEntry[3].trim();
     }
@@ -856,7 +856,7 @@ const DEGREE_KEYWORDS = new RegExp(
 const INSTITUTION_KEYWORDS = new RegExp(
   '\\b(?:politechnika|uniwersytet|akademia|szkoła\\s+główna|wyższa\\s+szkoła|zespół\\s+szkół|' +
     'technikum|liceum|zasadnicza\\s+szkoła|branżowa\\s+szkoła|kolegium|centrum\\s+kształcenia|' +
-    'university|college|academy|school|institute|instytut)\\b',
+    'university|college|academy|school|institute|instytut)(?=\\s|$)',
   'i'
 );
 
@@ -916,7 +916,7 @@ function parseEducationEntries(sectionLines: string[]): Education[] {
 
     for (const l of block.lines) {
       const withoutDates = l.replace(DATE_RANGE_REGEX, '').replace(/\b(?:19|20)\d{2}\b/g, '')
-        .replace(/[()|;,]+$/, '').trim();
+        .replace(/[()|;,]+$/, '').replace(/\s*[-–—]\s*$/, '').trim();
       const parts = withoutDates.split(/\s+[-–—]\s+|\s*\|\s*|\s*,\s*/).map((p) => p.trim()).filter(Boolean);
 
       for (const part of parts) {
@@ -1321,13 +1321,15 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
   const explicitTitleMatch = clean.match(/(?:stanowisko|tytuł|specjalność|rola|job\s+title):\s*([^\n]+)/i);
   const headerTitle = headerLines.slice(1).find((line) => line.length < 90 && ROLE_KEYWORDS.test(line))
     ?.split(',')[0]?.trim();
+  // Nie szukaj tytułu w całym dokumencie: „technik” w sekcji Edukacja albo
+  // „operator” w opisie obowiązków nie jest stanowiskiem kandydata.
   const title = explicitTitleMatch
     ? explicitTitleMatch[1].trim()
     : headerTitle
     ? headerTitle
     : history.length > 0 && history[0].role
     ? history[0].role
-    : (clean.match(ROLE_KEYWORDS)?.[0]?.trim() || '');
+    : '';
 
   // 7. Ekstrakcja Lokalizacji
   const explicitLocMatch = clean.match(/(?:lokalizacja|miejscowość|adres|location|miejsce\s+zamieszkania):\s*([^\n,]+)/i);
@@ -1364,10 +1366,28 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
   const hardSkillsSet = new Set<string>(extractedSkillsFromSection);
   const toolsAndTechSet = new Set<string>();
 
-  // Dodatkowe skanowanie leksykonu po tekście, by nie zgubić technologii
+  // Dodatkowe skanowanie leksykonu po treści kandydata, by nie zgubić technologii.
+  // Pełny dokument zawiera też nazwy firm, uczelni i nagłówki ról; samo `SAP`
+  // w nazwie „SAP Polska” albo „Python Developer” nie dowodzi znajomości narzędzia.
+  const skillEvidenceText = [
+    ...(sections.skills ?? []),
+    summary,
+    ...history.flatMap((experience) => [
+      experience.description || '',
+      ...experience.highlights.map((highlight) => typeof highlight === 'string' ? highlight : highlight.text),
+    ]),
+    ...certifications.map((certification) => certification.name || ''),
+    ...education.flatMap((entry) => [entry.degree || '', entry.fieldOfStudy || '']),
+    ...projects.flatMap((project) => [
+      project.description || '',
+      ...((project as { techStack?: string[] }).techStack ?? []),
+    ]),
+  ].filter(Boolean).join('\n');
+
+  // Dodatkowe skanowanie leksykonu po wyodrębnionej treści, by nie zgubić technologii.
   for (const kw of COMPREHENSIVE_SKILL_LEXICON) {
     const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(clean)) {
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(skillEvidenceText)) {
       hardSkillsSet.add(kw);
     }
   }

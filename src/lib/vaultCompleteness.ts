@@ -58,7 +58,7 @@ export const VAULT_SECTIONS: readonly VaultSectionSpec[] = [
     id: 'headline',
     label: 'Tytuł zawodowy i podsumowanie',
     weight: 1,
-    blocks: 'Dopasowanie tytułu do ogłoszenia — osobny składnik wyniku ATS.',
+    blocks: 'Dopasowanie tytułu do ogłoszenia — osobny składnik oceny Kierivo.',
     isFilled: (v) => hasText(v.personalInfo.title) && hasText(v.personalInfo.summary),
   },
   {
@@ -75,7 +75,7 @@ export const VAULT_SECTIONS: readonly VaultSectionSpec[] = [
     id: 'hardSkills',
     label: 'Umiejętności twarde',
     weight: 2,
-    blocks: 'Pokrycie słów kluczowych — najcięższy składnik wyniku ATS.',
+    blocks: 'Pokrycie słów kluczowych — składnik o największej wadze w ocenie Kierivo.',
     isFilled: (v) => v.skillsMatrix.hardSkills.length > 0,
   },
   {

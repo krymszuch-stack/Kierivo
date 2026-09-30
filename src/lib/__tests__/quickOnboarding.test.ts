@@ -8,6 +8,9 @@ import {
   type QuickCheckResult,
 } from '../quickAtsCheck';
 import { createEmptyVault } from '../sampleVault';
+import { scoreCanonicalAts } from '../canonicalAts';
+import { calculateJobMatch } from '../jobMatcherEngine';
+import type { JobOffer } from '../../types';
 
 describe('Uproszczony onboarding — minimalny happy path (QuickOnboarding)', () => {
   const SAMPLE_CV_PHYSICAL = `
@@ -67,6 +70,27 @@ Wymagania bezwzględne:
     expect(criticalProblems[0].category).toBe('formal');
   });
 
+  it('utrzymuje ten sam wynik w trybie szybkim i szczegółowym także dla stanowiska fizycznego', () => {
+    const quick = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, SAMPLE_JD_WITH_KNOCKOUT);
+    const offer: JobOffer = {
+      id: 'synthetic-physical-parity',
+      title: '',
+      company: '',
+      salary: '',
+      location: '',
+      description: SAMPLE_JD_WITH_KNOCKOUT,
+      requirements: [],
+      remote: false,
+      portal: 'synthetic-test',
+      techStack: [],
+    };
+    const advanced = calculateJobMatch(quick.vault, offer);
+
+    expect(quick.canonicalResult).toEqual(advanced.canonicalResult);
+    expect(quick.canonicalResult.missingRequirements.join(' ')).toMatch(/sep.{0,40}g3/i);
+    expect(quick.canonicalResult.missingRequirements.join(' ')).toMatch(/f.?gaz/i);
+  });
+
   it('Test 3: extractTopThreeProblems dopełnia dokładnie do 3 pozycji zaleceniami, gdy brak krytycznych błędów', () => {
     // Sztuczny wynik z idealnym dopasowaniem (0 niespełnionych wymagań, 0 brakujących umiejętności)
     const mockIdealResult: QuickCheckResult = {
@@ -105,6 +129,7 @@ Wymagania bezwzględne:
         gapAnalysis: [],
         recommendations: [],
       },
+      canonicalResult: scoreCanonicalAts(createEmptyVault(), ''),
       vault: createEmptyVault(),
       parsed: {
         personalInfo: { fullName: 'Jan', email: 'jan@example.com', phone: '', location: '', title: '', summary: '' },
@@ -124,6 +149,7 @@ Wymagania bezwzględne:
         satisfiedCount: 1,
         blocking: [],
         optional: [],
+        unclassified: [],
         findings: [
           {
             ruleId: 'b',
@@ -207,5 +233,73 @@ Wymagania bezwzględne:
     expect(result.ats.layer2Nlp.hardSkillsCoverage).toBe(100);
     expect(result.vault.profiler.languages).toEqual(expect.arrayContaining([expect.objectContaining({ level: 'B2' })]));
     expect(result.missingSkills).not.toEqual(expect.arrayContaining(['Intune', 'Entra ID', 'PowerShell']));
+  });
+
+  it('odcina opcjonalną umiejętność podaną inline bez dwukropka od pokrycia obowiązkowego', () => {
+    const cv = [
+      'Alicja Testowa',
+      'Specjalistka wsparcia IT',
+      'Doświadczenie: 2021–2024, obsługa zgłoszeń i diagnozowanie problemów użytkowników.',
+      'Umiejętności: Windows 11, Microsoft 365, Exchange Online, TCP/IP, obsługa klienta.',
+      'Edukacja: Technik informatyk, Zespół Szkół Testowych, 2017–2021.',
+    ].join('\n');
+    const jd = 'Wymagania: Windows 11, Microsoft 365, Exchange Online, TCP/IP i obsługa klienta. Mile widziane Entra ID.';
+    const result = runQuickAtsCheck(cv, jd);
+
+    expect(result.ats.layer2Nlp.hardSkillsCoverage).toBe(100);
+    expect(result.missingSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'))).not.toContain('entra id');
+    expect(result.ats.missingHardSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'))).not.toContain('entra id');
+  });
+
+  it('odtwarza syntetyczny przypadek IT bez fałszywych braków, podziału TCP/IP ani duplikatu edukacji', () => {
+    const cv = [
+      'Alicja Testowa',
+      'Kraków | alicja.testowa@example.com',
+      '',
+      'PODSUMOWANIE ZAWODOWE',
+      'Specjalistka wsparcia IT z doświadczeniem w Windows 11, Microsoft 365, Exchange Online i TCP/IP.',
+      '',
+      'UMIEJĘTNOŚCI',
+      'Windows 11, Microsoft 365, Exchange Online, Active Directory, TCP/IP, obsługa klienta',
+      '',
+      'DOŚWIADCZENIE ZAWODOWE',
+      'Specjalistka wsparcia IT — Testowa Sp. z o.o. — 2022–2025',
+      'Obsługa zgłoszeń, konfiguracja kont Microsoft 365, diagnoza Windows 11.',
+      '',
+      'EDUKACJA',
+      'Technik informatyk — Zespół Szkół Technicznych — 2016–2020',
+    ].join('\n');
+    const jd = [
+      'Specjalista IT Support',
+      'Testowa Firma',
+      '',
+      'Wymagania:',
+      'Windows 11, Microsoft 365, Exchange Online, TCP/IP, obsługa użytkowników.',
+      '',
+      'Mile widziane: Intune, Entra ID, PowerShell.',
+    ].join('\n');
+    const result = runQuickAtsCheck(cv, jd);
+    const skills = result.vault.skillsMatrix.hardSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'));
+    const missing = result.missingSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'));
+    const rawMissing = result.ats.missingHardSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'));
+
+    expect(result.ats.layer2Nlp.hardSkillsCoverage).toBe(100);
+    expect(missing).not.toContain('specjalista it support testowa');
+    expect(rawMissing).not.toContain('specjalista it support testowa');
+    for (const optional of ['intune', 'entra id', 'powershell']) {
+      expect(missing).not.toContain(optional);
+      expect(rawMissing).not.toContain(optional);
+    }
+    expect(skills.some((skill) => skill === 'tcp/ip' || skill.includes('tcp/ip'))).toBe(true);
+    expect(skills).not.toEqual(expect.arrayContaining(['tcp', 'ip']));
+    expect(result.vault.education).toHaveLength(1);
+    expect(result.vault.education[0]).toEqual(expect.objectContaining({
+      degree: 'Technik informatyk',
+      institution: 'Zespół Szkół Technicznych',
+      fieldOfStudy: '',
+      startDate: '2016',
+      endDate: '2020',
+    }));
+    expect(result.vault.personalInfo.summary).toContain('Specjalistka wsparcia IT');
   });
 });

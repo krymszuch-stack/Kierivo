@@ -4,7 +4,6 @@ import {
   FileEdit,
   ShieldCheck,
   FileText,
-  BookOpen,
   Sparkles,
   CheckCircle2,
   Tag,
@@ -16,20 +15,20 @@ import {
   AtsCheckResult,
   TailoredResume,
   CoverLetter,
-  GeneratedCvExport,
+  CvExportEvent,
 } from '../../types';
 import { type CanonicalAtsScore } from '../../lib/canonicalAts';
-import { createApplicationDocumentSnapshot } from '../../lib/applicationSnapshot';
+import { createApplicationDocumentSnapshotFromExport } from '../../lib/applicationSnapshot';
 import { DocumentRenderer } from './DocumentRenderer';
 import { CVWordBuilder } from './CVWordBuilder';
 import { AtsSimulatorView } from './AtsSimulatorView';
 import { CoverLetterView } from './CoverLetterView';
-import { InterviewCheatSheetView } from './InterviewCheatSheetView';
 import { ConsistencyGuardView } from '../consistency/ConsistencyGuardView';
 import { JDKeywordMapper } from './JDKeywordMapper';
 import { Tabs } from '../../components/ui/Tabs';
 import { Button } from '../../components/ui/Button';
 import { requestApplicationConfirmation } from '../../store/usePendingApplication';
+import { isSyntheticJobOffer } from '../../lib/jobMatcherEngine';
 
 export type SubTabId =
   | 'generator'
@@ -37,7 +36,6 @@ export type SubTabId =
   | 'report'
   | 'mapper'
   | 'coverLetter'
-  | 'cheatSheet'
   | 'consistency';
 
 export interface RealtimeLivePreviewProps {
@@ -62,13 +60,15 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   className = '',
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTabId>('generator');
+  const isSyntheticOffer = isSyntheticJobOffer(jobOffer);
 
   /**
    * Eksport dokumentu to jedyny moment, w którym wiadomo, że użytkownik
    * naprawdę zamierza aplikować — i jedyny, w którym wypada o to zapytać.
    * Pytanie pokazuje `ApplicationFeedbackModal` podpięty globalnie w `App`.
    */
-  const notifyExported = (exportedCv?: GeneratedCvExport) =>
+  const notifyExported = (event: CvExportEvent = {}) => {
+    if (isSyntheticOffer) return;
     requestApplicationConfirmation({
       jobId: jobOffer.id,
       company: jobOffer.company,
@@ -79,15 +79,15 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
       missingKeywords: canonicalResult?.missingRequirements?.length
         ? canonicalResult.missingRequirements
         : atsResult?.missingHardSkills,
-      documentSnapshot: createApplicationDocumentSnapshot({
+      documentSnapshot: createApplicationDocumentSnapshotFromExport({
         vault,
         tailoredResume,
         jobOffer,
         atsResult,
         coverLetter,
-        exportedCv,
-      }),
+      }, event),
     });
+  };
 
   const subTabs = [
     { id: 'generator' as SubTabId, label: 'Generator gotowego CV', icon: Eye },
@@ -95,12 +95,16 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
     { id: 'report' as SubTabId, label: 'Raport ATS & Wynik', icon: ShieldCheck },
     { id: 'mapper' as SubTabId, label: 'Mapper Słów Kluczowych', icon: Tag },
     { id: 'coverLetter' as SubTabId, label: 'List Motywacyjny', icon: FileText },
-    { id: 'cheatSheet' as SubTabId, label: 'Ściąga na Rozmowę', icon: BookOpen },
     { id: 'consistency' as SubTabId, label: 'Kontrola danych', icon: ShieldCheck },
   ];
 
   return (
     <div className={`space-y-6 ${className}`}>
+      {isSyntheticOffer && (
+        <aside role="note" className="rounded-xl border border-warning/30 bg-warning-soft/50 p-3 text-xs leading-relaxed text-warning-fg">
+          To demonstracyjny wynik na syntetycznej ofercie. Nazwa firmy, treść i wynagrodzenie są fikcyjne; nie zapisujemy tej próby jako aplikacji.
+        </aside>
+      )}
       {/* Underline Sub-Tabs */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-2">
         <Tabs<SubTabId>
@@ -110,7 +114,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
           variant="underline"
         />
 
-        {onSaveTailoredCV && (
+        {onSaveTailoredCV && !isSyntheticOffer && (
           <Button
             type="button"
             variant="primary"
@@ -168,13 +172,6 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
               vault={vault}
               jobOffer={jobOffer}
               onExported={notifyExported}
-            />
-          )}
-
-          {activeSubTab === 'cheatSheet' && (
-            <InterviewCheatSheetView
-              vault={vault}
-              jobOffer={jobOffer}
             />
           )}
 

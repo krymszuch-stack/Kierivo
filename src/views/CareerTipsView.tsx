@@ -40,12 +40,17 @@ import {
 } from '../lib/learningPlanStorage';
 import { MaterialDetailModal } from './careerTips/MaterialDetailModal';
 import { LearningPlanDrawer } from './careerTips/LearningPlanDrawer';
+import { getProfileRecommendations } from './careerTips/profileRecommendations';
+import { useAuth } from '../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../lib/localProfile';
 
 export interface CareerTipsViewProps {
   vault?: MasterVault;
 }
 
 export const CareerTipsView: React.FC<CareerTipsViewProps> = ({ vault }) => {
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeCategory, setActiveCategory] = useState<KnowledgeCategory>('all');
   const [activeIntent, setActiveIntent] = useState<UserIntent>('all');
   const [activeQuickGoal, setActiveQuickGoal] = useState<QuickGoalType | null>(null);
@@ -54,11 +59,12 @@ export const CareerTipsView: React.FC<CareerTipsViewProps> = ({ vault }) => {
 
   const [selectedMaterial, setSelectedMaterial] = useState<KnowledgeMaterial | null>(null);
   const [isPlanDrawerOpen, setIsPlanDrawerOpen] = useState(false);
-  const [learningPlan, setLearningPlan] = useState<LearningPlan>(() => getLearningPlan());
+  const [learningPlanState, setLearningPlanState] = useState<{ profileId: string; value: LearningPlan }>(() => ({ profileId, value: getLearningPlan(profileId) }));
+  const learningPlan = learningPlanState.profileId === profileId ? learningPlanState.value : getLearningPlan(profileId);
 
   // Odświeżenie planu po zmianach
   const reloadPlan = () => {
-    setLearningPlan(getLearningPlan());
+    setLearningPlanState({ profileId, value: getLearningPlan(profileId) });
   };
 
   // Obsługa celów z sekcji "Nie wiesz, co dalej?"
@@ -86,60 +92,14 @@ export const CareerTipsView: React.FC<CareerTipsViewProps> = ({ vault }) => {
 
   // Dodawanie do planu
   const handleAddToPlan = (material: KnowledgeMaterial) => {
-    addMaterialToPlan(material);
+    addMaterialToPlan(profileId, material);
     reloadPlan();
   };
 
   // Rekomendacje powiązane z profilem
   const profileRecommendations = useMemo(() => {
-    const recs: { title: string; hint: string; materialId: string }[] = [];
-    const profiler = vault?.profiler;
-    const licenses = profiler?.licenses || [];
-    const careerGoal = profiler?.careerGoal;
-
-    // 1. Sprawdzenie brakujących uprawnień SEP/UDT
-    if (!licenses.includes('sep_1kv') && !licenses.includes('sep_g2')) {
-      recs.push({
-        title: 'Jak zdobyć uprawnienia SEP (G1, G2, G3)',
-        hint: 'Kluczowe uprawnienie otwierające drogę do prac technicznych i elektroinstalacji.',
-        materialId: 'uprawnienia-sep-g1-g2-g3',
-      });
-    }
-
-    if (!licenses.includes('udt_forklift')) {
-      recs.push({
-        title: 'Operator wózka widłowego — uprawnienia UDT',
-        hint: 'Konkretna, poszukiwana kwalifikacja magazynowo-logistyczna.',
-        materialId: 'sciezka-operator-wozka-widlowego',
-      });
-    }
-
-    // 2. W zależności od celu zawodowego
-    if (careerGoal === 'FIRST_JOB' || careerGoal === 'UNDECIDED') {
-      recs.push({
-        title: 'Jak znaleźć pracę, której można nauczyć się od podstaw',
-        hint: 'Miejsca i branże z programem wdrożeniowym i płatnym przyuczeniem.',
-        materialId: 'praca-od-podstaw-bez-doswiadczenia',
-      });
-    }
-
-    if (careerGoal === 'CAREER_CHANGE') {
-      recs.push({
-        title: 'Jak znaleźć umiejętności przenośne — z prac fizycznych do biura',
-        hint: 'Jak pokazać most kompetencji w podsumowaniu i nie zaczynać od zera.',
-        materialId: 'umiejetnosci-przenosne-most-kompetencji',
-      });
-    }
-
-    // Zawsze polecamy sprawdzić dofinansowanie
-    recs.push({
-      title: 'Jak zapytać urząd pracy o szkolenie indywidualne',
-      hint: 'Możliwość sfinansowania kursu ze środków Funduszu Pracy.',
-      materialId: 'jak-zapytac-urzad-pracy-o-szkolenie',
-    });
-
-    return recs.slice(0, 4);
-  }, [vault]);
+    return getProfileRecommendations(vault?.profiler);
+  }, [vault?.profiler]);
 
   // Filtrowanie materiałów
   const filteredMaterials = useMemo(() => {
@@ -512,19 +472,19 @@ export const CareerTipsView: React.FC<CareerTipsViewProps> = ({ vault }) => {
         onClose={() => setIsPlanDrawerOpen(false)}
         plan={learningPlan}
         onToggleStep={(stepId) => {
-          togglePlanStep(stepId);
+          togglePlanStep(profileId, stepId);
           reloadPlan();
         }}
         onUpdateStatus={(materialId, status) => {
-          updatePlanItemStatus(materialId, status);
+          updatePlanItemStatus(profileId, materialId, status);
           reloadPlan();
         }}
         onUpdateNotes={(materialId, notes, reminder) => {
-          updatePlanItemNotes(materialId, notes, reminder);
+          updatePlanItemNotes(profileId, materialId, notes, reminder);
           reloadPlan();
         }}
         onRemoveItem={(materialId) => {
-          removeMaterialFromPlan(materialId);
+          removeMaterialFromPlan(profileId, materialId);
           reloadPlan();
         }}
         onOpenMaterial={(materialId) => {

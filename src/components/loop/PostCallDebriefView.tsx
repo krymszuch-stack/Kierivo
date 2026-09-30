@@ -25,6 +25,7 @@ import { showToast } from '../../store/useToastStore';
 import { contributeInterviewQuestion } from '../../lib/crowdsourceIntel';
 
 export interface PostCallDebriefViewProps {
+  profileId: string;
   session: InterviewLoopSession;
   vault: MasterVault;
   onUpdateSession: (updated: InterviewLoopSession) => void;
@@ -32,6 +33,7 @@ export interface PostCallDebriefViewProps {
 }
 
 export const PostCallDebriefView: React.FC<PostCallDebriefViewProps> = ({
+  profileId,
   session,
   vault,
   onUpdateSession,
@@ -117,7 +119,7 @@ export const PostCallDebriefView: React.FC<PostCallDebriefViewProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    saveInterviewSession(updatedSession);
+    saveInterviewSession(profileId, updatedSession);
     onUpdateSession(updatedSession);
 
     showToast('Zapisano debrief rozmowy', {

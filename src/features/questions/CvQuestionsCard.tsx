@@ -24,12 +24,14 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
  */
 
 export interface CvQuestionsCardProps {
+  profileId: string;
   vault: MasterVault;
   onChange: (vault: MasterVault) => void;
   className?: string;
 }
 
 export const CvQuestionsCard: React.FC<CvQuestionsCardProps> = ({
+  profileId,
   vault,
   onChange,
   className = '',
@@ -37,7 +39,7 @@ export const CvQuestionsCard: React.FC<CvQuestionsCardProps> = ({
   // Pominięcia wczytywane raz, przy pierwszym renderze. Zapis idzie do schowka
   // od razu przy kliknięciu „Ignoruj" — nie ma tu czego odkładać, bo to jedna
   // krótka tablica identyfikatorów, a nie serializacja całego vaultu.
-  const [skippedIds, setSkippedIds] = useState<string[]>(() => loadSkippedQuestionIds());
+  const [skippedIds, setSkippedIds] = useState<string[]>(() => loadSkippedQuestionIds(profileId));
   const [answer, setAnswer] = useState('');
   /**
    * Ile pytań tej serii użytkownik już domknął — odpowiedzią albo pominięciem.
@@ -69,9 +71,9 @@ export const CvQuestionsCard: React.FC<CvQuestionsCardProps> = ({
       // nie zostawały w schowku na zawsze.
       const pruned = pruneSkippedIds(vault, next);
       setSkippedIds(pruned);
-      saveSkippedQuestionIds(pruned);
+      saveSkippedQuestionIds(profileId, pruned);
     },
-    [vault]
+    [profileId, vault]
   );
 
   const handleSkip = useCallback(() => {

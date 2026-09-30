@@ -641,9 +641,9 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
                             </span>
                           </div>
                           <p className="text-[9px] text-brand-700 font-semibold">{h.company}</p>
-                          {h.highlights && h.highlights.length > 0 && (
+                          {h.highlights?.some((highlight) => highlight.text.trim().length > 0) && (
                             <p className="text-[9px] text-slate-500 line-clamp-2 pl-2 border-l border-slate-200">
-                              • {h.highlights[0].text}
+                              • {h.highlights.find((highlight) => highlight.text.trim().length > 0)?.text}
                             </p>
                           )}
                         </div>

@@ -14,8 +14,6 @@ import {
   identifyingValues,
   assertNoPii,
 } from "./pseudonymize";
-import { UNIVERSAL_CV_REFRAMING_SYSTEM_PROMPT } from "../data/universalCvReframingPrompt";
-import { ATS_CV_REFRAMING_SYSTEM_PROMPT } from "../data/atsCvReframingPrompt";
 import { INTERVIEW_CHEAT_SHEET_SYSTEM_PROMPT } from "../data/interviewCheatSheetPrompt";
 
 
@@ -240,64 +238,6 @@ ${truncateForModel(rawText)}
   }
 
   return parsed;
-}
-
-/**
- * Server-side Delta Prompting: Generate ONLY delta optimizations for missing job requirements.
- * Token-Optimized: Sends minimal context string instead of whole resume.
- */
-export async function optimizeDeltaPhrases(
-  missingKeywords: string[],
-  existingBullet: string,
-  targetRole: string
-): Promise<{ optimizedText: string; keywordsMatched: string[] }> {
-  // Punktor doświadczenia potrafi zawierać nazwisko, adres albo kontakt do
-  // klienta — nic z tego nie jest potrzebne do przeformułowania zdania.
-  const { text: safeBullet, map } = pseudonymize(existingBullet);
-
-  const prompt = `
-${UNIVERSAL_CV_REFRAMING_SYSTEM_PROMPT}
-
-${ATS_CV_REFRAMING_SYSTEM_PROMPT}
-
-ZADANIE SILNIKA REFRAMINGU FREAZY (7 KROKÓW):
-Masz istniejący punktor doświadczenia kandydata oraz listę brakujących słów kluczowych / uprawnień z oferty pracy (${targetRole}).
-
-Brakujące słowa kluczowe / uprawnienia: ${missingKeywords.join(", ")}
-Obecny punktor: "${safeBullet}"
-
-INSTRUKCJA (KROK 5 - REFRAMING FAZ):
-1. Zgodnie z KROKIEM 0-5 obu systemów: Dla korporacji (Tryb A) dopasowuj precyzyjnie słowa kluczowe. Dla rzemiosła/usług (Tryb B) zachowaj prosty, bezpośredni język fachowca.
-2. BEZWZGLĘDNY ZAKAZ HALUCYNACJI (KROK 5c): Nie wymyślaj fikcyjnych doświadczeń ani uprawnień, których kandydat nie ma.
-3. BEZWZGLĘDNE ZACHOWANIE LICZB I DOWODÓW (KROK 5d): Wszystkie wyniki i wskaźniki podawaj w formie cyfrowej (np. "4,40/5").
-4. Zwróć obiekt JSON z polem "optimizedText" oraz "keywordsMatched".
-`;
-
-  const response = await generateWithUsage({
-    model: getActiveAiModel(),
-    contents: prompt,
-    config: {
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          optimizedText: { type: Type.STRING },
-          keywordsMatched: { type: Type.ARRAY, items: { type: Type.STRING } },
-        },
-        required: ["optimizedText", "keywordsMatched"],
-      },
-    },
-  }, "optimize-delta");
-
-  const parsed = parseModelJson<{ optimizedText: string; keywordsMatched: string[] }>(
-    response.text,
-    "structured-response"
-  );
-
-  // Placeholdery wracają do prawdziwych wartości dopiero tutaj — użytkownik ma
-  // dostać swój punktor, a nie zdanie o "[KANDYDAT]".
-  return { ...parsed, optimizedText: rehydrate(parsed.optimizedText ?? "", map) };
 }
 
 /**

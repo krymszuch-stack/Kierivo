@@ -169,7 +169,7 @@ export const STARStoryView: React.FC<STARStoryViewProps> = ({
               Slot 1: Rola Kandydata
             </span>
             <span className="font-bold text-xs text-ink block truncate">
-              {vault.personalInfo?.title || 'Specjalista'}
+              {vault.personalInfo?.title || 'Nie podano w profilu'}
             </span>
             <span className="text-[10px] font-mono text-subtle">MasterVault Base Profile</span>
           </div>
@@ -268,7 +268,7 @@ export const STARStoryView: React.FC<STARStoryViewProps> = ({
             description={
               searchQuery
                 ? 'Żadna historia nie pasuje do wyszukiwanej frazy. Wyczyść pole, żeby zobaczyć wszystkie.'
-                : 'Historie zbudują się z osiągnięć w Twoim doświadczeniu — uzupełnij punktory w Profilu, a tu pojawią się gotowe opowieści STAR.'
+                : 'Szkice zbudują się z punktów w Twoim doświadczeniu. Dopiszesz do nich własną sytuację, zadanie, działania i rzeczywisty rezultat.'
             }
           />
         ) : (

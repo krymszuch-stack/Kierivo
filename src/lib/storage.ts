@@ -1,4 +1,4 @@
-import { idbBackupClearAll, idbBackupGet, idbBackupRemove, idbBackupSet, preloadIdbMirror } from './idbFallback';
+import { idbBackupClearAll, idbBackupClearAllDurably, idbBackupGet, idbBackupGetPreferred, idbBackupKeys, idbBackupRemove, idbBackupSet, idbBackupSetDurably, preloadIdbMirror } from './idbFallback';
 
 /**
  * Jedyne miejsce, które wie, co ta aplikacja zapisuje w przeglądarce.
@@ -20,7 +20,13 @@ const PREFIX = 'cvelocity:';
 export const StorageKeys = {
   theme: `${PREFIX}theme`,
   profile: `${PREFIX}profile`,
+  /** Lista zapisanych profili lokalnych, dostępna po zamknięciu aktywnego profilu. */
+  localProfiles: `${PREFIX}local-profiles`,
   vault: `${PREFIX}vault`,
+  /** Ostatnia potwierdzona rewizja chmurowego Vaultu per konto. */
+  cloudVaultRevision: `${PREFIX}cloud-vault-revision`,
+  /** Niewysłane pełne snapshoty chmurowe per konto. */
+  cloudVaultOutbox: `${PREFIX}cloud-vault-outbox`,
   applications: `${PREFIX}applications`,
   sidebarCollapsed: `${PREFIX}sidebar-collapsed`,
   favoriteTips: `${PREFIX}favorite-tips`,
@@ -65,7 +71,17 @@ export const StorageKeys = {
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
 
-/** Vault zapisywany pod profilem — jedyny klucz z częścią zmienną. */
+/** Dane prywatne biblioteki CV są zapisywane osobno dla każdego profilu. */
+export function cvLibraryKeyFor(profileId: string): string {
+  return `${StorageKeys.cvLibrary}:${profileId}`;
+}
+
+/** Klucze z treścią użytkownika muszą być izolowane między lokalnymi kontami. */
+export function profileDataKeyFor(key: StorageKey, profileId: string): string {
+  return `${key}:${profileId}`;
+}
+
+/** Vault zapisywany pod profilem. */
 export function vaultKeyFor(profileId: string): string {
   return `${StorageKeys.vault}:${profileId}`;
 }
@@ -122,6 +138,20 @@ const LEGACY_KEY_MAP: Record<string, string> = {
 /** Prefiksy sprzątane przy usuwaniu profilu — łącznie z dawną marką. */
 const OWNED_PREFIXES = ['cvelocity', 'skillvault'];
 
+// Usunięcie konta trwa dłużej niż jeden render Reacta. Stary autosave nie może
+// odtworzyć profilu między wymazaniem IDB a przeładowaniem czystej aplikacji.
+let privacyWipeInProgress = false;
+
+export function isPrivacyWipeInProgress(): boolean {
+  return privacyWipeInProgress;
+}
+
+export function beginPrivacyWipe(): void {
+  // W testach Node nie ma cyklu życia strony; w przeglądarce blokada trwa do
+  // wymuszonego odświeżenia po usunięciu konta/profilu.
+  if (typeof window !== 'undefined') privacyWipeInProgress = true;
+}
+
 function isBrowser(): boolean {
   return typeof localStorage !== 'undefined';
 }
@@ -130,7 +160,7 @@ function hasSessionStorage(): boolean {
   return typeof sessionStorage !== 'undefined';
 }
 
-export function readSessionJson<T>(key: StorageKey, fallback: T): T {
+export function readSessionJson<T>(key: string, fallback: T): T {
   if (!hasSessionStorage()) return fallback;
   try {
     const raw = sessionStorage.getItem(key);
@@ -140,8 +170,8 @@ export function readSessionJson<T>(key: StorageKey, fallback: T): T {
   }
 }
 
-export function writeSessionJson(key: StorageKey, value: unknown): void {
-  if (!hasSessionStorage()) return;
+export function writeSessionJson(key: string, value: unknown): void {
+  if (!hasSessionStorage() || privacyWipeInProgress) return;
   try {
     sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -149,7 +179,7 @@ export function writeSessionJson(key: StorageKey, value: unknown): void {
   }
 }
 
-export function removeSession(key: StorageKey): void {
+export function removeSession(key: string): void {
   if (!hasSessionStorage()) return;
   try {
     sessionStorage.removeItem(key);
@@ -183,6 +213,11 @@ export function fnv1a(input: string): string {
 export function readRaw(key: string): string | null {
   if (!isBrowser()) return null;
   try {
+    // Gdy bieżący zapis przekroczył limit LS, jego kopia w pamięci jest
+    // nowsza od starego wpisu LS. Po zatwierdzeniu IDB stary wpis jest usuwany.
+    const preferredBackup = idbBackupGetPreferred(key);
+    if (preferredBackup !== null) return preferredBackup;
+
     const value = localStorage.getItem(key);
     if (value !== null) return value;
     // Klucza nie ma w localStorage — może żyje w kopii zapasowej IndexedDB
@@ -195,23 +230,68 @@ export function readRaw(key: string): string | null {
 }
 
 export function writeRaw(key: string, value: string): void {
-  if (!isBrowser()) return;
+  if (!isBrowser() || privacyWipeInProgress) return;
+
+  const fallbackToIndexedDb = () => {
+    void idbBackupSet(key, value).then((persisted) => {
+      // Nie usuwaj poprzedniego, odzyskiwalnego wpisu, dopóki transakcja IDB
+      // naprawdę się nie zatwierdziła. Chroni to przed przerwaniem zapisu.
+      if (!persisted || idbBackupGetPreferred(key) !== value) return;
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Kopia IDB pozostaje dostępna; nie maskuj błędu zapisu pierwotnego.
+      }
+    });
+  };
 
   // Proaktywny przekierunek: powyżej miękkiego progu LS i tak rzuci limitem
   // przy najmniej odpowiednim momencie (najdłuższy wpis użytkownika). Nie
   // czekamy na gwarantowaną porażkę.
   if (value.length > LS_SOFT_LIMIT_CHARS) {
-    idbBackupSet(key, value);
+    fallbackToIndexedDb();
     return;
   }
 
   try {
     localStorage.setItem(key, value);
+    // Mały zapis LS jest teraz źródłem aktualnym. Usuń ewentualną starszą
+    // kopię IDB, żeby nie odrodziła się po późniejszym braku wpisu LS.
+    idbBackupRemove(key);
   } catch {
     // QuotaExceededError (przepełniony limit) albo tryb prywatny. Dla limitu
     // dane ratuje kopia w IndexedDB; dla trybu prywatnego po prostu nie ma
     // dokąd pisać i zostajemy przy pamięci sesyjnej.
-    idbBackupSet(key, value);
+    fallbackToIndexedDb();
+  }
+}
+
+/**
+ * Zapis dla migracji, które zaraz usuną jedyną kopię źródłową.
+ * Zwraca sukces dopiero po synchronicznym zapisie LS albo zatwierdzonej
+ * transakcji IDB; zwykły `writeRaw` celowo nie czeka na awaryjny zapis.
+ */
+export async function writeRawDurably(key: string, value: string): Promise<boolean> {
+  if (!isBrowser() || privacyWipeInProgress) return false;
+
+  if (value.length <= LS_SOFT_LIMIT_CHARS) {
+    try {
+      localStorage.setItem(key, value);
+      idbBackupRemove(key);
+      return true;
+    } catch {
+      // Gdy limit lub tryb prywatny blokuje LS, wymagamy potwierdzenia IDB.
+    }
+  }
+
+  if (!(await idbBackupSetDurably(key, value))) return false;
+  try {
+    localStorage.removeItem(key);
+    return localStorage.getItem(key) === null;
+  } catch {
+    // Pozostaw źródło migracji w spokoju, jeśli stara kopia celu nie mogła
+    // zostać usunięta i po restarcie mogłaby przesłonić nową kopię IDB.
+    return false;
   }
 }
 
@@ -224,6 +304,21 @@ export function removeRaw(key: string): void {
   } catch {
     /* jw. */
   }
+}
+
+/** Wypisuje klucze aplikacji także z awaryjnego IndexedDB; potrzebne do odzyskania dawnych profili. */
+export async function listStorageKeys(prefix: string): Promise<string[]> {
+  if (!isBrowser()) return [];
+  const localKeys: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) localKeys.push(key);
+    }
+  } catch {
+    return idbBackupKeys(prefix);
+  }
+  return [...new Set([...localKeys, ...(await idbBackupKeys(prefix))])];
 }
 
 /**
@@ -324,6 +419,7 @@ export function readJson<T>(key: string, fallback: T): T {
 
 /** Zapis JSON-a w kopercie z sumą kontrolną FNV-1a i aktualną wersją schematu. */
 export function writeJson(key: string, value: unknown): void {
+  if (privacyWipeInProgress) return;
   try {
     const dataString = JSON.stringify(value);
     if (dataString === undefined) return; // Cykl w strukturze — nie ma czego zapisać.
@@ -340,6 +436,21 @@ export function writeJson(key: string, value: unknown): void {
     lastGood.set(key, value);
   } catch {
     // Cykl w strukturze danych — nie ma czego zapisać.
+  }
+}
+
+/** Zapis koperty JSON z potwierdzeniem trwałości — wyłącznie dla migracji. */
+export async function writeJsonDurably(key: string, value: unknown): Promise<boolean> {
+  if (privacyWipeInProgress) return false;
+  try {
+    const data = JSON.stringify(value);
+    if (data === undefined) return false;
+    const envelope = JSON.stringify({ cvel: SCHEMA_VERSION, crc: fnv1a(data), data });
+    const persisted = await writeRawDurably(key, envelope);
+    if (persisted) lastGood.set(key, value);
+    return persisted;
+  } catch {
+    return false;
   }
 }
 
@@ -424,26 +535,44 @@ export function onAppStorageWiped(listener: () => void): () => void {
  * interfejsu. Iteruje po prefiksach zamiast po liście kluczy, żeby dane zapisane
  * przez kod, który powstanie później, też zostały objęte.
  */
-export function wipeAppStorage(): void {
-  if (!isBrowser()) return;
-
-  const doomed: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key || PRESERVED_ON_WIPE.has(key)) continue;
-    if (OWNED_PREFIXES.some((prefix) => key.startsWith(prefix))) doomed.push(key);
+function removeOwnedBrowserKeys(): boolean {
+  let cleared = true;
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || PRESERVED_ON_WIPE.has(key)) continue;
+      if (OWNED_PREFIXES.some((prefix) => key.startsWith(prefix))) doomed.push(key);
+    }
+    for (const key of doomed) {
+      removeRaw(key);
+      if (localStorage.getItem(key) !== null) cleared = false;
+    }
+  } catch {
+    cleared = false;
   }
-
-  for (const key of doomed) removeRaw(key);
 
   if (hasSessionStorage()) {
-    const sessionKeys: string[] = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key && OWNED_PREFIXES.some((prefix) => key.startsWith(prefix))) sessionKeys.push(key);
+    try {
+      const sessionKeys: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && OWNED_PREFIXES.some((prefix) => key.startsWith(prefix))) sessionKeys.push(key);
+      }
+      for (const key of sessionKeys) {
+        sessionStorage.removeItem(key);
+        if (sessionStorage.getItem(key) !== null) cleared = false;
+      }
+    } catch {
+      cleared = false;
     }
-    for (const key of sessionKeys) sessionStorage.removeItem(key);
   }
+  return cleared;
+}
+
+export function wipeAppStorage(): void {
+  if (!isBrowser()) return;
+  removeOwnedBrowserKeys();
 
   // Kopia zapasowa IndexedDB należy do tej samej umowy „klucz nieobecny w
   // rejestrze nie istnieje" — bez tego „usuń moje dane" odradzałoby profile
@@ -453,4 +582,14 @@ export function wipeAppStorage(): void {
   // Dopiero po faktycznym wymazaniu: subskrybent w callbacku musi widzieć stan
   // po usunięciu, nie przed.
   wipeListeners.forEach((notify) => notify());
+}
+
+/** Ścieżka „Usuń profil/konto” czeka na zatwierdzenie wymazania kopii IDB. */
+export async function wipeAppStorageDurably(): Promise<boolean> {
+  if (!isBrowser()) return false;
+  beginPrivacyWipe();
+  const localCleared = removeOwnedBrowserKeys();
+  const idbCleared = await idbBackupClearAllDurably();
+  wipeListeners.forEach((notify) => notify());
+  return localCleared && idbCleared;
 }

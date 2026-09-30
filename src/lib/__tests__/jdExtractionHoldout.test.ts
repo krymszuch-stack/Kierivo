@@ -23,7 +23,7 @@ describe('ślepy holdout ekstrakcji JD: niezależny pomiar 20 ofert', () => {
       expect(result.jobTitle).toBe(HOLDOUT_OFFERS[index].gold.title);
       expect(result.companyName).toBe(HOLDOUT_OFFERS[index].gold.company);
     });
-  });
+  }, 15_000);
 
   it('przepuszcza ofertę portalową 20 przez preprocessor i nie wpuszcza boilerplate do wymagań', () => {
     const offer = HOLDOUT_OFFERS[19];

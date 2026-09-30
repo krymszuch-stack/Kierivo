@@ -7,6 +7,7 @@ import { GapAnalysis } from './GapAnalysis';
 import { DealbreakerList } from './DealbreakerList';
 import { Card } from '../../components/ui/Card';
 import { Tooltip } from '../../components/ui/Tooltip';
+import { getDisplayedMissingRequirements, getDisplayedRecommendations } from './canonicalRecommendations';
 
 export interface AtsSimulatorViewProps {
   result: AtsCheckResult;
@@ -53,6 +54,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
       desc: 'Format dokumentu oceniany przez reguły Kierivo',
     },
   ];
+  const displayedRecommendations = getDisplayedRecommendations(result.recommendations, canonicalResult);
 
   const mainScore = canonicalResult ? canonicalResult.score : clampScore(result.overallScore);
 
@@ -64,14 +66,14 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
         </div>
         <div>
           <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold text-ink">Szacowany wynik przejścia filtra ATS</h3>
+            <h3 className="text-sm font-bold text-ink">Wynik analizy Kierivo</h3>
             <Tooltip
-              content="Systemy ATS (Applicant Tracking System) to oprogramowanie rekrutacyjne wstępnie weryfikujące zgodność CV przed przeczytaniem go przez człowieka. Szacujemy szanse Twojego dokumentu na podstawie słów kluczowych, uprawnień i czytelności formatu."
+              content="Wynik pokazuje zgodność CV z ofertą według reguł Kierivo. Nie mierzy prawdopodobieństwa decyzji konkretnego systemu ATS ani rekrutera."
               side="top"
             >
               <button
                 type="button"
-                aria-label="Czym jest szacowany wynik filtra ATS?"
+                aria-label="Jak Kierivo wylicza wynik analizy?"
                 className="inline-flex items-center justify-center text-muted hover:text-ink cursor-help transition-colors"
               >
                 <HelpCircle className="h-4 w-4" />
@@ -79,8 +81,8 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
             </Tooltip>
           </div>
           <p className="text-xs text-muted">
-            Szacowana ocena dopasowania na podstawie treści CV i ogłoszenia. Nie jest wynikiem
-            żadnego zewnętrznego systemu ATS ani gwarancją przejścia rekrutacji.
+            Ocena dopasowania według reguł Kierivo. Nie jest wynikiem zewnętrznego systemu ATS
+            ani gwarancją przejścia rekrutacji.
           </p>
         </div>
       </div>
@@ -116,7 +118,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
               </span>
               <p className="font-mono text-[10px] text-subtle leading-tight">
                 {canonicalResult
-                  ? 'Umiejętności: 40% · Doświadczenie i staż: 25% · Układ dokumentu: 20% · Wymogi formalne: 15%'
+                  ? 'Wagi bazowe: umiejętności 40%, staż 25%, struktura 20%, formalia 15%. Wymiary bez wykrytych danych są pomijane, a pozostałe wagi normalizowane.'
                   : (result.layer3Scoring?.formulaBreakdown || 'Wymagania twarde (50%) + Doświadczenie (25%) + Tytuł roli (25%)')}
               </p>
             </div>
@@ -124,35 +126,35 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
             {canonicalResult && (
               <div className="w-full grid grid-cols-2 gap-2 pt-3 border-t border-line/60">
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
-                  <span className="block text-[10px] text-muted">Umiejętności (40%)</span>
+                  <span className="block text-[10px] text-muted">Umiejętności ({Math.round(canonicalResult.effectiveWeights.skills * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.skills >= 75 ? 'text-success-fg' : canonicalResult.components.skills >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    canonicalResult.components.skills === null ? 'text-ink-muted' : canonicalResult.components.skills >= 75 ? 'text-success-fg' : canonicalResult.components.skills >= 50 ? 'text-brand-fg' : 'text-danger-fg'
                   }`}>
-                    {canonicalResult.components.skills}%
+                    {canonicalResult.components.skills === null ? 'brak danych' : `${canonicalResult.components.skills}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
-                  <span className="block text-[10px] text-muted">Staż i świeżość (25%)</span>
+                  <span className="block text-[10px] text-muted">Staż i świeżość ({Math.round(canonicalResult.effectiveWeights.experience * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.experience >= 75 ? 'text-success-fg' : canonicalResult.components.experience >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    canonicalResult.components.experience === null ? 'text-ink-muted' : canonicalResult.components.experience >= 75 ? 'text-success-fg' : canonicalResult.components.experience >= 50 ? 'text-brand-fg' : 'text-danger-fg'
                   }`}>
-                    {canonicalResult.components.experience}%
+                    {canonicalResult.components.experience === null ? 'brak danych' : `${canonicalResult.components.experience}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
-                  <span className="block text-[10px] text-muted">Struktura (20%)</span>
+                  <span className="block text-[10px] text-muted">Struktura ({Math.round(canonicalResult.effectiveWeights.structure * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.structure >= 75 ? 'text-success-fg' : canonicalResult.components.structure >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    canonicalResult.components.structure === null ? 'text-ink-muted' : canonicalResult.components.structure >= 75 ? 'text-success-fg' : canonicalResult.components.structure >= 50 ? 'text-brand-fg' : 'text-danger-fg'
                   }`}>
-                    {canonicalResult.components.structure}%
+                    {canonicalResult.components.structure === null ? 'brak danych' : `${canonicalResult.components.structure}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
-                  <span className="block text-[10px] text-muted">Formalia (15%)</span>
+                  <span className="block text-[10px] text-muted">Formalia ({Math.round(canonicalResult.effectiveWeights.formal * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.formal >= 75 ? 'text-success-fg' : canonicalResult.components.formal >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    canonicalResult.components.formal === null ? 'text-ink-muted' : canonicalResult.components.formal >= 75 ? 'text-success-fg' : canonicalResult.components.formal >= 50 ? 'text-brand-fg' : 'text-danger-fg'
                   }`}>
-                    {canonicalResult.components.formal}%
+                    {canonicalResult.components.formal === null ? 'brak danych' : `${canonicalResult.components.formal}%`}
                   </span>
                 </div>
               </div>
@@ -161,10 +163,10 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
 
           <Card tone="raised" className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Składowe wyniku Kierivo
+              Dodatkowe sygnały diagnostyczne
             </h4>
             <p className="text-[11px] text-subtle">
-              Szczegółowe kryteria wyliczone z analizy Twojego CV i ogłoszenia o pracę.
+              Liczy je niezależny symulator heurystyczny. Nie wchodzą do wyniku głównego powyżej i mogą dawać inne wskazówki.
             </p>
 
             <div className="space-y-2">
@@ -189,16 +191,16 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
         </div>
 
         <div className="lg:col-span-7 space-y-5">
-          <GapAnalysis result={result} />
+          <GapAnalysis result={result} canonicalResult={canonicalResult} />
 
           <DealbreakerList
-            missingItems={canonicalResult?.missingRequirements?.length ? canonicalResult.missingRequirements : (result.missingHardSkills || [])}
+            missingItems={getDisplayedMissingRequirements(result.missingHardSkills, canonicalResult)}
             onAddToVault={onAddToVault}
           />
         </div>
       </div>
 
-      {result.recommendations && result.recommendations.length > 0 && (
+      {displayedRecommendations.length > 0 && (
         <Card tone="raised" className="space-y-3">
           <div className="flex items-center gap-2">
             <Lightbulb className="h-4 w-4 text-warning-fg" />
@@ -208,7 +210,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
           </div>
 
           <div className="space-y-2">
-            {result.recommendations.map((rec, i) => (
+            {displayedRecommendations.map((rec, i) => (
               <div
                 key={i}
                 className="flex items-start gap-2.5 rounded-xl border border-line/60 bg-surface p-3 text-xs leading-relaxed text-ink"

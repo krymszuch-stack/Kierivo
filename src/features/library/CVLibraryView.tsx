@@ -16,9 +16,13 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
 import {
   getSavedCVs,
+  getUnassignedLegacyCVs,
+  claimLegacyCVsFor,
   updateCV,
   duplicateCV,
   deleteCV,
@@ -154,17 +158,18 @@ const EditPanel: React.FC<{
 /* ─────────────── CV Card ─────────────── */
 
 const CVCard: React.FC<{
+  profileId: string;
   doc: SavedCVDocument;
   onReExport: (doc: SavedCVDocument) => void;
   onDuplicate: (doc: SavedCVDocument) => void;
   onDelete: (doc: SavedCVDocument) => void;
   onUpdate: () => void;
-}> = ({ doc, onReExport, onDuplicate, onDelete, onUpdate }) => {
+}> = ({ profileId, doc, onReExport, onDuplicate, onDelete, onUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const handleSave = (id: string, title: string, tags: string[]) => {
-    updateCV(id, { title, tags });
+    updateCV(profileId, id, { title, tags });
     setIsEditing(false);
     onUpdate();
     showToast('Zaktualizowano', { message: `"${title}" — zapisano zmiany.`, variant: 'success' });
@@ -261,12 +266,25 @@ const CVCard: React.FC<{
 /* ─────────────── Main View ─────────────── */
 
 export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
-  const [docs, setDocs] = useState<SavedCVDocument[]>(getSavedCVs);
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const [docState, setDocState] = useState(() => ({ profileId, docs: getSavedCVs(profileId) }));
+  // Profil może zmienić się bez odmontowania widoku; nie pokazywać poprzedniej
+  // osoby nawet przez jedną klatkę przed odświeżeniem stanu.
+  const docs = docState.profileId === profileId ? docState.docs : getSavedCVs(profileId);
+  const unassignedLegacyDocs = profileId === ANONYMOUS_PROFILE_ID ? [] : getUnassignedLegacyCVs();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const refresh = useCallback(() => setDocs(getSavedCVs()), []);
+  const refresh = useCallback(() => setDocState({ profileId, docs: getSavedCVs(profileId) }), [profileId]);
+
+  const handleClaimLegacyCVs = () => {
+    if (!window.confirm('Przypisać starszą Bibliotekę CV do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dokumenty jako swoje.')) return;
+    const claimed = claimLegacyCVsFor(profileId);
+    refresh();
+    if (claimed > 0) showToast('Biblioteka została przypisana', { message: `Przeniesiono ${claimed} ${claimed === 1 ? 'dokument' : 'dokumentów'} do bieżącego profilu.` });
+  };
 
   /* Unique tags across all docs */
   const allTags = useMemo(() => {
@@ -315,7 +333,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
         targetRole: doc.targetRole,
         companyName: doc.companyName,
       });
-      recordDownload(doc.id);
+      recordDownload(profileId, doc.id);
       refresh();
       showToast('Pobrano PDF z biblioteki', {
         message: `„${doc.title}" — ponowne pobranie nie zużywa limitu.`,
@@ -330,7 +348,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
   };
 
   const handleDuplicate = (doc: SavedCVDocument) => {
-    const cloned = duplicateCV(doc.id);
+    const cloned = duplicateCV(profileId, doc.id);
     if (cloned) {
       refresh();
       showToast('Zduplikowano', {
@@ -345,7 +363,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
       setConfirmDelete(doc.id);
       return;
     }
-    deleteCV(doc.id);
+    deleteCV(profileId, doc.id);
     setConfirmDelete(null);
     refresh();
     showToast('Usunięto', { message: `„${doc.title}" — dokument usunięty z biblioteki.`, variant: 'success' });
@@ -384,6 +402,18 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
         )}
       </div>
 
+      {unassignedLegacyDocs.length > 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-semibold text-ink">Wykryto starszą Bibliotekę CV</h3>
+              <p className="mt-1 text-sm text-muted">Te dokumenty nie są automatycznie pokazywane w profilu. Przypisz je tylko, jeśli są Twoje.</p>
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={handleClaimLegacyCVs}>Przypisz do bieżącego profilu</Button>
+          </div>
+        </div>
+      )}
+
       {/* Tag filters */}
       {allTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -414,6 +444,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
           {filtered.map((doc) => (
             <CVCard
               key={doc.id}
+              profileId={profileId}
               doc={doc}
               onReExport={handleReExport}
               onDuplicate={handleDuplicate}
@@ -463,7 +494,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
                 onClick={() => {
                   const doc = docs.find((d) => d.id === confirmDelete);
                   if (doc) {
-                    deleteCV(doc.id);
+                    deleteCV(profileId, doc.id);
                     setConfirmDelete(null);
                     refresh();
                     showToast('Usunięto', { message: `„${doc.title}" usunięty.`, variant: 'success' });

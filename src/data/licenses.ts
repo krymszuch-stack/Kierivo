@@ -32,15 +32,36 @@ export const LICENSE_CATEGORIES: LicenseCategory[] = [
 export const ALL_LICENSES: LicenseDefinition[] = [
   { id: 'b_license', label: 'Prawo Jazdy Kat. B', category: 'Kierowca', iconName: 'Car' },
   { id: 'a_license', label: 'Prawo Jazdy Kat. A (Motocykl)', category: 'Kierowca', iconName: 'Car' },
-  { id: 'c_license', label: 'Prawo Jazdy Kat. C / C+E', category: 'Kierowca', iconName: 'Truck' },
+  // Stary wpis `c_license` oznacza odtąd kategorię C. C+E ma osobny wybór,
+  // bo zaznaczenie C nie dowodzi posiadania uprawnienia z przyczepą.
+  { id: 'c_license', label: 'Prawo Jazdy Kat. C', category: 'Kierowca', iconName: 'Truck' },
+  { id: 'ce_license', label: 'Prawo Jazdy Kat. C+E', category: 'Kierowca', iconName: 'Truck' },
   { id: 'd_license', label: 'Prawo Jazdy Kat. D (Autobusy)', category: 'Kierowca', iconName: 'Truck' },
   { id: 'udt_forklift', label: 'Uprawnienia UDT (Wózki Widłowe)', category: 'Techniczne', iconName: 'HardHat' },
-  { id: 'udt_crane', label: 'Uprawnienia UDT (Suwnice / Dźwigi)', category: 'Techniczne', iconName: 'HardHat' },
-  { id: 'sep_1kv', label: 'Uprawnienia SEP (Grupa 1 do 1kV)', category: 'Techniczne', iconName: 'Zap' },
-  { id: 'welding_tig_mig', label: 'Certyfikat Spawalniczy TIG/MAG', category: 'Techniczne', iconName: 'Flame' },
+  // Historyczny wybór łączył kilka typów urządzeń i nie potwierdza dziś
+  // konkretnego zakresu bez ponownego wskazania przez użytkownika.
+  { id: 'udt_crane', label: 'Uprawnienia UDT — urządzenie nieokreślone', category: 'Techniczne', iconName: 'HardHat' },
+  { id: 'udt_suwnice', label: 'Uprawnienia UDT — suwnice', category: 'Techniczne', iconName: 'HardHat' },
+  { id: 'udt_dzwigi', label: 'Uprawnienia UDT — dźwigi', category: 'Techniczne', iconName: 'HardHat' },
+  { id: 'udt_hds', label: 'Uprawnienia UDT — HDS', category: 'Techniczne', iconName: 'HardHat' },
+  { id: 'udt_zurawie', label: 'Uprawnienia UDT — żurawie', category: 'Techniczne', iconName: 'HardHat' },
+  { id: 'sep_1kv', label: 'SEP G1 do 1 kV — zakres E/D nieokreślony', category: 'Techniczne', iconName: 'Zap' },
+  { id: 'sep_g1_e_1kv', label: 'SEP G1 E1 do 1 kV — eksploatacja', category: 'Techniczne', iconName: 'Zap' },
+  { id: 'sep_g1_d_1kv', label: 'SEP G1 D1 do 1 kV — dozór', category: 'Techniczne', iconName: 'Zap' },
+  // Historyczny wybór nie rozróżniał metody. Zachowujemy go jako informację
+  // o nieokreślonych uprawnieniach spawalniczych, ale nie zalicza konkretnej metody.
+  { id: 'welding_tig_mig', label: 'Uprawnienia spawalnicze — metoda nieokreślona', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'welding_tig', label: 'Uprawnienia spawalnicze TIG', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'welding_mag', label: 'Uprawnienia spawalnicze MAG', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'welding_mig', label: 'Uprawnienia spawalnicze MIG', category: 'Techniczne', iconName: 'Flame' },
   { id: 'sanepid', label: 'Orzeczenie Sanepid', category: 'Sanitarne', iconName: 'ShieldCheck' },
   { id: 'haccp', label: 'Certyfikat HACCP / GMP', category: 'Sanitarne', iconName: 'ShieldCheck' },
-  { id: 'cloud_cert', label: 'Certyfikat AWS / GCP / Azure', category: 'IT / Zarządzanie', iconName: 'Award' },
+  // Stary wybór nie zapisywał dostawcy, więc nie może potwierdzić konkretnego
+  // certyfikatu AWS, Azure ani GCP.
+  { id: 'cloud_cert', label: 'Certyfikat chmurowy — dostawca nieokreślony', category: 'IT / Zarządzanie', iconName: 'Award' },
+  { id: 'cloud_cert_aws', label: 'Certyfikat AWS', category: 'IT / Zarządzanie', iconName: 'Award' },
+  { id: 'cloud_cert_azure', label: 'Certyfikat Microsoft Azure', category: 'IT / Zarządzanie', iconName: 'Award' },
+  { id: 'cloud_cert_gcp', label: 'Certyfikat Google Cloud', category: 'IT / Zarządzanie', iconName: 'Award' },
   { id: 'scrum_master', label: 'Scrum Master (PSM I / CSM)', category: 'IT / Zarządzanie', iconName: 'Sparkles' },
   { id: 'cisco_ccna', label: 'Certyfikat Cisco CCNA', category: 'IT / Zarządzanie', iconName: 'Network' },
 
@@ -48,8 +69,12 @@ export const ALL_LICENSES: LicenseDefinition[] = [
   // wymagać SEP G3 albo uprawnień F-Gaz, a użytkownik nie miał jak zaznaczyć,
   // że je posiada — mimo że `specializations.ts` wymienia je przy monterach
   // i technikach HVAC jako podstawowe kwalifikacje.
-  { id: 'sep_g2', label: 'Uprawnienia SEP G2 (Cieplne / Energetyczne)', category: 'Techniczne', iconName: 'Flame' },
-  { id: 'sep_g3', label: 'Uprawnienia SEP G3 (Gazowe)', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g2', label: 'SEP G2 — zakres E/D nieokreślony', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g2_e', label: 'SEP G2 E2 — eksploatacja', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g2_d', label: 'SEP G2 D2 — dozór', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g3', label: 'SEP G3 — zakres E/D nieokreślony', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g3_e', label: 'SEP G3 E3 — eksploatacja', category: 'Techniczne', iconName: 'Flame' },
+  { id: 'sep_g3_d', label: 'SEP G3 D3 — dozór', category: 'Techniczne', iconName: 'Flame' },
   { id: 'fgas', label: 'Certyfikat F-Gaz (Personel)', category: 'Techniczne', iconName: 'Wind' },
   { id: 'udt_lift', label: 'Uprawnienia UDT (Podesty Ruchome)', category: 'Techniczne', iconName: 'HardHat' },
   { id: 'udt_pressure', label: 'Uprawnienia UDT (Urządzenia Ciśnieniowe)', category: 'Techniczne', iconName: 'Sliders' },

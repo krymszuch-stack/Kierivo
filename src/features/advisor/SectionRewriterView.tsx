@@ -1,25 +1,23 @@
 import React, { useState } from 'react';
 import {
   Sparkles,
-  ArrowRight,
   Check,
   XCircle,
   Copy,
   RotateCcw,
   Sliders,
   ShieldCheck,
-  AlertCircle,
-  FileText,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Textarea, Input } from '../../components/ui/Field';
-import { Card } from '../../components/ui/Card';
 import { showToast } from '../../store/useToastStore';
 import { api } from '../../lib/apiClient';
 import { RuleFocus } from '../../lib/sectionRewriterEngine';
+import { canCopySectionRewrite } from './sectionRewriteReview';
 
 export interface SectionRewriterViewProps {
   initialRole?: string;
+  azureAvailable?: boolean;
   onNavigateToProfile?: () => void;
 }
 
@@ -53,6 +51,7 @@ const EXAMPLE_BULLETS = [
 
 export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   initialRole = '',
+  azureAvailable = false,
 }) => {
   const [inputText, setInputText] = useState('');
   const [roleTitle, setRoleTitle] = useState(initialRole);
@@ -60,15 +59,19 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [proposal, setProposal] = useState<RewriteApiResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [azureConsent, setAzureConsent] = useState(false);
+  const [factsVerified, setFactsVerified] = useState(false);
 
   const handleGenerate = async () => {
     if (!inputText.trim() || inputText.trim().length < 5) {
       showToast('Wpisz tekst punktu do poprawki (min. 5 znaków)', { variant: 'error' });
       return;
     }
+    if (!azureAvailable || !azureConsent) return;
 
     setIsLoading(true);
     setCopied(false);
+    setFactsVerified(false);
 
     try {
       // MINIMALNY KONTEKST: przesyłany jest wyłącznie fragment tekstu i nazwa roli,
@@ -77,6 +80,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
         text: inputText.trim(),
         roleTitle: roleTitle.trim() || undefined,
         ruleFocus,
+        consentToAzure: true,
       });
 
       if (res && res.success) {
@@ -95,6 +99,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   const handleReject = () => {
     setProposal(null);
     setCopied(false);
+    setFactsVerified(false);
     showToast('Propozycja została odrzucona', {
       message: 'Możesz zmodyfikować kryteria i wygenerować nową wersję.',
       variant: 'info',
@@ -102,7 +107,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   };
 
   const handleCopy = async () => {
-    if (!proposal?.proposedText) return;
+    if (!proposal || !canCopySectionRewrite(proposal.proposedText, factsVerified)) return;
     try {
       await navigator.clipboard.writeText(proposal.proposedText);
       setCopied(true);
@@ -120,6 +125,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
     setInputText(ex.text);
     setProposal(null);
     setCopied(false);
+    setFactsVerified(false);
   };
 
   return (
@@ -128,10 +134,11 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
       <div className="flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3 text-xs text-brand-900">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
         <div>
-          <p className="font-semibold text-ink">Pół-automatyczny asystent sekcji CV (Reguły STAR + Lekki LLM)</p>
+          <p className="font-semibold text-ink">Doradca zaufany — propozycja zmian przez Azure OpenAI</p>
           <p className="mt-0.5 text-muted">
-            Model analizuje <strong>wyłącznie ten jeden wpisany fragment</strong> — nie czyta całego Twojego Master Vaultu ani danych kontaktowych. Brakujące liczby uzupełnia szablonem, nie zmyśla faktów (Reguła 1).
+            Do Azure OpenAI trafia <strong>wyłącznie ten fragment i opcjonalna nazwa roli</strong> — nie cały Master Vault. Model może się mylić; sprawdź propozycję i nie przyjmuj niepotwierdzonych faktów.
           </p>
+          {!azureAvailable && <p className="mt-2 font-semibold text-danger-fg">Azure OpenAI jest niedostępne. Wymagany jest tryb chmurowy, logowanie i konfiguracja deploymentu.</p>}
         </div>
       </div>
 
@@ -207,6 +214,16 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
           </div>
         </div>
 
+        <label className="flex items-start gap-2 rounded-xl border border-line bg-sunken p-2.5 text-[11px] leading-relaxed text-muted">
+          <input
+            type="checkbox"
+            checked={azureConsent}
+            onChange={(event) => setAzureConsent(event.target.checked)}
+            className="mt-0.5 accent-brand-600"
+          />
+          <span>Potwierdzam wysłanie tego fragmentu i nazwy roli do Azure OpenAI przez API.</span>
+        </label>
+
         <div className="flex justify-end pt-1">
           <Button
             type="button"
@@ -214,7 +231,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
             size="md"
             icon={Sparkles}
             onClick={handleGenerate}
-            disabled={isLoading || inputText.trim().length < 5}
+            disabled={isLoading || !azureAvailable || !azureConsent || inputText.trim().length < 5}
           >
             {isLoading ? 'Generuję propozycję...' : 'Ulepsz ten punkt'}
           </Button>
@@ -277,6 +294,16 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
             </div>
           </div>
 
+          <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs leading-relaxed text-ink">
+            <input
+              type="checkbox"
+              checked={factsVerified}
+              onChange={(event) => setFactsVerified(event.target.checked)}
+              className="mt-0.5 accent-brand-600"
+            />
+            <span>Sprawdziłem propozycję. Potwierdzam, że każda liczba, umiejętność i informacja o moim doświadczeniu jest prawdziwa.</span>
+          </label>
+
           {/* Przyciski decyzyjne */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
             <Button
@@ -307,6 +334,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
                 size="sm"
                 icon={copied ? Check : Copy}
                 onClick={handleCopy}
+                disabled={!canCopySectionRewrite(proposal.proposedText, factsVerified)}
               >
                 {copied ? 'Skopiowano!' : 'Zastosuj i skopiuj'}
               </Button>

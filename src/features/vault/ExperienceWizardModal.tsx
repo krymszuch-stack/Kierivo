@@ -36,6 +36,7 @@ import {
   GeneratedExperienceVariant,
   GrammarNarrativeStyle,
   RoleKnowledgeNode,
+  validateExperienceFact,
 } from '../../lib/experienceEngine';
 
 export interface ExperienceWizardModalProps {
@@ -80,12 +81,14 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
   const [selectedRoleNode, setSelectedRoleNode] = useState<RoleKnowledgeNode>(() =>
     resolveRoleKnowledgeNode(roleTitle)
   );
+  const [factsConfirmed, setFactsConfirmed] = useState(false);
 
   // Synchronizacja przy zmianie roleTitle z zewnątrz
   const [prevRoleTitle, setPrevRoleTitle] = useState(roleTitle);
   if (roleTitle !== prevRoleTitle) {
     setPrevRoleTitle(roleTitle);
     setSelectedRoleNode(resolveRoleKnowledgeNode(roleTitle));
+    setFactsConfirmed(false);
   }
 
   // Stan wyszukiwarki/wyboru innego zawodu
@@ -113,6 +116,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
 
   // Synchronizacja przy zmianie wybranej roli
   const handleSelectRoleNode = (node: RoleKnowledgeNode) => {
+    setFactsConfirmed(false);
     setSelectedRoleNode(node);
     const newInitialArea = node.areas.length > 0 ? node.areas[0].id : '';
     const newInitialActions = newInitialArea
@@ -130,11 +134,23 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
 
   // Zmiana obszaru -> automatyczny reset akcji i obiektów
   const handleSelectArea = (areaId: string) => {
+    setFactsConfirmed(false);
     setSelectedArea(areaId);
     const areaActions = selectedRoleNode.actions[areaId] || selectedRoleNode.actions[Object.keys(selectedRoleNode.actions)[0]] || [];
     setSelectedAction(areaActions.length > 0 ? areaActions[0] : '');
     setSelectedObjects([]);
+    setSelectedTech([]);
     setSelectedOutcome('');
+    setMetricInput('');
+  };
+
+  const handleSelectAction = (action: string) => {
+    setFactsConfirmed(false);
+    setSelectedAction(action);
+    setSelectedObjects([]);
+    setSelectedTech([]);
+    setSelectedOutcome('');
+    setMetricInput('');
   };
 
   // Filtrowanie listy ról w pickerze
@@ -202,15 +218,12 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
       role: roleTitle || selectedRoleNode.label,
       area: areaLabel,
       action: selectedAction || availableActions[0] || 'prowadziłem',
-      objects:
-        selectedObjects.length > 0
-          ? selectedObjects
-          : [availableObjects[0] || 'zadania i prace operacyjne'],
+      objects: selectedObjects,
       technologies: selectedTech,
       outcome: selectedOutcome,
       metric: metricInput.trim() || undefined,
       narrativeStyle,
-      verifiedByUser: true,
+      verifiedByUser: factsConfirmed,
     };
   }, [
     roleTitle,
@@ -219,25 +232,28 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
     selectedAction,
     availableActions,
     selectedObjects,
-    availableObjects,
     selectedTech,
     selectedOutcome,
     metricInput,
     narrativeStyle,
+    factsConfirmed,
   ]);
 
   // Wygenerowane warianty
   const generatedVariants: GeneratedExperienceVariant[] = useMemo(() => {
     return generateExperienceVariants(currentFact);
   }, [currentFact]);
+  const canApplyFact = validateExperienceFact(currentFact).isValid;
 
   const toggleObject = (obj: string) => {
+    setFactsConfirmed(false);
     setSelectedObjects((prev) =>
       prev.includes(obj) ? prev.filter((o) => o !== obj) : [...prev, obj]
     );
   };
 
   const toggleTech = (tech: string) => {
+    setFactsConfirmed(false);
     setSelectedTech((prev) =>
       prev.includes(tech) ? prev.filter((t) => t !== tech) : [...prev, tech]
     );
@@ -248,12 +264,14 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
     e.preventDefault();
     const clean = customTechInput.trim();
     if (clean && !selectedTech.includes(clean)) {
+      setFactsConfirmed(false);
       setSelectedTech((prev) => [...prev, clean]);
       setCustomTechInput('');
     }
   };
 
   const handleApplyVariant = (variant: GeneratedExperienceVariant) => {
+    if (!canApplyFact) return;
     onApplyDescription(variant.fullParagraph, variant.bulletPoints);
     onClose();
   };
@@ -264,6 +282,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
     setSelectedTech([]);
     setSelectedOutcome('');
     setMetricInput('');
+    setFactsConfirmed(false);
   };
 
   const ActiveIcon = CATEGORY_ICONS[selectedRoleNode.category || ''] || Briefcase;
@@ -455,7 +474,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
                 <button
                   key={action}
                   type="button"
-                  onClick={() => setSelectedAction(action)}
+                  onClick={() => handleSelectAction(action)}
                   className={`px-3.5 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
                     selectedAction === action
                       ? 'border-brand-500 bg-brand-500/10 text-brand-fg ring-1 ring-brand-500/30'
@@ -569,7 +588,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
                 <button
                   key={outcome}
                   type="button"
-                  onClick={() => setSelectedOutcome(outcome)}
+                  onClick={() => { setSelectedOutcome(outcome); setFactsConfirmed(false); }}
                   className={`px-3.5 py-2 rounded-xl border text-left text-xs font-semibold cursor-pointer transition-all ${
                     selectedOutcome === outcome
                       ? 'border-brand-500 bg-brand-500/10 text-brand-fg ring-1 ring-brand-500/30'
@@ -589,16 +608,17 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
               <input
                 type="text"
                 value={metricInput}
-                onChange={(e) => setMetricInput(e.target.value)}
+                onChange={(e) => { setMetricInput(e.target.value); setFactsConfirmed(false); }}
                 placeholder="Pozostaw puste, jeśli nie znasz dokładnej liczby (opis będzie jakościowy)"
                 className="w-full rounded-xl border border-line bg-sunken px-3.5 py-2 text-xs text-ink placeholder:text-subtle focus:border-brand-500/60 focus:outline-none"
               />
             </div>
+
           </div>
         )}
 
         {/* Podgląd gotowych wariantów generowanych w czasie rzeczywistym */}
-        <div className="space-y-3 pt-4 border-t border-line/60">
+        {step === 4 && generatedVariants.length > 0 && <div className="space-y-3 pt-4 border-t border-line/60">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-ink flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-brand-600" />
@@ -609,7 +629,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
             <div className="flex items-center gap-1 bg-sunken p-1 rounded-xl border border-line/60">
               <button
                 type="button"
-                onClick={() => setNarrativeStyle('impersonal')}
+                onClick={() => { setNarrativeStyle('impersonal'); setFactsConfirmed(false); }}
                 className={`px-2 py-1 text-[10px] font-bold rounded-lg cursor-pointer transition-colors ${
                   narrativeStyle === 'impersonal' ? 'bg-surface text-brand-fg shadow-2xs' : 'text-muted'
                 }`}
@@ -618,7 +638,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setNarrativeStyle('first_person_m')}
+                onClick={() => { setNarrativeStyle('first_person_m'); setFactsConfirmed(false); }}
                 className={`px-2 py-1 text-[10px] font-bold rounded-lg cursor-pointer transition-colors ${
                   narrativeStyle === 'first_person_m' ? 'bg-surface text-brand-fg shadow-2xs' : 'text-muted'
                 }`}
@@ -627,7 +647,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setNarrativeStyle('first_person_f')}
+                onClick={() => { setNarrativeStyle('first_person_f'); setFactsConfirmed(false); }}
                 className={`px-2 py-1 text-[10px] font-bold rounded-lg cursor-pointer transition-colors ${
                   narrativeStyle === 'first_person_f' ? 'bg-surface text-brand-fg shadow-2xs' : 'text-muted'
                 }`}
@@ -661,6 +681,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
                     size="sm"
                     icon={Check}
                     onClick={() => handleApplyVariant(v)}
+                    disabled={!canApplyFact}
                     className="text-xs h-7 px-3"
                   >
                     Wstaw do tego stanowiska
@@ -669,7 +690,23 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
               </div>
             ))}
           </div>
-        </div>
+        </div>}
+        {step === 4 && generatedVariants.length === 0 && (
+          <p className="rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs text-muted">
+            Wybierz przynajmniej jeden obiekt pracy, żeby przygotować opis oparty na Twoich danych.
+          </p>
+        )}
+        {step === 4 && generatedVariants.length > 0 && (
+          <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs leading-relaxed text-ink">
+            <input
+              type="checkbox"
+              checked={factsConfirmed}
+              onChange={(event) => setFactsConfirmed(event.target.checked)}
+              className="mt-0.5 accent-brand-600"
+            />
+            <span>Przejrzałem propozycję i potwierdzam, że wskazana rola, czynność, obiekty, narzędzia, efekty i metryki są zgodne z moim doświadczeniem.</span>
+          </label>
+        )}
 
         {/* Pasek nawigacji kreatora */}
         <div className="flex items-center justify-between pt-2 border-t border-line/60">
@@ -704,6 +741,7 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
                 variant="primary"
                 size="sm"
                 onClick={() => setStep((s) => s + 1)}
+                disabled={step === 2 && selectedObjects.length === 0}
                 className="text-xs"
               >
                 <span>Dalej</span>

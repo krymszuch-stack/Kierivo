@@ -1,10 +1,10 @@
-import { MasterVault } from '../../types';
-import { stripSensitiveFields, identifyingValues, pseudonymize } from '../pseudonymize';
+import type { InterviewCoachProfileContext } from '../../lib/interviewCoachContext';
+import { pseudonymize } from '../pseudonymize';
 import { generateWithUsage, truncateForModel, parseModelJson } from '../geminiClient';
 import { loadConfig } from '../config';
 
 export interface GenerateQuestionsOptions {
-  vault?: MasterVault;
+  profileContext?: InterviewCoachProfileContext;
   targetRole?: string;
   targetCompany?: string;
   jobDescription?: string;
@@ -22,7 +22,6 @@ export interface EvaluateStarAnswerOptions {
   question: string;
   answer: string;
   targetRole?: string;
-  vault?: MasterVault;
 }
 
 export interface StarComponentFeedback {
@@ -51,38 +50,37 @@ export interface StarAnswerEvaluation {
 export async function generateInterviewQuestionsWithAi(
   options: GenerateQuestionsOptions
 ): Promise<{ questions: InterviewQuestionItem[]; usage?: any }> {
-  const { vault, targetRole, targetCompany, jobDescription } = options;
+  const { profileContext, targetRole, targetCompany, jobDescription } = options;
 
   let sanitizedHistory: string[] = [];
   let sanitizedSkills: string[] = [];
 
-  if (vault) {
-    const stripped = stripSensitiveFields(vault);
-    const idVals = identifyingValues(vault);
-
-    sanitizedHistory = (stripped.history || []).slice(0, 3).map((h) => {
-      const highlights = (h.highlights || []).slice(0, 2).map((hl) => hl.text).join('; ');
-      const raw = `${h.role} w ${h.company}: ${highlights}`;
-      return pseudonymize(raw, idVals).text;
+  if (profileContext) {
+    sanitizedHistory = profileContext.experience.slice(0, 3).map((entry) => {
+      const raw = `${entry.role}: ${entry.highlights.slice(0, 2).join('; ')}`;
+      return pseudonymize(raw).text;
     });
 
     sanitizedSkills = [
-      ...(stripped.skillsMatrix?.hardSkills || []).slice(0, 8),
-      ...(stripped.skillsMatrix?.toolsAndTech || []).slice(0, 8),
+      ...profileContext.hardSkills.slice(0, 8),
+      ...profileContext.toolsAndTech.slice(0, 8),
     ];
   }
 
-  const role = targetRole || vault?.personalInfo?.title || 'Specjalista';
-  const company = targetCompany || 'Firma Rekrutująca';
-  const jdContext = jobDescription ? truncateForModel(jobDescription, 2000) : 'Standardowe wymagania rynkowe';
+  const role = targetRole?.trim() || profileContext?.roleTitle?.trim() || 'Nie podano stanowiska';
+  const company = targetCompany?.trim() || 'Nie podano firmy';
+  const jdContext = jobDescription ? truncateForModel(jobDescription, 2000) : 'Nie podano treści ogłoszenia';
 
   const systemPrompt = `Jesteś doświadczonym Dyrektorem Rekrutacji (Executive Recruiter) i Trenerem Rozmów Kwalifikacyjnych.
-Twoim zadaniem jest ułożenie 4 celowanych, wymagających i realistycznych pytań rekrutacyjnych dla kandydata na stanowisko "${role}" w firmie "${company}".
+Twoim zadaniem jest ułożenie 4 realistycznych pytań do ćwiczenia rozmowy. Stanowisko: "${role}". Firma: "${company}".
+Jeśli brakuje stanowiska, firmy, ogłoszenia lub danych kandydata, nie zgaduj ich ani nie przedstawiaj typowych wymagań jako faktów o tej ofercie.
+Pytania mają pasować do branży i rodzaju pracy wskazanych w kontekście. Nie zakładaj, że kandydat pracuje w IT ani że ma doświadczenie projektowe.
+Nie wymagaj liczbowej metryki; akceptuj rzetelny opis jakościowego rezultatu i sytuacji, w której rezultat nie był mierzony.
 
 Kategorie pytań:
 1. "behavioral" - Oparte na trudnej sytuacji z przeszłości (np. awaria, konflikt, trudny klient, presja terminowa).
 2. "situational" - Pytanie scenariuszowe ("Co byś zrobił, gdyby...").
-3. "competency" - Weryfikacja głębi wiedzy, architektury lub doboru narzędzi.
+3. "competency" - Weryfikacja kompetencji właściwej dla wskazanej roli; nie zakładaj technologii ani architektury bez źródła.
 
 Dla każdego pytania podaj:
 - id: unikalny identyfikator, np. "q_1", "q_2", "q_3", "q_4"
@@ -147,39 +145,30 @@ ${jdContext}`;
 export async function evaluateStarAnswerWithAi(
   options: EvaluateStarAnswerOptions
 ): Promise<{ evaluation: StarAnswerEvaluation; usage?: any }> {
-  const { question, answer, targetRole, vault } = options;
+  const { question, answer, targetRole } = options;
 
   if (!answer || answer.trim().length === 0) {
     throw new Error('Brak treści odpowiedzi do analizy.');
   }
 
-  let sanitizedContext = '';
-  if (vault) {
-    const stripped = stripSensitiveFields(vault);
-    const idVals = identifyingValues(vault);
-    const rawContext = (stripped.history || [])
-      .slice(0, 2)
-      .map((h) => `${h.role} w ${h.company}`)
-      .join(', ');
-    sanitizedContext = `Doświadczenie z profilu kandydata: ${pseudonymize(rawContext, idVals).text}`;
-  }
+  const role = targetRole?.trim() || 'Nie podano stanowiska';
 
-  const role = targetRole || vault?.personalInfo?.title || 'Specjalista';
-
-  const systemPrompt = `Jesteś bezkompromisowym, ale wspierającym Trenerem Rozmów Kwalifikacyjnych.
+  const systemPrompt = `Jesteś wspierającym trenerem rozmów kwalifikacyjnych. Twoja ocena jest orientacyjną opinią AI, a nie obiektywnym pomiarem ani prognozą decyzji rekrutacyjnej.
 Oceniasz odpowiedź kandydata na stanowisko "${role}" pod kątem techniki STAR:
-- S (Situation): Czy tło sytuacji jest zwięzłe i jasne? (nie za długie, maks. 20% wypowiedzi).
-- T (Task): Czy cel, wyzwanie i konkretna rola kandydata są precyzyjnie określone?
-- A (Action): Czy kandydat skupił się na WŁASNYCH działaniach ("ja wdrożyłem", a nie ogólne "my zrobiliśmy")? Jakie narzędzia/metody zastosował?
-- R (Result): CZY SĄ TWARDE METRYKI LICZBOWE? (liczby, %, czas, oszczędności, SLA). Rekruterzy odrzucają opowieści bez mierzalnego finału.
+- S (Situation): Czy tło sytuacji jest zrozumiałe i wystarczające?
+- T (Task): Czy cel, wyzwanie i konkretna rola kandydata są jasno określone?
+- A (Action): Czy kandydat opisał własny wkład i działania? Nie wymagaj stanowiska kierowniczego, wdrożenia ani pracy zespołowej.
+- R (Result): Czy kandydat podał rzeczywisty skutek, wniosek lub uczciwie zaznaczył brak pomiaru? Liczby są opcjonalne; nie obniżaj oceny wyłącznie za ich brak.
+
+Najważniejsza zasada: nie dopisuj żadnych faktów, nazw, odpowiedzialności, liczb, sukcesów ani skutków, których nie ma w odpowiedzi kandydata. W polach bez danych zostaw neutralny tekst lub wskaż [uzupełnij własnym faktem]; nie wymyślaj przykładu.
 
 Wymogi punktacji:
-- overallScore (1-10): ocena ogólna siły perswazyjnej odpowiedzi.
+- overallScore (1-10): subiektywna ocena treningowa struktury i jasności odpowiedzi.
 - verdict: "EXCELLENT" (8-10) | "SOLID" (6-7) | "NEEDS_REFINEMENT" (1-5).
 - starBreakdown: obiekt z ocenami (1-10) i 1-2 zdaniami konstruktywnego feedbacku dla każdego komponentu (situation, task, action, result).
 - strengths: tablica 2-3 najsilniejszych elementów wypowiedzi.
 - improvements: tablica 2-3 konkretnych luk do wyeliminowania.
-- exemplaryResponse: Zredagowana, wzorcowa wersja tej samej odpowiedzi. MUSI zachować fakty podane przez kandydata, ale brzmieć profesjonalnie, pewnie i z twardą strukturą STAR.
+- exemplaryResponse: Zredagowany szkic tej samej odpowiedzi. Zachowaj wyłącznie fakty podane przez kandydata. Brakujących elementów nie uzupełniaj domysłami; wstaw [uzupełnij własnym faktem] albo pomiń.
 
 ZWRÓĆ WYŁĄCZNIE CZYSTY JSON:
 {
@@ -202,8 +191,7 @@ ZWRÓĆ WYŁĄCZNIE CZYSTY JSON:
 Odpowiedź kandydata:
 "${truncateForModel(answer, 4000)}"
 
-Kontekst kandydata:
-${sanitizedContext || 'Brak dodatkowego kontekstu'}`;
+Kontekst kandydata: brak. Oceniaj wyłącznie treść podanej odpowiedzi.`;
 
   const config = loadConfig();
   const modelToUse = config.AI_PROVIDER === 'azure_openai'

@@ -29,6 +29,65 @@ export interface PendingApplication {
   documentSnapshot?: ApplicationDocumentSnapshot;
 }
 
+/**
+ * Łączy odpowiedź z właściwą aplikacją.
+ *
+ * Najpierw szukamy stabilnego ID. Dawny jednoprzebiegowy warunek
+ * `id === jobId || firma+stanowisko` zwracał wcześniejszą pozycję o tej samej
+ * nazwie, nawet gdy dokładne ID znajdowało się niżej na liście. Dopasowanie
+ * po nazwach jest bezpieczne tylko wtedy, gdy zgadza się też konkretny URL;
+ * dwie oferty tej samej firmy i stanowiska mogą być różnymi rekrutacjami.
+ */
+export function findExistingApplicationForPending(
+  applications: JobApplication[],
+  pending: PendingApplication,
+): JobApplication | undefined {
+  const byId = applications.find((entry) => entry.id === pending.jobId);
+  if (byId) return byId;
+
+  const sourceUrl = pending.sourceUrl?.trim();
+  if (!sourceUrl) return undefined;
+
+  const company = pending.company.trim().toLocaleLowerCase('pl-PL');
+  const title = pending.title.trim().toLocaleLowerCase('pl-PL');
+  return applications.find((entry) =>
+    entry.jobUrl?.trim() === sourceUrl &&
+    entry.company.trim().toLocaleLowerCase('pl-PL') === company &&
+    entry.position.trim().toLocaleLowerCase('pl-PL') === title
+  );
+}
+
+/**
+ * Przy odpowiedzi do już zapisanej oferty aktualizujemy wyłącznie to, co
+ * użytkownik właśnie potwierdził. Eksport ponownego CV nie może cofnąć etapu
+ * rekrutacji ani zastąpić historycznego CV/oferty lub notatek z rozmowy.
+ */
+export function buildExistingApplicationFeedbackPatch(
+  existing: JobApplication,
+  candidate: JobApplication,
+  reportedStatus: JobApplication['status'],
+  feedbackNote?: string,
+): Partial<JobApplication> {
+  const note = feedbackNote?.trim();
+  let notes = existing.notes;
+  if (note) {
+    const lines = (notes ?? '').split(/\r?\n/).map((line) => line.trim());
+    if (!lines.includes(note)) {
+      notes = notes?.trim() ? `${notes.trimEnd()}\n${note}` : note;
+    }
+  }
+
+  return {
+    // Feedback może awansować wpis roboczy, ale nigdy nadpisywać postępu
+    // ani wyniku procesu, które użytkownik zapisał później.
+    status: existing.status === 'Do wysłania' ? reportedStatus : existing.status,
+    notes,
+    // Migawka to historia niezmienna. Dołączamy ją tylko do starego wpisu,
+    // który nie ma jeszcze żadnej migawki.
+    documentSnapshot: existing.documentSnapshot ?? candidate.documentSnapshot,
+  };
+}
+
 export const APPLICATION_CHANNELS = [
   'Pracuj.pl',
   'LinkedIn',

@@ -93,19 +93,6 @@ describe('Granica AI — co faktycznie wychodzi z serwera', () => {
     expect(letter.callToAction).not.toContain('[KANDYDAT]');
   }, 15000);
 
-  it('przeformułowanie punktora: kontakt klienta nie wychodzi, wynik wraca czytelny', async () => {
-    const { optimizeDeltaPhrases } = await import('../gemini');
-
-    const result = await optimizeDeltaPhrases(
-      ['React'],
-      "Wdrożyłem system dla klienta biuro@acme.pl razem z Sean O'Brien",
-      'Frontend Developer'
-    );
-
-    expect(sentPrompts[0]).not.toContain('biuro@acme.pl');
-    expect(result.optimizedText).not.toContain('[EMAIL]');
-  }, 15000);
-
   it('parsowanie ogłoszenia: kontakt rekrutera nie przekracza granicy', async () => {
     const { parseJobDescriptionWithGemini } = await import('../gemini');
 

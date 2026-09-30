@@ -8,8 +8,10 @@ import {
   FailureReason,
   SALARY_TRANSPARENCY_OPTIONS,
   SalaryTransparency,
+  buildExistingApplicationFeedbackPatch,
   buildApplicationFromPending,
   buildFeedbackPayload,
+  findExistingApplicationForPending,
   guessChannel,
   noteForFailure,
   sendApplicationFeedback,
@@ -76,22 +78,11 @@ export const ApplicationFeedbackModal: React.FC<ApplicationFeedbackModalProps> =
 
   /** Wpis w Pipeline: istniejący aktualizujemy, nowy dokładamy. */
   const upsert = (status: 'Wysłana' | 'Do wysłania', notes?: string) => {
-    const existing = applications.find(
-      (entry) =>
-        entry.id === pending.jobId ||
-        (entry.company === pending.company && entry.position === pending.title)
-    );
+    const existing = findExistingApplicationForPending(applications, pending);
 
     if (existing) {
       const candidate = buildApplicationFromPending(pending, status, { notes });
-      patchApplication(existing.id, {
-        status,
-        notes: notes ?? existing.notes,
-        // Ręcznie dodana aplikacja może już istnieć. Nie zastępujemy jej
-        // historią, a tylko dokładamy migawkę dokumentu, jeśli właśnie
-        // powstała przy eksporcie.
-        documentSnapshot: candidate.documentSnapshot ?? existing.documentSnapshot,
-      });
+      patchApplication(existing.id, buildExistingApplicationFeedbackPatch(existing, candidate, status, notes));
       return;
     }
 

@@ -42,40 +42,39 @@ try {
 
 /* ------------------------------------------------------------------ dane */
 
-// Jawnie testowe CV montera instalacji grzewczych. Powyżej progu
-// MIN_CV_CHARS (120), bez certyfikatu F-Gaz — ogłoszenie ma go wymagać,
-// żeby wynik zawierał realny brak formalny, a nie dopchane porady.
+// Jawnie syntetyczne CV do regresji zgłoszonych błędów parsera i dopasowania.
 const CV_TEXT = [
-  'Jan Kowalski — Monter instalacji grzewczych, Warszawa.',
-  'Telefon: 600 100 200, e-mail: jan.kowalski.test@example.com.',
+  'Alicja Testowa',
+  'Kraków | alicja.testowa@example.com',
   '',
-  'Doświadczenie:',
-  '2019–2026 Monter instalacji grzewczych — EkoTerm Serwis Sp. z o.o., Warszawa.',
-  'Montaż i uruchamianie kotłów gazowych Junkers i Bosch, przeglądy okresowe,',
-  'diagnostyka usterek, czytanie dokumentacji technicznej i schematów hydraulicznych.',
-  'Praca w terenie na Mazowszu, raportowanie zleceń, przestrzeganie zasad BHP.',
+  'PODSUMOWANIE ZAWODOWE',
+  'Specjalistka wsparcia IT z doświadczeniem w Windows 11, Microsoft 365, Exchange Online i TCP/IP.',
   '',
-  'Uprawnienia: SEP G3 eksploatacja, prawo jazdy kat. B.',
-  'Umiejętności: lutowanie, pomiary ciśnień, regulacja palników, raportowanie.',
+  'UMIEJĘTNOŚCI',
+  'Windows 11, Microsoft 365, Exchange Online, Active Directory, TCP/IP, obsługa klienta',
+  '',
+  'DOŚWIADCZENIE ZAWODOWE',
+  'Specjalistka wsparcia IT — Testowa Sp. z o.o. — 2022–2025',
+  'Obsługa zgłoszeń, konfiguracja kont Microsoft 365, diagnoza Windows 11.',
+  '',
+  'EDUKACJA',
+  'Technik informatyk — Zespół Szkół Technicznych — 2016–2020',
 ].join('\n');
 
-// Pierwsza linia (4–60 znaków) staje się tytułem oferty w trybie zaawansowanym.
-// Treść odpowiada presetowi `preset-hvac` z JobMatcher.tsx.
 const JD_TEXT = [
-  'Monter i Serwisant Pieców Gazowych',
-  'EkoTerm Serwis Sp. z o.o., Warszawa i okolice. Poszukujemy montera i serwisanta',
-  'urządzeń grzewczych i pomp ciepła na terenie województwa mazowieckiego.',
-  'Wymagania: ważne uprawnienia SEP G3 (eksploatacja, mile widziany dozór),',
-  'certyfikat F-Gaz dla personelu (kategoria I), doświadczenie w montażu,',
-  'uruchamianiu i przeglądach kotłów gazowych (Junkers, Bosch, Vaillant),',
-  'umiejętność czytania dokumentacji technicznej i schematów hydraulicznych,',
-  'prawo jazdy kat. B i dyspozycyjność do pracy w terenie.',
+  'Specjalista IT Support',
+  'Testowa Firma',
+  '',
+  'Wymagania:',
+  'Windows 11, Microsoft 365, Exchange Online, TCP/IP, obsługa klienta.',
+  '',
+  'Mile widziane: Intune, Entra ID, PowerShell.',
 ].join('\n');
 
 // Wyraz-wskaźnik: występuje w ogłoszeniu, nie występuje w CV. Jeśli po przejściu
 // do trybu zaawansowanego mapper słów kluczowych nadal go pokazuje, ogłoszenie
 // przetrwało przejście między trybami bez utraty treści.
-const JD_MARKER = 'F-Gaz';
+const JD_MARKER = 'Entra ID';
 
 // Przyciski formatowania CVWordBuilder — każdy ma być w całości w viewporcie 375 px.
 const TOOLBAR_BUTTONS = [
@@ -151,13 +150,17 @@ async function sprawdzDopasowanie(page) {
   await page.locator('#onboarding-jd').fill(JD_TEXT);
   await page.getByRole('button', { name: 'Sprawdź', exact: true }).click();
 
-  // 1. Baner wyniku ogłasza się czytnikom przez role="status" + aria-label
-  //    z liczbą procent (defekt a11y opisany w QuickOnboardingFlow).
+  // 1. Wynik ma stabilną nazwę dostępnościową i nie jest opisywany jako szansa ATS.
   const baner = page.getByRole('status', {
-    name: /Szacowany wynik przejścia filtra ATS \d+ procent/,
+    name: /Wynik dopasowania Kierivo \d+ procent/,
   });
   await waitVisible(baner);
-  check('baner wyniku ma aria-label z liczbą procent', await baner.count() === 1);
+  check('wynik ma aria-label z liczbą procent', await baner.count() === 1);
+  const wynikText = await baner.innerText();
+  check('wynik pokazuje pełne pokrycie wymaganych umiejętności', /Zgodność wymaganych umiejętności:\s*100%/.test(wynikText), wynikText);
+  check('wynik nie jest nazywany szansą ATS', !/szans[ayę]/i.test(wynikText) && /Nie mierzy prawdopodobieństwa/i.test(wynikText), wynikText);
+  check('Entra ID nie trafia do braków wymaganych', await page.getByText(/Entra ID/i).count() === 0);
+  check('tytuł i firma nie trafiają do listy braków', await page.getByText(/specjalista it support testowa/i).count() === 0);
 
   // 2. Dokładnie trzy problemy: extractTopThreeProblems zawsze zwraca trójkę
   //    (braki formalne → twarde → dopełnienie poradami), więc asercja jest
@@ -182,15 +185,22 @@ async function przejdzDoZaawansowanego(page) {
     (await tabZaawansowany.getAttribute('aria-selected')) === 'true'
   );
 
-  // Firma jest stałą przepływu quick („Pracodawca z ogłoszenia"), więc tytuł
-  // dialogu dowodzi, że oferta pochodzi z wklejonego ogłoszenia, nie z presetu.
-  const tytulDialogu = page.getByText(/Dopasowanie ATS dla:.*Pracodawca z ogłoszenia/);
-  await waitVisible(tytulDialogu);
-  check('modal trybu zaawansowanego otwarty dla wklejonej oferty', true);
+  const dialog = page.getByRole('dialog', { name: /Dopasowanie do oferty: Specjalista IT Support \(Testowa Firma\)/ });
+  await waitVisible(dialog);
+  check('modal zachowuje stanowisko i firmę z nagłówka oferty', true);
+  const education = dialog.locator('[data-cv-section="education"]');
+  check('wykształcenie występuje tylko raz', await education.getByText(/Technik informatyk/).count() === 1);
+  check('TCP/IP pozostaje jedną umiejętnością', await dialog.locator('[data-cv-section="skills"]').getByText('TCP/IP', { exact: true }).count() === 1);
+  check('TCP i IP nie są osobnymi umiejętnościami',
+    await dialog.locator('[data-cv-section="skills"]').getByText('TCP', { exact: true }).count() === 0 &&
+    await dialog.locator('[data-cv-section="skills"]').getByText('IP', { exact: true }).count() === 0);
+  const summary = await dialog.locator('[data-cv-section="summary"]').innerText();
+  check('podsumowanie pozostaje tekstem źródłowym bez dopisanego sloganu',
+    summary.includes('Specjalistka wsparcia IT z doświadczeniem') && !summary.includes('Dopasowany profil zawodowy'), summary);
+  check('podgląd nie dopisuje zgody RODO', !/Wyrażam zgodę/i.test(await dialog.innerText()));
 
   // Treść ogłoszenia: mapper dostaje jobOffer.description (= wklejony tekst),
-  // więc wskaźnik F-Gaz musi być w jego polu edycji.
-  const dialog = page.getByRole('dialog', { name: /Dopasowanie ATS dla:/ });
+  // więc opcjonalna fraza z wklejonej oferty musi pozostać w polu edycji.
   await dialog.getByRole('tab', { name: 'Mapper Słów Kluczowych' }).click();
   await dialog.getByRole('button', { name: /Edytuj \/ Wklej inne ogłoszenie/ }).click();
   const poleOgloszenia = dialog.getByLabel('Treść ogłoszenia o pracę (Job Description)');
@@ -222,7 +232,9 @@ try {
       await dochodzDoFormularza(page, { przezMenuMobilne: false });
       check('wejście na HomeView i dotarcie do formularza', true);
       await sprawdzDopasowanie(page);
+      await page.screenshot({ path: 'docs/audyt-szybki-wynik-desktop-2026-09-30.png', fullPage: true });
       await przejdzDoZaawansowanego(page);
+      await page.screenshot({ path: 'docs/audyt-szybki-podglad-cv-desktop-2026-09-30.png', fullPage: true });
       const krytyczne = problems.filter((p) => /pageerror|dynamically imported module|Loading chunk/i.test(p));
       check('brak błędów strony i chunków', krytyczne.length === 0, krytyczne.join(' | ').slice(0, 400));
     } catch (err) {
@@ -247,9 +259,10 @@ try {
       await sprawdzDopasowanie(page);
 
       await page.getByRole('button', { name: 'Pokaż szczegóły' }).click();
-      const dialog = page.getByRole('dialog', { name: /Dopasowanie ATS dla:/ });
+      const dialog = page.getByRole('dialog', { name: /Dopasowanie do oferty: Specjalista IT Support \(Testowa Firma\)/ });
       await waitVisible(dialog);
       await dialog.getByRole('tab', { name: 'Edytor Dokumentu' }).click();
+      await page.screenshot({ path: 'docs/audyt-szybki-edytor-mobile-2026-09-30.png' });
 
       const szerokosc = page.viewportSize()?.width ?? 375;
       let toolbarMiesciSie = true;

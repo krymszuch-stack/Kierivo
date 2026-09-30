@@ -8,7 +8,6 @@ czegokolwiek podwójnie (zero niewidzialnego tekstu, zero trików render mode).
 
 from __future__ import annotations
 
-import datetime as _dt
 import io
 import math
 import os
@@ -402,6 +401,19 @@ class Renderer:
         self._section_header(col, "Kompetencje", "sidebar.skills")
         self._pills_flow(col, self.p.skills, "sidebar.skills")
 
+    def _licenses_block(self, col: Column) -> None:
+        # Formalne uprawnienia trafiają do payloadu MasterProfile, ale bez tego
+        # bloku renderer cicho je pomijał — CV mogło stracić np. SEP lub UDT.
+        licenses = list(dict.fromkeys(x.strip() for x in self.p.licenses if x.strip()))
+        if not licenses:
+            return
+        self._section_header(col, "Uprawnienia", "sidebar.licenses")
+        for license_name in licenses:
+            self._para(col, license_name, font=self.t.typography.sans,
+                       size=8.8, leading=11.2, color=self._side_value_color(),
+                       group="sidebar.licenses", actual=license_name)
+            col.y -= 4.5
+
     def _certs_block(self, col: Column) -> None:
         if not self.p.certifications:
             return
@@ -532,6 +544,8 @@ class Renderer:
         col.y -= 18 * self.v_scale
 
     def _summary_block(self, col: Column) -> None:
+        if not self.p.summary.display.strip():
+            return
         self._section_header(col, "Profil", "content.summary")
         self._para(col, self.p.summary.display, font=self.t.typography.sans,
                    size=9.6, leading=14.2, color="text_primary",
@@ -631,8 +645,6 @@ class Renderer:
         self._stroke("hairline")
         self.canv.setLineWidth(0.5)
         self.canv.line(fx, y + 8, fx + fw, y + 8)
-        stamp = f"MasterVault CV Engine · {_dt.date.today().isoformat()}"
-        self._text(fx, y, stamp, tp.sans, 6.8, color="text_secondary")
         if self.page_no > 1:
             lbl = str(self.page_no)
             lw = text_width(lbl, tp.sans, 6.8)
@@ -794,6 +806,7 @@ class Renderer:
             self._avatar(side)
             self._contact_block(side)
         self._sidebar_skills(side)
+        self._licenses_block(side)
         self._certs_block(side)
         self._langs_block(side)
 
@@ -806,6 +819,7 @@ class Renderer:
         self._exp_block(main)
         if self.columns["side"] is None:
             self._sidebar_skills(main)
+            self._licenses_block(main)
         self._edu_block(main)
         if self.columns["side"] is None:
             self._certs_block(main)

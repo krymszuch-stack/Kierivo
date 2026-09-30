@@ -15,12 +15,13 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
-import { api } from '../../lib/apiClient';
-import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
+import { ApiError, api } from '../../lib/apiClient';
 import { trackProductInsight } from '../../lib/productInsights';
 import type { AdvisorContext } from './advisorContext';
 import type { NavTabId } from '../../lib/navigation';
 import { SectionRewriterView } from './SectionRewriterView';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 import type { MasterVault } from '../../types';
 import {
@@ -30,27 +31,25 @@ import {
   type AdvisorChatMessage,
 } from './advisorConversationCache';
 import {
-  checkOllamaWithTimeout,
+  checkAdvisorWithTimeout,
   resolveDefaultAdvisorTab,
-  type OllamaHealthState,
-} from './ollamaHealthChecker';
+  type AdvisorAvailabilityState,
+} from './advisorAvailability';
 
 export interface GeminiAdvisorModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialQuestion?: string;
-  /**
-   * Profil jest używany lokalnie do wykrywania braków; nie wysyłamy go do
-   * modelu. Do Ollamy może trafić wyłącznie zredukowany kontekst analizy.
-   */
+  /** Dane profilu nie są wysyłane; do API może trafić wyłącznie jawnie pokazany, ograniczony kontekst analizy. */
   vault?: MasterVault;
   advisorContext?: AdvisorContext | null;
   onNavigate?: (target: NavTabId) => void;
 }
 
-interface OllamaHealthResponse {
+interface AdvisorStatusResponse {
   success: boolean;
   provider?: string;
+  available?: boolean;
   connected?: boolean;
   models?: Array<{ name: string; size?: number }>;
   activeModel?: string;
@@ -108,7 +107,7 @@ function createWelcomeMessage(): AdvisorChatMessage {
   return {
     id: 'm-init',
     sender: 'ai',
-    text: 'Lokalna Ollama jest gotowa. Mogę pomóc na podstawie zredukowanego kontekstu aktualnej analizy — bez danych kontaktowych i pełnej treści CV.',
+    text: 'Doradca zaufany korzysta z Azure OpenAI przez API. Wpisana treść i ograniczony kontekst analizy są wysyłane do modelu dopiero po Twoim potwierdzeniu.',
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
 }
@@ -176,28 +175,40 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   advisorContext,
   onNavigate,
 }) => {
-  const [initialCache] = useState(readAdvisorConversation);
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const [initialCache] = useState(() => readAdvisorConversation(profileId));
+  const [conversationProfileId, setConversationProfileId] = useState(profileId);
   const [messages, setMessages] = useState<AdvisorChatMessage[]>(() => {
-    // Wersje sprzed FAQ zapisywały odpowiedzi regułowe jako rozmowę. Po zmianie
-    // kontraktu nie mogą wracać z cache i sprawiać wrażenia działania bez modelu.
-    const cached = initialCache.messages.filter((message) => message.source !== 'rules');
+    // Stara rozmowa mogła zostać lokalnie w Ollamie; nie przenosimy jej historii do Azure.
+    const cached = initialCache.messages.filter((message) => message.source === 'azure_openai');
     return cached.length > 0 ? cached : [createWelcomeMessage()];
   });
+  const visibleMessages = conversationProfileId === profileId ? messages : [createWelcomeMessage()];
 
   const [inputVal, setInputVal] = useState(() => initialCache.draft);
+  const visibleInput = conversationProfileId === profileId ? inputVal : '';
   const [isTyping, setIsTyping] = useState(false);
-  const [isCheckingOllama, setIsCheckingOllama] = useState(false);
-  const [healthState, setHealthState] = useState<OllamaHealthState>('checking');
+  const [healthState, setHealthState] = useState<AdvisorAvailabilityState>('checking');
   const [selectedFaq, setSelectedFaq] = useState(FAQ_ENTRIES[0]);
   const [advisorTab, setAdvisorTab] = useState<'chat' | 'rewriter'>('rewriter');
   const userSelectedTabRef = useRef(false);
+
+  // Zachowaj oddzielny szkic i historię po przełączeniu konta w tej samej karcie.
+  useEffect(() => {
+    if (conversationProfileId === profileId) return;
+    const cache = readAdvisorConversation(profileId);
+    setMessages(cache.messages.length > 0 ? cache.messages : [createWelcomeMessage()]);
+    setInputVal(cache.draft);
+    setConversationProfileId(profileId);
+  }, [conversationProfileId, profileId]);
 
   const handleTabChange = (tab: 'chat' | 'rewriter') => {
     userSelectedTabRef.current = true;
     setAdvisorTab(tab);
   };
 
-  const [ollamaStatus, setOllamaStatus] = useState<{
+  const [advisorStatus, setAdvisorStatus] = useState<{
     checked: boolean;
     connected: boolean;
     models: Array<{ name: string }>;
@@ -210,29 +221,22 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
     activeModel: '',
   });
 
-  const [ollamaEnabled, setOllamaEnabled] = useState<boolean>(() => {
-    const saved = readRaw(StorageKeys.advisorOllamaEnabled);
-    return saved !== 'false';
-  });
-
-  const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return readRaw(StorageKeys.advisorOllamaModel) || '';
-  });
+  const [azureConsent, setAzureConsent] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const advisorRequestInFlightRef = useRef(false);
   const handledInitialQuestionRef = useRef<string | undefined>(undefined);
 
-  const checkOllama = useCallback(async () => {
-    setIsCheckingOllama(true);
+  const checkAdvisor = useCallback(async () => {
     setHealthState('checking');
     try {
-      const res = await checkOllamaWithTimeout(
-        (signal) => api.get<OllamaHealthResponse>('/ai/ollama/health', { signal }),
+      const res = await checkAdvisorWithTimeout(
+        (signal) => api.get<AdvisorStatusResponse>('/advisor/status', { signal }),
         5000
       );
 
       setHealthState(res.state);
-      setOllamaStatus({
+      setAdvisorStatus({
         checked: true,
         connected: Boolean(res.connected),
         models: res.models || [],
@@ -240,56 +244,48 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         error: res.error,
       });
 
-      if (!selectedModel && res.activeModel) {
-        setSelectedModel(res.activeModel);
-      }
 
       if (!userSelectedTabRef.current) {
         setAdvisorTab(resolveDefaultAdvisorTab(res.state));
       }
     } catch (err: unknown) {
       setHealthState('unavailable');
-      setOllamaStatus({
+      setAdvisorStatus({
         checked: true,
         connected: false,
         models: [],
         activeModel: '',
-        error: err instanceof Error ? err.message : 'Brak odpowiedzi API',
+        error: err instanceof ApiError && err.status === 401
+          ? 'Zaloguj się, aby korzystać z Doradcy Azure.'
+          : err instanceof ApiError && err.status === 501
+            ? 'Tryb lokalny nie obsługuje Doradcy Azure. Wymagane są konto chmurowe i logowanie.'
+            : err instanceof Error ? err.message : 'Brak odpowiedzi API',
       });
       if (!userSelectedTabRef.current) {
         setAdvisorTab('rewriter');
       }
-    } finally {
-      setIsCheckingOllama(false);
     }
-  }, [selectedModel]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
       userSelectedTabRef.current = false;
-      void checkOllama();
+      void checkAdvisor();
       trackProductInsight('advisor_opened');
     }
-  }, [isOpen, checkOllama]);
-
-  const handleToggleOllama = (enabled: boolean) => {
-    setOllamaEnabled(enabled);
-    writeRaw(StorageKeys.advisorOllamaEnabled, String(enabled));
-  };
-
-  const handleModelChange = (modelName: string) => {
-    setSelectedModel(modelName);
-    writeRaw(StorageKeys.advisorOllamaModel, modelName);
-  };
+  }, [isOpen, checkAdvisor]);
 
   const handleSend = useCallback(
     async (textToSend?: string) => {
       const query = textToSend || inputVal;
-      if (!query.trim()) return;
+      if (conversationProfileId !== profileId || !query.trim() || !advisorStatus.connected || !azureConsent || advisorRequestInFlightRef.current) return;
+      // Blokada refem zamyka wyścig dwóch kliknięć przed następnym renderem Reacta.
+      advisorRequestInFlightRef.current = true;
 
       const userMsg: AdvisorChatMessage = {
         id: `m-${Date.now()}`,
         sender: 'user',
+        source: 'azure_openai',
         text: query.trim(),
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
@@ -299,19 +295,12 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       if (!textToSend) setInputVal('');
       setIsTyping(true);
 
-      const canUseOllama = ollamaEnabled && ollamaStatus.connected;
-
-      if (!canUseOllama) {
-        setIsTyping(false);
-        return;
-      }
-
       try {
         const res = await api.post<AdvisorChatResponse>('/advisor/chat', {
           query: query.trim(),
           history: messages.slice(-10),
-          model: selectedModel || undefined,
           context: advisorContext ?? undefined,
+          consentToAzure: true,
         });
 
         if (res && res.success && res.reply) {
@@ -320,39 +309,48 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             sender: 'ai',
             text: res.reply,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            source: 'ollama',
-            model: res.model || selectedModel || 'ollama',
+            source: 'azure_openai',
+            model: res.model || 'Azure OpenAI',
           };
           setMessages((prev) => [...prev, aiMsg]);
           return;
         }
-        throw new Error('Lokalna Ollama nie zwróciła odpowiedzi.');
+        throw new Error('Azure OpenAI nie zwróciło odpowiedzi.');
       } catch (err: unknown) {
         const errDetail = err instanceof Error ? err.message : 'brak połączenia';
         const aiMsg: AdvisorChatMessage = {
           id: `m-${Date.now() + 1}`,
           sender: 'ai',
-          text: `Nie udało się uzyskać odpowiedzi z lokalnej Ollamy (${errDetail}). Nie zastępuję jej automatyczną odpowiedzią. Skorzystaj z FAQ albo spróbuj ponownie, gdy model będzie dostępny.`,
+          text: `Nie udało się uzyskać odpowiedzi z Azure OpenAI (${errDetail}). Nie zastępuję jej automatyczną odpowiedzią. Spróbuj ponownie później.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, aiMsg]);
+      } finally {
+        advisorRequestInFlightRef.current = false;
         setIsTyping(false);
       }
     },
-    [advisorContext, inputVal, messages, ollamaEnabled, ollamaStatus.connected, selectedModel]
+    [advisorContext, azureConsent, conversationProfileId, inputVal, messages, profileId, advisorStatus.connected]
   );
 
   useEffect(() => {
-    writeAdvisorConversation(messages, inputVal);
-  }, [inputVal, messages]);
+    if (conversationProfileId !== profileId) return;
+    writeAdvisorConversation(profileId, messages, inputVal);
+  }, [conversationProfileId, inputVal, messages, profileId]);
 
   const handleNewConversation = () => {
-    clearAdvisorConversation();
+    if (advisorRequestInFlightRef.current) return;
+    clearAdvisorConversation(profileId);
     setMessages([createWelcomeMessage()]);
     setInputVal('');
     setIsTyping(false);
     handledInitialQuestionRef.current = undefined;
   };
+
+  const closeAdvisor = useCallback(() => {
+    setAzureConsent(false);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -360,26 +358,26 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       return;
     }
 
-    if (ollamaEnabled && ollamaStatus.connected && initialQuestion && handledInitialQuestionRef.current !== initialQuestion) {
+    if (azureConsent && advisorStatus.connected && initialQuestion && handledInitialQuestionRef.current !== initialQuestion) {
       handledInitialQuestionRef.current = initialQuestion;
       void handleSend(initialQuestion);
     }
-  }, [handleSend, initialQuestion, isOpen, ollamaEnabled, ollamaStatus.connected]);
+  }, [azureConsent, handleSend, initialQuestion, isOpen, advisorStatus.connected]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const activeModelDisplay = selectedModel || ollamaStatus.activeModel;
-  const advisorAvailable = ollamaEnabled && ollamaStatus.connected;
+  const activeModelDisplay = 'Azure OpenAI';
+  const advisorAvailable = advisorStatus.connected;
 
   if (!advisorAvailable) {
     return (
       <Modal
         isOpen={isOpen}
-        onClose={onClose}
-        title="Doradca lokalny"
-        description="Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama na Twoim urządzeniu. Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji."
+        onClose={closeAdvisor}
+        title="Doradca zaufany"
+        description="Czat i propozycje redakcji korzystają z Azure OpenAI przez API. Wpisana treść jest wysyłana dopiero po potwierdzeniu; profil nie jest dołączany automatycznie."
         size="lg"
       >
         <div className="space-y-4">
@@ -416,6 +414,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             <div className="space-y-6">
               <SectionRewriterView
                 initialRole={advisorContext?.offerTitle}
+                azureAvailable={advisorStatus.connected}
                 onNavigateToProfile={() => {
                   onNavigate?.('profil');
                   onClose();
@@ -425,7 +424,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 selectedFaq={selectedFaq}
                 onSelectFaq={setSelectedFaq}
                 onNavigate={onNavigate}
-                onClose={onClose}
+                onClose={closeAdvisor}
               />
             </div>
           ) : (
@@ -434,28 +433,20 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 <div className="max-w-md">
                   <p className="text-xs font-semibold text-ink">
                     {healthState === 'checking'
-                      ? 'Sprawdzam lokalną Ollamę…'
-                      : 'Lokalna Ollama jest teraz niedostępna.'}
+                      ? 'Sprawdzam konfigurację Doradcy Azure…'
+                      : advisorStatus.error || 'Doradca Azure jest niedostępny w tej instalacji.'}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted">
-                    Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama na Twoim urządzeniu. Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji.
+                    Wymagany jest tryb chmurowy, logowanie i konfiguracja Azure OpenAI. Bez nich aplikacja nie udaje odpowiedzi modelu.
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={() => handleTabChange('rewriter')}
-                  >
-                    Przejdź do Asystenta Rewritingu →
-                  </Button>
-                  <Button
-                    type="button"
                     variant="secondary"
                     size="sm"
                     icon={RefreshCw}
-                    onClick={() => void checkOllama()}
+                    onClick={() => void checkAdvisor()}
                     disabled={healthState === 'checking'}
                   >
                     Sprawdź ponownie
@@ -490,7 +481,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 selectedFaq={selectedFaq}
                 onSelectFaq={setSelectedFaq}
                 onNavigate={onNavigate}
-                onClose={onClose}
+                onClose={closeAdvisor}
               />
             </>
           )}
@@ -502,9 +493,9 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      title="Doradca lokalny"
-      description="Czyta lokalnie aktualny profil i ostatni wynik dopasowania, aby wykryć konkretne luki. Rozmowa zostaje w przeglądarce; do Ollamy trafia tylko zredukowany kontekst analizy (bez danych kontaktowych i pełnej treści CV)."
+      onClose={closeAdvisor}
+      title="Doradca zaufany"
+      description="Korzysta z Azure OpenAI przez serwerowe API. Wysyłana jest wpisana treść oraz ograniczony kontekst analizy; cały profil nie jest dołączany automatycznie."
       size="lg"
     >
       <div className="flex h-[560px] flex-col">
@@ -541,6 +532,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           <div className="flex-1 overflow-y-auto space-y-6 p-1">
             <SectionRewriterView
               initialRole={advisorContext?.offerTitle}
+              azureAvailable={advisorStatus.connected}
               onNavigateToProfile={() => {
                 onNavigate?.('profil');
                 onClose();
@@ -550,68 +542,40 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
               selectedFaq={selectedFaq}
               onSelectFaq={setSelectedFaq}
               onNavigate={onNavigate}
-              onClose={onClose}
+              onClose={closeAdvisor}
             />
           </div>
         ) : (
           <>
-            {/* Pasek statusu asysty Ollamy i narzędzi */}
+            {/* Ten status opisuje konfigurację, nie gwarantuje dostępności deploymentu. */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-full border border-line bg-sunken px-2.5 py-1">
               <span
                 className={`h-2 w-2 rounded-full ${
-                  ollamaStatus.connected && ollamaEnabled
+                  advisorStatus.connected
                     ? 'bg-emerald-500 animate-pulse'
                     : 'bg-muted/40'
                 }`}
                 aria-hidden="true"
               />
               <span className="text-[11px] font-medium text-ink">
-                {ollamaStatus.connected
-                  ? `Asysta Ollama: ${ollamaEnabled ? 'włączona' : 'wstrzymana'}`
-                  : 'Lokalna AI: niedostępna — działają reguły'}
+                {advisorStatus.connected ? 'Azure OpenAI: skonfigurowane' : 'Azure OpenAI: niedostępne'}
               </span>
             </div>
 
-            {ollamaStatus.connected ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => handleToggleOllama(!ollamaEnabled)}
-                  className="cursor-pointer text-[11px] font-medium text-brand-600 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
-                >
-                  {ollamaEnabled ? 'Wyłącz asystę' : 'Włącz asystę'}
-                </button>
-
-                {ollamaStatus.models.length > 1 && (
-                  <select
-                    value={activeModelDisplay}
-                    onChange={(e) => handleModelChange(e.target.value)}
-                    disabled={!ollamaEnabled}
-                    className="rounded border border-line bg-surface px-2 py-0.5 text-[11px] text-ink focus:border-brand-500 focus:outline-none disabled:opacity-50"
-                    aria-label="Wybór modelu lokalnej Ollamy"
-                  >
-                    {ollamaStatus.models.map((m) => (
-                      <option key={m.name} value={m.name}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </>
-            ) : (
+            {!advisorStatus.connected ? (
               <button
                 type="button"
-                onClick={() => void checkOllama()}
+                onClick={() => void checkAdvisor()}
                 disabled={healthState === 'checking'}
-                title="Sprawdź ponownie połączenie z lokalną instancją Ollama"
+                title="Sprawdź ponownie konfigurację Azure OpenAI"
                 className="flex cursor-pointer items-center gap-1 text-[11px] text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 disabled:opacity-50"
               >
                 <RefreshCw className={`h-3 w-3 ${healthState === 'checking' ? 'animate-spin' : ''}`} />
-                <span>Sprawdź lokalne AI</span>
+                <span>Sprawdź konfigurację AI</span>
               </button>
-            )}
+            ) : null}
           </div>
 
           <Button
@@ -662,7 +626,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           aria-label="Historia rozmowy z Doradcą regułowym"
         >
           <AnimatePresence initial={false}>
-            {messages.map((m) => (
+            {visibleMessages.map((m) => (
               <motion.div
                 key={m.id}
                 initial={{ opacity: 0, y: 6 }}
@@ -684,10 +648,10 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
                 >
                   {m.source && m.sender === 'ai' && (
                     <div className="mb-2 flex items-center gap-1.5">
-                      {m.source === 'ollama' ? (
+                      {m.source === 'azure_openai' ? (
                         <span className="inline-flex items-center gap-1 rounded bg-brand-50 px-1.5 py-0.5 text-[9px] font-medium text-brand-700 border border-brand-200/60">
                           <Sparkles className="h-2.5 w-2.5 text-brand-600" aria-hidden="true" />
-                          Asysta Ollama {m.model ? `(${m.model})` : ''}
+                          Azure OpenAI {m.model ? `(${m.model})` : ''}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-[9px] font-medium text-muted border border-line">
@@ -723,9 +687,9 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
               >
                 <Sparkles className="h-4 w-4 animate-spin text-brand-600" aria-hidden="true" />
                 <span>
-                  {ollamaEnabled && ollamaStatus.connected
-                    ? `Doradca konsultuje lokalną Ollamę (${activeModelDisplay || 'model'})...`
-                    : 'Dobieram konkretną regułę lokalną...'}
+                  {advisorStatus.connected
+                    ? `Doradca przygotowuje feedback przez ${activeModelDisplay}...`
+                    : 'Azure OpenAI jest niedostępne.'}
                 </span>
               </motion.div>
             )}
@@ -734,12 +698,22 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         </div>
 
         <div className="border-t border-line/60 pt-3 pb-2">
+          <label className="mb-3 flex items-start gap-2 rounded-xl border border-line bg-sunken p-2.5 text-[11px] leading-relaxed text-muted">
+            <input
+              type="checkbox"
+              checked={azureConsent}
+              onChange={(event) => setAzureConsent(event.target.checked)}
+              className="mt-0.5 accent-brand-600"
+            />
+            <span>Potwierdzam wysłanie mojego pytania, ostatnich wiadomości rozmowy i ograniczonego kontekstu analizy do Azure OpenAI przez API. Nie wysyłaj tu danych, których nie chcesz przekazać dostawcy modelu.</span>
+          </label>
           <div className="flex flex-wrap gap-1.5">
             {QUICK_PROMPTS.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
                 onClick={() => void handleSend(prompt)}
+                disabled={!azureConsent || isTyping}
                 className="cursor-pointer rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-muted transition-colors hover:border-brand-300 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
               >
                 {prompt}
@@ -751,11 +725,12 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         <div className="flex items-center gap-2 pt-2 border-t border-line">
           <input
             type="text"
-            value={inputVal}
+            value={visibleInput}
+            maxLength={4000}
             onChange={(e) => setInputVal(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void handleSend()}
+            onKeyDown={(e) => e.key === 'Enter' && !isTyping && void handleSend()}
             placeholder="Zadaj pytanie o CV lub przygotowanie do rekrutacji..."
-            aria-label="Pytanie do Doradcy regułowego"
+            aria-label="Pytanie do Doradcy zaufanego"
             className="flex-1 rounded-2xl border border-line bg-sunken px-4 py-2.5 text-xs text-ink placeholder:text-subtle focus:border-brand-500/60 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
 
@@ -764,7 +739,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
             variant="primary"
             size="md"
             icon={Send}
-            disabled={!inputVal.trim() || isTyping}
+            disabled={!inputVal.trim() || isTyping || !azureConsent}
             onClick={() => void handleSend()}
           >
             Wyślij

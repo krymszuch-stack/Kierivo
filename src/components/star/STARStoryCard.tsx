@@ -95,6 +95,15 @@ export const STARStoryCard: React.FC<STARStoryCardProps> = ({
         />
       )}
 
+      {story.sourceEvidence && (
+        <div className="rounded-xl border border-line bg-sunken/50 p-3">
+          <span className="font-mono text-[10px] font-extrabold text-muted uppercase tracking-wider">
+            Punkt źródłowy z profilu
+          </span>
+          <p className="mt-1 text-xs text-ink/90 leading-relaxed">{story.sourceEvidence}</p>
+        </div>
+      )}
+
       {/* Siatka S - T - A - R */}
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
         {/* S (Situation) */}
@@ -102,7 +111,7 @@ export const STARStoryCard: React.FC<STARStoryCardProps> = ({
           <span className="font-mono text-[10px] font-extrabold text-muted uppercase tracking-wider block">
             S — Sytuacja
           </span>
-          <p className="text-xs text-ink/90 leading-relaxed">{story.situation}</p>
+          <p className="text-xs text-ink/90 leading-relaxed">{story.situation || 'Uzupełnij sytuację własnymi słowami.'}</p>
         </div>
 
         {/* T (Task) */}
@@ -110,7 +119,7 @@ export const STARStoryCard: React.FC<STARStoryCardProps> = ({
           <span className="font-mono text-[10px] font-extrabold text-brand-600 uppercase tracking-wider block">
             T — Zadanie
           </span>
-          <p className="text-xs text-ink/90 leading-relaxed">{story.task}</p>
+          <p className="text-xs text-ink/90 leading-relaxed">{story.task || 'Dopisz zadanie lub odpowiedzialność, którą faktycznie miałeś.'}</p>
         </div>
 
         {/* A (Action) */}
@@ -118,7 +127,7 @@ export const STARStoryCard: React.FC<STARStoryCardProps> = ({
           <span className="font-mono text-[10px] font-extrabold text-brand-700 uppercase tracking-wider block">
             A — Działanie
           </span>
-          <p className="text-xs text-ink/90 leading-relaxed">{story.action}</p>
+          <p className="text-xs text-ink/90 leading-relaxed">{story.action || 'Opisz własne działania, których nie ma w punkcie źródłowym.'}</p>
         </div>
 
         {/* R (Result) */}
@@ -126,7 +135,7 @@ export const STARStoryCard: React.FC<STARStoryCardProps> = ({
           <span className="font-mono text-[10px] font-extrabold text-success-fg uppercase tracking-wider block">
             R — Rezultat
           </span>
-          <p className="text-xs font-semibold text-success-fg leading-relaxed">{story.result}</p>
+          <p className="text-xs font-semibold text-success-fg leading-relaxed">{story.result || 'Dodaj rzeczywisty rezultat; nie szacuj liczby, jeśli jej nie znasz.'}</p>
         </div>
       </div>
 

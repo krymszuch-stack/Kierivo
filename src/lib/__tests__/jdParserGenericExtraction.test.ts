@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseJobDescriptionLocal } from '../jdParser';
+import { benefitPackageValue, benefitSourcesFromOffer, detectBenefits } from '../commuteCalculator';
 
 /**
  * Osobne testy regresji precyzji dla remediacji recall z rozdziału "JD
@@ -34,6 +35,22 @@ describe('jdParser — regresja precyzji po rozszerzeniu taksonomii', () => {
     for (const benefit of ['opieka medyczna', 'karta sportowa', 'okularów', 'czwartki', 'parking', 'elastyczne godziny']) {
       expect(allSkills.some((s) => s.includes(benefit))).toBe(false);
     }
+  });
+
+  it('parser i kalkulator nie zamieniają zaprzeczonych benefitów w zapewnione', () => {
+    const description = `
+      Oferujemy prywatną opiekę medyczną LuxMed.
+      Nie zapewniamy karty MultiSport ani budżetu szkoleniowego.
+      Pracodawca nie zapewnia laptopa.
+    `;
+    const parsed = parseJobDescriptionLocal(description);
+    const benefits = detectBenefits(benefitSourcesFromOffer({ description }, parsed));
+
+    expect(parsed.benefits).toEqual(['Opieka medyczna / LuxMed / Medicover / PZU']);
+    expect(benefitPackageValue(benefits)).toBe(180);
+    expect(benefits.find((item) => item.key === 'SPORT')?.status).toBe('MISSING');
+    expect(benefits.find((item) => item.key === 'TRAINING')?.status).toBe('MISSING');
+    expect(benefits.find((item) => item.key === 'EQUIPMENT')?.status).toBe('MISSING');
   });
 
   it('nie wyciąga widełek płacowych ani waluty jako umiejętności', () => {
@@ -208,5 +225,72 @@ describe('jdParser — regresja precyzji po rozszerzeniu taksonomii', () => {
     ].map((s) => s.toLocaleLowerCase('pl-PL'));
     expect(allSkills.some((s) => /^3$|3 lata|^lata$/.test(s))).toBe(false);
     expect(allSkills.some((s) => s.includes('kuchnia polska'))).toBe(true);
+  });
+
+  it('wyciąga angielskie lata doświadczenia z wymagań, ale nie ze stażu firmy', () => {
+    const candidateRequirement = parseJobDescriptionLocal(`
+      Backend Developer
+      O firmie
+      We have 25 years of experience delivering software.
+      Requirements
+      3 years of professional experience with Python and SQL.
+    `);
+    const companyHistoryOnly = parseJobDescriptionLocal(`
+      Backend Developer
+      O firmie
+      Our company has 25 years of experience delivering software.
+      Requirements
+      Python and SQL.
+    `);
+
+    expect(candidateRequirement.experienceMinYears).toBe(3);
+    expect(candidateRequirement.formalRequirements).toContainEqual(expect.objectContaining({
+      id: 'experience_years',
+      label: 'Min. 3 lata doświadczenia',
+      required: true,
+    }));
+    expect(companyHistoryOnly.experienceMinYears).toBeNull();
+    expect(companyHistoryOnly.formalRequirements?.some((requirement) => requirement.id === 'experience_years')).toBe(false);
+  });
+
+  it('obsługuje „minimum of” i zapis z apostrofem w angielskim progu stażu', () => {
+    const minimumOf = parseJobDescriptionLocal(`
+      Data Analyst
+      Requirements
+      Minimum of 2 years of experience with SQL.
+    `);
+    const apostrophe = parseJobDescriptionLocal(`
+      Data Analyst
+      Requirements
+      4+ years' relevant experience with SQL.
+    `);
+
+    expect(minimumOf.experienceMinYears).toBe(2);
+    expect(apostrophe.experienceMinYears).toBe(4);
+  });
+
+  it('wyciąga próg stażu, gdy nagłówek wymagań i treść są w tej samej linii', () => {
+    const polish = parseJobDescriptionLocal('Specjalista\nWymagania: co najmniej 3 lata doświadczenia zawodowego. Python.\nMile widziane: AWS.');
+    const english = parseJobDescriptionLocal('Support Engineer\nRequirements: At least 4 years of professional experience. SQL.');
+
+    expect(polish.experienceMinYears).toBe(3);
+    expect(english.experienceMinYears).toBe(4);
+    expect(polish.requiredHardSkills.map((skill) => skill.toLowerCase())).toContain('python');
+    expect(polish.niceToHaveHardSkills?.map((skill) => skill.toLowerCase())).toContain('aws');
+    expect(english.requiredHardSkills.map((skill) => skill.toLowerCase())).toContain('sql');
+  });
+
+  it('rozpoznaje angielskie nagłówki Required Qualifications i Preferred Qualifications', () => {
+    const parsed = parseJobDescriptionLocal(`
+      Platform Engineer
+      Required Qualifications
+      At least 3 years of experience. Python and SQL.
+      Preferred Qualifications
+      Azure certification and Kubernetes.
+    `);
+
+    expect(parsed.experienceMinYears).toBe(3);
+    expect(parsed.requiredHardSkills.map((skill) => skill.toLowerCase())).toEqual(expect.arrayContaining(['python', 'sql']));
+    expect(parsed.niceToHaveHardSkills?.map((skill) => skill.toLowerCase())).toEqual(expect.arrayContaining(['azure', 'kubernetes']));
   });
 });

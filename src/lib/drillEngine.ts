@@ -1,4 +1,4 @@
-import { StorageKeys, readJson, removeRaw, writeJson } from './storage';
+import { StorageKeys, profileDataKeyFor, readJson, removeRaw, writeJson } from './storage';
 
 export interface DrillQuestion {
   id: string;
@@ -267,21 +267,22 @@ export function analyzeDrillResponse(
 /**
  * Odczytuje historię sesji treningowych z localStorage
  */
-export function loadDrillHistory(): DrillAttemptRecord[] {
-  return readJson<DrillAttemptRecord[]>(StorageKeys.drillHistory, []);
+export function loadDrillHistory(profileId: string): DrillAttemptRecord[] {
+  return readJson<DrillAttemptRecord[]>(profileDataKeyFor(StorageKeys.drillHistory, profileId), []);
 }
 
 /**
  * Zapisuje próbę odpowiedzi w historii ćwiczeń (max 50 ostatnich prób)
  */
-export function saveDrillAttempt(attempt: DrillAttemptRecord): void {
-  const updated = [attempt, ...loadDrillHistory().filter((h) => h.id !== attempt.id)].slice(0, 50);
-  writeJson(StorageKeys.drillHistory, updated);
+export function saveDrillAttempt(profileId: string, attempt: DrillAttemptRecord): void {
+  const key = profileDataKeyFor(StorageKeys.drillHistory, profileId);
+  const updated = [attempt, ...loadDrillHistory(profileId).filter((h) => h.id !== attempt.id)].slice(0, 50);
+  writeJson(key, updated);
 }
 
 /**
  * Czyści całą historię sesji treningowych
  */
-export function clearDrillHistory(): void {
-  removeRaw(StorageKeys.drillHistory);
+export function clearDrillHistory(profileId: string): void {
+  removeRaw(profileDataKeyFor(StorageKeys.drillHistory, profileId));
 }

@@ -465,6 +465,9 @@ pdfRouter.post(
             theme,
             layout,
             targetPages: safeTargetPages,
+            // Kształt zdjęcia zmienia wynik Pythona, choć nie zmienia payloadu profilu.
+            // Pominięcie go zwracało PDF z poprzednim wyborem z pamięci podręcznej.
+            avatar: avatar || 'none',
             summaryOverride,
             targetRole,
             companyName,

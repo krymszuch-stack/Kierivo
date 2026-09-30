@@ -4,6 +4,7 @@ import {
   migrateProfile,
   migrateVault,
   migrateApplications,
+  migrateApplication,
   migrateCVLibrary,
   migrateAllStorageAtStartup,
 } from '../dataMigration';
@@ -16,6 +17,30 @@ beforeEach(() => {
 });
 
 describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
+  describe('migrateApplication', () => {
+    it('nie uznaje braku statusu za wysłanie i nie dopisuje firmy', () => {
+      const migrated = migrateApplication({ id: 'legacy-draft', company: '', position: 'Serwisant HVAC' });
+
+      expect(migrated).toMatchObject({
+        id: 'legacy-draft',
+        company: '',
+        position: 'Serwisant HVAC',
+        status: 'Do wysłania',
+      });
+    });
+
+    it('nieznany status traktuje zachowawczo jako szkic', () => {
+      const migrated = migrateApplication({
+        id: 'legacy-unknown-status',
+        company: 'Firma Testowa',
+        position: 'Monter',
+        status: 'nieznany status',
+      });
+
+      expect(migrated?.status).toBe('Do wysłania');
+    });
+  });
+
   describe('migrateProfile', () => {
     it('migruje starszy profil bez schemaVersion i bez updatedAt', () => {
       const legacy = {

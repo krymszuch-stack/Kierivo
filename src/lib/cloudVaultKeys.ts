@@ -1,5 +1,9 @@
-const CLOUD_VAULT_OUTBOX_PREFIX = 'cvelocity:cloud-vault-outbox';
+import { StorageKeys } from './storage';
 
 export function cloudVaultOutboxKeyFor(ownerId: string): string {
-  return `${CLOUD_VAULT_OUTBOX_PREFIX}:${ownerId}`;
+  return `${StorageKeys.cloudVaultOutbox}:${ownerId}`;
+}
+
+export function cloudVaultRevisionKeyFor(ownerId: string): string {
+  return `${StorageKeys.cloudVaultRevision}:${ownerId}`;
 }

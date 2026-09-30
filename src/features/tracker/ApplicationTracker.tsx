@@ -30,6 +30,10 @@ import { HistoricalDocumentModal } from './HistoricalDocumentModal';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { StorageKeys, readRaw, writeRaw } from '../../lib/storage';
 import { getPipelineFilters, matchesStatusFilter } from './trackerStatusConfig';
+import { resolveApplicationJobOffer, resolveApplicationVault } from '../../lib/applicationSnapshot';
+import { InterviewCheatSheetView } from '../matcher/InterviewCheatSheetView';
+import { getApplicationDisplayInfo } from './applicationDisplay';
+import { calculateApplicationProgress } from './applicationMetrics';
 
 
 /**
@@ -109,6 +113,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null);
   const [viewingDocApp, setViewingDocApp] = useState<JobApplication | null>(null);
+  const [cheatSheetApp, setCheatSheetApp] = useState<JobApplication | null>(null);
 
   // Notes Drawer/Modal
   const [notesApp, setNotesApp] = useState<JobApplication | null>(null);
@@ -119,7 +124,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const inInterviews = applications.filter((a) => a?.status === 'Rozmowa').length;
   const offersReceived = applications.filter((a) => a?.status === 'Oferta').length;
   const exportedCvCount = applications.filter((a) => a?.documentSnapshot?.exportedCv).length;
-  const responseRate = totalApps > 0 ? Math.round(((inInterviews + offersReceived) / totalApps) * 100) : 0;
+  const applicationProgress = calculateApplicationProgress(applications.map((app) => app.status));
 
   // Filtry dostosowane do trybu: na starcie 4 zredukowane stany, w zaawansowanym pełne rozbicie
   const filterButtons = useMemo(() => {
@@ -164,8 +169,9 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
 
   const handleSaveApp = (app: JobApplication) => {
     saveApplication(app);
+    const display = getApplicationDisplayInfo(app);
     showToast('Lista aplikacji zaktualizowana', {
-      message: `${app.company || ''} — ${app.position || ''} (${app.status || ''}).`,
+      message: `${display.contextLabel} (${app.status || ''}).`,
     });
   };
 
@@ -174,7 +180,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       const removed = applications.find((entry) => entry.id === id);
       removeApplication(id);
       showToast('Zgłoszenie usunięte', {
-        message: removed ? `${removed.company} — ${removed.position}.` : undefined,
+        message: removed ? `${getApplicationDisplayInfo(removed).contextLabel}.` : undefined,
       });
     }
   };
@@ -188,7 +194,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     if (!notesApp) return;
     patchApplication(notesApp.id, { notes: currentNotes });
     setNotesApp(null);
-    showToast('Notatka zapisana', { message: `${notesApp.company} — ${notesApp.position}.` });
+    showToast('Notatka zapisana', { message: `${getApplicationDisplayInfo(notesApp).contextLabel}.` });
   };
 
   const handleClaimLegacyApplications = () => {
@@ -283,10 +289,12 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         />
 
         <StatTile
-          label="Response Rate"
-          value={`${responseRate}%`}
+          label="Przejście do rozmowy/oferty"
+          value={applicationProgress.percent === null ? '—' : `${applicationProgress.percent}%`}
           icon={CheckCircle2}
-          subtext="Wskaźnik odzewu"
+          subtext={applicationProgress.eligibleCount === 0
+            ? 'Brak wysłanych aplikacji'
+            : `${applicationProgress.progressedCount} z ${applicationProgress.eligibleCount} wysłanych / aktywnych`}
         />
 
         <StatTile
@@ -388,7 +396,23 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         onDelete={handleDeleteApp}
         onOpenNotes={handleOpenNotes}
         onViewDocument={(app) => setViewingDocApp(app)}
+        onOpenCheatSheet={(app) => setCheatSheetApp(app)}
       />
+
+      {cheatSheetApp && resolveApplicationJobOffer(cheatSheetApp) && (
+        <Modal
+          isOpen
+          onClose={() => setCheatSheetApp(null)}
+          title={`Ściąga na rozmowę · ${cheatSheetApp.position || cheatSheetApp.company || 'oferta bez nazwy'}`}
+          description="Przygotowana na podstawie oferty i profilu zapisanych przy tej aplikacji."
+          size="full"
+        >
+          <InterviewCheatSheetView
+            vault={resolveApplicationVault(cheatSheetApp, vault)}
+            jobOffer={resolveApplicationJobOffer(cheatSheetApp)!}
+          />
+        </Modal>
+      )}
 
       {/* Create / Edit Application Modal */}
       <ApplicationModal
@@ -413,7 +437,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         <Modal
           isOpen={Boolean(notesApp)}
           onClose={() => setNotesApp(null)}
-          title={`Notatki Rekrutacyjne: ${notesApp.company} (${notesApp.position})`}
+          title={`Notatki rekrutacyjne: ${getApplicationDisplayInfo(notesApp).contextLabel}`}
           size="md"
         >
           <div className="space-y-4">

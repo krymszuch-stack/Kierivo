@@ -98,7 +98,7 @@ class Experience:
     role: str
     company: str
     start: str
-    end: str = "obecnie"
+    end: str = ""
     location: str = ""
     bullets: list[Bullet] = field(default_factory=list)
     tech: list[str] = field(default_factory=list)  # opcjonalny wiersz technologii
@@ -109,7 +109,7 @@ class Experience:
             role=str(d["role"]),
             company=str(d["company"]),
             start=str(d["start"]),
-            end=str(d.get("end", "obecnie")),
+            end=str(d.get("end", "")),
             location=str(d.get("location", "")),
             bullets=[Bullet.from_dict(b) for b in d.get("bullets", [])],
             tech=[str(t) for t in d.get("tech", [])],

@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryStorage } from './helpers/memoryStorage';
 import { cheatSheetCacheKeyFor, readRaw } from '../storage';
+import { api } from '../apiClient';
+import { MasterVault } from '../../types';
 import {
+  generateCheatSheetEnrichmentWithAI,
   hashCheatSheetInput,
   readCachedEnrichment,
   writeCachedEnrichment,
@@ -24,6 +27,17 @@ function kluczeCache(): string[] {
 }
 
 describe('cache spersonalizowanej ściągi', () => {
+  it('bez jawnej zgody nie uruchamia wysyłki do AI', async () => {
+    const post = vi.spyOn(api, 'post');
+
+    await expect(generateCheatSheetEnrichmentWithAI(
+      'Rola testowa', 'Firma testowa', 'Syntetyczna oferta.', {} as MasterVault, [], false
+    )).rejects.toThrow('Potwierdź wysłanie');
+
+    expect(post).not.toHaveBeenCalled();
+    post.mockRestore();
+  });
+
   it('zapisany wpis da się odczytać po tym samym skrócie', () => {
     const hash = hashCheatSheetInput({} as never, 'tytuł', 'firma', 'opis');
     writeCachedEnrichment(hash, wpis());

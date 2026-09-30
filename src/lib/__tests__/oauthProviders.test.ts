@@ -33,6 +33,8 @@ describe('rejestr dostawców OAuth', () => {
 
   it('azure wymusza wybór konta, LinkedIn dostaje pustą mapę ( OIDC nie zna select_account)', () => {
     expect(oauthProviderById('azure')?.queryParams).toEqual({ prompt: 'select_account' });
+    expect(oauthProviderById('azure')?.scopes).toBe('email');
+    expect(oauthProviderById('google')?.scopes).toBeUndefined();
     expect(oauthProviderById('linkedin_oidc')?.queryParams).toEqual({});
   });
 

@@ -205,7 +205,8 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
     if (!exp) return;
     const newHighlight = {
       id: generateId('hl'),
-      text: 'Osiągnąłem [wzrost/rezultat, np. +25%], mierzone przez [konkretny wskaźnik], wdrażając [rozwiązanie/narzędzie].',
+      // Sam wzorzec nie jest osiągnięciem użytkownika i nie może trafić do CV ani analizy.
+      text: '',
       metric: '',
       action: 'Osiągnięcie',
       target: '',
@@ -530,7 +531,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                               <div>
                                 <span className="font-bold text-brand-fg">Formuła Google X-Y-Z: brak twardych rezultatów</span>
                                 <p className="text-[11px] text-muted mt-0.5">
-                                  Opisy z liczbami i procentami zwiększają dopasowanie CV. Możesz wstawić szablon teraz lub później.
+                                  Otworzymy puste pole. Wpisz własny, potwierdzony rezultat — podpowiedź nie trafi do CV.
                                 </p>
                               </div>
                             </div>

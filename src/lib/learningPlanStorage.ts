@@ -11,7 +11,7 @@ import {
   LearningPlanItem,
   DEFAULT_PLAN_STEPS,
 } from '../data/careerKnowledge';
-import { StorageKeys, readJson, writeJson } from './storage';
+import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
 
 export function createDefaultLearningPlan(goalName = 'Mój następny krok'): LearningPlan {
   return {
@@ -26,35 +26,36 @@ export function createDefaultLearningPlan(goalName = 'Mój następny krok'): Lea
   };
 }
 
-export function getLearningPlan(): LearningPlan {
-  const existing = readJson<LearningPlan | null>(StorageKeys.learningPlan, null);
+export function getLearningPlan(profileId: string): LearningPlan {
+  const existing = readJson<LearningPlan | null>(profileDataKeyFor(StorageKeys.learningPlan, profileId), null);
   if (!existing || !Array.isArray(existing.steps) || !Array.isArray(existing.items)) {
     return createDefaultLearningPlan();
   }
   return existing;
 }
 
-export function saveLearningPlan(plan: LearningPlan): LearningPlan {
+export function saveLearningPlan(profileId: string, plan: LearningPlan): LearningPlan {
   const updated: LearningPlan = {
     ...plan,
     updatedAt: new Date().toISOString(),
   };
-  writeJson(StorageKeys.learningPlan, updated);
+  writeJson(profileDataKeyFor(StorageKeys.learningPlan, profileId), updated);
   return updated;
 }
 
 export function addMaterialToPlan(
+  profileId: string,
   material: KnowledgeMaterial,
   notes?: string
 ): { plan: LearningPlan; isNew: boolean } {
-  const plan = getLearningPlan();
+  const plan = getLearningPlan(profileId);
   const existingIndex = plan.items.findIndex((it) => it.materialId === material.id);
 
   if (existingIndex >= 0) {
     if (notes) {
       plan.items[existingIndex].notes = notes;
     }
-    const saved = saveLearningPlan(plan);
+    const saved = saveLearningPlan(profileId, plan);
     return { plan: saved, isNew: false };
   }
 
@@ -70,15 +71,16 @@ export function addMaterialToPlan(
   };
 
   plan.items = [newItem, ...plan.items];
-  const saved = saveLearningPlan(plan);
+  const saved = saveLearningPlan(profileId, plan);
   return { plan: saved, isNew: true };
 }
 
 export function updatePlanItemStatus(
+  profileId: string,
   materialId: string,
   status: LearningPlanItem['status']
 ): LearningPlan {
-  const plan = getLearningPlan();
+  const plan = getLearningPlan(profileId);
   const labelMap: Record<LearningPlanItem['status'], LearningPlanItem['statusLabel']> = {
     not_started: 'Nie rozpoczęto',
     in_progress: 'W trakcie',
@@ -96,15 +98,16 @@ export function updatePlanItemStatus(
     return it;
   });
 
-  return saveLearningPlan(plan);
+  return saveLearningPlan(profileId, plan);
 }
 
 export function updatePlanItemNotes(
+  profileId: string,
   materialId: string,
   notes: string,
   reminderDate?: string
 ): LearningPlan {
-  const plan = getLearningPlan();
+  const plan = getLearningPlan(profileId);
   plan.items = plan.items.map((it) => {
     if (it.materialId === materialId) {
       return {
@@ -115,17 +118,17 @@ export function updatePlanItemNotes(
     }
     return it;
   });
-  return saveLearningPlan(plan);
+  return saveLearningPlan(profileId, plan);
 }
 
-export function removeMaterialFromPlan(materialId: string): LearningPlan {
-  const plan = getLearningPlan();
+export function removeMaterialFromPlan(profileId: string, materialId: string): LearningPlan {
+  const plan = getLearningPlan(profileId);
   plan.items = plan.items.filter((it) => it.materialId !== materialId);
-  return saveLearningPlan(plan);
+  return saveLearningPlan(profileId, plan);
 }
 
-export function togglePlanStep(stepId: string): LearningPlan {
-  const plan = getLearningPlan();
+export function togglePlanStep(profileId: string, stepId: string): LearningPlan {
+  const plan = getLearningPlan(profileId);
   plan.steps = plan.steps.map((s) => (s.id === stepId ? { ...s, completed: !s.completed } : s));
-  return saveLearningPlan(plan);
+  return saveLearningPlan(profileId, plan);
 }

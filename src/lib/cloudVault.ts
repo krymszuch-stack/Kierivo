@@ -1,6 +1,6 @@
 import { MasterVault } from '../types';
-import { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
-import { mergeImportedVault } from './vaultImportMerge';
+import { cloudVaultOutboxKeyFor, cloudVaultRevisionKeyFor } from './cloudVaultKeys';
+import { hasConflictingVaultDuplicates, mergeImportedVault } from './vaultImportMerge';
 import { getSupabaseBrowserClient } from './supabaseClient';
 import { readJson } from './storage';
 import { migrateVault } from './dataMigration';
@@ -29,13 +29,36 @@ const TABELA = 'vaults';
 
 interface PendingVaultEnvelope {
   ownerId: string;
+  conflict?: boolean;
+  baseUpdatedAt?: string | null;
   vault: MasterVault;
+}
+
+export interface CloudVaultFetchResult {
+  vault: MasterVault | null;
+  /** False means a local pending copy was returned without confirming the remote base. */
+  remoteReadSucceeded: boolean;
+  remoteUpdatedAt: string | null;
+  /**
+   * Konflikt CAS nie ma wspólnej bazy do bezpiecznego automatycznego scalania.
+   * W takim przypadku `vault` zachowuje pending lokalny, a wersja chmurowa
+   * udostępniana jest osobno do jawnego rozstrzygnięcia.
+   */
+  pendingConflict: boolean;
+  conflictRemoteVault?: MasterVault | null;
 }
 
 export class CloudVaultError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'CloudVaultError';
+  }
+}
+
+export class CloudVaultConflictError extends CloudVaultError {
+  constructor() {
+    super('CV zmieniło się na innym urządzeniu. Lokalna kopia została zachowana; odczytaj aktualny stan konta przed kolejną synchronizacją.');
+    this.name = 'CloudVaultConflictError';
   }
 }
 
@@ -47,9 +70,17 @@ function client() {
   return supabase;
 }
 
-function pendingFor(ownerId: string): MasterVault | null {
+function pendingEnvelopeFor(ownerId: string): PendingVaultEnvelope | null {
   const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
-  return pending?.ownerId === ownerId && pending.vault ? migrateVault(pending.vault) : null;
+  return pending?.ownerId === ownerId && pending.vault
+    ? {
+        ...pending,
+        baseUpdatedAt: pending.baseUpdatedAt !== undefined
+          ? pending.baseUpdatedAt
+          : readJson<string | null>(cloudVaultRevisionKeyFor(ownerId), null),
+        vault: migrateVault(pending.vault),
+      }
+    : null;
 }
 
 /**
@@ -59,31 +90,85 @@ function pendingFor(ownerId: string): MasterVault | null {
  * zapis, odczyt uwzględnia go jako najnowszą lokalną warstwę. Przy braku sieci
  * sama ta wersja wystarcza do odtworzenia pracy po ponownym otwarciu aplikacji.
  */
-export async function fetchCloudVault(): Promise<MasterVault | null> {
+export async function fetchCloudVault(expectedOwnerId?: string): Promise<CloudVaultFetchResult> {
   const supabase = client();
   const { data: sessionData } = await supabase.auth.getSession();
   const ownerId = sessionData.session?.user?.id;
 
   if (!ownerId) throw new CloudVaultError('Brak aktywnej sesji — zaloguj się ponownie.');
+  if (expectedOwnerId && ownerId !== expectedOwnerId) {
+    throw new CloudVaultError('Sesja zmieniła właściciela przed odczytem danych.');
+  }
 
-  const pending = pendingFor(ownerId);
-  const { data, error } = await supabase.from(TABELA).select('data').maybeSingle();
+  const pendingEnvelope = pendingEnvelopeFor(ownerId);
+  const pending = pendingEnvelope?.vault ?? null;
+  const { data, error } = await supabase.from(TABELA).select('data, updated_at').maybeSingle();
+  const { data: confirmationData } = await supabase.auth.getSession();
+  if (expectedOwnerId && confirmationData.session?.user?.id !== expectedOwnerId) {
+    throw new CloudVaultError('Sesja zmieniła właściciela podczas odczytu danych.');
+  }
 
   // Brak sieci nie odbiera dostępu do ostatniej niedostarczonej wersji. Jeśli
   // pending nie istnieje, błąd pozostaje błędem i wywołujący pokaże komunikat.
   if (error) {
-    if (pending) return pending;
+    if (pending) {
+      return {
+        vault: pending,
+        remoteReadSucceeded: false,
+        remoteUpdatedAt: null,
+        pendingConflict: pendingEnvelope?.conflict === true,
+      };
+    }
     throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
   }
 
   const rawRemote = (data?.data as MasterVault | undefined) ?? null;
   const remote = rawRemote ? migrateVault(rawRemote) : null;
-  if (!pending) return remote;
-  if (!remote) return pending;
+  const remoteUpdatedAt = typeof data?.updated_at === 'string' ? data.updated_at : null;
+  if (!pending) {
+    return { vault: remote, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
+  }
+  const collidingEdits = remote ? hasConflictingVaultDuplicates(remote, pending) : false;
+  const pendingIsBasedOnCurrentRemote = pendingEnvelope?.baseUpdatedAt === remoteUpdatedAt;
+  if (pendingEnvelope?.conflict || (collidingEdits && !pendingIsBasedOnCurrentRemote)) {
+    // Wybór `remote` jako bazy i zwykłe deduplikowanie list mogły odrzucić
+    // edycję istniejącego wpisu z pendingu. Bez snapshotu wspólnej bazy nie
+    // umiemy rozstrzygnąć, które pole jest nowsze, więc nie składamy wersji.
+    return {
+      vault: pending,
+      remoteReadSucceeded: true,
+      remoteUpdatedAt,
+      pendingConflict: true,
+      conflictRemoteVault: remote,
+    };
+  }
+  if (!remote) {
+    return { vault: pending, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
+  }
 
-  // Chmura jest podstawą, bo może zawierać wpisy z innego urządzenia. Pending
-  // jest warstwą świeższą dla pól bieżącego urządzenia; merge nie usuwa list.
-  return migrateVault(mergeImportedVault(remote, pending));
+  // Jeśli chmura ma tę samą rewizję, na której powstał pending, lokalna edycja
+  // istniejącego wpisu jest jedyną nowszą wersją i musi wygrać deduplikację.
+  // Przy braku kolidujących edycji chmura pozostaje bazą, bo może mieć nowe
+  // wpisy z innego urządzenia.
+  if (collidingEdits) {
+    const merged = mergeImportedVault(pending, remote);
+    return {
+      vault: migrateVault({
+        ...merged,
+        personalInfo: { ...merged.personalInfo, ...pending.personalInfo },
+      }),
+      remoteReadSucceeded: true,
+      remoteUpdatedAt,
+      pendingConflict: false,
+    };
+  }
+
+  return {
+    vault: migrateVault(mergeImportedVault(remote, pending)),
+    remoteReadSucceeded: true,
+    remoteUpdatedAt,
+    pendingConflict: false,
+  };
 }
 
 /**
@@ -92,14 +177,15 @@ export async function fetchCloudVault(): Promise<MasterVault | null> {
  * może po zmianie sesji trafić do wiersza Boba tylko dlatego, że Promise ruszył
  * chwilę później.
  *
- * Bezpośrednie wywołania spoza outboxu (np. pierwszy merge przy logowaniu) też
- * nie mogą zgubić danych: przy błędzie tworzą owner-scoped pending. Wywołanie z
- * samego outboxu przekazuje `expectedOwnerId`, więc nie tworzy kolejnej rewizji.
+ * Zapis wymaga rewizji odczytanej z chmury. Porównanie odbywa się w tym samym
+ * atomowym UPDATE, który zapisuje JSONB; sprawdzenie wyłącznie w JS nie zamknęłoby
+ * wyścigu między dwoma urządzeniami.
  */
 export async function saveCloudVault(
   vault: MasterVault,
-  expectedOwnerId?: string
-): Promise<void> {
+  expectedOwnerId: string,
+  expectedUpdatedAt: string | null
+): Promise<{ updatedAt: string }> {
   const supabase = client();
   const { data: sesja } = await supabase.auth.getSession();
   const userId = sesja.session?.user?.id;
@@ -111,21 +197,34 @@ export async function saveCloudVault(
 
   const normalizedVault = migrateVault(vault);
 
-  const { error } = await supabase.from(TABELA).upsert(
-    {
-      user_id: userId,
-      data: normalizedVault,
-      version: normalizedVault.version,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' }
-  );
+  const updatedAt = new Date().toISOString();
+  const payload = {
+    user_id: userId,
+    data: normalizedVault,
+    version: normalizedVault.version,
+    updated_at: updatedAt,
+  };
 
-  if (error) {
-    if (!expectedOwnerId) {
-      const { enqueueCloudVaultSave } = await import('./cloudVaultOutbox');
-      enqueueCloudVaultSave(userId, normalizedVault);
-    }
-    throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
+  if (expectedUpdatedAt === null) {
+    // INSERT rozstrzyga atomowo wyścig dwóch nowych urządzeń. Unikalny klucz
+    // user_id sprawia, że drugie urządzenie dostaje konflikt, nie nadpisanie.
+    const { data, error } = await supabase.from(TABELA).insert(payload).select('updated_at').single();
+    if (error?.code === '23505') throw new CloudVaultConflictError();
+    if (error) throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
+    return { updatedAt: typeof data?.updated_at === 'string' ? data.updated_at : updatedAt };
   }
+
+  // Filtr po odczytanej rewizji to compare-and-swap po stronie Postgresa.
+  // Samo porównanie w JS byłoby podatne na dokładnie ten sam wyścig.
+  const { data, error } = await supabase
+    .from(TABELA)
+    .update({ data: payload.data, version: payload.version, updated_at: updatedAt })
+    .eq('user_id', userId)
+    .eq('updated_at', expectedUpdatedAt)
+    .select('updated_at')
+    .maybeSingle();
+
+  if (!error && !data) throw new CloudVaultConflictError();
+  if (error) throw new CloudVaultError(`Nie udało się zapisać CV w chmurze: ${error.message}`);
+  return { updatedAt: typeof data?.updated_at === 'string' ? data.updated_at : updatedAt };
 }

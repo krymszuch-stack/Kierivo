@@ -31,6 +31,8 @@ import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Chip';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { History, Award, Trash2 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 export interface DrillModeModalProps {
   isOpen: boolean;
@@ -43,10 +45,14 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
   onClose,
   customQuestions = DEFAULT_DRILL_QUESTIONS,
 }) => {
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const [exerciseProfileId, setExerciseProfileId] = useState(profileId);
   const pool = customQuestions.length > 0 ? customQuestions : DEFAULT_DRILL_QUESTIONS;
 
   const [activeModeTab, setActiveModeTab] = useState<'PRACTICE' | 'HISTORY'>('PRACTICE');
-  const [history, setHistory] = useState<DrillAttemptRecord[]>([]);
+  const [historyState, setHistoryState] = useState<{ profileId: string; items: DrillAttemptRecord[] }>({ profileId, items: [] });
+  const history = historyState.profileId === profileId ? historyState.items : [];
 
   const [currentQuestion, setCurrentQuestion] = useState<DrillQuestion>(() =>
     getRandomDrillQuestion(pool)
@@ -64,15 +70,21 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
 
   // Reset stanu przy otwarciu pytania
   useEffect(() => {
+    if (exerciseProfileId !== profileId) {
+      setExerciseProfileId(profileId);
+      setResponseText('');
+      setScorecard(null);
+      setActiveModeTab('PRACTICE');
+    }
     if (isOpen) {
       setPhase('DRILL');
       setTimeLeftSec(currentQuestion.targetDurationSec || 60);
       setIsTimerRunning(true);
       setResponseText('');
       setScorecard(null);
-      setHistory(loadDrillHistory());
+      setHistoryState({ profileId, items: loadDrillHistory(profileId) });
     }
-  }, [isOpen, currentQuestion]);
+  }, [isOpen, currentQuestion, profileId, exerciseProfileId]);
 
   // Najświeższy handleFinishDrill dla interwału. Efekt odliczania celowo NIE
   // ma w zależnościach `responseText`: każde naciśnięcie klawisza rozwalało
@@ -120,6 +132,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
   };
 
   const handleFinishDrill = () => {
+    if (exerciseProfileId !== profileId) return;
     setIsTimerRunning(false);
     const result = analyzeDrillResponse(responseText, currentQuestion.referenceNotes);
     setScorecard(result);
@@ -135,17 +148,17 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
         scorecard: result,
         recordedAt: new Date().toISOString(),
       };
-      saveDrillAttempt(attempt);
-      setHistory(loadDrillHistory());
+      saveDrillAttempt(profileId, attempt);
+      setHistoryState({ profileId, items: loadDrillHistory(profileId) });
     }
   };
 
   const handleClearHistory = () => {
-    clearDrillHistory();
-    setHistory([]);
+    clearDrillHistory(profileId);
+    setHistoryState({ profileId, items: [] });
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || exerciseProfileId !== profileId) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">

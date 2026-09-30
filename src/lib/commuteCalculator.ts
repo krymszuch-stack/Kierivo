@@ -51,6 +51,18 @@ export const DEFAULT_MOBILITY_PREFERENCES: MobilityPreferences = {
   monthlyCommuteCost: 300,
 };
 
+/**
+ * Ustawienia startowe są jedynie punktem wejścia do formularza. Wynik
+ * finansowy pokazujemy dopiero po podaniu pensji i jawnym potwierdzeniu
+ * sprawdzonych założeń o umowie i dojazdach.
+ */
+export function canShowFeasibilityResult(
+  prefs: MobilityPreferences,
+  assumptionsConfirmed: boolean
+): boolean {
+  return assumptionsConfirmed && Number.isFinite(prefs.salaryAmount) && prefs.salaryAmount > 0;
+}
+
 import { getGeoDistanceRegistry } from './geoDistance';
 
 /**
@@ -305,6 +317,53 @@ export interface DetectedBenefit {
   brandKey?: string;
 }
 
+function normalizeBenefitText(text: string): string {
+  return text
+    .toLocaleLowerCase('pl-PL')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Samo słowo nie dowodzi, że pracodawca benefit zapewnia: w ogłoszeniach
+ * często pojawia się też w przeczeniach („brak MultiSport”, „nie zapewniamy
+ * laptopa”). Oceniamy negację tylko w klauzuli z trafieniem, by osobna oferta
+ * innego benefitu nie unieważniała poprawnego, pozytywnego wskazania.
+ */
+function findPositiveBenefitKeyword(haystack: string, keywords: readonly string[]): string | null {
+  const normalized = normalizeBenefitText(haystack);
+
+  for (const keyword of keywords) {
+    const needle = normalizeBenefitText(keyword);
+    let searchFrom = 0;
+    let index = normalized.indexOf(needle, searchFrom);
+
+    while (index >= 0) {
+      const clauseStart = Math.max(
+        normalized.lastIndexOf('\n', index),
+        normalized.lastIndexOf(';', index),
+        normalized.lastIndexOf('.', index),
+        normalized.lastIndexOf('!', index),
+        normalized.lastIndexOf('?', index),
+      ) + 1;
+      const clauseEndCandidates = ['\n', ';', '.', '!', '?']
+        .map((boundary) => normalized.indexOf(boundary, index + needle.length))
+        .filter((boundaryIndex) => boundaryIndex >= 0);
+      const clauseEnd = clauseEndCandidates.length > 0 ? Math.min(...clauseEndCandidates) : normalized.length;
+      const before = normalized.slice(clauseStart, index);
+      const after = normalized.slice(index + needle.length, clauseEnd);
+      const negatedBefore = /\bnie\s+(?!tylko\b)[^.!?;\n]{0,55}$|\bbrak(?:\s+[^.!?;\n]{0,40})?$/i.test(before);
+      const negatedAfter = /^\s*(?:nie\s+(?:jest|sa|bedzie|beda|zostanie|zostana|obejmuje|zapewnia|oferuje)|niedostepn\w*|brak\b)[^.!?;\n]{0,45}/i.test(after);
+
+      if (!negatedBefore && !negatedAfter) return keyword;
+      searchFrom = index + needle.length;
+      index = normalized.indexOf(needle, searchFrom);
+    }
+  }
+
+  return null;
+}
+
 /**
  * Rozpoznaje powiązaną markę na podstawie dopasowanej frazy.
  */
@@ -336,7 +395,7 @@ export function detectBenefits(sources: Array<string | undefined | null>): Detec
     .toLowerCase();
 
   return BENEFIT_ASSUMPTIONS.map((assumption) => {
-    const matched = assumption.keywords.find((keyword) => haystack.includes(keyword)) ?? null;
+    const matched = findPositiveBenefitKeyword(haystack, assumption.keywords);
     const brandKey = resolveBrandKey(matched, assumption.defaultBrandKey);
 
     return {

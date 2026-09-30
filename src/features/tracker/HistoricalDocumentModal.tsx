@@ -18,6 +18,7 @@ import { DocumentRenderer } from '../matcher/DocumentRenderer';
 import { CoverLetterView } from '../matcher/CoverLetterView';
 import { AtsSimulatorView } from '../matcher/AtsSimulatorView';
 import { downloadNativeDocxCv } from '../../lib/docxExporter';
+import { getApplicationSnapshotDisplayInfo } from './applicationDisplay';
 
 export interface HistoricalDocumentModalProps {
   application: JobApplication | null;
@@ -37,6 +38,7 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
   if (!application) return null;
 
   const snapshot = application.documentSnapshot;
+  const display = getApplicationSnapshotDisplayInfo(application);
 
   const tabs = [
     { id: 'cv' as TabId, label: 'Wysłane CV (A4)', icon: Eye },
@@ -70,7 +72,7 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Dokumenty Aplikacyjne • ${application.position} (${application.company})`}
+      title={`Dokumenty aplikacyjne • ${display.positionLabel} (${display.companyLabel})`}
       size="xl"
     >
       <div className="space-y-5">
@@ -83,11 +85,11 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-sans text-sm font-bold text-ink">
-                  {application.position}
+                  {display.positionLabel}
                 </span>
                 <span className="text-muted text-xs">•</span>
                 <span className="font-sans text-xs font-semibold text-muted">
-                  {application.company}
+                  {display.companyLabel}
                 </span>
               </div>
               <p className="flex items-center gap-1 font-mono text-[11px] text-muted pt-0.5">

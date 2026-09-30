@@ -24,7 +24,7 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     for (const vendor of ['Workday', 'Greenhouse', 'Lever', 'Taleo', 'Oracle']) {
       expect(ats).not.toContain(`name: '${vendor}'`);
     }
-    expect(ats).toContain('Składowe wyniku Kierivo');
+    expect(ats).toContain('Wynik analizy Kierivo');
     expect(ats).toMatch(/nie jest wynikiem/i);
     expect(ats).toMatch(/ani gwarancj/i);
   });
@@ -97,16 +97,16 @@ describe('D05 — prawdziwość bezpłatnej bety', () => {
     const sidebar = source('src/components/layout/Sidebar.tsx');
     const host = source('src/features/advisor/AdvisorModalHost.tsx');
 
-    expect(advisor).toContain('zredukowany kontekst analizy');
-    expect(advisor).toContain('bez danych kontaktowych i pełnej treści CV');
+    expect(advisor).toContain('ograniczony kontekst analizy');
+    expect(advisor).toContain('cały profil nie jest dołączany automatycznie');
     expect(advisor).not.toContain('Doradca AI');
     expect(advisor).toContain('FAQ: co możesz zrobić teraz?');
-    expect(advisor).toContain('Czat konwersacyjny to funkcja opcjonalna — wymaga lokalnego modelu Ollama');
-    expect(advisor).toContain('Asystent Rewritingu działa zawsze, bez dodatkowej konfiguracji');
-    expect(sidebar).toContain('Doradca lokalny');
+    expect(advisor).toContain('Doradca zaufany');
+    expect(advisor).toContain('Azure OpenAI');
+    expect(sidebar).toContain('Doradca zaufany');
     expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('Doradcy AI');
-    expect(host).toContain('Doradca lokalny');
+    expect(host).toContain('Doradca zaufany');
   });
 
   it('README nie ma stałej liczby testów ani absolutnego 100% client-side', () => {

@@ -13,7 +13,7 @@ import {
   saveProfileVault,
   type LocalProfile,
 } from './lib/localProfile';
-import { removeRaw, vaultKeyFor } from './lib/storage';
+import { isPrivacyWipeInProgress, removeRaw, vaultKeyFor } from './lib/storage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useEntitlements, isProStatus, resetEntitlementsToUnauthenticated } from './store/useEntitlements';
 import { ThemeProvider } from './providers/ThemeProvider';
@@ -30,8 +30,18 @@ import { Skeleton } from './components/ui/Skeleton';
 import { HomeView } from './views/HomeView';
 import { NextActionCard } from './components/nextaction/NextActionCard';
 import { CvQuestionsCard } from './features/questions/CvQuestionsCard';
-import { fetchCloudVault, saveCloudVault } from './lib/cloudVault';
-import { resolveVaultOnSignIn } from './lib/vaultSync';
+import { fetchCloudVault } from './lib/cloudVault';
+import {
+  completeCloudVaultBootstrap,
+  enqueueCloudVaultConflict,
+  resolvePendingCloudVaultConflict,
+} from './lib/cloudVaultOutbox';
+import {
+  getLocalVaultForCloudOwner,
+  isLocalVaultEligibleForCloudOwner,
+  isVaultBoundToCloudOwner,
+  resolveVaultOnSignIn,
+} from './lib/vaultSync';
 import { AdvisorModalHost, preloadAdvisorModal } from './features/advisor/AdvisorModalHost';
 import { ElevatorPitchModal } from './features/pitch/ElevatorPitchModal';
 import { DrillModeModal } from './features/drill/DrillModeModal';
@@ -79,9 +89,9 @@ function MainApp() {
     advisorInitialQuestion,
   } = useAppStore();
 
-  const { userVault, saveUserVault, user, isAuthenticated, mode, cloudAvailable } = useAuth();
+  const { userVault, saveUserVault, user, isAuthenticated, mode, cloudAvailable, vaultSyncStatus } = useAuth();
 
-  const [vault, setVault] = useState<MasterVault>(() => {
+  const [storedVault, setVault] = useState<MasterVault>(() => {
     const profile = getActiveProfile();
     const storedVault = loadProfileVault(profile?.id ?? ANONYMOUS_PROFILE_ID);
 
@@ -91,6 +101,23 @@ function MainApp() {
 
     return createEmptyVault(profile?.name, profile?.email);
   });
+  const [vaultProfileId, setVaultProfileId] = useState(
+    () => getActiveProfile()?.id ?? ANONYMOUS_PROFILE_ID
+  );
+  const vault = useMemo(() => {
+    const handoffIsPending = mode === 'cloud' && user &&
+      vaultProfileId !== user.id && vaultProfileId !== ANONYMOUS_PROFILE_ID;
+    return handoffIsPending ? createEmptyVault(user.name, user.email) : storedVault;
+  }, [mode, user, vaultProfileId, storedVault]);
+  const [cloudSyncRetryTick, setCloudSyncRetryTick] = useState(0);
+  const [cloudVaultConflict, setCloudVaultConflict] = useState<{
+    ownerId: string;
+    localVault: MasterVault;
+    remoteVault: MasterVault | null;
+    remoteUpdatedAt: string | null;
+  } | null>(null);
+  const [resolvingCloudVaultConflict, setResolvingCloudVaultConflict] = useState(false);
+  const retryCloudBootstrapOnOnline = useRef(false);
 
   const { applications } = useApplications();
   // Wynik dopasowania jest stanem bieżącej sesji, nie kolejną kopią CV w schowku.
@@ -159,13 +186,18 @@ function MainApp() {
   // strony i odmontowaniu, więc opóźnienie nie tworzy okna utraty danych.
   const persistVault = useCallback(
     (current: MasterVault) => {
+      if (isPrivacyWipeInProgress()) return;
       if (isAuthenticated && user) {
+        // Podczas zmiany konta `vault` może jeszcze pochodzić z poprzedniego
+        // profilu. Nie zapisuj go pod nowym właścicielem, zanim bootstrap
+        // pobierze jego chmurę i jawnie rozstrzygnie, czy wolno scalić źródło.
+        if (mode === 'cloud' && !isVaultBoundToCloudOwner(vaultProfileId, user.id)) return;
         saveUserVault(current);
       } else if (!user && !isAuthenticated) {
         saveProfileVault(ANONYMOUS_PROFILE_ID, current);
       }
     },
-    [isAuthenticated, user, saveUserVault]
+    [isAuthenticated, user, mode, vaultProfileId, saveUserVault]
   );
 
   const { cancel: cancelVaultPersist } = useDeferredPersist(vault, persistVault);
@@ -177,6 +209,7 @@ function MainApp() {
     if (user && userVault) {
       prevUserRef.current = user;
       setVault(userVault);
+      setVaultProfileId(user.id);
     } else if (!user && prevUserRef.current) {
       // Wylogowanie lub zamknięcie profilu:
       // 1. Natychmiast anulujemy oczekujące opóźnione zapisy starego profilu
@@ -186,6 +219,7 @@ function MainApp() {
       // 3. Zresetuj stan pamięciowy do czystego profilu
       prevUserRef.current = null;
       setVault(createEmptyVault());
+      setVaultProfileId(ANONYMOUS_PROFILE_ID);
     }
   }, [user, userVault, cancelVaultPersist]);
   /**
@@ -207,6 +241,18 @@ function MainApp() {
   }, [vault]);
 
   const syncedForUser = useRef<string | null>(null);
+  const wasCloudVaultConflict = useRef(false);
+
+  useEffect(() => {
+    const retry = () => {
+      if (!retryCloudBootstrapOnOnline.current) return;
+      retryCloudBootstrapOnOnline.current = false;
+      syncedForUser.current = null;
+      setCloudSyncRetryTick((current) => current + 1);
+    };
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, []);
 
   useEffect(() => {
     if (mode !== 'cloud' || !user) return;
@@ -214,23 +260,74 @@ function MainApp() {
     syncedForUser.current = user.id;
 
     let aktywny = true;
+    const localVault = getLocalVaultForCloudOwner(vaultRef.current, vaultProfileId, user.id);
 
     void (async () => {
       try {
-        const chmura = await fetchCloudVault();
+        const remoteSnapshot = await fetchCloudVault(user.id);
         if (!aktywny) return;
 
-        const wynik = resolveVaultOnSignIn(vaultRef.current, chmura);
-        setVault(wynik.vault);
-
-        if (wynik.shouldUpload) {
-          await saveCloudVault(wynik.vault);
-          if (wynik.action === 'scal-i-wyslij') {
-            showToast('Połączyliśmy CV z tego urządzenia z tym z konta', {
-              message: 'Nic nie zostało usunięte — wpisy z obu miejsc są na miejscu.',
+        if (remoteSnapshot.pendingConflict) {
+          const localSnapshot = remoteSnapshot.vault ?? createEmptyVault(user.name, user.email);
+          setVault(localSnapshot);
+          setVaultProfileId(user.id);
+          retryCloudBootstrapOnOnline.current = !remoteSnapshot.remoteReadSucceeded;
+          if (!remoteSnapshot.remoteReadSucceeded) {
+            syncedForUser.current = null;
+            showToast('Zachowaliśmy lokalną wersję CV', {
+              message: 'Wykryliśmy konflikt zapisu. Po odzyskaniu połączenia pokażemy obie wersje do wyboru.',
               variant: 'info',
             });
+            return;
           }
+          enqueueCloudVaultConflict(user.id, localSnapshot, remoteSnapshot.remoteUpdatedAt);
+          setCloudVaultConflict({
+            ownerId: user.id,
+            localVault: localSnapshot,
+            remoteVault: remoteSnapshot.conflictRemoteVault ?? null,
+            remoteUpdatedAt: remoteSnapshot.remoteUpdatedAt,
+          });
+          return;
+        }
+
+        const wynik = resolveVaultOnSignIn(localVault, remoteSnapshot.vault);
+        if (wynik.action === 'konflikt') {
+          enqueueCloudVaultConflict(user.id, localVault, remoteSnapshot.remoteUpdatedAt);
+          setVault(localVault);
+          setVaultProfileId(user.id);
+          setCloudVaultConflict({
+            ownerId: user.id,
+            localVault,
+            remoteVault: remoteSnapshot.vault,
+            remoteUpdatedAt: remoteSnapshot.remoteUpdatedAt,
+          });
+          return;
+        }
+        setVault(wynik.vault);
+
+        if (!remoteSnapshot.remoteReadSucceeded) {
+          // Offline pending pozostaje dostępny lokalnie, ale nie wysyłamy go
+          // bez poznania aktualnej chmury, bo nadpisałby zmiany z innego urządzenia.
+          retryCloudBootstrapOnOnline.current = true;
+          syncedForUser.current = null;
+          return;
+        }
+
+        retryCloudBootstrapOnOnline.current = false;
+        // Dopiero scalony snapshot trafia do kolejki. To zamyka wyścig,
+        // w którym AuthContext mógł wysłać offline kopię przed tym odczytem.
+        const syncStatus = await completeCloudVaultBootstrap(
+          user.id,
+          wynik.vault,
+          wynik.shouldUpload,
+          remoteSnapshot.remoteUpdatedAt,
+        );
+        setVaultProfileId(user.id);
+        if (wynik.action === 'scal-i-wyslij' && syncStatus === 'cloud') {
+          showToast('Połączyliśmy CV z tego urządzenia z tym z konta', {
+            message: 'Wpisy z obu miejsc zostały zsynchronizowane.',
+            variant: 'success',
+          });
         }
       } catch {
         if (!aktywny) return;
@@ -238,8 +335,11 @@ function MainApp() {
         // `resolveVaultOnSignIn` nigdy nie dostanie tu pustej chmury „na wszelki
         // wypadek", bo w ogóle nie dochodzi do rozstrzygnięcia.
         syncedForUser.current = null;
+        retryCloudBootstrapOnOnline.current = true;
         showToast('Nie udało się pobrać CV z konta', {
-          message: 'Pracujesz na wersji z tego urządzenia. Odśwież stronę, żeby spróbować ponownie.',
+          message: isLocalVaultEligibleForCloudOwner(vaultProfileId, user.id)
+            ? 'Pracujesz na wersji z tego urządzenia. Odśwież stronę, żeby spróbować ponownie.'
+            : 'Dane poprzedniego profilu lokalnego pozostały na tym urządzeniu i nie zostały połączone z kontem. Odśwież stronę, żeby spróbować ponownie.',
           variant: 'error',
         });
       }
@@ -248,9 +348,22 @@ function MainApp() {
     return () => {
       aktywny = false;
     };
-  }, [mode, user]);
+  }, [mode, user, vaultProfileId, cloudSyncRetryTick]);
 
-  const unlocks = useUnlocks(vault, applications);
+  useEffect(() => {
+    const isConflict = mode === 'cloud' && vaultSyncStatus === 'conflict';
+    const newlyConflicted = isConflict && !wasCloudVaultConflict.current;
+    wasCloudVaultConflict.current = isConflict;
+    if (!newlyConflicted || !user || cloudVaultConflict?.ownerId === user.id) return;
+
+    // Retry paths can discover a CAS conflict after the initial modal was
+    // dismissed. Fetch the other snapshot again so the user can choose safely.
+    syncedForUser.current = null;
+    setCloudSyncRetryTick((current) => current + 1);
+  }, [mode, user, vaultSyncStatus, cloudVaultConflict?.ownerId]);
+
+  const currentProfileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const unlocks = useUnlocks(vault, applications, currentProfileId, vaultProfileId);
 
   /**
    * Czas, względem którego liczone są reguły „rozmowa za mniej niż 48 h"
@@ -314,6 +427,48 @@ function MainApp() {
     setAdvisorOpen(true, initialQuestion);
   };
 
+  const resolveCloudVaultConflict = async (chosenVault: MasterVault) => {
+    if (!cloudVaultConflict || resolvingCloudVaultConflict) return;
+    setResolvingCloudVaultConflict(true);
+    try {
+      const status = await resolvePendingCloudVaultConflict(
+        cloudVaultConflict.ownerId,
+        chosenVault,
+        cloudVaultConflict.remoteUpdatedAt,
+      );
+      setVault(chosenVault);
+      setVaultProfileId(cloudVaultConflict.ownerId);
+      if (status === 'conflict') {
+        setCloudVaultConflict(null);
+        syncedForUser.current = null;
+        setCloudSyncRetryTick((current) => current + 1);
+        showToast('Pojawiła się nowsza zmiana w chmurze', {
+          message: 'Wybrana wersja została zachowana lokalnie. Pobieramy aktualną wersję, aby ponownie pokazać wybór.',
+          variant: 'info',
+        });
+        return;
+      }
+      setCloudVaultConflict(null);
+      showToast(status === 'cloud' ? 'Konflikt rozstrzygnięty' : 'Wersja wybrana i zapisana lokalnie', {
+        message: status === 'cloud'
+          ? 'Wybrana wersja CV została zapisana w chmurze.'
+          : 'Wybrana wersja czeka na synchronizację. Pozostałe dane nie zostały automatycznie połączone.',
+        variant: status === 'cloud' ? 'success' : 'info',
+      });
+    } catch {
+      showToast('Nie udało się rozstrzygnąć konfliktu', {
+        message: 'Obie wersje pozostają zachowane. Spróbuj ponownie po odświeżeniu połączenia.',
+        variant: 'error',
+      });
+    } finally {
+      setResolvingCloudVaultConflict(false);
+    }
+  };
+
+  const visibleCloudVaultConflict = cloudVaultConflict?.ownerId === user?.id
+    ? cloudVaultConflict
+    : null;
+
   // Narzędzia sekcji TRENUJ. Otwierane z Kokpitu, nie z paska górnego —
   // wcześniej wisiały w globalnej nawigacji razem ze skrótami Ctrl+B/P/D,
   // widoczne od pierwszej sekundy, choć dotyczą rozmowy, której nikt jeszcze
@@ -339,6 +494,7 @@ function MainApp() {
       unlockedSections={unlocks.sections}
       lockReasons={unlocks.reasons}
       isAuthenticated={isAuthenticated}
+      authMode={mode}
       userEmail={user?.email}
       cloudAvailable={cloudAvailable}
       planStatus={planStatus}
@@ -365,7 +521,12 @@ function MainApp() {
               }
               questionsSlot={
                 !isFirstVisit ? (
-                  <CvQuestionsCard vault={vault} onChange={setVault} />
+                  <CvQuestionsCard
+                    key={user?.id ?? ANONYMOUS_PROFILE_ID}
+                    profileId={user?.id ?? ANONYMOUS_PROFILE_ID}
+                    vault={vault}
+                    onChange={setVault}
+                  />
                 ) : undefined
               }
             />
@@ -395,7 +556,12 @@ function MainApp() {
 
             {/* Tab: Laboratorium Audytu ATS 360° (Multi-Engine Consensus) */}
             {activeTab === 'ats-lab' && (
-              <AtsLabView vault={vault} onNavigate={setActiveTab} />
+              <AtsLabView
+                key={user?.id ?? ANONYMOUS_PROFILE_ID}
+                profileId={user?.id ?? ANONYMOUS_PROFILE_ID}
+                vault={vault}
+                onNavigate={setActiveTab}
+              />
             )}
 
             {/* TRENUJ — przygotowanie do rozmowy */}
@@ -452,6 +618,72 @@ function MainApp() {
           setVault(loadedVault);
         }}
       />
+
+      {visibleCloudVaultConflict && (
+        <Modal
+          isOpen
+          onClose={() => {
+            if (!resolvingCloudVaultConflict) setCloudVaultConflict(null);
+          }}
+          title="Konflikt dwóch wersji CV"
+          description="Oba urządzenia zmieniły CV. Nie połączyliśmy ich automatycznie, bo mogłoby to zgubić poprawkę w istniejącym wpisie. Wybierz jedną pełną wersję do zapisania."
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-line bg-sunken/50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Lokalna wersja</p>
+                <p className="mt-2 text-sm text-ink">
+                  {visibleCloudVaultConflict.localVault.history.length} doświadczeń · {visibleCloudVaultConflict.localVault.education.length} etapów edukacji · {visibleCloudVaultConflict.localVault.projects.length} projektów
+                </p>
+                <button
+                  type="button"
+                  disabled={resolvingCloudVaultConflict}
+                  onClick={() => void resolveCloudVaultConflict(visibleCloudVaultConflict.localVault)}
+                  className="mt-4 min-h-11 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  Zachowaj lokalną wersję
+                </button>
+                <p className="mt-2 text-xs text-muted">Ta wersja zastąpi zapis w chmurze.</p>
+              </div>
+              <div className="rounded-xl border border-line bg-sunken/50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Wersja z chmury</p>
+                {visibleCloudVaultConflict.remoteVault ? (
+                  <>
+                    <p className="mt-2 text-sm text-ink">
+                      {visibleCloudVaultConflict.remoteVault.history.length} doświadczeń · {visibleCloudVaultConflict.remoteVault.education.length} etapów edukacji · {visibleCloudVaultConflict.remoteVault.projects.length} projektów
+                    </p>
+                    <button
+                      type="button"
+                      disabled={resolvingCloudVaultConflict}
+                      onClick={() => void resolveCloudVaultConflict(visibleCloudVaultConflict.remoteVault!)}
+                      className="mt-4 min-h-11 w-full rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+                    >
+                      Zachowaj wersję z chmury
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 text-sm text-muted">W chmurze nie ma aktualnie zapisanego CV.</p>
+                    <button
+                      type="button"
+                      disabled={resolvingCloudVaultConflict}
+                      onClick={() => void resolveCloudVaultConflict(createEmptyVault(user?.name, user?.email))}
+                      className="mt-4 min-h-11 w-full rounded-lg border border-line bg-surface px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+                    >
+                      Zachowaj pustą wersję z chmury
+                    </button>
+                  </>
+                )}
+                <p className="mt-2 text-xs text-muted">Ta wersja zastąpi lokalną kopię dla konta.</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted">
+              Niewybrana wersja nie zostanie scalona. Przed wyborem możesz zamknąć okno; konflikt i lokalny zapis pozostaną zachowane.
+            </p>
+          </div>
+        </Modal>
+      )}
 
       {/* Narzędzia treningowe — otwierane z Kokpitu w sekcji TRENUJ */}
       <ElevatorPitchModal

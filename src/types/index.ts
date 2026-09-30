@@ -335,6 +335,7 @@ export interface StarTalkingPoint {
   task: string;
   action: string;
   result: string;
+  sourceEvidence?: string;
   sourceExperienceId?: string;
 }
 
@@ -345,6 +346,8 @@ export interface STARStory {
   task: string;
   action: string;
   result: string;
+  /** Oryginalny punkt z profilu, który użytkownik może rozwinąć do historii STAR. */
+  sourceEvidence?: string;
   metrics: string[];
   tags: string[];
   projectId: string;
@@ -355,12 +358,10 @@ export interface SkillBridge {
   id: string;
   missingSkill: string;
   adjacentSkill: string;
-  conceptualEquivalence: string;
+  relatedTopics: string;
   bridgeExplanation: string;
   talkingPoint: string;
   evidenceFromVault?: string;
-  learningCurveDays?: number;
-  confidenceScore: number;
 }
 
 export interface ElevatorPitchOutput {
@@ -547,6 +548,8 @@ export interface ApplicationDocumentSnapshot {
    * dopóki użytkownik nie wyeksportuje CV i nie potwierdzi wysłania aplikacji.
    */
   exportedCv?: GeneratedCvExport;
+  /** Dokładny tekst skopiowanego CV/listu, którego nie da się odtworzyć z profilu. */
+  exportedDocument?: ExportedDocumentSnapshot;
 }
 
 /** Metadane wyglądu dokumentu, bez treści CV ani deklaracji o skuteczności ATS. */
@@ -555,6 +558,26 @@ export interface GeneratedCvExport {
   templateName: string;
   fit: 'ats-friendly' | 'visual-balanced';
   exportedAt: string;
+}
+
+/** Rzeczywista treść skopiowanego dokumentu, gdy plik nie jest odtwarzalny z samych metadanych. */
+export interface ExportedDocumentSnapshot {
+  kind: 'cv' | 'cover-letter';
+  format: 'plain-text' | 'markdown';
+  content: string;
+}
+
+/** Dane przekazywane przez eksporter do snapshotu właściwej oferty. */
+export interface CvExportEvent {
+  exportedCv?: GeneratedCvExport;
+  /** Stan roboczy faktycznie użyty przez druk lub eksport PDF. */
+  vault?: MasterVault;
+  /** Wariant dopasowania po ręcznych poprawkach w podglądzie dokumentu. */
+  tailoredResume?: TailoredResume | null;
+  /** Wariant listu faktycznie skopiowany albo wydrukowany. */
+  coverLetter?: CoverLetter;
+  /** Treść skopiowana do schowka; jej wynik zależy od lokalnych zmian użytkownika. */
+  document?: ExportedDocumentSnapshot;
 }
 
 /**

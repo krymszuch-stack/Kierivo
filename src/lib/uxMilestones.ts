@@ -1,6 +1,6 @@
 import { JobApplication, MasterVault } from '../types';
 import { NavSectionId } from './navigation';
-import { StorageKeys, readJson, writeJson } from './storage';
+import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
 import { measureVaultCompleteness } from './vaultCompleteness';
 
 /**
@@ -146,10 +146,10 @@ export function deriveUnlocks(milestones: UxMilestones): UnlockState {
 
 /* --- cienka warstwa utrwalania; cała logika wyżej jest czysta --- */
 
-export function loadMilestones(): UxMilestones {
-  return readJson<UxMilestones>(StorageKeys.uxMilestones, {});
+export function loadMilestones(profileId: string): UxMilestones {
+  return readJson<UxMilestones>(profileDataKeyFor(StorageKeys.uxMilestones, profileId), {});
 }
 
-export function saveMilestones(milestones: UxMilestones): void {
-  writeJson(StorageKeys.uxMilestones, milestones);
+export function saveMilestones(profileId: string, milestones: UxMilestones): void {
+  writeJson(profileDataKeyFor(StorageKeys.uxMilestones, profileId), milestones);
 }

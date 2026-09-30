@@ -87,11 +87,32 @@ describe('Profil raportu ATS', () => {
     const physical = simulateAtsCheck(resume, vault, JD, 'PHYSICAL');
 
     const structureIdx = physical.recommendations.findIndex((r) => r.startsWith('Struktura PDF'));
-    const titleIdx = physical.recommendations.findIndex((r) => r.startsWith('Gęstość Tytułu'));
+    const titleIdx = physical.recommendations.findIndex((r) => r.startsWith('Nazwa stanowiska z oferty'));
 
     // Test ma sens tylko wtedy, gdy oba zalecenia faktycznie padły.
     expect(structureIdx).toBeGreaterThanOrEqual(0);
     expect(titleIdx).toBeGreaterThanOrEqual(0);
     expect(structureIdx).toBeLessThan(titleIdx);
+  });
+
+  it('nie zgłasza różnicy nazw, gdy tytuł oferty i nagłówek CV są nieznane', () => {
+    const { resume, vault } = cvWithProblems();
+    resume.targetJobTitle = '';
+    vault.personalInfo.title = '';
+
+    const result = simulateAtsCheck(resume, vault, JD);
+
+    expect(result.recommendations.some((item) => item.startsWith('Nazwa stanowiska z oferty'))).toBe(false);
+    expect(result.recommendations.some((item) => item.startsWith('W profilu nie podano tytułu zawodowego'))).toBe(false);
+  });
+
+  it('oddziela brak nagłówka profilu od rzeczywistej różnicy tytułów', () => {
+    const { resume, vault } = cvWithProblems();
+    vault.personalInfo.title = '';
+
+    const result = simulateAtsCheck(resume, vault, JD);
+
+    expect(result.recommendations.some((item) => item.startsWith('W profilu nie podano tytułu zawodowego'))).toBe(true);
+    expect(result.recommendations.some((item) => item.startsWith('Nazwa stanowiska z oferty'))).toBe(false);
   });
 });

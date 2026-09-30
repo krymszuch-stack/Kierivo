@@ -92,11 +92,11 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
         achievementMetricRatePct: 80,
       },
       logicComplianceLoop: {
-        complianceScore: 89,
+        consistencyScore: 89,
         chronologyValid: true,
         timelineAnomalies: [],
         logicalInconsistencies: [],
-        rodoCompliant: true,
+        rodoCompliant: null,
         privacyRisks: [],
       },
       actionableRecommendations: [],
@@ -115,7 +115,7 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
       const response = await fetch(app.url('/ai/verify-cv'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vault: testVault }),
+        body: JSON.stringify({ vault: testVault, consentToAiProcessing: true }),
       });
 
       expect(response.status).toBe(401);
@@ -124,6 +124,30 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
       expect(data.error).toContain('Wymagane zalogowanie');
 
       // Rezerwacja kwoty nie może się odbyć bez uwierzytelnienia
+      expect(reserveQuotaCalls).toBe(0);
+      expect(verifySpy).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('brak jawnej zgody → HTTP 400 przed rezerwacją kwoty i wywołaniem modelu', async () => {
+    const app = await startApp();
+    try {
+      const response = await fetch(app.url('/ai/verify-cv'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${WAZNY_TOKEN}`,
+        },
+        body: JSON.stringify({ vault: testVault }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: expect.stringContaining('potwierdzenie'),
+      });
       expect(reserveQuotaCalls).toBe(0);
       expect(verifySpy).not.toHaveBeenCalled();
     } finally {
@@ -141,7 +165,7 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
           'Content-Type': 'application/json',
           Authorization: `Bearer ${WAZNY_TOKEN}`,
         },
-        body: JSON.stringify({ vault: testVault }),
+        body: JSON.stringify({ vault: testVault, consentToAiProcessing: true }),
       });
 
       expect(response.status).toBe(402);
@@ -170,6 +194,7 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
         body: JSON.stringify({
           vault: testVault,
           targetRole: 'Spawacz TIG',
+          consentToAiProcessing: true,
         }),
       });
 

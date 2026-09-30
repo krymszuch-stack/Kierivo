@@ -14,6 +14,7 @@
 import type { ReactNode } from 'react';
 import type { MasterVault } from '../types';
 import type { NavTabId, NavSectionId } from '../lib/navigation';
+import { HOME_MATCH_EXAMPLE } from '../lib/homeMatchExample';
 
 export type HomeViewProps = {
   /** Główne wezwanie do działania — wejście w przepływ profilu / CV. */
@@ -118,11 +119,11 @@ const FAQ = [
   },
   {
     q: 'Czy wynik oznacza, że przejdę filtr ATS?',
-    a: 'Nie. To szacowany wynik przejścia filtra ATS wyliczony na podstawie reguł Kierivo. Nie mamy dostępu do prywatnych konfiguracji rekrutera w Workday, Greenhouse, Lever czy Taleo i nie obiecujemy zaproszenia na rozmowę.',
+    a: 'Nie. To ocena zgodności CV z ofertą według reguł Kierivo, a nie prawdopodobieństwo przejścia filtra ATS. Nie mamy dostępu do prywatnych konfiguracji rekrutera w Workday, Greenhouse, Lever czy Taleo i nie obiecujemy zaproszenia na rozmowę.',
   },
   {
     q: 'Czym jest Doradca w interfejsie?',
-    a: 'Obecnie lokalnym modułem regułowym, nie czatem LLM. Dostaje wyłącznie Twoje pytanie lub wybrany szybki prompt — nie czyta sam Master Vaultu ani zapisanych aplikacji.',
+    a: 'Korzysta z Azure OpenAI przez API. Wysyła wpisane treści dopiero po potwierdzeniu; ograniczony kontekst analizy nie obejmuje automatycznie całego Master Vaultu.',
   },
 ] as const;
 
@@ -198,7 +199,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 
 /** Makieta wyniku dopasowania — statyczna, poglądowa, bez wykresów z biblioteki. */
  function MatchPanel() {
-  const coverage = 78;
+  const { coverage, totalRequirements, matchedRequirements, missingRequirements } = HOME_MATCH_EXAMPLE;
   return (
     <figure className="rounded-2xl border border-line bg-elevated p-5 shadow-floating sm:p-6">
       <figcaption className="flex items-start justify-between gap-4">
@@ -230,10 +231,10 @@ function SectionLabel({ children }: { children: ReactNode }) {
         </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">Pokrycie umiejętności z ogłoszenia</p>
-           <p className="mt-1 text-sm text-muted">
-             W przykładzie 14 z 18 wymagań ma potwierdzenie. Cztery pozostałe wskazujemy poniżej —
-             razem z tym, gdzie w CV ich brakuje.
-           </p>
+          <p className="mt-1 text-sm text-muted">
+            W przykładzie {matchedRequirements} z {totalRequirements} wymagań ma potwierdzenie.
+            Pozostałe wskazujemy poniżej — razem z tym, gdzie w CV ich brakuje.
+          </p>
         </div>
       </div>
 
@@ -242,7 +243,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
           Brakujące wymagania
         </p>
         <ul className="space-y-2">
-          {['SAP (moduł MM)', 'Budżetowanie kosztów transportu', 'Uprawnienia UDT'].map((item) => (
+          {missingRequirements.map((item) => (
             <li key={item} className="flex items-center gap-2 text-sm text-ink">
               <span
                 className="grid h-5 w-5 shrink-0 place-items-center rounded-sm bg-warning-soft text-warning-fg"
@@ -509,8 +510,8 @@ export function HomeView({
             </p>
             <ul className="mt-4 space-y-3 text-sm leading-relaxed text-ink">
               <li>
-                Wynik Kierivo to <strong className="font-semibold">szacowany wynik przejścia filtra ATS</strong>{' '}
-                — oparty na analizie zgodności z ofertą, a nie wynik z systemów Workday, Greenhouse, Lever czy Taleo.
+                Wynik Kierivo to <strong className="font-semibold">ocena zgodności CV z ofertą</strong>{' '}
+                — wyliczona według reguł aplikacji, a nie prawdopodobieństwo przejścia filtra ani wynik z systemów Workday, Greenhouse, Lever czy Taleo.
               </li>
               <li>
                 Nie mamy dostępu do prywatnej konfiguracji rekrutera i nie gwarantujemy przejścia
@@ -521,8 +522,8 @@ export function HomeView({
                 a nie całego dokumentu.
               </li>
               <li>
-                Doradca w interfejsie jest lokalnym modułem regułowym, nie czatem LLM, i nie czyta
-                sam Twojego vaultu.
+                Doradca korzysta z Azure OpenAI przez API po potwierdzeniu wysyłki. Nie dołącza
+                automatycznie całego profilu; sprawdzaj propozycje modelu przed użyciem.
               </li>
             </ul>
           </aside>

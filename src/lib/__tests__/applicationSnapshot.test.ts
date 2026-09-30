@@ -14,9 +14,11 @@ import { StorageKeys, readJson, writeJson } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 import {
   createApplicationDocumentSnapshot,
+  createApplicationDocumentSnapshotFromExport,
   validateSnapshotIntegrity,
   repairSnapshotReferences,
   resolveApplicationVault,
+  resolveApplicationJobOffer,
 } from '../applicationSnapshot';
 import { adaptMasterVaultToSemanticProfile } from '../semanticPdfAdapter';
 
@@ -712,6 +714,70 @@ describe('Application Snapshot Immutability Suite (BUG-002 Verification)', () =>
       expect(report.brokenExperienceLinks).toHaveLength(0);
     });
 
+    it('nie przypisuje punktu do pierwszego duplikatu firmy i stanowiska po odnowieniu ID', () => {
+      const vault = createTestVault();
+      const firstExperience = vault.history[0];
+      vault.history.push({
+        ...JSON.parse(JSON.stringify(firstExperience)),
+        id: 'exp_2',
+        startDate: '2024-01',
+        endDate: '2025-12',
+        highlights: firstExperience.highlights.map((highlight) => ({
+          ...highlight,
+          id: 'hl_2',
+          text: 'Obsłużyłem 80 zgłoszeń serwisowych w drugim okresie zatrudnienia.',
+        })),
+      });
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+      tailored.selectedHighlights.push({
+        ...tailored.selectedHighlights[0],
+        experienceId: 'exp_2',
+        originalText: vault.history[1].highlights[0].text,
+      });
+      const firstText = 'Punkt przypisany do pierwszego okresu zatrudnienia.';
+      const secondText = 'Punkt przypisany do drugiego okresu zatrudnienia.';
+      tailored.selectedHighlights[0].optimizedText = firstText;
+      tailored.selectedHighlights[1].optimizedText = secondText;
+
+      const snapshot = createApplicationDocumentSnapshot({ vault, tailoredResume: tailored, jobOffer: job });
+      snapshot.tailoredResume.selectedHighlights[1].experienceId = 'exp_1';
+      const mismatchedExistingId = repairSnapshotReferences(snapshot);
+      expect(mismatchedExistingId.tailoredResume.selectedHighlights[1].experienceId).toBe('exp_2');
+
+      snapshot.tailoredResume.selectedHighlights[1].experienceId = 'stare_id_po_migracji';
+
+      const repaired = repairSnapshotReferences(snapshot);
+      expect(repaired.tailoredResume.selectedHighlights[1].experienceId).toBe('exp_2');
+
+      const profile = adaptMasterVaultToSemanticProfile(repaired.vaultSnapshot, repaired.tailoredResume);
+      expect(profile.experience[0].bullets[0].display).toBe(firstText);
+      expect(profile.experience[1].bullets[0].display).toBe(secondText);
+    });
+
+    it('pozostawia referencję nierozstrzygniętą, gdy duplikaty mają też ten sam tekst źródłowy', () => {
+      const vault = createTestVault();
+      const firstExperience = vault.history[0];
+      vault.history.push({
+        ...JSON.parse(JSON.stringify(firstExperience)),
+        id: 'exp_2',
+        startDate: '2024-01',
+        endDate: '2025-12',
+      });
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+      tailored.selectedHighlights.push({ ...tailored.selectedHighlights[0], experienceId: 'exp_2' });
+
+      const snapshot = createApplicationDocumentSnapshot({ vault, tailoredResume: tailored, jobOffer: job });
+      snapshot.tailoredResume.selectedHighlights[1].experienceId = 'stare_id_po_migracji';
+
+      const repaired = repairSnapshotReferences(snapshot);
+      expect(repaired.tailoredResume.selectedHighlights[1].experienceId).toBe('stare_id_po_migracji');
+      const report = validateSnapshotIntegrity(repaired);
+      expect(report.isValid).toBe(false);
+      expect(report.brokenExperienceLinks[0].suggestedExperienceId).toBeUndefined();
+    });
+
     it('Test 17: validateSnapshotIntegrity i repairSnapshotReferences oczyszczają wiszące linki z experienceOrder', () => {
       const vault = createTestVault();
       const job = createTestJob();
@@ -825,6 +891,82 @@ describe('Application Snapshot Immutability Suite (BUG-002 Verification)', () =>
       expect(typeof snapshot.createdAt).toBe('string');
     });
 
+    it('przechowuje dokładną treść wyeksportowaną i izoluje ją od późniejszych zmian', () => {
+      const vault = createTestVault();
+      vault.personalInfo.summary = 'Podsumowanie po poprawkach tylko do tego wydruku.';
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, vault);
+      const exportedDocument = {
+        kind: 'cv' as const,
+        format: 'markdown' as const,
+        content: '# Jan Kowalski\nPoprawiony tekst skopiowany do schowka.',
+      };
+
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: tailored,
+        jobOffer: job,
+        exportedDocument,
+      });
+      exportedDocument.content = 'Treść zmieniona później.';
+
+      expect(snapshot.vaultSnapshot.personalInfo.summary)
+        .toBe('Podsumowanie po poprawkach tylko do tego wydruku.');
+      expect(snapshot.exportedDocument).toEqual({
+        kind: 'cv',
+        format: 'markdown',
+        content: '# Jan Kowalski\nPoprawiony tekst skopiowany do schowka.',
+      });
+    });
+
+    it('używa profilu i wariantu listu przekazanych przez faktyczny eksporter', () => {
+      const sourceVault = createTestVault();
+      const exportedVault = createTestVault();
+      exportedVault.personalInfo.summary = 'Wersja poprawiona tylko w podglądzie wydruku.';
+      const job = createTestJob();
+      const tailored = createTestTailoredResume(job, sourceVault);
+      const exportedTailored = {
+        ...tailored,
+        targetJobTitle: 'Ręcznie poprawiony tytuł',
+        summary: 'Ręcznie poprawione podsumowanie.',
+      };
+      const baseLetter = createTestCoverLetter(job);
+      const exportedLetter = {
+        ...baseLetter,
+        fullText: 'Dokładnie ten wariant listu skopiowano.',
+      };
+
+      const snapshot = createApplicationDocumentSnapshotFromExport({
+        vault: sourceVault,
+        tailoredResume: tailored,
+        jobOffer: job,
+        coverLetter: baseLetter,
+      }, {
+        vault: exportedVault,
+        tailoredResume: exportedTailored,
+        coverLetter: exportedLetter,
+        exportedCv: {
+          templateId: 'cv-preview',
+          templateName: 'Podgląd CV',
+          fit: 'ats-friendly',
+          exportedAt: '2026-09-29T10:00:00.000Z',
+        },
+        document: {
+          kind: 'cover-letter',
+          format: 'plain-text',
+          content: exportedLetter.fullText,
+        },
+      });
+
+      expect(snapshot.vaultSnapshot.personalInfo.summary)
+        .toBe('Wersja poprawiona tylko w podglądzie wydruku.');
+      expect(snapshot.coverLetter?.fullText).toBe(exportedLetter.fullText);
+      expect(snapshot.tailoredResume.targetJobTitle).toBe('Ręcznie poprawiony tytuł');
+      expect(snapshot.tailoredResume.summary).toBe('Ręcznie poprawione podsumowanie.');
+      expect(snapshot.exportedDocument?.content).toBe(exportedLetter.fullText);
+      expect(snapshot.exportedCv?.templateId).toBe('cv-preview');
+    });
+
     it('Test 20: resolveApplicationVault zwraca vaultSnapshot ze snapshotu jako niezmienne pojedyncze źródło prawdy', () => {
       const vault = createTestVault();
       const job = createTestJob();
@@ -868,6 +1010,55 @@ describe('Application Snapshot Immutability Suite (BUG-002 Verification)', () =>
       };
       const resolvedManual = resolveApplicationVault(manualApp, fallbackVault);
       expect(resolvedManual.personalInfo.fullName).toBe('Użytkownik Fallback');
+    });
+
+    it('odtwarza ofertę do ściągi z historycznego snapshotu aplikacji', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: createTestTailoredResume(job, vault),
+        jobOffer: job,
+      });
+      const application: JobApplication = {
+        id: 'app-saved',
+        company: job.company,
+        position: job.title,
+        salary: '8000',
+        date: '2026-08-28',
+        status: 'Rozmowa',
+        documentSnapshot: snapshot,
+      };
+
+      const resolved = resolveApplicationJobOffer(application);
+
+      expect(resolved?.title).toBe(job.title);
+      expect(resolved?.company).toBe(job.company);
+      expect(resolved?.description).toBe(job.description);
+      expect(resolved?.rawDescription).toBe(job.description);
+      expect(resolveApplicationJobOffer({ ...application, documentSnapshot: undefined })).toBeNull();
+    });
+
+    it('nie traktuje starego placeholdera firmy jako danych oferty', () => {
+      const vault = createTestVault();
+      const job = createTestJob();
+      const snapshot = createApplicationDocumentSnapshot({
+        vault,
+        tailoredResume: createTestTailoredResume(job, vault),
+        jobOffer: job,
+      });
+      snapshot.jobOfferSnapshot.company = '';
+      const application: JobApplication = {
+        id: 'app-old-company-placeholder',
+        company: 'Nieznana firma',
+        position: job.title,
+        salary: '',
+        date: '2026-09-29',
+        status: 'Do wysłania',
+        documentSnapshot: snapshot,
+      };
+
+      expect(resolveApplicationJobOffer(application)?.company).toBe('');
     });
 
     it('Test 21: adaptMasterVaultToSemanticProfile nie rzuca błędu przy złamanych linkach, a po naprawie uwzględnia zoptymalizowany tekst', () => {

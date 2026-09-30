@@ -12,7 +12,6 @@ from mvcv.data.model import (
     Summary,
 )
 from mvcv.governance import (
-    DEFAULT_RODO_CLAUSE,
     apply,
     count_lines,
     fit_bullets_to_lines,
@@ -87,11 +86,11 @@ class TestGovernanceApply(unittest.TestCase):
             clause=clause,
         )
 
-    def test_default_rodo_clause_injected(self):
+    def test_empty_clause_remains_empty_without_candidate_consent(self):
         profile = self._create_sample_profile(clause="")
         resolved, rep = apply(profile, content_width=400, measure=mock_measure, target_pages=1)
-        self.assertEqual(resolved.clause, DEFAULT_RODO_CLAUSE)
-        self.assertTrue(any("RODO" in note for note in rep.notes))
+        self.assertEqual(resolved.clause, "")
+        self.assertFalse(any("RODO" in note for note in rep.notes))
 
     def test_custom_clause_preserved(self):
         profile = self._create_sample_profile(clause="Moja własna klauzula rekrutacyjna.")

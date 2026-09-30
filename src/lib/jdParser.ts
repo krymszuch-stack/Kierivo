@@ -1,6 +1,7 @@
 import { MasterVault } from '../types';
 import { HR_AND_COMMON_STOP_WORDS, extractDynamicJdPhrases } from './atsSimulator';
 import { auditKnockouts, KNOCKOUT_RULES, type KnockoutSeverity } from './knockouts';
+import { detectBenefits } from './commuteCalculator';
 import {
   dedupeSkillDefinitions, extractGenericRequirementCandidates, extractNiceLanguageSkills,
   findSkillDefinitions,
@@ -155,16 +156,11 @@ function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-
   if (/polsk|polish/i.test(lower)) languages.push('Polski (Ojczysty)');
   if (/niemieck|german/i.test(lower)) languages.push('Niemiecki');
 
-  // Extract benefits and perks
-  const benefits: string[] = [];
-  if (/multisport|karta sport/i.test(lower)) benefits.push('Karta MultiSport / FitProfit');
-  if (/luxmed|praktyka medyczna|opieka medyczna|private medical/i.test(lower)) benefits.push('Prywatna Opieka Medyczna (LuxMed/EnelMed)');
-  if (/budżet szkoleniowy|szkolenia|kursy|training budget/i.test(lower)) benefits.push('Budżet Szkoleniowy i Konferencyjny');
-  if (/elastycz|flexible hours/i.test(lower)) benefits.push('Elastyczne Godziny Pracy');
-  if (/sprzęt|macbook|laptop|apple/i.test(lower)) benefits.push('Nowoczesny Sprzęt (Laptop / MacBook)');
-  if (/lekcje angielskiego|dofinansowanie nauki/i.test(lower)) benefits.push('Dofinansowanie do Nauki Języków Obcych');
-  if (/owocowe|kawa|przekąski/i.test(lower)) benefits.push('Darmowe Przekąski, Kawa i Soki w Biurze');
-  if (/bonus|premia/i.test(lower)) benefits.push('Bonus Roczny / Premia za Wyniki');
+  // Parser i kalkulator muszą stosować ten sam matcher dowodów: samo słowo
+  // „MultiSport” w zdaniu „nie zapewniamy MultiSport” nie jest benefitem.
+  const benefits = detectBenefits([text])
+    .filter((benefit) => benefit.status === 'PROVIDED')
+    .map((benefit) => benefit.label);
 
   // Mandatory requirements / Dealbreakers detection
   const mandatory: string[] = [];
@@ -245,7 +241,17 @@ function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-
  * sześciu ofert `requiredLines`/`niceLines` wychodziły puste niezależnie od
  * tego, co zawierał słownik umiejętności.
  */
-const SECTION_HEADER_PATTERN = /^(mile widziane|nice[- ]to[- ]have|preferred|dodatkowo|nasze wymagania|twoje wymagania|wymagania|wymagane|requirements?|what we (?:expect|require|need)|to oferujemy|we offer|benefity|benefits|perks|twój zakres|zakres obowiązków|obowiązki|responsibilities|what you.?ll do|o projekcie|about the project|o firmie|about us|about the company|technologie|tech stack|technologies)\s*[:.]?\s*$/i;
+const SECTION_HEADER_NAMES = "(mile widziane|nice[- ]to[- ]have|preferred qualifications?|preferred|dodatkowo|nasze wymagania|twoje wymagania|wymagania|wymagane|(?:required|minimum|basic) qualifications?|qualifications?|must[- ]haves?|requirements?|what we (?:expect|require|need)|what you(?:'|’)ll bring|what you will bring|your profile|who you are|to oferujemy|we offer|benefity|benefits|perks|twój zakres|zakres obowiązków|obowiązki|responsibilities|what you.?ll do|o projekcie|about the project|o firmie|about us|about the company|technologie|tech stack|technologies)";
+const SECTION_HEADER_PATTERN = new RegExp(`^${SECTION_HEADER_NAMES}\\s*[:.]?\\s*$`, 'i');
+const INLINE_SECTION_HEADER_PATTERN = new RegExp(`^${SECTION_HEADER_NAMES}\\s*:\\s*(.+)$`, 'i');
+
+/** Dzieli „Wymagania: ...” tak samo jak nagłówek i treść w osobnych liniach. */
+function normalizeInlineSectionHeaders(lines: string[]): string[] {
+  return lines.flatMap((line) => {
+    const match = line.match(INLINE_SECTION_HEADER_PATTERN);
+    return match ? [match[1], match[2].trim()] : [line];
+  });
+}
 
 function parseSectionLines(lines: string[], headers: RegExp[]): string[] {
   let start = -1;
@@ -257,6 +263,38 @@ function parseSectionLines(lines: string[], headers: RegExp[]): string[] {
   return lines.slice(start + 1, end < 0 ? lines.length : start + 1 + end);
 }
 
+const REQUIRED_SECTION_HEADERS = [
+  /^(nasze|twoje)?\s*wymagania\s*[:.]?$/i, /^wymagane\s*[:.]?$/i,
+  /^requirements?\s*[:.]?$/i, /^what we (?:expect|require|need)\s*[:.]?$/i,
+  /^(required|minimum|basic) qualifications?\s*[:.]?$/i, /^qualifications?\s*[:.]?$/i,
+  /^must[- ]haves?\s*[:.]?$/i, /^what you(?:'|’)ll bring\s*[:.]?$/i,
+  /^what you will bring\s*[:.]?$/i, /^your profile\s*[:.]?$/i, /^who you are\s*[:.]?$/i,
+];
+
+/** Wyciąga próg stażu tylko z tej samej sekcji wymagań, którą widzi parser oferty. */
+export function extractRequiredExperienceYears(rawJdText: string): number | null {
+  const lines = normalizeInlineSectionHeaders(
+    (rawJdText ?? '').trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  );
+  const requiredText = parseSectionLines(lines, REQUIRED_SECTION_HEADERS).join('\n').toLocaleLowerCase('pl-PL');
+  const experienceMatch = requiredText.match(
+    /(?:minimum(?:\s+of)?|min\.?|co\s+najmniej|at\s+least)\s*(\d{1,2})\s*\+?\s*(?:lat|lata|years?)\b/i
+  ) || requiredText.match(
+    /\b(\d{1,2})\s*\+?\s*(?:lat|lata)\s+doświadczenia(?:\s+(?:zawodowego|w\s+pracy))?\b/i
+  ) || requiredText.match(
+    /\b(\d{1,2})\s*\+?\s*years?\s*(?:(?:of|')\s*)?(?:(?:professional|relevant|work)\s+)*experience\b/i
+  );
+
+  return experienceMatch ? Number(experienceMatch[1]) : null;
+}
+
+export function formatExperienceRequirementLabel(years: number): string {
+  const lastTwo = years % 100;
+  const last = years % 10;
+  const unit = lastTwo >= 12 && lastTwo <= 14 ? 'lat' : last >= 2 && last <= 4 ? 'lata' : 'lat';
+  return `Min. ${years} ${unit} doświadczenia`;
+}
+
 /**
  * Parser lokalny ogranicza ekstrakcję umiejętności do sekcji wymagań. Stary
  * ekstraktor pozostaje jako fallback dla nietypowych ręcznych ogłoszeń, ale nie
@@ -265,12 +303,11 @@ function parseSectionLines(lines: string[], headers: RegExp[]): string[] {
 export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full-Stack Developer'): ParsedJobDescription {
   const legacy = parseJobDescriptionLocalLegacy(rawJdText, defaultTitle);
   const text = rawJdText.trim();
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const requiredLines = parseSectionLines(lines, [
-    /^(nasze|twoje)?\s*wymagania/i, /^wymagane$/i, /^requirements?$/i, /^what we (?:expect|require|need)/i,
-  ]);
+  const lines = normalizeInlineSectionHeaders(text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+  const requiredLines = parseSectionLines(lines, REQUIRED_SECTION_HEADERS);
   const niceLines = parseSectionLines(lines, [
-    /^mile widziane/i, /^nice[- ]to[- ]have/i, /^preferred/i, /^dodatkowo/i, /^additionally/i,
+    /^mile widziane/i, /^nice[- ]to[- ]have/i, /^preferred(?:\s+qualifications?)?/i,
+    /^dodatkowo/i, /^additionally/i,
   ]);
   const requiredSectionText = requiredLines.join('\n');
   const niceSectionText = niceLines.join('\n');
@@ -322,9 +359,8 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
     return match ? [{ language: match[1], level: match[2], required: requiredLines.includes(line) || /wymagan|minimum|min\./i.test(line) || requiredByHeader, sourceText: line }] : [];
   });
   const lower = text.toLocaleLowerCase('pl-PL');
-  const experienceMatch = lower.match(/(?:minimum|min\.?|co najmniej|at least)\s*(\d{1,2})\s*\+?\s*(?:lat|lata|years?)/i) ||
-    lower.match(/\b(\d{1,2})\s*\+?\s*(?:lat|lata|years?)\s*(?:doświadczenia|experience)/i);
-  const experienceMinYears = experienceMatch ? Number(experienceMatch[1]) : null;
+  // Staż kandydata wolno wyprowadzić z wymagań, nie z opisu firmy (np. „25 lat na rynku”).
+  const experienceMinYears = extractRequiredExperienceYears(text);
   const salaryMatch = text.match(/(?:od\s*)?(\d[\d\s.]*(?:,\d+)?)\s*(?:–|-|do)\s*(\d[\d\s.]*(?:,\d+)?)\s*(zł|pln|eur|usd)([^.\n]*)/i);
   const parseNumber = (value: string) => Number(value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
   const salary = salaryMatch ? {
@@ -339,7 +375,7 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
   }
   const degreeLine = lines.find((line) => /wykształcenie wyższe|studia wyższe|bachelor|master degree/i.test(line));
   if (degreeLine) formalRequirements.push({ id: 'degree', label: degreeLine, required: requiredLines.includes(degreeLine), severity: 'information', sourceText: degreeLine });
-  if (experienceMinYears !== null) formalRequirements.push({ id: 'experience_years', label: `Min. ${experienceMinYears} lat doświadczenia`, required: true, severity: 'information', sourceText: lines.find((line) => /\d+\s*\+?\s*(?:lat|lata|years?)/i.test(line)) || '' });
+  if (experienceMinYears !== null) formalRequirements.push({ id: 'experience_years', label: formatExperienceRequirementLabel(experienceMinYears), required: true, severity: 'information', sourceText: requiredLines.find((line) => /\d+\s*\+?\s*(?:lat|lata|years?)/i.test(line)) || '' });
   structuredLanguages.filter((language) => language.required).forEach((language) => {
     formalRequirements.push({
       id: `language_${language.language.toLowerCase()}`,
@@ -445,14 +481,16 @@ export function analyzeJdMatchWithVault(
     id: finding.ruleId,
     requirement: finding.label,
     type: knockoutTypeFor(finding.ruleId),
-    message: finding.satisfied
+    message: finding.severity === 'information'
+      ? `Oferta wspomina o: ${finding.label}, ale nie określa tego jako wymogu ani atutu. Warto potwierdzić status z rekruterem.`
+      : finding.satisfied
       ? `Wymagane: ${finding.label} (potwierdzone w Twoim profilu)`
       : finding.severity === 'knockout'
         ? `Oferta wymaga: ${finding.label}. Nie znaleziono tego w Twoim profilu.`
         : `Mile widziane: ${finding.label}. Warto dopisać, jeśli to posiadasz.`,
-    missingInVault: !finding.satisfied,
-    canQuickAdd: !finding.satisfied,
-    quickAddValue: finding.label,
+    missingInVault: finding.severity !== 'information' && !finding.satisfied,
+    canQuickAdd: finding.severity !== 'information' && !finding.satisfied,
+    quickAddValue: finding.severity === 'information' ? '' : finding.label,
   }));
 
   // Brakujące umiejętności kluczowe zostają — to jest osobna kategoria niż

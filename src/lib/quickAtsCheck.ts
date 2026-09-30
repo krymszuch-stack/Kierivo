@@ -1,7 +1,8 @@
 import { MasterVault, TailoredResume, AtsCheckResult } from '../types';
 import { parseTextToMasterVault, type ParsedCVResult } from './cvUniversalParser';
 import { createEmptyVault } from './sampleVault';
-import { simulateAtsCheck } from './atsSimulator';
+import { extractDynamicJdPhrases, simulateAtsCheck } from './atsSimulator';
+import { scoreCanonicalAts, type CanonicalAtsScore } from './canonicalAts';
 import { auditKnockouts, type KnockoutReport } from './knockouts';
 import {
   bestSubRoleMatch,
@@ -24,6 +25,8 @@ import {
 
 export interface QuickCheckResult {
   ats: AtsCheckResult;
+  /** Jedyny główny wynik dopasowania, wspólny z widokiem zaawansowanym. */
+  canonicalResult: CanonicalAtsScore;
   vault: MasterVault;
   parsed: ParsedCVResult;
   /** Braki wypisane wprost — to jest ta wartość, którą użytkownik pokazuje dalej. */
@@ -203,12 +206,19 @@ export function runQuickAtsCheck(
     jd,
     profile
   );
+  // Ten sam CV i oferta trafiają później do JobMatcher. Szybki ekran musi
+  // pokazać tę samą miarę kanoniczną, a nie równoległy wynik symulatora.
+  const canonicalResult = scoreCanonicalAts(vault, jd, options.jobTitle || '');
+  const canonicalMissingSkills = extractDynamicJdPhrases(jd).hardSkills
+    .map(({ phrase }) => phrase)
+    .filter((phrase) => canonicalResult.missingRequirements.includes(phrase));
 
   return {
     ats,
+    canonicalResult,
     vault,
     parsed,
-    missingSkills: meaningfulMissingSkills(ats.missingHardSkills, ats.missingSoftSkills),
+    missingSkills: meaningfulMissingSkills(canonicalMissingSkills),
     // Audyt liczy się lokalnie, na dopasowaniu tekstowym, i nie kosztuje ani
     // jednego tokenu. Dlatego może stać w części darmowej bez limitu — a przy
     // zawodach fizycznych to właśnie on niesie wartość.
@@ -294,23 +304,8 @@ export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] 
     });
   }
 
-  // 4. Kolejne brakujące słowa kluczowe z silnika ATS
-  if (problems.length < 3 && Array.isArray(result.ats?.missingHardSkills)) {
-    for (const hs of result.ats.missingHardSkills) {
-      if (problems.length >= 3) break;
-      if (!problems.some((p) => p.title.toLowerCase().includes(hs.toLowerCase()))) {
-        problems.push({
-          id: `hs-${hs.toLowerCase().replace(/\s+/g, '-')}`,
-          title: `Brak frazy kluczowej: ${hs}`,
-          description: `Ogłoszenie wymienia „${hs}”. Uzupełnij opis stanowiska o to pojęcie.`,
-          severity: 'warning',
-          category: 'hard_skill',
-        });
-      }
-    }
-  }
-
-  // 5. Rekomendacje redakcyjne ATS
+  // Rekomendacje redakcyjne mogą dopełnić trzy pozycje, ale braki kompetencji
+  // pochodzą wyłącznie z kanonicznej listy użytej także na ekranie wyniku.
   if (problems.length < 3 && Array.isArray(result.ats?.recommendations)) {
     for (const rec of result.ats.recommendations) {
       if (problems.length >= 3) break;

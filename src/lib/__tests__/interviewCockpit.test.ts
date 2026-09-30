@@ -3,12 +3,15 @@ import {
   getNegotiationTrapScripts,
   getRedFlagQuestions,
   loadCockpitProgress,
+  saveCockpitProgress,
   toggleLessonCompletion,
 } from '../interviewCockpitEngine';
 import { MemoryStorage } from './helpers/memoryStorage';
+import { resetLastGoodCache } from '../storage';
 
 describe('Interview Cockpit Engine', () => {
   beforeEach(() => {
+    resetLastGoodCache();
     // Podstawienie atrapy localStorage
     const memory = new MemoryStorage();
     Object.defineProperty(globalThis, 'localStorage', {
@@ -26,6 +29,13 @@ describe('Interview Cockpit Engine', () => {
     expect(salaryTrap).toBeDefined();
     expect(salaryTrap?.variants.length).toBeGreaterThanOrEqual(2);
     expect(salaryTrap?.proTip).toBeTruthy();
+
+    const allScriptText = JSON.stringify(traps);
+    expect(allScriptText).toContain('[prawdziwy powód]');
+    expect(allScriptText).not.toContain('ustabilizowaliśmy system');
+    expect(allScriptText).not.toContain('20% czasu');
+    expect(allScriptText).not.toContain('80% na entuzjazm');
+    expect(allScriptText).toContain('faktyczny obszar');
   });
 
   it('zwraca bazę pytań do rekrutera z analizą Red Flags', () => {
@@ -39,17 +49,26 @@ describe('Interview Cockpit Engine', () => {
   });
 
   it('zarządza utrwalaniem ukończonych materiałów w LocalStorage', () => {
-    const initial = loadCockpitProgress();
+    const initial = loadCockpitProgress('profile-a');
     expect(initial.completedLessons).toHaveLength(0);
 
-    const updated = toggleLessonCompletion('pitch_completed');
+    const updated = toggleLessonCompletion('profile-a', 'pitch_completed');
     expect(updated.completedLessons).toContain('pitch_completed');
 
-    const withCoach = toggleLessonCompletion('star_coach_completed');
+    const withCoach = toggleLessonCompletion('profile-a', 'star_coach_completed');
     expect(withCoach.completedLessons).toContain('star_coach_completed');
 
-    const reloaded = loadCockpitProgress();
+    const reloaded = loadCockpitProgress('profile-a');
     expect(reloaded.completedLessons).toContain('pitch_completed');
     expect(reloaded.completedLessons).toContain('star_coach_completed');
+  });
+
+  it('nie ujawnia prywatnych notatek kokpitu innemu profilowi', () => {
+    const progress = loadCockpitProgress('profile-a');
+    progress.notes = { private: 'Notatka z przygotowań' };
+    saveCockpitProgress('profile-a', progress);
+
+    expect(loadCockpitProgress('profile-b').notes).toEqual({});
+    expect(loadCockpitProgress('profile-a').notes).toEqual({ private: 'Notatka z przygotowań' });
   });
 });

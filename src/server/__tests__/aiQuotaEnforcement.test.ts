@@ -26,6 +26,7 @@ const WAZNY_TOKEN = 'wazny-token-sesji';
 
 // Przełącznik scenariusza podszywający się pod odpowiedź `reserve_ai_quota` z bazy.
 let quotaAllowed = true;
+let quotaReserveCalls = 0;
 
 function fakeSupabase() {
   return {
@@ -42,6 +43,7 @@ function fakeSupabase() {
     },
     rpc: vi.fn(async (fn: string) => {
       if (fn === 'reserve_ai_quota') {
+        quotaReserveCalls += 1;
         return { data: { allowed: quotaAllowed, current_uses: quotaAllowed ? 1 : 25 }, error: null };
       }
       return { data: null, error: null };
@@ -83,12 +85,14 @@ const PRZYKLADOWE_OGLOSZENIE =
 describe('Egzekucja limitu AI po stronie serwera (curl z pominięciem UI)', () => {
   beforeEach(() => {
     quotaAllowed = true;
+    quotaReserveCalls = 0;
     vi.spyOn(configModule, 'loadConfig').mockReturnValue({
       backendEnabled: true,
       BACKEND_MODE: 'cloud',
     } as unknown as ReturnType<typeof configModule.loadConfig>);
     vi.spyOn(supabaseModule, 'getSupabase').mockImplementation(fakeSupabase);
     vi.spyOn(aiService, 'parseJd').mockResolvedValue({ jobTitle: 'Monter' } as never);
+    vi.spyOn(aiService, 'generateCheatSheetEnrichment').mockResolvedValue({} as never);
   });
 
   afterEach(() => {
@@ -105,7 +109,7 @@ describe('Egzekucja limitu AI po stronie serwera (curl z pominięciem UI)', () =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${WAZNY_TOKEN}`,
         },
-        body: JSON.stringify({ rawJdText: PRZYKLADOWE_OGLOSZENIE }),
+        body: JSON.stringify({ rawJdText: PRZYKLADOWE_OGLOSZENIE, consentToAiProcessing: true }),
       });
 
       expect(response.status).toBe(402);
@@ -133,7 +137,7 @@ describe('Egzekucja limitu AI po stronie serwera (curl z pominięciem UI)', () =
           'Content-Type': 'application/json',
           Authorization: `Bearer ${WAZNY_TOKEN}`,
         },
-        body: JSON.stringify({ rawJdText: PRZYKLADOWE_OGLOSZENIE }),
+        body: JSON.stringify({ rawJdText: PRZYKLADOWE_OGLOSZENIE, consentToAiProcessing: true }),
       });
 
       expect(response.status).toBe(200);
@@ -141,6 +145,57 @@ describe('Egzekucja limitu AI po stronie serwera (curl z pominięciem UI)', () =
       expect(payload.success).toBe(true);
       expect(payload.parsedJd).toBeDefined();
       expect(aiService.parseJd).toHaveBeenCalledTimes(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('parse ogłoszenia i wzbogacenie ściągi bez zgody odpadają przed limitem i modelem', async () => {
+    const app = await startApp();
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${WAZNY_TOKEN}`,
+      };
+      const parseResponse = await fetch(app.url('/parse-jd'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ rawJdText: PRZYKLADOWE_OGLOSZENIE }),
+      });
+      const cheatSheetResponse = await fetch(app.url('/generate-cheat-sheet'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ vault: { personalInfo: { fullName: 'Profil testowy' } } }),
+      });
+
+      expect(parseResponse.status).toBe(400);
+      expect(cheatSheetResponse.status).toBe(400);
+      expect(quotaReserveCalls).toBe(0);
+      expect(aiService.parseJd).not.toHaveBeenCalled();
+      expect(aiService.generateCheatSheetEnrichment).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('wzbogacenie ściągi z jawną zgodą przechodzi przez quota guard', async () => {
+    const app = await startApp();
+    try {
+      const response = await fetch(app.url('/generate-cheat-sheet'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${WAZNY_TOKEN}`,
+        },
+        body: JSON.stringify({
+          vault: { personalInfo: { fullName: 'Profil testowy' } },
+          consentToAiProcessing: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(quotaReserveCalls).toBe(1);
+      expect(aiService.generateCheatSheetEnrichment).toHaveBeenCalledTimes(1);
     } finally {
       await app.close();
     }

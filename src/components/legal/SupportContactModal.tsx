@@ -1,8 +1,8 @@
 import React from 'react';
-import { Mail, MessageSquare, LifeBuoy, Send, CheckCircle2 } from 'lucide-react';
+import { Mail, LifeBuoy, Send } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
-import { showToast } from '../../store/useToastStore';
+import { buildSupportEmailHref } from '../../lib/supportEmail';
 
 interface SupportContactModalProps {
   isOpen: boolean;
@@ -17,24 +17,11 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
 }) => {
   const [feedback, setFeedback] = React.useState('');
   const [email, setEmail] = React.useState('');
-  const [isSent, setIsSent] = React.useState(false);
 
   const isProblem = defaultCategory === 'problem';
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!feedback.trim()) return;
-    setIsSent(true);
-    showToast('Wiadomość wysłana', {
-      message: 'Dziękujemy! Nasz zespół odpowie w ciągu 24 godzin.',
-      variant: 'success',
-    });
-    setTimeout(() => {
-      setIsSent(false);
-      setFeedback('');
-      onClose();
-    }, 1200);
-  };
+  const emailHref = feedback.trim()
+    ? buildSupportEmailHref({ category: defaultCategory, email, message: feedback })
+    : undefined;
 
   return (
     <Modal
@@ -50,7 +37,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
             Centrum Pomocy Kierivo
           </div>
           <p className="text-muted text-[11px] leading-relaxed">
-            Masz pytanie, sugestię nowej funkcji lub napotkałeś problem techniczny? Napisz do nas bezpośrednio lub skorzystaj z poniższego formularza.
+            Masz pytanie, sugestię nowej funkcji lub napotkałeś problem techniczny? Wpisz treść, a poniższy odnośnik przygotuje szkic w Twoim programie pocztowym. Kierivo nie wysyła tej wiadomości za Ciebie.
           </p>
           <div className="flex items-center gap-1.5 pt-1 text-[11px] text-brand-fg font-mono">
             <Mail className="h-3.5 w-3.5" />
@@ -60,14 +47,7 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
           </div>
         </div>
 
-        {isSent ? (
-          <div className="py-8 text-center space-y-2">
-            <CheckCircle2 className="h-10 w-10 text-success-fg mx-auto" />
-            <h4 className="font-bold text-sm text-ink">Dziękujemy za kontakt!</h4>
-            <p className="text-muted text-xs">Twoja wiadomość została przekazana do zespołu technicznego.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-3 pt-1">
+          <form onSubmit={(event) => event.preventDefault()} className="space-y-3 pt-1">
             <div>
               <label className="block font-bold text-[11px] text-muted mb-1">
                 Twój adres e-mail (opcjonalnie do odpowiedzi)
@@ -99,12 +79,19 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
               <Button type="button" variant="ghost" size="sm" onClick={onClose}>
                 Anuluj
               </Button>
-              <Button type="submit" variant="primary" size="sm" icon={Send}>
-                Wyślij wiadomość
-              </Button>
+              <a
+                href={emailHref}
+                aria-disabled={!emailHref}
+                onClick={(event) => {
+                  if (!emailHref) event.preventDefault();
+                }}
+                className={`relative inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-brand-grad px-3 py-1 text-xs font-medium text-on-brand shadow-raised transition-colors ${emailHref ? 'hover:brightness-110' : 'cursor-not-allowed opacity-50'}`}
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                Otwórz szkic wiadomości
+              </a>
             </div>
           </form>
-        )}
       </div>
     </Modal>
   );

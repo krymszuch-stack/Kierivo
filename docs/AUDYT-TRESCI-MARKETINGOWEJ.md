@@ -125,11 +125,13 @@ którego reszta ma dotrzymać.
 | `JobMatcher.tsx:234` | „silnik CVELOCITY **zweryfikuje Twoje CV przeciwko algorytmom ATS** i wygeneruje **spersonalizowane dokumenty** aplikacyjne" | Weryfikacja idzie przez własną symulację; `optimizedText === originalText` (:87–96), a summary to szablon „Dopasowany profil inżynierski pod stanowisko X w firmie Y" (:86). Nic nie jest personalizowane |
 | `CoverLetterView.tsx:79` | „Styl #X/8" | Silnik traktuje numer wyłącznie jako seed — gwarancji ośmiu odrębnych stylów nigdzie nie ma |
 
-Nazwa „AI Gap-Fixer" sama w sobie też jest umową bez konsumenta: endpointów AI
-jest dokładnie dwa (`/api/parse-jd`, `/api/generate-cheat-sheet`), a najbliższy
-odpowiednik Gap-Fixera (`optimizeDeltaPhrase`) czeka bez trasy HTTP
-(`ai.service.ts:14–17`). Użytkownik nie może dziś wykonać żadnej „operacji
-Gap-Fixera", za którą cennik mu oferuje limit 5/mc.
+**Uwaga o aktualności tego audytu:** powyższy akapit opisywał wcześniejszą
+rewizję. W stanie sprawdzonym 2026-09-29 nie ma już metody
+`AiService.optimizeDeltaPhrase` ani klienta `optimizeDeltaPhrases`; usunięto
+martwy fallback, który dopisywał niepotwierdzone metryki, oraz brakujące trasy
+nie są już uzasadnieniem do zgłaszania tego konkretnego błędu. Oddzielne
+twierdzenia o planach i limitach w tym historycznym audycie wymagają ponownej
+weryfikacji przed użyciem jako opis bieżącego produktu.
 
 ### 2.5. Bezpieczeństwo, prywatność, trwałość danych
 

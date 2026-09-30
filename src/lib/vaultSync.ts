@@ -1,6 +1,32 @@
 import { MasterVault } from '../types';
 import { isVaultEmpty } from './vaultCompleteness';
-import { mergeImportedVault } from './vaultImportMerge';
+import { hasConflictingVaultDuplicates, mergeImportedVault } from './vaultImportMerge';
+import { ANONYMOUS_PROFILE_ID } from './localProfile';
+import { createEmptyVault } from './sampleVault';
+
+/**
+ * Lokalny vault może wejść do bootstrapu chmurowego tylko wtedy, gdy jest
+ * anonimową pracą bieżącej przeglądarki albo należy do tego samego właściciela.
+ * Sam fakt, że React trzyma jakiś vault w pamięci, nie dowodzi, że wolno go
+ * scalić z właśnie zalogowanym kontem.
+ */
+export function isLocalVaultEligibleForCloudOwner(localProfileId: string, ownerId: string): boolean {
+  return localProfileId === ANONYMOUS_PROFILE_ID || localProfileId === ownerId;
+}
+
+/** Autosave chmurowy jest dozwolony dopiero po przypisaniu vaultu do właściciela. */
+export function isVaultBoundToCloudOwner(localProfileId: string, ownerId: string): boolean {
+  return localProfileId === ownerId;
+}
+
+/** Zwraca wyłącznie vault, którego wolno użyć przy logowaniu tego właściciela. */
+export function getLocalVaultForCloudOwner(
+  local: MasterVault,
+  localProfileId: string,
+  ownerId: string,
+): MasterVault {
+  return isLocalVaultEligibleForCloudOwner(localProfileId, ownerId) ? local : createEmptyVault();
+}
 
 /**
  * Rozstrzygnięcie konfliktu przy pierwszym zalogowaniu.
@@ -26,7 +52,9 @@ export type VaultSyncAction =
   /** Obie strony mają treść — scalamy i odsyłamy wynik. */
   | 'scal-i-wyslij'
   /** Nie ma czego przenosić. */
-  | 'nic';
+  /** Te same encje zmieniły się po obu stronach — wymagany jest wybór. */
+  | 'nic'
+  | 'konflikt';
 
 export interface VaultSyncResult {
   /** Vault, który ma trafić na ekran. */
@@ -67,6 +95,10 @@ export function resolveVaultOnSignIn(
   // pracy na konto — najczęstszy przypadek przy pierwszym logowaniu.
   if (!lokalnyPusty && chmuraPusta) {
     return { vault: local, action: 'wyslij-lokalny', shouldUpload: true };
+  }
+
+  if (hasConflictingVaultDuplicates(cloud!, local)) {
+    return { vault: local, action: 'konflikt', shouldUpload: false };
   }
 
   // Obie strony mają treść. Scalamy istniejącym mechanizmem zamiast pisać drugi

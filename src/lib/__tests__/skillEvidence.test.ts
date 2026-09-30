@@ -21,6 +21,15 @@ describe('skillEvidence — kanoniczny matcher dowodów', () => {
     expect(hasPositiveSkillEvidence('Go developer, Golang', 'go')).toBe(true);
   });
 
+  it('rozpoznaje nazwę technologii z przyklejonym numerem wersji', () => {
+    expect(hasPositiveSkillEvidence('C++17 developer', 'C++')).toBe(true);
+    expect(hasPositiveSkillEvidence('Python3 automation', 'Python')).toBe(true);
+    expect(hasPositiveSkillEvidence('Go1.22 services', 'Go')).toBe(true);
+    expect(hasPositiveSkillEvidence('.NET8 developer', '.NET')).toBe(true);
+    expect(hasPositiveSkillEvidence('Python3x developer', 'Python')).toBe(false);
+    expect(hasPositiveSkillEvidence('C++17framework', 'C++')).toBe(false);
+  });
+
   it('odmiana polska nadal matchuje (pythona → python)', () => {
     expect(hasPositiveSkillEvidence('Robiłem rzeczy w Pythonie i z Pythonem', 'python')).toBe(true);
     expect(hasPositiveSkillEvidence('Programista Pythona', 'python')).toBe(true);

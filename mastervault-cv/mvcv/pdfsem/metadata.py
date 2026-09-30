@@ -8,8 +8,9 @@ Do PDF-a trafiają trzy nośniki semantyki:
    nowoczesne ATS-y i rekrutacyjne modele AI dostają ustrukturyzowaną siatkę
    kompetencji, uprawnień formalnych (SEP, UDT, prawo jazdy) i lat stażu
    bez ryzyka błędu OCR,
-3. załącznik ``mastervault.json`` — źródłowy rekord danych, żeby dokument
-   był w pełni odtwarzalny (round-trip MasterVault -> PDF -> MasterVault).
+3. Aplikacja nadal może importować załącznik ``mastervault.json`` ze starszych
+   plików, ale nowe CV go nie osadzają. Załącznik zawierał dane profilu poza
+   treścią dokumentu i był przekazywany każdemu odbiorcy PDF.
 
 Ponadto: klasyczny słownik /Info (Title/Author/Subject/Keywords) dla starszych
 parserów.
@@ -50,7 +51,7 @@ _XMP_TEMPLATE = """<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
   </rdf:Description>
   <rdf:Description rdf:about="" xmlns:mv="{mvns}">
    <mv:generator>{generator}</mv:generator>
-   <mv:semanticLayer>Tagged PDF: /ActualText w drzewie struktury + JSON-LD (Schema.org/Person) w /Metadata + załącznik mastervault.json</mv:semanticLayer>
+   <mv:semanticLayer>Tagged PDF: /ActualText w drzewie struktury + JSON-LD (Schema.org/Person) w /Metadata</mv:semanticLayer>
    <mv:source>{source}</mv:source>
    <mv:jsonLd><![CDATA[{jsonld}]]></mv:jsonLd>
   </rdf:Description>
@@ -64,16 +65,43 @@ _XMP_TEMPLATE = """<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
 
 def _years_of_experience(profile: MasterProfile, *, today: _dt.date | None = None) -> int:
     today = today or _dt.date.today()
-    earliest: _dt.date | None = None
+    today_month = today.year * 12 + today.month - 1
+    intervals: list[tuple[int, int]] = []
+
+    def month_index(value: str) -> int | None:
+        match = re.match(r"^(\d{2})\.(\d{4})$", value.strip())
+        if not match:
+            return None
+        month, year = int(match.group(1)), int(match.group(2))
+        if not 1 <= month <= 12:
+            return None
+        return year * 12 + month - 1
+
     for exp in profile.experience:
-        m = re.match(r"^(\d{2})\.(\d{4})$", exp.start)
-        if m:
-            d = _dt.date(int(m.group(2)), int(m.group(1)), 1)
-            earliest = d if earliest is None or d < earliest else earliest
-    if earliest is None:
+        start = month_index(exp.start)
+        if start is None:
+            continue
+
+        end_text = exp.end.strip().casefold()
+        end = today_month if end_text in {"obecnie", "teraz", "current", "present"} else month_index(exp.end)
+        # Brak daty końca nie jest dowodem, że praca trwa do dziś.
+        if end is None or end < start:
+            continue
+        intervals.append((start, end))
+
+    if not intervals:
         return 0
-    months = (today.year - earliest.year) * 12 + today.month - earliest.month
-    return max(0, months // 12)
+
+    intervals.sort()
+    merged: list[tuple[int, int]] = []
+    for start, end in intervals:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    months = sum(end - start for start, end in merged)
+    return months // 12
 
 
 def build_jsonld(profile: MasterProfile) -> dict:
@@ -170,9 +198,8 @@ def build_xmp(profile: MasterProfile, *, title: str, jsonld: dict) -> bytes:
     return xml.encode("utf-8")
 
 
-def inject_metadata(pdf: pikepdf.Pdf, profile: MasterProfile, *, title: str,
-                    attach_master_json: bool = True) -> dict:
-    """Ustaw /Metadata (XMP), /Info i opcjonalny załącznik. Zwraca JSON-LD."""
+def inject_metadata(pdf: pikepdf.Pdf, profile: MasterProfile, *, title: str) -> dict:
+    """Ustaw /Metadata (XMP) i /Info. Zwraca JSON-LD."""
     jsonld = build_jsonld(profile)
     xmp = build_xmp(profile, title=title, jsonld=jsonld)
     meta = pdf.make_stream(xmp)
@@ -189,67 +216,4 @@ def inject_metadata(pdf: pikepdf.Pdf, profile: MasterProfile, *, title: str,
     info["/Creator"] = pikepdf.String(GENERATOR)
     info["/Producer"] = pikepdf.String(GENERATOR)
 
-    if attach_master_json:
-        payload = {
-            "masterVaultRecord": {
-                "source": profile.source_id or None,
-                "resumeData": {
-                    "name": profile.name, "title": profile.title,
-                    "contact": profile.contact.__dict__,
-                    "summary": {"display": profile.summary.display,
-                                "semantic": profile.summary.semantic},
-                    "skills": [s.__dict__ for s in profile.skills],
-                    "experience": [
-                        {**{f: getattr(e, f) for f in
-                            ("role", "company", "start", "end", "location", "tech")},
-                         "bullets": [b.__dict__ for b in e.bullets]}
-                        for e in profile.experience
-                    ],
-                    "education": [e.__dict__ for e in profile.education],
-                    "certifications": [c.__dict__ for c in profile.certifications],
-                    "languages": [l.__dict__ for l in profile.languages],
-                    "licenses": profile.licenses,
-                    "clause": profile.clause,
-                },
-                "jsonLd": jsonld,
-            }
-        }
-        data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
-        attach_file(pdf, "mastervault.json", data,
-                    mime_type="application/json",
-                    desc="Rekord MasterVault (źródło wiedzy) osadzony w CV")
     return jsonld
-
-
-def attach_file(pdf: pikepdf.Pdf, filename: str, data: bytes, *,
-                mime_type: str = "application/octet-stream", desc: str = "") -> None:
-    """Załącz plik (EmbeddedFiles) z fallbackiem na ręczną konstrukcję."""
-    try:
-        pdf.attach_file(data, filename=filename, mime_type=mime_type, desc=desc)
-        return
-    except AttributeError:
-        pass
-    ef = pdf.make_stream(data)
-    ef.Type = pikepdf.Name.EmbeddedFile
-    ef.Subtype = pikepdf.Name("/" + mime_type)
-    ef.Params = pdf.make_indirect(pikepdf.Dictionary(
-        Size=len(data),
-        ModDate=_dt.datetime.now().strftime("D:%Y%m%d%H%M%SZ"),
-    ))
-    filespec = pdf.make_indirect(pikepdf.Dictionary(
-        Type=pikepdf.Name.Filespec,
-        F=pikepdf.String(filename),
-        UF=pikepdf.String(filename),
-        Desc=pikepdf.String(desc),
-        EF=pikepdf.Dictionary(F=ef),
-    ))
-    names = pdf.Root.get("/Names")
-    if names is None:
-        names = pdf.make_indirect(pikepdf.Dictionary())
-        pdf.Root.Names = names
-    ef_tree = names.get("/EmbeddedFiles")
-    if ef_tree is None:
-        ef_tree = pdf.make_indirect(pikepdf.Dictionary(Names=pikepdf.Array([])))
-        names.EmbeddedFiles = ef_tree
-    ef_tree.Names.append(pikepdf.String(filename))
-    ef_tree.Names.append(filespec)

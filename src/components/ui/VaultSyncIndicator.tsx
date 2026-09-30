@@ -5,6 +5,7 @@ const LABELS = {
   local: 'Zapisane lokalnie',
   pending: 'Oczekuje na chmurę',
   cloud: 'Zapisane w chmurze',
+  conflict: 'Konflikt synchronizacji',
 } as const;
 
 /**
@@ -20,10 +21,18 @@ export const VaultSyncIndicator: React.FC = () => {
 
   return (
     <div
-      className="pointer-events-none fixed right-4 top-20 z-20 rounded-lg border border-line bg-elevated/95 px-2.5 py-1.5 text-[10px] font-medium text-muted shadow-xs backdrop-blur sm:right-6"
+      className={`fixed right-4 top-20 z-20 rounded-lg border bg-elevated/95 px-2.5 py-1.5 text-[10px] font-medium shadow-xs backdrop-blur sm:right-6 ${
+        status === 'conflict' ? 'border-amber-500/50 text-amber-700' : 'border-line text-muted'
+      }`}
       role="status"
       aria-live="polite"
+      aria-label={status === 'conflict'
+        ? `${LABELS[status]}. Zachowaliśmy obie wersje; wybierz, którą zapisać.`
+        : LABELS[status]}
       data-vault-sync-status={status}
+      title={status === 'conflict'
+        ? 'Lokalne CV zachowano. Chmura zmieniła się na innym urządzeniu; nie nadpisaliśmy jej automatycznie.'
+        : undefined}
     >
       {LABELS[status]}
     </div>

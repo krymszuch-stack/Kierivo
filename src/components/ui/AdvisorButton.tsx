@@ -12,11 +12,11 @@ interface AdvisorButtonProps {
   variant?: 'brand' | 'warning';
 }
 
-/** Współdzielony przycisk Doradcy lokalnego i jego FAQ. */
+/** Współdzielony przycisk Doradcy zaufanego i jego FAQ. */
 export const AdvisorButton: React.FC<AdvisorButtonProps> = ({
   onClick,
-  label = 'Doradca lokalny',
-  title = 'Otwórz Doradcę lokalnego i FAQ',
+  label = 'Doradca zaufany',
+  title = 'Otwórz Doradcę zaufanego i FAQ',
   className = '',
   variant = 'brand',
 }) => {

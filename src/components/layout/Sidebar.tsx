@@ -21,6 +21,7 @@ import { KierivoLogo } from '../KierivoLogo';
 import { PrivacyPolicyModal } from '../legal/PrivacyPolicyModal';
 import { SupportContactModal } from '../legal/SupportContactModal';
 import { NAV_SECTIONS, NavSectionId, NavTabId } from '../../lib/navigation';
+import { getAccountPresentation } from './accountPresentation';
 
 /**
  * Czytelne, jednoznaczne ikony sekcji z pakietu lucide-react.
@@ -45,6 +46,7 @@ export interface SidebarProps {
   /** Czemu sekcja jest jeszcze zamknięta — pokazywane w podpowiedzi. */
   lockReasons?: Partial<Record<NavSectionId, string>>;
   isAuthenticated?: boolean;
+  authMode?: 'local' | 'cloud' | null;
   userEmail?: string;
   cloudAvailable?: boolean;
   planStatus?: 'free' | 'trialing' | 'active';
@@ -62,13 +64,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unlockedSections,
   lockReasons,
   isAuthenticated = false,
+  authMode = null,
   userEmail,
   cloudAvailable = false,
   className = '',
 }) => {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const accountLabel = cloudAvailable ? 'Zaloguj lub załóż konto' : 'Utwórz profil lokalny';
+  const accountPresentation = getAccountPresentation({ isAuthenticated, authMode, userEmail, cloudAvailable });
   const accountHint = cloudAvailable
     ? 'Synchronizacja między urządzeniami'
     : 'Dane zostają na tym urządzeniu';
@@ -185,8 +188,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavItem
             icon={Sparkles}
-            label="Doradca lokalny"
-            hint="Rozmowa działa z lokalną Ollamą. Bez dostępnego modelu znajdziesz tu FAQ i skróty do właściwych narzędzi."
+            label="Doradca zaufany"
+            hint="Feedback z Azure OpenAI przez API — po potwierdzeniu wysłania treści."
             isCollapsed={isCollapsed}
             onClick={onOpenAdvisor}
             className="text-brand-fg hover:bg-brand-500/10"
@@ -229,11 +232,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Pigułka Konta Użytkownika */}
         <Tooltip
-          content={
-            isAuthenticated
-              ? `${userEmail} · Dane konta są chronione`
-              : accountLabel
-          }
+          content={accountPresentation.tooltip}
           side={isCollapsed ? 'right' : 'top'}
           className="w-full"
         >
@@ -262,9 +261,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <p className="truncate text-label font-semibold text-ink flex-1">
-                    {isAuthenticated ? userEmail : accountLabel}
+                    {accountPresentation.label}
                   </p>
-                  {isAuthenticated && (
+                  {accountPresentation.showProtectionShield && (
                     <span
                       title="Dane konta są chronione"
                       aria-label="Dane konta są chronione"

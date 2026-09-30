@@ -70,7 +70,7 @@ export function formatModelQuotaFeedback(
   const shortBadge = `${safeRemaining}/${maxDaily}`;
 
   const details = isExhausted
-    ? `Dzienny limit operacji AI (${maxDaily} zapytań/dobę) został wyczerpany. Pula odnowi się automatycznie o północy. Do tego czasu wszystkie analizy, scoring ATS i edycja faktów działają w pełni lokalnie.`
+    ? `Dzienny limit operacji AI (${maxDaily} zapytań/dobę) został wyczerpany. Pula odnowi się automatycznie o północy. Podstawowy audyt regułowy i edycja profilu pozostają dostępne bez modelu AI.`
     : `Darmowy dobowy przydział w Public Pre-Beta (0 zł). Pozostało ${safeRemaining} z ${maxDaily} zapytań AI. Pula odnawia się każdej nocy o 00:00.`;
 
   return {
@@ -108,7 +108,7 @@ export function getModelGracefulDegradationNotice(
           'Dzienna pula wywołań modelu została wykorzystana (odnowi się o północy). Ogłoszenie zostanie przeanalizowane przez wbudowany, deterministyczny silnik regułowy Kierivo.',
         fallbackActionName: 'Analizuj silnikiem regułowym',
         fallbackDescription:
-          'Lokalna ekstrakcja słów kluczowych, lematyzacja i wielowskaźnikowy scoring ATS działają w 100% bez utraty danych.',
+          'Dostępna pozostaje lokalna ekstrakcja słów kluczowych, lematyzacja i ocena dopasowania według reguł Kierivo. Nie obejmuje ona analizy modelu AI.',
       };
 
     case 'coach':
@@ -128,7 +128,7 @@ export function getModelGracefulDegradationNotice(
           'Trójstopniowa weryfikacja z modelem LLM odnowi się po północy wraz z nową dobową pulą.',
         fallbackActionName: 'Otwórz Laboratorium Audytu ATS',
         fallbackDescription:
-          'Pełna analiza strukturalna, formatowania, gęstości słów kluczowych i zgodności z filtrami ATS jest stale dostępna lokalnie.',
+          'Lokalne laboratorium pokazuje wybrane cechy struktury i treści. Nie odtwarza konfiguracji ani wyniku konkretnego zewnętrznego ATS.',
       };
 
     case 'general':

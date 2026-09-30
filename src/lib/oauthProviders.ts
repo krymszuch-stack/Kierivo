@@ -29,6 +29,8 @@ export interface OAuthProviderMeta {
    * świadomie wskazał — a nie siedzącej w przeglądarce sesji dostawcy.
    */
   queryParams: Record<string, string>;
+  /** Zakresy wymagane przez danego dostawcę do otrzymania adresu e-mail. */
+  scopes?: string;
 }
 
 export const OAUTH_PROVIDERS: readonly OAuthProviderMeta[] = [
@@ -45,6 +47,7 @@ export const OAUTH_PROVIDERS: readonly OAuthProviderMeta[] = [
     continueWith: 'z Microsoftem',
     registerVia: 'przez Microsoft',
     queryParams: { prompt: 'select_account' },
+    scopes: 'email',
   },
   {
     id: 'linkedin_oidc',

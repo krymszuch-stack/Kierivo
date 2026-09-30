@@ -14,13 +14,16 @@ import {
   Save,
 } from 'lucide-react';
 import { MasterVault } from '../../types';
+import type { CvExportEvent } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { showToast } from '../../store/useToastStore';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
 
 export interface CVWordBuilderProps {
   vault: MasterVault;
   /** Treść dokumentu trafiła do schowka — patrz `DocumentRendererProps`. */
-  onExported?: () => void;
+  onExported?: (event: CvExportEvent) => void;
   className?: string;
 }
 
@@ -38,7 +41,7 @@ ${vault.personalInfo.email} | ${vault.personalInfo.phone} | ${vault.personalInfo
 ${vault.personalInfo.summary}
 
 ## Doświadczenie Zawodowe
-${vault.history.map((h) => `### ${h.role} — ${h.company} (${h.startDate} - ${h.isCurrent ? 'Obecnie' : h.endDate})\n${h.highlights.map((hl) => `- ${hl.text}`).join('\n')}`).join('\n\n')}
+${vault.history.map((h) => `### ${h.role} — ${h.company} (${h.startDate} - ${h.isCurrent ? 'Obecnie' : h.endDate})\n${h.highlights.filter((hl) => hl.text.trim()).map((hl) => `- ${hl.text}`).join('\n')}`).join('\n\n')}
 
 ## Kluczowe Technologie
 - **Twarde:** ${(vault.skillsMatrix?.hardSkills || []).join(', ')}
@@ -56,11 +59,19 @@ ${vault.education.map((e) => `- ${e.degree}, ${e.fieldOfStudy} — ${e.instituti
     setDocumentContent((prev) => `${prev}\n${prefix}Wpisz tekst...${suffix}`);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(documentContent);
-    onExported?.();
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copyTextAndNotifySuccess(documentContent, () => onExported?.({
+        document: { kind: 'cv', format: 'markdown', content: documentContent },
+      }));
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      showToast('Nie udało się skopiować CV', {
+        message: 'Przeglądarka nie zapisała tekstu w schowku. Spróbuj ponownie.',
+        variant: 'error',
+      });
+    }
   };
 
   return (

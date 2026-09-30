@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveVaultOnSignIn } from '../vaultSync';
+import {
+  getLocalVaultForCloudOwner,
+  isLocalVaultEligibleForCloudOwner,
+  isVaultBoundToCloudOwner,
+  resolveVaultOnSignIn,
+} from '../vaultSync';
+import { ANONYMOUS_PROFILE_ID } from '../localProfile';
 import { createEmptyVault } from '../sampleVault';
 import { MasterVault, WorkExperience } from '../../types';
 
@@ -32,6 +38,20 @@ function pelny(overrides: Partial<MasterVault> = {}): MasterVault {
 }
 
 describe('rozstrzyganie konfliktu vaultu przy logowaniu', () => {
+  it('nie używa vaultu innego lokalnego profilu do bootstrapu cudzego konta', () => {
+    const alicja = pelny();
+    const eligible = getLocalVaultForCloudOwner(alicja, 'local-profile-alicja', 'cloud-owner-bob');
+
+    expect(isLocalVaultEligibleForCloudOwner('local-profile-alicja', 'cloud-owner-bob')).toBe(false);
+    expect(eligible.personalInfo.fullName).not.toBe('Jan Kowalski');
+    expect(eligible.history).toEqual([]);
+    expect(isLocalVaultEligibleForCloudOwner('cloud-owner-bob', 'cloud-owner-bob')).toBe(true);
+    expect(isLocalVaultEligibleForCloudOwner(ANONYMOUS_PROFILE_ID, 'cloud-owner-bob')).toBe(true);
+    expect(isVaultBoundToCloudOwner('local-profile-alicja', 'cloud-owner-bob')).toBe(false);
+    expect(isVaultBoundToCloudOwner(ANONYMOUS_PROFILE_ID, 'cloud-owner-bob')).toBe(false);
+    expect(isVaultBoundToCloudOwner('cloud-owner-bob', 'cloud-owner-bob')).toBe(true);
+  });
+
   it('pusta chmura i lokalna praca → wysyła lokalny (migracja na konto)', () => {
     const local = pelny();
     const wynik = resolveVaultOnSignIn(local, null);
@@ -71,6 +91,19 @@ describe('rozstrzyganie konfliktu vaultu przy logowaniu', () => {
     const firmy = wynik.vault.history.map((h) => h.company);
     expect(firmy).toContain('Termika');
     expect(firmy).toContain('GROMGAZ');
+  });
+
+  it('wstrzymuje pierwsze logowanie, gdy lokalna i chmurowa wersja tej samej pracy różnią się', () => {
+    const local = pelny();
+    const cloud = pelny();
+    local.history[0].highlights[0].text = 'Lokalna poprawka osiągnięcia';
+    cloud.history[0].highlights[0].text = 'Zdalna poprawka osiągnięcia';
+
+    const wynik = resolveVaultOnSignIn(local, cloud);
+
+    expect(wynik.action).toBe('konflikt');
+    expect(wynik.shouldUpload).toBe(false);
+    expect(wynik.vault.history[0].highlights[0].text).toBe('Lokalna poprawka osiągnięcia');
   });
 
   it('scalanie nie dubluje tego samego stanowiska', () => {

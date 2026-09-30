@@ -5,10 +5,13 @@ import os
 import shutil
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pikepdf
 
+from mvcv.pdfsem.metadata import _years_of_experience
 from mvcv.pipeline import export
 from mvcv.tools.verify import (
     actual_text_entries,
@@ -16,6 +19,7 @@ from mvcv.tools.verify import (
     has_invisible_text,
     jsonld_from_xmp,
     verify_pdf,
+    visible_text,
 )
 
 
@@ -69,13 +73,10 @@ class TestPipelineAndVerification(unittest.TestCase):
             entries = actual_text_entries(pdf)
             self.assertGreater(len(entries), 5)
 
-            # Check embedded JSON
+            # Nowe eksporty nie przenoszą pełnego MasterVault poza widocznym CV.
             emb = embedded_json(pdf)
-            self.assertIsNotNone(emb)
-            self.assertIn("masterVaultRecord", emb)
-            resume_data = emb["masterVaultRecord"]["resumeData"]
-            self.assertEqual(resume_data.get("name"), "Michał Kowalczyk")
-            self.assertIn("clause", resume_data)
+            self.assertIsNone(emb)
+            self.assertNotIn("/EmbeddedFiles", pdf.Root.get("/Names", {}))
 
             # Check JSON-LD in XMP
             jl = jsonld_from_xmp(pdf)
@@ -85,6 +86,103 @@ class TestPipelineAndVerification(unittest.TestCase):
             self.assertTrue(len(jl.get("knowsAbout", [])) > 0)
         finally:
             pdf.close()
+
+    def test_export_actualtext_does_not_expand_unprovided_skill_claims(self):
+        # Profil syntetyczny sprawdza warstwę, której rekruter nie widzi, ale
+        # którą może indeksować ATS. Umiejętność ma pozostać jej źródłowym tekstem.
+        profile_path = os.path.join(self.temp_dir, "truthful_semantics.json")
+        profile_data = {
+            "name": "Alicja Testowa",
+            "title": "Specjalistka wsparcia IT",
+            "contact": {},
+            "summary": {"display": "", "semantic": ""},
+            "skills": [
+                {"label": "SQL", "semantic": "SQL", "group": "core", "weight": 8},
+                {"label": "Microsoft 365", "semantic": "Microsoft 365", "group": "tooling", "weight": 6},
+                {"label": "TCP/IP", "semantic": "TCP/IP", "group": "core", "weight": 8},
+                {"label": "Excel", "semantic": "Excel", "group": "tooling", "weight": 6},
+            ],
+            "experience": [],
+            "education": [],
+            "certifications": [],
+            "licenses": ["SEP G1 E1 do 1 kV — eksploatacja"],
+            "clause": "",
+        }
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile_data, f, ensure_ascii=False)
+
+        out_pdf = os.path.join(self.temp_dir, "truthful_semantics.pdf")
+        rep = export(profile_path, out_pdf, layout="single", theme="classic", target_pages=1, sidecar=False)
+        self.assertEqual(rep.governance.skills_kept, 4, rep.governance.describe())
+
+        pdf = pikepdf.open(out_pdf)
+        try:
+            semantics = "\n".join(entry["actual"] for entry in actual_text_entries(pdf))
+            visible = visible_text(pdf)
+            self.assertNotIn("profil", "".join(visible.casefold().split()))
+            self.assertIn("SQL", visible)
+            self.assertIn("Microsoft 365", visible)
+            self.assertIn("TCP/IP", visible)
+            self.assertIn("Excel", visible)
+            self.assertIn("SEP G1 E1 do 1 kV", visible)
+            self.assertNotRegex(semantics + visible, r"(?i)zaawansowan|udokumentowane zastosowanie|DDL/DML|optimiz")
+            self.assertNotIn("Wyrażam zgodę na przetwarzanie", semantics + visible)
+            self.assertFalse(has_invisible_text(pdf))
+        finally:
+            pdf.close()
+
+        # Jawnie przekazany tekst może pozostać; brak tekstu nie jest zgodą.
+        profile_data["clause"] = "Klauzula testowa przekazana jawnie przez użytkownika."
+        with open(profile_path, "w", encoding="utf-8") as f:
+            json.dump(profile_data, f, ensure_ascii=False)
+        explicit_pdf = os.path.join(self.temp_dir, "explicit_clause.pdf")
+        export(profile_path, explicit_pdf, layout="single", theme="classic", target_pages=1, sidecar=False)
+        explicit_doc = pikepdf.open(explicit_pdf)
+        try:
+            self.assertIn(
+                "Klauzula testowa przekazana jawnie przez użytkownika",
+                visible_text(explicit_doc),
+            )
+        finally:
+            explicit_doc.close()
+
+    def test_export_has_no_visible_engine_watermark(self):
+        out_pdf = os.path.join(self.temp_dir, "no_engine_watermark.pdf")
+        export(
+            self.sample_path,
+            out_pdf,
+            layout="sidebar",
+            theme="classic",
+            target_pages=1,
+            sidecar=False,
+        )
+
+        pdf = pikepdf.open(out_pdf)
+        try:
+            text = "\n".join(visible_text(pdf))
+            self.assertNotIn("MasterVault CV Engine", text)
+            self.assertNotIn("2026-", text)
+        finally:
+            pdf.close()
+
+    def test_years_of_experience_uses_finished_and_non_overlapping_periods(self):
+        profile = SimpleNamespace(experience=[
+            SimpleNamespace(start="01.2020", end="01.2022"),
+            SimpleNamespace(start="01.2021", end="01.2023"),
+            SimpleNamespace(start="01.2024", end="01.2025"),
+        ])
+
+        self.assertEqual(_years_of_experience(profile, today=date(2026, 9, 1)), 4)
+
+    def test_unknown_end_date_is_not_assumed_to_be_current(self):
+        profile = SimpleNamespace(experience=[SimpleNamespace(start="01.2022", end="")])
+
+        self.assertEqual(_years_of_experience(profile, today=date(2026, 9, 1)), 0)
+
+    def test_explicit_current_job_counts_through_today(self):
+        profile = SimpleNamespace(experience=[SimpleNamespace(start="01.2025", end="obecnie")])
+
+        self.assertEqual(_years_of_experience(profile, today=date(2026, 9, 1)), 1)
 
     def test_export_single_column(self):
         out_pdf = os.path.join(self.temp_dir, "single_test.pdf")

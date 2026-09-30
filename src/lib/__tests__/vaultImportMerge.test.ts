@@ -78,6 +78,23 @@ describe('mergeImportedVault', () => {
     expect(merged.history[0].id).toBe('1');
   });
 
+  it('zachowuje dwa okresy pracy u tej samej firmy na tym samym stanowisku', () => {
+    const first = experience('1', 'Alfa', 'Programista');
+    const second = {
+      ...experience('2', 'Alfa', 'Programista'),
+      startDate: '2023-01',
+      endDate: '2024-06',
+    };
+    const prev = vaultWithHistory(first);
+
+    const merged = mergeImportedVault(prev, { history: [second] });
+
+    expect(merged.history.map((item) => [item.startDate, item.endDate])).toEqual([
+      ['2020-01', '2022-01'],
+      ['2023-01', '2024-06'],
+    ]);
+  });
+
   it('nie gubi historii, gdy import jej nie zawiera', () => {
     const prev = vaultWithHistory(experience('1', 'Alfa', 'Programista'));
 
@@ -111,6 +128,24 @@ describe('mergeImportedVault', () => {
 
     expect(merged.education.map((e) => e.institution)).toEqual(['AGH', 'PW']);
     expect(merged.projects.map((p) => p.name)).toEqual(['Portfolio', 'Sklep']);
+  });
+
+  it('nie scala dwóch kierunków o tej samej nazwie stopnia w tej samej szkole', () => {
+    const prev = createEmptyVault();
+    prev.education = [education('1', 'Uniwersytet Alfa', 'Magister')];
+    const secondProgram = {
+      ...education('2', 'Uniwersytet Alfa', 'Magister'),
+      fieldOfStudy: 'Matematyka',
+      startDate: '2020-10',
+      endDate: '2022-06',
+    };
+
+    const merged = mergeImportedVault(prev, { education: [secondProgram] });
+
+    expect(merged.education.map((item) => item.fieldOfStudy)).toEqual([
+      'Informatyka',
+      'Matematyka',
+    ]);
   });
 
   it('nadpisuje dane osobowe wartościami z CV', () => {
@@ -189,6 +224,32 @@ describe('applyParsedCVToVault', () => {
     expect(vault.history).toHaveLength(1);
     expect(vault.history[0].company).toBe('Stara Firma');
     expect(added.history).toBe(0);
+  });
+
+  it('strategia merge w imporcie zachowuje różne okresy pracy i programy nauki', () => {
+    const prev = vaultWithHistory(experience('old-job', 'Alfa', 'Programista'));
+    prev.education = [education('old-education', 'Uniwersytet Alfa', 'Magister')];
+    const parsed = {
+      ...parsedMock,
+      history: [{ ...experience('new-job', 'Alfa', 'Programista'), startDate: '2023-01' }],
+      education: [{
+        ...education('new-education', 'Uniwersytet Alfa', 'Magister'),
+        fieldOfStudy: 'Matematyka',
+        startDate: '2020-10',
+      }],
+    };
+
+    const { vault, added } = applyParsedCVToVault(prev, parsed as any, {
+      personal: 'keep',
+      skills: 'keep',
+      experience: 'merge',
+      education: 'merge',
+    });
+
+    expect(vault.history).toHaveLength(2);
+    expect(vault.education).toHaveLength(2);
+    expect(added.history).toBe(1);
+    expect(added.education).toBe(1);
   });
 });
 

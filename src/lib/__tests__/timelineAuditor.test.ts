@@ -235,6 +235,8 @@ describe('TimelineAuditor & Logic Validator', () => {
       expect(hasMeasurableMetric('Koordynacja zespołu 12 osób')).toBe(true);
       expect(hasMeasurableMetric('Obsługa ponad 500 klientów dziennie')).toBe(true);
       expect(hasMeasurableMetric('Dbałość o czystość kodu', '+25%')).toBe(true);
+      expect(hasMeasurableMetric('Osiągnąłem [wzrost, np. +25%], mierzone przez [konkretny wskaźnik]')).toBe(false);
+      expect(hasMeasurableMetric('Zwiększyłem wynik o 12% [np. +25%]')).toBe(true);
 
       // Opisy czysto deklaratywne bez liczb i metryk
       expect(hasMeasurableMetric('Tworzenie oprogramowania i udział w spotkaniach')).toBe(false);

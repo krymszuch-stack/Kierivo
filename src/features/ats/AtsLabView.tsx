@@ -25,11 +25,12 @@ import { buildAtsTelemetryReport, STUFFING_DENSITY_THRESHOLD } from '../../lib/a
 import { ScoreRing, EmptyStateScoreRing, ResultScoreRing } from '../../components/ui/ScoreRing';
 import { Button } from '../../components/ui/Button';
 import { ScrollContinuationHint } from '../../components/ui/ScrollContinuationHint';
-import { StorageKeys, readJson, writeJson } from '../../lib/storage';
+import { loadAtsLabDraft, saveAtsLabDraft } from '../../lib/atsLabDraft';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import type { NavTabId } from '../../lib/navigation';
 
 export interface AtsLabViewProps {
+  profileId: string;
   vault: MasterVault;
   jobOfferText?: string;
   targetRole?: string;
@@ -60,6 +61,7 @@ const HEURISTIC_PROFILE_LABELS = [
 ] as const;
 
 export const AtsLabView: React.FC<AtsLabViewProps> = ({
+  profileId,
   vault,
   jobOfferText = '',
   targetRole = '',
@@ -67,15 +69,15 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 }) => {
   const shouldReduceMotion = useReducedMotion();
   const savedDraft = useMemo(
-    () => readJson<{ jd?: string; role?: string }>(StorageKeys.draftAtsLab, {}),
-    []
+    () => loadAtsLabDraft(profileId),
+    [profileId]
   );
   const [customJdText, setCustomJdText] = useState(jobOfferText || savedDraft.jd || '');
   const [customRole, setCustomRole] = useState(targetRole || vault.personalInfo?.title || savedDraft.role || '');
 
   useEffect(() => {
-    writeJson(StorageKeys.draftAtsLab, { jd: customJdText, role: customRole });
-  }, [customJdText, customRole]);
+    saveAtsLabDraft(profileId, { jd: customJdText, role: customRole });
+  }, [customJdText, customRole, profileId]);
 
   const [selectedEngineId, setSelectedEngineId] = useState<string | null>('konsensus_cvelocity');
   const [openPracticeIdx, setOpenPracticeIdx] = useState<number | null>(0);
@@ -144,6 +146,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   );
 
   const isEmptyProfile = canonical.state === 'INSUFFICIENT_CV';
+  const isScorable = canonical.state === 'SCORABLE';
 
   const handleGoToProfile = () => {
     if (onNavigate) {
@@ -153,8 +156,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
     }
   };
 
-  const getScoreTextColor = (val: number, isEmpty: boolean) => {
+  const getScoreTextColor = (val: number | null, isEmpty: boolean) => {
     if (isEmpty) return 'text-ink-muted';
+    if (val === null) return 'text-ink-muted';
     if (val >= 75) return 'text-emerald-500';
     if (val >= 50) return 'text-blue-500';
     return 'text-amber-500';
@@ -164,33 +168,29 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
     {
       id: 'skills',
       label: 'Umiejętności',
-      weight: 40,
+      weight: Math.round(canonical.effectiveWeights.skills * 100),
       value: canonical.components.skills,
-      flexBasis: 'sm:flex-[40_1_0%]',
       intensity: 'border-brand/20 bg-surface/85 shadow-xs',
     },
     {
       id: 'experience',
       label: 'Staż i świeżość',
-      weight: 25,
+      weight: Math.round(canonical.effectiveWeights.experience * 100),
       value: canonical.components.experience,
-      flexBasis: 'sm:flex-[25_1_0%]',
       intensity: 'border-ink/10 bg-surface/75',
     },
     {
       id: 'structure',
       label: 'Struktura',
-      weight: 20,
+      weight: Math.round(canonical.effectiveWeights.structure * 100),
       value: canonical.components.structure,
-      flexBasis: 'sm:flex-[20_1_0%]',
       intensity: 'border-ink/8 bg-surface/65',
     },
     {
       id: 'formal',
       label: 'Formalia',
-      weight: 15,
+      weight: Math.round(canonical.effectiveWeights.formal * 100),
       value: canonical.components.formal,
-      flexBasis: 'sm:flex-[15_1_0%]',
       intensity: 'border-ink/5 bg-surface/55',
     },
   ] as const;
@@ -240,10 +240,14 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       <div className="relative overflow-hidden rounded-3xl border border-brand/20 bg-surface-raised/80 p-6 shadow-card-glass backdrop-blur-xl sm:p-8">
         <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
           <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-5 text-center lg:col-span-4">
-            {isEmptyProfile ? (
+            {!isScorable ? (
               <EmptyStateScoreRing
                 label="Dopasowanie profilu"
-                message="Brak danych"
+                message={isEmptyProfile
+                  ? 'Brak danych profilu'
+                  : canonical.state === 'INSUFFICIENT_JD'
+                    ? 'Dodaj treść oferty'
+                    : 'Nie wykryto wymagań'}
               />
             ) : (
               <ResultScoreRing
@@ -319,8 +323,10 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 <Sparkles className="h-5 w-5 text-brand-fg" /> Rozbicie wagowe filarów dopasowania
               </h2>
               <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-                {isEmptyProfile
-                  ? 'Profil nie zawiera jeszcze treści do oceny. Każdy z 4 filarów czeka na fakty z Twojego profilu:'
+              {!isScorable
+                  ? isEmptyProfile
+                    ? 'Profil nie zawiera jeszcze treści do oceny. Każdy z 4 filarów czeka na fakty z Twojego profilu:'
+                    : canonical.reason
                   : canonical.reason}
               </p>
             </div>
@@ -329,13 +335,14 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               {canonicalPillars.map((pillar) => (
                 <div
                   key={pillar.id}
-                  className={`rounded-xl border p-3 text-center transition-all min-w-[120px] ${pillar.flexBasis} ${pillar.intensity}`}
+                  className={`rounded-xl border p-3 text-center transition-all min-w-[120px] ${pillar.intensity}`}
+                  style={{ flex: `${pillar.weight} 1 0%` }}
                 >
                   <span className="block text-xs font-medium text-ink-muted">
                     {pillar.label}
                   </span>
                   <span className={`mt-0.5 block font-mono text-xl font-bold ${getScoreTextColor(pillar.value, isEmptyProfile)}`}>
-                    {isEmptyProfile ? '—' : `${pillar.value}%`}
+                    {!isScorable ? '—' : pillar.value === null ? 'brak danych' : `${pillar.value}%`}
                   </span>
                   <div className="mt-2.5 pt-2 border-t border-ink/5">
                     <div className="flex items-center justify-between text-[10px] text-ink-faint">
@@ -344,9 +351,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                     </div>
                     <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink/10">
                       <div
-                        className={`h-full rounded-full transition-all ${isEmptyProfile ? 'bg-ink/25' : 'bg-brand'}`}
-                        style={{ width: `${pillar.weight}%` }}
-                        title={`Waga w ocenie końcowej: ${pillar.weight}%`}
+                        className={`h-full rounded-full transition-all ${!isScorable ? 'bg-ink/25' : 'bg-brand'}`}
+                        style={{ width: `${isScorable ? pillar.weight : 0}%` }}
+                        title={`Waga w tym wyniku: ${pillar.weight}%`}
                       />
                     </div>
                   </div>
@@ -355,10 +362,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-xs text-ink-muted border-t border-ink/5 pt-3">
-              <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
-              <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
-              <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
-              {!isEmptyProfile && (
+              {isScorable ? <>
+                <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
+                <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
+                <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
+              </> : <span>Wynik dopasowania pojawi się po dodaniu profilu i treści oferty.</span>}
+              {isScorable && (
                 <div className="ml-auto flex items-center gap-1.5 text-ink-faint">
                   <span>Mediana symulatora: <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
                   <span className="text-[10px] text-ink-faint">(odniesienie z 3 silników heurystycznych)</span>
@@ -382,11 +391,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             </p>
           </div>
           <div className="shrink-0 rounded-2xl border border-ink/5 bg-surface/60 px-5 py-3 text-center">
-            <span className="font-mono text-3xl font-black text-ink">{telemetry.overallScore}%</span>
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-ink-faint">Wynik telemetrii</span>
+            <span className="font-mono text-3xl font-black text-ink">{isScorable ? `${telemetry.overallScore}%` : '—'}</span>
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-ink-faint">{isScorable ? 'Wynik telemetrii' : 'Brak porównania'}</span>
           </div>
         </div>
 
+        {isScorable ? <>
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {([
             ['Pokrycie lematów', '40%', telemetry.formulaBreakdown.hardSkillsScore],
@@ -471,20 +481,20 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             Te profile grupują mierzone cechy dokumentu. Ich liczby nie są wynikami ani prawdopodobieństwami z konkretnych zewnętrznych ATS.
           </p>
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {telemetry.systemVulnerabilities.map((profileResult, index) => {
+            {telemetry.heuristicProfiles.map((profileResult, index) => {
               const label = HEURISTIC_PROFILE_LABELS[index] ?? {
                 name: `Profil regułowy ${index + 1}`,
                 category: 'wewnętrzna kombinacja cech Kierivo',
               };
               return (
-                <div key={profileResult.systemId} className="select-none space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
+                <div key={profileResult.profileId} className="select-none space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-bold text-ink">{label.name}</p>
                       <p className="text-[11px] text-ink-faint">{label.category}</p>
                     </div>
                     <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-extrabold text-on-brand shadow-xs">
-                      {profileResult.passProbability}%
+                      {profileResult.score}/100
                     </span>
                   </div>
                   {profileResult.criticalRisks.length > 0 && (
@@ -512,8 +522,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             })}
           </div>
         </div>
+        </> : <p className="mt-5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-ink-muted">
+          Metryki zależne od treści ogłoszenia pojawią się po wklejeniu oferty z wykrytymi wymaganiami.
+        </p>}
       </div>
 
+      {isScorable && <>
       <ScrollContinuationHint targetId="ocena-dopasowania" label="Dalej: Ocena dopasowania profilu ↓" />
 
       <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${consensus.careerFitAdvice.isRealisticFit ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/5'}`}>
@@ -538,9 +552,11 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         </div>
       </div>
 
-      <ScrollContinuationHint targetId="oceny-modulow" label="Dalej: Oceny modułów Kierivo ↓" />
+      </>}
 
-      <div id="oceny-modulow" className="scroll-mt-24 space-y-4">
+      {isScorable && <ScrollContinuationHint targetId="oceny-modulow" label="Dalej: Oceny modułów Kierivo ↓" />}
+
+      {isScorable && <div id="oceny-modulow" className="scroll-mt-24 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-xl font-bold text-ink">
             <Award className="h-5 w-5 text-brand-fg" /> Oceny modułów Kierivo
@@ -570,9 +586,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             );
           })}
         </div>
-      </div>
+      </div>}
 
-      {activeEngine && (
+      {isScorable && activeEngine && (
         <>
           <ScrollContinuationHint targetId="szczegoly-modulu" label="Dalej: Szczegóły wybranego modułu ↓" />
           <motion.div
@@ -637,7 +653,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-fg"><BookOpen className="h-4 w-4" /><span>Praktyki redakcyjne</span></div>
           <h2 className="mt-1 text-xl font-bold text-ink">Przykłady poprawy czytelności CV</h2>
-          <p className="text-xs text-ink-muted">To wskazówki redakcyjne Kierivo, nie reguły gwarantujące akceptację przez konkretny ATS.</p>
+          <p className="text-xs text-ink-muted">To schematy redakcyjne, nie fakty o Twoim doświadczeniu ani gwarancja wyniku ATS. Uzupełnij pola tylko własnymi, potwierdzonymi informacjami; nie dodawaj nieudzielonej zgody.</p>
         </div>
 
         <div className="space-y-3">

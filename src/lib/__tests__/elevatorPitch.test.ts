@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   generateElevatorPitch,
+  hasVaultEvidence,
   estimateSpeakingDurationSec,
   extractTopMetrics,
 } from '../elevatorPitchEngine';
@@ -87,6 +88,56 @@ describe('Elevator Pitch Generator (elevator-pitch-gen-v1)', () => {
   });
 
   describe('Generowanie 3 wariantów Elevator Pitch', () => {
+    it('nie tworzy zastępczej autoprezentacji z pustego profilu ani samego imienia', () => {
+      const vault = createEmptyVault('Jan Kowalski');
+      const pitch = generateElevatorPitch(vault, 'Specjalista IT');
+
+      expect(hasVaultEvidence(vault)).toBe(false);
+      expect(pitch.oneLiner).toBe('');
+      expect(pitch.thirtySeconds).toBe('');
+      expect(pitch.ninetySeconds).toBe('');
+      expect(pitch.targetRole).toBe('Specjalista IT');
+    });
+
+    it('sama nazwa firmy bez stanowiska ani opisu nie jest dowodem doświadczenia', () => {
+      const vault = createEmptyVault('Alicja Testowa');
+      vault.history = [{
+        id: 'exp-company-only', company: 'Testowa Firma', role: '', location: '',
+        startDate: '', endDate: '', isCurrent: false, highlights: [],
+      }];
+      const pitch = generateElevatorPitch(vault);
+
+      expect(hasVaultEvidence(vault)).toBe(false);
+      expect(pitch.thirtySeconds).toBe('');
+      expect(pitch.ninetySeconds).not.toContain('Testowa Firma');
+    });
+
+    it('we wszystkich wariantach nie dodaje niepotwierdzonych cech ani obowiązków', () => {
+      const vault = createEmptyVault('Alicja Testowa');
+      vault.skillsMatrix.hardSkills = ['Windows 11', 'Microsoft 365', 'TCP/IP'];
+      const pitch = generateElevatorPitch(vault);
+      const allVariants = `${pitch.oneLiner}\n${pitch.thirtySeconds}\n${pitch.ninetySeconds}`;
+
+      expect(hasVaultEvidence(vault)).toBe(true);
+      expect(allVariants).toContain('Windows 11');
+      expect(allVariants).toContain('Microsoft 365');
+      expect(allVariants).toContain('TCP/IP');
+      expect(allVariants).not.toMatch(/Doświadczony Specjalista|orientacj\w+ na cele|codzienn\w+ domen\w+|zawsze dbam|wyróżnia mnie|odpowiadałem za/i);
+    });
+
+    it('odróżnia stanowisko docelowe od stanowiska zajmowanego w przeszłości', () => {
+      const vault = createEmptyVault('Jan Kowalski');
+      vault.history = [{
+        id: 'exp-1', company: 'Przykład', role: 'Pracownik magazynu', location: '',
+        startDate: '2020', endDate: '2021', isCurrent: false, highlights: [],
+      }];
+      const pitch = generateElevatorPitch(vault, 'Administrator IT');
+
+      expect(pitch.thirtySeconds).toContain('Pracownik magazynu');
+      expect(pitch.thirtySeconds).toContain('Przygotowuję się do rozmowy na stanowisko Administrator IT');
+      expect(pitch.thirtySeconds).not.toContain('Jestem Administrator IT');
+    });
+
     it('generuje wersję 1-liner (~10-15s)', () => {
       const vault = createMockVault();
       const pitch = generateElevatorPitch(vault);

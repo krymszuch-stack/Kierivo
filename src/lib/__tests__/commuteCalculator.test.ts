@@ -11,6 +11,7 @@ import {
   estimateNetFromGross,
   monthlyCommuteHours,
   monthlyNetIncome,
+  canShowFeasibilityResult,
   type MobilityPreferences,
 } from '../commuteCalculator';
 
@@ -66,6 +67,14 @@ describe('czas i koszt dojazdu', () => {
 });
 
 describe('realna stawka godzinowa', () => {
+  it('nie pokazuje wyliczenia na niepotwierdzonych, domyślnych ustawieniach dojazdu', () => {
+    const preferences = prefs({ salaryAmount: 10_000 });
+
+    expect(canShowFeasibilityResult(preferences, false)).toBe(false);
+    expect(canShowFeasibilityResult(preferences, true)).toBe(true);
+    expect(canShowFeasibilityResult(prefs({ salaryAmount: 0 }), true)).toBe(false);
+  });
+
   it('jest niższa od pozornej, gdy trzeba dojeżdżać', () => {
     const result = calculateFeasibility(
       prefs({ workMode: 'ONSITE', oneWayMinutes: 45, monthlyCommuteCost: 400 })
@@ -148,6 +157,30 @@ describe('rozpoznawanie benefitów', () => {
 
   it('pusta oferta nie generuje benefitów z powietrza', () => {
     const detected = detectBenefits([undefined, null, '   ']);
+    expect(detected.every((item) => item.status === 'MISSING')).toBe(true);
+    expect(benefitPackageValue(detected)).toBe(0);
+  });
+
+  it('nie wycenia benefitów, których brak oferta jawnie deklaruje', () => {
+    const detected = detectBenefits([
+      'Zapewniamy prywatną opiekę medyczną LuxMed. Nie zapewniamy karty MultiSport.',
+      'Brak dofinansowania szkoleń. Pracodawca nie zapewnia laptopa.',
+    ]);
+    const byKey = Object.fromEntries(detected.map((item) => [item.key, item]));
+
+    expect(byKey.MEDICAL?.status).toBe('PROVIDED');
+    expect(byKey.SPORT?.status).toBe('MISSING');
+    expect(byKey.TRAINING?.status).toBe('MISSING');
+    expect(byKey.EQUIPMENT?.status).toBe('MISSING');
+    expect(benefitPackageValue(detected)).toBe(180);
+  });
+
+  it.each([
+    ['MultiSport', 'Karta MultiSport nie jest dostępna.'],
+    ['opieka medyczna', 'Brak prywatnej opieki medycznej.'],
+    ['szkolenia', 'Nie oferujemy budżetu szkoleniowego.'],
+  ])('negacja benefitu „%s” nie staje się pozytywnym dowodem', (_name, source) => {
+    const detected = detectBenefits([source]);
     expect(detected.every((item) => item.status === 'MISSING')).toBe(true);
     expect(benefitPackageValue(detected)).toBe(0);
   });

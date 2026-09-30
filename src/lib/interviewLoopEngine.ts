@@ -5,7 +5,7 @@ import {
   LiveNoteItem,
   PostCallDebrief,
 } from '../types';
-import { StorageKeys, readJson, writeJson } from './storage';
+import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
 import { getFollowUpEmailOpenings, selectVariantIndex } from './phrasingVariations';
 
 export const DEFAULT_PRE_CALL_CHECKLIST: Omit<PreCallChecklistItem, 'completed'>[] = [
@@ -210,25 +210,27 @@ export function generateFollowUpEmail(
 /**
  * Zapis i odczyt z pamięci lokalnej (StorageKeys.interviewLoops)
  */
-export function loadInterviewSessions(): InterviewLoopSession[] {
-  const parsed = readJson<unknown>(StorageKeys.interviewLoops, []);
+export function loadInterviewSessions(profileId: string): InterviewLoopSession[] {
+  const parsed = readJson<unknown>(profileDataKeyFor(StorageKeys.interviewLoops, profileId), []);
   return Array.isArray(parsed) ? (parsed as InterviewLoopSession[]) : [];
 }
 
-export function saveInterviewSession(session: InterviewLoopSession): void {
-  const existing = loadInterviewSessions();
+export function saveInterviewSession(profileId: string, session: InterviewLoopSession): void {
+  const key = profileDataKeyFor(StorageKeys.interviewLoops, profileId);
+  const existing = loadInterviewSessions(profileId);
   const idx = existing.findIndex((s) => s.id === session.id);
   const updated =
     idx >= 0
       ? existing.map((s, i) => (i === idx ? session : s))
       : [session, ...existing];
-  writeJson(StorageKeys.interviewLoops, updated);
+  writeJson(key, updated);
 }
 
-export function deleteInterviewSession(sessionId: string): void {
-  const existing = loadInterviewSessions();
+export function deleteInterviewSession(profileId: string, sessionId: string): void {
+  const key = profileDataKeyFor(StorageKeys.interviewLoops, profileId);
+  const existing = loadInterviewSessions(profileId);
   writeJson(
-    StorageKeys.interviewLoops,
+    key,
     existing.filter((s) => s.id !== sessionId)
   );
 }

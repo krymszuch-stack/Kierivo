@@ -105,6 +105,12 @@ class TestExperience(unittest.TestCase):
         self.assertEqual(e.bullets[0].kind, "result")
         self.assertEqual(e.tech, ["Python", "GCP"])
 
+    def test_missing_end_date_stays_unknown(self):
+        e = Experience.from_dict({"role": "Technik", "company": "Firma", "start": "01.2020"})
+
+        self.assertEqual(e.end, "")
+        self.assertEqual(e.period, "01.2020")
+
 
 class TestMasterProfile(unittest.TestCase):
     def setUp(self):

@@ -48,6 +48,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
   const auth = useOptionalAuth();
   const { usage, refresh: refreshEntitlements } = useEntitlements();
   const [loading, setLoading] = useState(false);
+  const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
   const [report, setReport] = useState<CvVerificationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeLoopTab, setActiveLoopTab] = useState<'ats' | 'recruiter' | 'logic'>('ats');
@@ -56,6 +57,11 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
   const isAuthed = currentUser !== undefined ? Boolean(currentUser) : Boolean(auth?.isAuthenticated && auth?.user);
 
   const runVerification = async () => {
+    if (!consentToAiProcessing) {
+      setError('Potwierdź wysłanie zanonimizowanych danych profilu i kontekstu oferty do skonfigurowanego dostawcy AI.');
+      return;
+    }
+
     // 1. Sprawdzenie aktywnego użytkownika przed jakimkolwiek loadingiem, lokalnym decrementem i requestem AI
     if (!isAuthed || !activeUser) {
       showToast('Wymagane logowanie', {
@@ -87,6 +93,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
         targetRole,
         targetCompany,
         jobDescription,
+        consentToAiProcessing: true,
       });
 
       if (data.report) {
@@ -180,18 +187,35 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
               </div>
             </div>
 
+            <label className="mx-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-line bg-sunken/40 p-4 text-left text-xs text-muted">
+              <input
+                type="checkbox"
+                checked={consentToAiProcessing}
+                onChange={(event) => setConsentToAiProcessing(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-indigo-600"
+              />
+              <span>
+                Rozumiem, że profil Vault trafia do serwera Kierivo, a do skonfigurowanego dostawcy AI przekazane zostaną
+                wybrane dane profilu (m.in. doświadczenie, umiejętności, edukacja i uprawnienia) oraz stanowisko, firma i
+                opis oferty. Przed wysłaniem do modelu serwer usuwa część pól identyfikujących i pseudonimizuje wykryte
+                dane, ale nie gwarantuje pełnej anonimizacji. Nie wpisuj informacji, których nie chcesz przekazywać.
+              </span>
+            </label>
+
             <button
               type="button"
               onClick={runVerification}
-              disabled={isAuthed && usage.aiUses <= 0}
+              disabled={!consentToAiProcessing || (isAuthed && usage.aiUses <= 0)}
               className={`inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-bold text-white shadow-lg transition-all ${
-                isAuthed && usage.aiUses <= 0
+                !consentToAiProcessing || (isAuthed && usage.aiUses <= 0)
                   ? 'bg-muted cursor-not-allowed opacity-60'
                   : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20 cursor-pointer'
               }`}
             >
               <Sparkles className="h-4 w-4" />
-              {isAuthed && usage.aiUses <= 0 ? 'Limit audytu AI wyczerpany na dziś' : 'Uruchom Potrójną Pętlę Audytorską'}
+              {isAuthed && usage.aiUses <= 0
+                ? 'Limit audytu AI wyczerpany na dziś'
+                : 'Uruchom Potrójną Pętlę Audytorską'}
             </button>
           </div>
         )}
@@ -278,7 +302,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Cpu className="h-4 w-4" />
-                Pętla 1: ATS ({report.atsLoop.atsScore}%)
+                Pętla 1: ATS (ocena AI: {report.atsLoop.atsScore}/100)
               </button>
               <button
                 type="button"
@@ -290,7 +314,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Eye className="h-4 w-4" />
-                Pętla 2: Rekruter ({report.recruiterLoop.recruiterScore}%)
+                Pętla 2: Rekruter (ocena AI: {report.recruiterLoop.recruiterScore}/100)
               </button>
               <button
                 type="button"
@@ -302,7 +326,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Scale className="h-4 w-4" />
-                Pętla 3: Logika i Zgodność ({report.logicComplianceLoop.complianceScore}%)
+                Pętla 3: Spójność i logika (ocena AI: {report.logicComplianceLoop.consistencyScore}/100)
               </button>
             </div>
 
@@ -391,8 +415,12 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                   </div>
 
                   <div className="rounded-2xl border border-line bg-sunken/40 p-4 flex items-center justify-between text-xs">
-                    <span className="text-muted">Wskaźnik mierzalnych osiągnięć (liczby, %, skale):</span>
-                    <span className="font-bold text-ink">{report.recruiterLoop.achievementMetricRatePct}% punktów</span>
+                    <span className="text-muted">Punkty doświadczenia z liczbami, procentami lub skalą:</span>
+                    <span className="font-bold text-ink">
+                      {report.recruiterLoop.achievementMetricRatePct === null
+                        ? 'Brak punktów do oceny'
+                        : `${report.recruiterLoop.achievementMetricRatePct}% punktów`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -423,7 +451,9 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                         Zgodność RODO i prywatność
                       </span>
                       <p className="text-xs text-emerald-600 font-medium">
-                        {report.logicComplianceLoop.rodoCompliant ? 'Klauzula zgodna z RODO.' : 'Brak klauzuli RODO!'}
+                        {report.logicComplianceLoop.rodoCompliant === null
+                          ? 'Nie sprawdzono klauzuli RODO: ta analiza nie otrzymała jej treści.'
+                          : report.logicComplianceLoop.rodoCompliant ? 'Klauzula zgodna z RODO.' : 'Brak klauzuli RODO!'}
                       </p>
                       {report.logicComplianceLoop.privacyRisks.map((p, i) => (
                         <p key={i} className="text-xs text-amber-600">• {p}</p>

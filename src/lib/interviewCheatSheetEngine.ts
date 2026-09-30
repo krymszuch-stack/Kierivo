@@ -118,7 +118,10 @@ export function buildRedFlagsChecklist(parsedJD: ParsedJobDescription): RedFlagC
   return items;
 }
 
-/** Mechanical STAR remap of the candidate's existing highlight fields — no NLP, just field mapping. */
+/**
+ * Wybiera pasujące punkty profilu, ale nie zamienia ich w gotową odpowiedź:
+ * sam highlight nie dowodzi kontekstu, zakresu zadania ani rezultatu.
+ */
 export function buildLocalStarSeeds(parsedJD: ParsedJobDescription, vault: MasterVault): StarTalkingPoint[] {
   if (!vault?.history || vault.history.length === 0) return [];
 
@@ -129,7 +132,7 @@ export function buildLocalStarSeeds(parsedJD: ParsedJobDescription, vault: Maste
   ].map((k) => k.toLowerCase());
 
   const topRequirement =
-    parsedJD.requiredHardSkills?.[0] || parsedJD.coreResponsibilities?.[0] || parsedJD.jobTitle || 'kluczowe wymaganie oferty';
+    parsedJD.requiredHardSkills?.[0] || parsedJD.coreResponsibilities?.[0] || parsedJD.jobTitle || '';
 
   const ranked = rankExperienceByRelevance(vault.history, jdKeywords, parsedJD.jobTitle || '');
 
@@ -148,20 +151,23 @@ export function buildLocalStarSeeds(parsedJD: ParsedJobDescription, vault: Maste
       experience.role && jdKeywords.some((k) => k && experience.role.toLowerCase().includes(k))
         ? experience.role
         : topRequirement;
+    const sourceEvidence = [
+      hlText.trim(),
+      hlAction && `Działanie zapisane w profilu: ${hlAction}`,
+      hlTarget && `Zakres zapisany w profilu: ${hlTarget}`,
+      hlTool && `Narzędzie zapisane w profilu: ${hlTool}`,
+      hlMetric && `Metryka zapisana w profilu: ${hlMetric}`,
+    ].filter((part): part is string => Boolean(part && part.trim()));
+    if (sourceEvidence.length === 0) return;
 
     seeds.push({
       id: `star-local-${seeds.length}`,
       relatedRequirement,
-      situation: `Praca na stanowisku ${experience.role || 'specjalisty'} w ${experience.company || 'firmie'}.`,
-      task: hlTarget
-        ? `Zadanie związane z: ${hlTarget}.`
-        : `Realizacja obowiązków związanych z rolą ${experience.role || 'specjalisty'}.`,
-      action: hlAction
-        ? `${hlAction}${hlTool ? ` przy użyciu ${hlTool}` : ''}.`
-        : hlText || 'Brak szczegółowego opisu działania w Master Vault.',
-      result: hlMetric
-        ? `Efekt: ${hlMetric}.`
-        : 'Efekt: dodaj konkretną liczbę/wynik do tego wpisu w Master Vault, żeby wzmocnić odpowiedź.',
+      situation: '',
+      task: '',
+      action: '',
+      result: '',
+      sourceEvidence: sourceEvidence.join(' • '),
       sourceExperienceId: experience.id,
     });
   });
@@ -424,8 +430,13 @@ export async function generateCheatSheetEnrichmentWithAI(
   companyName: string,
   jobDescription: string,
   vault: MasterVault,
-  topRequirements: string[]
+  topRequirements: string[],
+  consentToAiProcessing: boolean
 ): Promise<{ enrichment: CheatSheetEnrichment; fromCache: boolean }> {
+  if (!consentToAiProcessing) {
+    throw new Error('Potwierdź wysłanie wybranych danych profilu i oferty do modelu AI.');
+  }
+
   const hash = hashCheatSheetInput(vault, targetRole, companyName, jobDescription);
   const cached = readCachedEnrichment(hash);
   if (cached) {
@@ -450,6 +461,7 @@ export async function generateCheatSheetEnrichmentWithAI(
       companyName,
       jobDescription,
       topRequirements,
+      consentToAiProcessing,
     });
   } catch (err) {
     // `api` niesie już komunikat z serwera (limit zapytań, wyczerpana kwota).

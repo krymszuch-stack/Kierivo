@@ -27,8 +27,10 @@ import {
   type QuickCheckResult,
   type TopProblem,
 } from '../../lib/quickAtsCheck';
+import { inferPastedOfferHeader } from '../../lib/jobOfferPreprocessor';
 import { showToast } from '../../store/useToastStore';
 import { JobOffer, MasterVault } from '../../types';
+import { getTopProblemLabel } from '../../lib/quickOnboardingPresentation';
 
 export interface QuickOnboardingFlowProps {
   /** Wywołanie po kliknięciu „Pokaż szczegóły” — przekazuje wyekstrahowany profil i ofertę do trybu zaawansowanego */
@@ -234,16 +236,12 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
     // Budujemy ofertę z tekstu wklejonego przez użytkownika.
     // Samodzielny nagłówek można przenieść dosłownie. Gdy użytkownik wkleił
     // opis w jednym akapicie, nie zgadujemy tytułu z taksonomii ani z treści zdania.
-    const firstLine = jdText.split('\n')[0]?.trim() || '';
-    const inferredTitle = firstLine.length >= 4 && firstLine.length <= 60 &&
-      !/[.!?:]/.test(firstLine) && !/^(?:szukamy|poszukujemy|wymagania|oferujemy)\b/i.test(firstLine)
-      ? firstLine
-      : '';
+    const { title: inferredTitle, company } = inferPastedOfferHeader(jdText);
 
     const jobOffer: JobOffer = {
       id: `job-quick-${Date.now()}`,
       title: inferredTitle,
-      company: '',
+      company,
       salary: '',
       location: '',
       description: jdText.trim(),
@@ -254,8 +252,13 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
   };
 
   const topProblems: TopProblem[] = result ? extractTopThreeProblems(result) : [];
-  const tone = result ? getTone(result.ats.overallScore) : null;
-  const statusMeta = result ? getResultStatusMeta(result.ats.overallScore, topProblems) : null;
+  const canonicalScore = result?.canonicalResult.state === 'SCORABLE'
+    ? result.canonicalResult.score
+    : null;
+  const tone = canonicalScore === null ? null : getTone(canonicalScore);
+  const statusMeta = canonicalScore === null
+    ? null
+    : getResultStatusMeta(canonicalScore, topProblems);
   const circumference = 2 * Math.PI * 42;
 
   return (
@@ -410,7 +413,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                             {statusMeta.statusLabel}
                           </span>
                           <span className="font-mono text-xs font-semibold opacity-90">
-                            Wynik reguł: <strong className="font-bold">{result.ats.overallScore}%</strong>
+                            Wynik dopasowania: <strong className="font-bold">{canonicalScore}%</strong>
                           </span>
                         </div>
                         <h3 className="mt-1.5 text-lg font-bold sm:text-xl leading-snug">
@@ -466,7 +469,9 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                   stabilnego selektora semantycznego (testid jest tylko hakiem technicznym). */}
               <div
                 role="status"
-                aria-label={`Wynik analizy Kierivo ${result.ats.overallScore} procent`}
+                aria-label={canonicalScore === null
+                  ? 'Nie wyliczono wyniku dopasowania Kierivo'
+                  : `Wynik dopasowania Kierivo ${canonicalScore} procent`}
                 className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-5">
@@ -483,14 +488,14 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                         fill="none"
                         strokeLinecap="round"
                         initial={{ strokeDashoffset: circumference }}
-                        animate={{ strokeDashoffset: circumference * (1 - result.ats.overallScore / 100) }}
+                        animate={{ strokeDashoffset: circumference * (1 - (canonicalScore ?? 0) / 100) }}
                         transition={{ duration: 0.7, ease: [0.19, 1, 0.22, 1] }}
                         style={{ strokeDasharray: circumference }}
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
                       <span className={`font-mono text-2xl font-bold ${tone?.text}`}>
-                        {result.ats.overallScore}%
+                        {canonicalScore === null ? '—' : `${canonicalScore}%`}
                       </span>
                       <span className="text-[8px] font-bold uppercase tracking-wider text-muted">
                         WYNIK
@@ -517,9 +522,14 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                       </Tooltip>
                     </div>
                     <p className="text-xs text-muted leading-relaxed">
-                      Zgodność wymaganych umiejętności: <strong className="text-ink font-semibold">{result.ats.keywordCoverageScore}%</strong> ·
+                      Zgodność wymaganych umiejętności: <strong className="text-ink font-semibold">{result.canonicalResult.components.skills === null ? '—' : `${result.canonicalResult.components.skills}%`}</strong> ·
                       Czytelność układu dla rekrutera: <strong className="text-ink font-semibold">{result.ats.structureScore}%</strong>
                     </p>
+                    {canonicalScore === null && (
+                      <p role="note" className="text-xs text-warning-fg">
+                        Nie wyliczono wyniku głównego. {result.canonicalResult.reason}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -590,7 +600,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                                   : 'bg-sunken text-muted'
                               }`}
                             >
-                              {isCritical ? 'Krytyczny wymóg' : isWarning ? 'Brakująca umiejętność' : 'Wskazówka jakościowa'}
+                              {getTopProblemLabel(problem)}
                             </span>
                           </div>
                           <p className="mt-1 text-sm font-bold text-ink">

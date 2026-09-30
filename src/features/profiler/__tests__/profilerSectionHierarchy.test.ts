@@ -145,13 +145,13 @@ describe('Ekran Filtry, Uprawnienia & Dealbreakery — nowa hierarchia i prezent
       expect(profiler.licenses).toHaveLength(0);
 
       // Symulacja zaznaczenia w modalu
-      const selected = ['b_license', 'sep_1kv'];
+      const selected = ['b_license', 'sep_g1_e_1kv'];
       profiler.licenses = selected;
 
       const selectedDefs = ALL_LICENSES.filter((l) => profiler.licenses?.includes(l.id));
       expect(selectedDefs).toHaveLength(2);
       expect(selectedDefs.map((l) => l.label)).toContain('Prawo Jazdy Kat. B');
-      expect(selectedDefs.map((l) => l.label)).toContain('Uprawnienia SEP (Grupa 1 do 1kV)');
+      expect(selectedDefs.map((l) => l.label)).toContain('SEP G1 E1 do 1 kV — eksploatacja');
     });
   });
 });

@@ -103,6 +103,7 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
     emergency: false,
   });
   const [enrichment, setEnrichment] = useState<InterviewCheatSheet | null>(null);
+  const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [isDrillOpen, setIsDrillOpen] = useState(false);
@@ -146,6 +147,10 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
   };
 
   const handleEnrich = async () => {
+    if (!consentToAiProcessing) {
+      setEnrichError('Zaznacz zgodę na wysłanie wymienionych danych do modelu AI.');
+      return;
+    }
     setIsEnriching(true);
     setEnrichError(null);
     try {
@@ -159,7 +164,8 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
         jobOffer.company || parsedJD.companyName,
         jobOffer.rawDescription || jobOffer.description || '',
         vault,
-        topRequirements
+        topRequirements,
+        consentToAiProcessing
       );
 
       setEnrichment(mergeGeminiCheatSheetEnrichment(localCheatSheet, payload));
@@ -268,12 +274,33 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
               icon={Wand2}
               loading={isEnriching}
               onClick={handleEnrich}
+            disabled={!consentToAiProcessing}
             >
               Wzbogać przez AI
             </Button>
           )}
         </div>
       </div>
+
+      {!isEnriched && (
+        <div className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-xs">
+          <p className="text-ink">
+            Wzbogacenie prześle do dostawcy AI skonfigurowanego w projekcie (Azure OpenAI lub lokalna Ollama, zależnie od środowiska)
+            nazwę firmy i stanowiska, treść oferty oraz wybrane dane Vaultu:
+            podsumowanie, umiejętności, doświadczenie i projekty. Dane kontaktowe i zdjęcie są pomijane, ale pozostała treść
+            może nadal identyfikować osobę.
+          </p>
+          <label className="mt-2 flex cursor-pointer items-start gap-2 text-ink">
+            <input
+              type="checkbox"
+              checked={consentToAiProcessing}
+              onChange={(event) => setConsentToAiProcessing(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+            />
+            <span>Wyrażam zgodę na wysłanie wymienionych danych do modelu AI, aby wygenerować tę ściągę.</span>
+          </label>
+        </div>
+      )}
 
       {enrichError && (
         <Alert variant="warning" title="Wzbogacenie nie powiodło się">
@@ -337,7 +364,7 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
         {sectionHeader(
           'star',
           <Award className="h-4 w-4 text-success-fg" />,
-          '2. Twoje Gotowe Historie STAR (z Master Vaultu)',
+          '2. Szkice STAR na podstawie punktów z profilu',
           cheatSheet.starTalkingPoints.length
         )}
         {collapsible(

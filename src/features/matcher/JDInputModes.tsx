@@ -18,7 +18,7 @@ export type InputMode = 'url' | 'manual';
 
 export interface JDInputModesProps {
   onMatchManual: (offer: Partial<JobOffer>) => void;
-  onMatchUrl: (url: string) => void;
+  onMatchUrl: (url: string, consentToAiProcessing: boolean) => void;
   isFetchingUrl?: boolean;
   urlError?: string | null;
   className?: string;
@@ -33,6 +33,7 @@ export const JDInputModes: React.FC<JDInputModesProps> = ({
 }) => {
   const [activeMode, setActiveMode] = useState<InputMode>('url');
   const [jobUrl, setJobUrl] = useState('');
+  const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
   const [manualTitle, setManualTitle] = useState('');
   const [manualCompany, setManualCompany] = useState('');
   const [manualText, setManualText] = useState('');
@@ -45,7 +46,7 @@ export const JDInputModes: React.FC<JDInputModesProps> = ({
   const handleUrlSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!jobUrl.trim()) return;
-    onMatchUrl(jobUrl.trim());
+    onMatchUrl(jobUrl.trim(), consentToAiProcessing);
   };
 
   /**
@@ -107,6 +108,27 @@ export const JDInputModes: React.FC<JDInputModesProps> = ({
             </Button>
           </div>
 
+          <div className="rounded-xl border border-line bg-surface-muted/50 p-3">
+            <label className="flex cursor-pointer items-start gap-2 text-xs text-ink">
+              <input
+                type="checkbox"
+                checked={consentToAiProcessing}
+                onChange={(event) => setConsentToAiProcessing(event.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+              />
+              <span>
+                Wyrażam zgodę na wysłanie pobranej treści ogłoszenia do dostawcy AI skonfigurowanego w projekcie
+                (Azure OpenAI lub lokalna Ollama, zależnie od środowiska), aby ustrukturyzować wymagania.
+                CV ani Master Vault nie są wysyłane w tej analizie.
+              </span>
+            </label>
+            {!consentToAiProcessing && (
+              <p className="ml-6 mt-1 text-[11px] text-muted">
+                Bez zgody dopasowanie skorzysta z lokalnego parsera regułowego.
+              </p>
+            )}
+          </div>
+
           {urlError && (
             <div className="flex items-start gap-2 rounded-xl bg-danger-soft p-3 text-xs text-danger-fg">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -115,8 +137,8 @@ export const JDInputModes: React.FC<JDInputModesProps> = ({
           )}
 
           <p className="text-xs text-muted">
-            Serwer pobierze treść ogłoszenia, odczyta wymagania i wyliczy Twój wskaźnik dopasowania
-            ATS. Część portali — m.in. Pracuj.pl, NoFluffJobs, LinkedIn i theprotocol.it — blokuje
+            Serwer pobierze treść ogłoszenia, odczyta wymagania i wyliczy ocenę dopasowania według
+            reguł Kierivo. To nie jest wynik zewnętrznego systemu ATS. Część portali — m.in. Pracuj.pl, NoFluffJobs, LinkedIn i theprotocol.it — blokuje
             automatyczne pobieranie albo zastrzega je w <code className="font-mono">robots.txt</code>.
             Nie obchodzimy tych zabezpieczeń; w takim wypadku skopiuj treść i użyj zakładki obok.
           </p>

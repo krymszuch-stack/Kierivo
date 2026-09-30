@@ -119,6 +119,8 @@ const NEGATION_SOURCE = [
   'brak doswiadczenia',
   'brak znajomosci',
   'nie posiadam',
+  'nie mam',
+  'nie jestem',
   'nie mam doswiadczenia',
   'nie uzywalem',
   'nie uzywalam',
@@ -201,15 +203,22 @@ const REGEX_CACHE = new Map<string, RegExp>();
 const STEM_TOKENS_CACHE = new Map<string, Array<{ stem: string; index: number }>>();
 const CACHE_CAP = 2000;
 
-function cachedPhraseRegex(src: string): RegExp {
-  let re = REGEX_CACHE.get(src);
+function cachedPhraseRegex(src: string, allowVersionSuffix: boolean): RegExp {
+  const cacheKey = `${src}\u0000${allowVersionSuffix ? 'version' : 'plain'}`;
+  let re = REGEX_CACHE.get(cacheKey);
   if (!re) {
-    re = new RegExp(`(?<![\\p{L}\\p{N}_#+])${src}(?![\\p{L}\\p{N}_#+])`, 'giu');
+    // CV często zapisuje wersje bez spacji (`C++17`, `Python3`, `Go1.22`).
+    // Dopuszczamy cyfry tylko jako kompletny sufiks wersji, nigdy jako początek
+    // dalszego identyfikatora, np. `Python3x`.
+    const rightBoundary = allowVersionSuffix
+      ? '(?=(?:\\d+(?:\\.\\d+)*)(?:[^\\p{L}\\p{N}_#+]|$)|[^\\p{L}\\p{N}_#+]|$)'
+      : '(?![\\p{L}\\p{N}_#+])';
+    re = new RegExp(`(?<![\\p{L}\\p{N}_#+])${src}${rightBoundary}`, 'giu');
     if (REGEX_CACHE.size >= CACHE_CAP) {
       const oldest = REGEX_CACHE.keys().next();
       if (!oldest.done) REGEX_CACHE.delete(oldest.value);
     }
-    REGEX_CACHE.set(src, re);
+    REGEX_CACHE.set(cacheKey, re);
   }
   re.lastIndex = 0;
   return re;
@@ -242,7 +251,8 @@ function cachedStemTokens(normalizedHaystack: string): Array<{ stem: string; ind
 function findRawOccurrences(normalizedHaystack: string, phrase: string): number[] {
   const src = buildPhraseSource(phrase);
   if (!src) return [];
-  const re = cachedPhraseRegex(src);
+  const allowVersionSuffix = !/\d\s*$/u.test(stripDiacriticsLower(phrase).trim());
+  const re = cachedPhraseRegex(src, allowVersionSuffix);
   const out: number[] = [];
   let m: RegExpExecArray | null;
   // Zabezpieczenie przed pustym dopasowaniem i zapętleniem.

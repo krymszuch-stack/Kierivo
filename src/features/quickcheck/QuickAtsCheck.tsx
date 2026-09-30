@@ -6,6 +6,7 @@ import {
   Briefcase,
   AlertCircle,
   CheckCircle2,
+  Info,
   ArrowRight,
   MonitorSmartphone,
   RotateCcw,
@@ -83,7 +84,10 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
     setError(null);
   };
 
-  const tone = result ? getQuickCheckScoreTone(result.ats.overallScore) : null;
+  const canonicalScore = result?.canonicalResult.state === 'SCORABLE'
+    ? result.canonicalResult.score
+    : null;
+  const tone = canonicalScore === null ? null : getQuickCheckScoreTone(canonicalScore);
   const circumference = 2 * Math.PI * 42;
 
   return (
@@ -192,19 +196,19 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                   cx="50"
                   cy="50"
                   r="42"
-                  className={tone.ring}
+                  className={tone?.ring ?? 'stroke-line'}
                   strokeWidth="8"
                   fill="none"
                   strokeLinecap="round"
                   initial={{ strokeDashoffset: circumference }}
-                  animate={{ strokeDashoffset: circumference * (1 - result.ats.overallScore / 100) }}
+                  animate={{ strokeDashoffset: circumference * (1 - (canonicalScore ?? 0) / 100) }}
                   transition={{ duration: 0.7, ease: [0.19, 1, 0.22, 1] }}
                   style={{ strokeDasharray: circumference }}
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={`font-mono text-2xl font-bold ${tone.text}`}>
-                  {result.ats.overallScore}%
+                <span className={`font-mono text-2xl font-bold ${tone?.text ?? 'text-muted'}`}>
+                  {canonicalScore === null ? '—' : `${canonicalScore}%`}
                 </span>
                 <span className="text-[9px] uppercase tracking-wide text-subtle">Dopasowanie</span>
               </div>
@@ -212,9 +216,16 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
 
             <div className="min-w-0 flex-1 space-y-3">
               <div>
-                <p className={`text-sm font-bold ${tone.text}`}>{tone.label}</p>
+                <p className={`text-sm font-bold ${tone?.text ?? 'text-muted'}`}>
+                  {tone?.label ?? 'Nie wyliczono wyniku dopasowania'}
+                </p>
+                {canonicalScore === null && (
+                  <p role="note" className="mt-0.5 text-xs text-warning-fg">
+                    {result.canonicalResult.reason}
+                  </p>
+                )}
                 <p className="mt-0.5 text-xs text-muted">
-                  Pokrycie fraz {result.ats.keywordCoverageScore}% · struktura {result.ats.structureScore}% · formatowanie {result.ats.formattingScore}%
+                  Pokrycie umiejętności {result.canonicalResult.components.skills === null ? '—' : `${result.canonicalResult.components.skills}%`} · struktura dokumentu {result.canonicalResult.components.structure === null ? '—' : `${result.canonicalResult.components.structure}%`} · formatowanie (symulacja) {result.ats.formattingScore}%
                 </p>
               </div>
 
@@ -235,32 +246,43 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
             </div>
           </div>
 
-          {result.knockouts.requirementCount > 0 && (
+          {(result.knockouts.requirementCount > 0 || result.knockouts.unclassified.length > 0) && (
             <div className="space-y-2.5 border-t border-line/60 pt-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold text-ink">Wymagania formalne rozpoznane w ofercie</p>
-                <span className="font-mono text-[10px] text-subtle">
-                  potwierdzone w profilu {result.knockouts.satisfiedCount} z {result.knockouts.requirementCount}
-                </span>
+                <p className="text-xs font-semibold text-ink">Kwalifikacje wspomniane w ofercie</p>
+                {result.knockouts.requirementCount > 0 && (
+                  <span className="font-mono text-[10px] text-subtle">
+                    potwierdzone w profilu {result.knockouts.satisfiedCount} z {result.knockouts.requirementCount} wymagań lub atutów
+                  </span>
+                )}
               </div>
               <ul className="space-y-1.5">
                 {result.knockouts.findings.map((finding) => (
                   <li
                     key={finding.ruleId}
                     className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs ${
-                      finding.satisfied
+                      finding.severity === 'information'
+                        ? 'border-line bg-sunken text-muted'
+                        : finding.satisfied
                         ? 'border-success/30 bg-success-soft text-success-fg'
                         : 'border-line bg-sunken text-muted'
                     }`}
                   >
-                    {finding.satisfied ? (
+                    {finding.severity === 'information' ? (
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    ) : finding.satisfied ? (
                       <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     ) : (
                       <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     )}
                     <div>
                       <p className="font-semibold">{finding.label}</p>
-                      {!finding.satisfied && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
+                      {finding.severity === 'information' ? (
+                        <p className="mt-0.5 text-[11px]">Wzmianka bez określonego statusu — system nie zalicza jej jako wymagania ani braku.</p>
+                      ) : finding.severity === 'preferred' ? (
+                        <p className="mt-0.5 text-[11px]">Mile widziane — brak nie obniża wyniku.</p>
+                      ) : null}
+                      {!finding.satisfied && finding.severity !== 'information' && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
                     </div>
                   </li>
                 ))}

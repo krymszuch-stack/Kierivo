@@ -6,6 +6,8 @@ import {
 } from './skillEvidence';
 import { ALL_LICENSES } from '../data/licenses';
 import { auditKnockouts } from './knockouts';
+import { stripPreferredRequirementText } from './jdOptionality';
+import { stripInferredPastedOfferHeader } from './jobOfferPreprocessor';
 
 /** Etykiety uprawnień do korpusu tekstowego (F3) — identyfikator `c_license` nic nie znaczy dla matchera. */
 const ALL_LICENSE_LABELS: Record<string, string> = Object.fromEntries(
@@ -161,7 +163,7 @@ const KNOWN_HARD_SKILLS = [
   // IT & Cloud Stack
   'typescript', 'javascript', 'react', 'react.js', 'next.js', 'vue', 'angular',
   'node.js', 'express', 'nest.js', 'python', 'django', 'fastapi', 'c#', '.net',
-  'windows 11', 'microsoft 365', 'tcp/ip', 'intune', 'entra id', 'powershell',
+  'windows 11', 'microsoft 365', 'exchange online', 'tcp/ip', 'intune', 'entra id', 'powershell',
   'java', 'spring', 'spring boot', 'go', 'golang', 'rust', 'php', 'laravel',
   'html', 'css', 'tailwind', 'tailwind css', 'sass', 'redux', 'zustand', 'graphql',
   'rest api', 'websockets', 'sql', 'postgresql', 'mysql', 'mongodb', 'redis',
@@ -224,12 +226,9 @@ export function extractDynamicJdPhrases(jdText: string): {
   softSkills: { phrase: string; weight: number }[];
   allExtractedCount: number;
 } {
-  // „Mile widziane” nie może obniżać pokrycia wymagań obowiązkowych.
-  // Pozostawiamy następne nazwane sekcje, aby nie zgubić ich treści.
-  const requiredText = jdText.replace(
-    /\b(?:mile widziane|nice to have|preferred)\s*:\s*[\s\S]*?(?=(?:\b(?:zakres obowiązków|obowiązki|zadania|oferujemy|benefity)\s*:)|$)/gi,
-    ''
-  );
+  // Ten sam filtr optionalności stosuje checklista formalna; rozjazd między
+  // silnikami powodował, że „Mile widziane Entra ID.” obniżało pokrycie.
+  const requiredText = stripPreferredRequirementText(stripInferredPastedOfferHeader(jdText));
   const hardSkills: { phrase: string; weight: number }[] = [];
   const formalReqs: { phrase: string; weight: number }[] = [];
   const softSkills: { phrase: string; weight: number }[] = [];
@@ -278,8 +277,15 @@ export function extractDynamicJdPhrases(jdText: string): {
   const GENERIC_ROLE_WORDS = new Set(
     [
       'senior', 'junior', 'mid', 'lead', 'principal', 'staff', 'backend', 'frontend',
-      'specjalista', 'specjalistka', 'it', 'support',
-      'fullstack', 'full', 'stack', 'developer', 'developers', 'engineer', 'inzynier',
+      // Nazwy stanowisk występują w ogłoszeniach w przypadkach zależnych
+      // (np. „poszukujemy specjalisty”). Bez odmian ekstraktor brał takie
+      // słowo za brakującą kompetencję, mimo że jego forma podstawowa była
+      // już na liście generycznych nazw ról.
+      'specjalista', 'specjalisty', 'specjalistę', 'specjalistą', 'specjaliście',
+      'specjalistka', 'specjalistki', 'specjalistkę', 'specjalistką', 'specjalistce',
+      'it', 'support',
+      'fullstack', 'full', 'stack', 'developer', 'developers', 'developera', 'developerkę',
+      'developerem', 'developerowi', 'engineer', 'inzynier', 'inżynier',
       'programista', 'firma', 'company', 'team', 'zespol', 'group', 'grupa', 'office',
       'biuro', 'position', 'stanowisko', 'role', 'rola', 'project', 'projekt',
       'location', 'lokalizacja', 'offer', 'oferta', 'need', 'needs', 'with', 'and',
@@ -472,7 +478,7 @@ export function simulateAtsCheck(
 
   // Graphical elements without text equivalent
   if (fullCvText.includes('★★★') || fullCvText.includes('●●●') || fullCvText.includes('10/10') || fullCvText.includes('90%')) {
-    unparsableElementsWarnings.push('Wykryto wizualne wskaźniki umiejętności (gwiazdki/paski postępu %). ATS nie potrafi ich odczytać – opisz poziom słownie (np. "Zaawansowany", "B2").');
+    unparsableElementsWarnings.push('Tekst zawiera znaki używane czasem jako wizualna skala umiejętności. Na podstawie samego tekstu nie można ustalić, jak zinterpretuje je konkretny system; jeśli opisują Twój poziom, podaj go także słownie.');
   }
 
   // Date format checking
@@ -649,18 +655,20 @@ export function simulateAtsCheck(
       `Brakujące wymagania twarde z ogłoszenia: ${missingHardSkills.slice(0, 6).join(', ')}.`
     );
     recommendations.push(
-      `Słowa twarde (waga 3x): Uzupełnij w Master Vault doświadczenie powiązane z: ${missingHardSkills.slice(0, 3).join(', ')}.`
+      `Brakujące wymagania: ${missingHardSkills.slice(0, 3).join(', ')}. Uzupełnij właściwą sekcję profilu tylko wtedy, gdy masz na to potwierdzone fakty; w przeciwnym razie pozostaw je jako luki.`
     );
   } else {
     gapAnalysis.push('100% kluczowych wymagań technicznych i formalnych z ogłoszenia znajduje się w Twoim profilu!');
   }
 
   if (recencyScore < 70) {
-    recommendations.push('Świeżość umiejętności (Recency Bias): Przenieś kluczowe technologie do opisu Twojego najnowszego stanowiska, aby ATS przyznał pełną wagę (100%).');
+    recommendations.push('Sprawdź daty i role, w których faktycznie używałeś wykrytych umiejętności. Nie przenoś umiejętności do nowszego stanowiska bez potwierdzenia.');
   }
 
-  if (titleMatchScore < 75) {
-    recommendations.push(`Gęstość Tytułu Stanowiska: Dostosuj nagłówek profilu ("${currentCvTitle}") tak, aby zawierał szukaną frazę stanowiska ("${targetTitle}").`);
+  if (targetTitle && !currentCvTitle) {
+    recommendations.push('W profilu nie podano tytułu zawodowego. Dodaj go tylko wtedy, gdy rzetelnie opisuje Twoje doświadczenie; nie wpisuj nazwy oferty jako przebytego stanowiska.');
+  } else if (targetTitle && currentCvTitle && titleMatchScore < 75) {
+    recommendations.push(`Nazwa stanowiska z oferty ("${targetTitle}") różni się od nagłówka profilu ("${currentCvTitle}"). Zachowaj prawdziwe nazwy stanowisk; użyj nazwy docelowej jako nagłówka CV tylko wtedy, gdy trafnie opisuje Twoje kwalifikacje.`);
   }
 
   if (unparsableElementsWarnings.length > 0) {
@@ -1028,10 +1036,10 @@ export function simulateMultiEngineATS(
     status: quickScore >= 80 ? 'OPTIMAL' : quickScore >= 65 ? 'ACCEPTABLE' : quickScore >= 50 ? 'RISKY' : 'REJECTED',
     weightsFocus: 'Pokrycie bazowe (40%), Tytuł (30%), Struktura (30%)',
     keyStrengths: [
-      quickScore >= 70 ? 'Wysoka szansa przejścia automatycznego sita w pierwszym etapie' : 'Dokument zawiera dane bazowe',
+      quickScore >= 70 ? 'Wysoka zgodność wymagań z treścią CV według reguł Kierivo' : 'Dokument zawiera dane bazowe',
     ],
     penaltiesAndFlags: [
-      ...(quickScore < 60 ? ['Ryzyko automatycznego odrzucenia z powodu niskiego dopasowania początkowego'] : []),
+      ...(quickScore < 60 ? ['Niska zgodność według reguł Kierivo; sprawdź wykryte wymagania i dane CV'] : []),
     ],
     recommendation: 'Sprawdź, czy oferta nie wymaga odmiennej specjalizacji.',
     proposals: [
@@ -1101,47 +1109,47 @@ export function simulateMultiEngineATS(
 
   const summaryJustification =
     medianScore >= 80
-      ? `Twoje CV uzyskało rynkowy konsensus na poziomie ${medianScore}%. Profil posiada wysokie nasycenie słowami kluczowymi, przejrzysty układ i jest w pełni czytelny dla ponad 85% systemów rekrutacyjnych.`
+      ? `Wynik reguł Kierivo wynosi ${medianScore}%. Wykryto zgodność słów kluczowych i czytelny układ; nie jest to pomiar systemów rekrutacyjnych.`
       : medianScore >= 65
-      ? `Mediana dopasowania wynosi ${medianScore}%. Aplikacja przejdzie wstępne sito, jednak bardziej rygorystyczne filtry obniżą ocenę z powodu brakujących ${missingHardCount} pojęć lub małej liczby twardych liczb.`
-      : `Mediana konsensusu ${medianScore}% wskazuje na wysokie ryzyko odrzucenia. Powodem jest duża rozbieżność roli, brak bazowych narzędzi lub brak wymiernych wyników.`;
+      ? `Wynik reguł Kierivo wynosi ${medianScore}%. Wykryto ${missingHardCount} brakujących wymagań; wynik nie przewiduje decyzji ATS ani rekrutera.`
+      : `Wynik reguł Kierivo wynosi ${medianScore}%. Wykryto niższą zgodność z wymaganiami; wynik nie przewiduje odrzucenia przez ATS ani rekrutera.`;
 
   const globalBestPractices = [
     {
-      title: '1. Zasada Kontekstu: Narzędzie + Działanie + Liczba',
-      badExample: '• Programowanie w Pythonie i bazy danych SQL.',
-      goodExample: '• Zaprojektowałem usługę w Pythonie (FastAPI) z bazą PostgreSQL, redukując czas odpowiedzi o 42% dla 10 tysięcy użytkowników.',
-      explanation: 'Systemy ATS oraz rekruterzy najwyżej punktują zdania zawierające konkretną technologię połączoną z mierzalnym rezultatem biznesowym.',
+      title: '1. Opisz działanie i potwierdzony efekt',
+      badExample: '• Obsługa [narzędzie].',
+      goodExample: '• Użyłem [narzędzie] do [działanie]; efekt: [potwierdzony wynik, jeśli go znasz].',
+      explanation: 'Nazwanie działania i jego kontekstu ułatwia odbiorcy zrozumienie zakresu pracy. Uzupełnij tylko własne, potwierdzone fakty; pomiń metrykę, jeśli jej nie znasz.',
     },
     {
-      title: '2. Spójność Tytułu Stanowiska z Ofertą',
-      badExample: 'Nagłówek w CV: „Pasjonat Nowych Technologii” (w ofercie: Starszy Programista Java)',
-      goodExample: 'Nagłówek w CV: „Starszy Programista Java | Spring Boot & Cloud Architect”',
-      explanation: 'Filtry rekrutacyjne natychmiast porównują nagłówek z nazwą stanowiska. Brak zbieżności obniża ocenę w pierwszym etapie selekcji.',
+      title: '2. Nazwij faktyczną rolę lub kierunek',
+      badExample: 'Nagłówek w CV: „Pasjonat nowych technologii”.',
+      goodExample: 'Nagłówek w CV: „[Twoje stanowisko lub kierunek zgodny z doświadczeniem]”.',
+      explanation: 'Konkretny, zgodny z doświadczeniem nagłówek pomaga szybko zrozumieć profil. Nie przypisuj sobie nazwy stanowiska ani specjalizacji wyłącznie dlatego, że pojawia się w ofercie.',
     },
     {
-      title: '3. Tradycyjne i Jednoznaczne Nazwy Sekcji',
+      title: '3. Użyj zrozumiałych nazw sekcji',
       badExample: '„Moja Droga Życiowa”, „Czym Się Pasjonuję”, „Gdzie Działałem”',
-      goodExample: '„Doświadczenie Zawodowe”, „Umiejętności Techniczne”, „Wykształcenie”, „Uprawnienia i Certyfikaty”',
-      explanation: 'Automatyczne czytniki korzystają ze sztywnych słowników nagłówków. Nietypowe nazwy sekcji powodują pominięcie całych bloków tekstu.',
+      goodExample: '„Doświadczenie”, „Umiejętności”, „Wykształcenie”, „Uprawnienia i certyfikaty”',
+      explanation: 'Powszechnie rozumiane nagłówki mogą ułatwić szybkie odnalezienie informacji przez czytelnika. Sposób odczytu zależy od konkretnego systemu, więc sprawdź też tekst wyodrębniony z własnego PDF.',
     },
     {
-      title: '4. Czysty Układ Jednokolumnowy bez Grafik i Pasków Postępu',
-      badExample: 'Paski biegłości (np. Python: 4/5 gwiazdek, React: pasek 80%), tabele wielokolumnowe zagnieżdżone w sobie.',
-      goodExample: 'Czysty tekst: „Python (poziom zaawansowany), React (3 lata doświadczenia komercyjnego)”, układ jednokolumnowy.',
-      explanation: 'Czytniki maszynowe nie potrafią zinterpretować graficznych pasków postępu — dla algorytmu oznacza to brak informacji o znajomości narzędzia.',
+      title: '4. Zadbaj o czytelny układ i sprawdź eksport',
+      badExample: 'Pasek biegłości zamiast tekstowego opisu umiejętności.',
+      goodExample: 'Prosty układ sekcji z tekstowymi nazwami umiejętności, których rzeczywiście używasz.',
+      explanation: 'Odczyt elementów graficznych i układu zależy od pliku oraz systemu. Sprawdź kolejność tekstu po eksporcie do PDF; żaden układ nie gwarantuje identycznego odczytu w każdym ATS.',
     },
     {
-      title: '5. Precyzja Dat i Chronologia (Brak Luk)',
-      badExample: '„Firma X w latach ubiegłych”, „2021 – 2022” (bez podania miesięcy)',
-      goodExample: '„03.2021 – 08.2023 (2 lata 6 mies.)”',
-      explanation: 'Parser oblicza łączny staż pracy na podstawie miesięcy. Brak miesięcy powoduje zaokrąglenie w dół lub flagę błędu.',
+      title: '5. Podawaj daty zgodnie z dokumentacją',
+      badExample: 'Nieprecyzyjny zakres dat, którego nie da się potwierdzić.',
+      goodExample: '„[MM.RRRR] – [MM.RRRR]” — wpisz rzeczywiste miesiące, jeśli je znasz.',
+      explanation: 'Miesiące pomagają dokładniej przedstawić chronologię. Nie zgaduj brakujących dat ani nie wyliczaj stażu na podstawie niepewnych danych.',
     },
     {
-      title: '6. Klauzula Zgody na Przetwarzanie Danych Osobowych (RODO)',
-      badExample: 'Brak klauzuli formalnej na dole dokumentu.',
-      goodExample: 'Aktualna formuła zgody na przetwarzanie danych osobowych w celach rekrutacyjnych.',
-      explanation: 'Niektóre polskie i europejskie systemy rekrutacyjne odrzucają dokumenty pozbawione wymaganej zgody prawnej.',
+      title: '6. Sprawdź wymagania dotyczące zgody',
+      badExample: 'Wklejenie klauzuli zgody, której kandydat nie udzielił.',
+      goodExample: 'Dodaj wyłącznie tekst wymagany w danym procesie, jeśli faktycznie udzielasz tej zgody.',
+      explanation: 'Wymagania mogą zależeć od pracodawcy i procesu rekrutacji. Ta wskazówka nie rozstrzyga kwestii prawnych, a generator nie powinien dopisywać zgody w imieniu kandydata.',
     },
   ];
 

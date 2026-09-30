@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { HeadingLevel } from 'docx';
+import { HeadingLevel, Packer } from 'docx';
+import { unzipSync } from 'fflate';
 import {
   buildCvDocument,
   h1NameOptions,
@@ -12,6 +13,7 @@ import {
   FONT_SIZES_HALF_POINTS,
 } from '../docxExporter';
 import { createEmptyVault } from '../sampleVault';
+import { generatePlainTextCvExport } from '../layeredVaultEngine';
 import type { MasterVault, LayeredFactItem } from '../../types';
 
 /**
@@ -119,6 +121,27 @@ describe('skład dokumentu CV', () => {
   it('minimalny vault (chaos wejścia) nie rzuca przy brakujących polach opcjonalnych', () => {
     const minimalVault = createEmptyVault();
     expect(() => buildCvDocument(minimalVault as MasterVault, [], '', '')).not.toThrow();
+  });
+
+  it('nie dopisuje w imieniu kandydata klauzuli zgody RODO do eksportu DOCX ani TXT', async () => {
+    const docx = buildCvDocument(vault, facts, 'Automatyk Utrzymania', 'Nowa Fabryka');
+    const txt = generatePlainTextCvExport(vault, facts, 'Automatyk Utrzymania', 'Nowa Fabryka');
+    const archive = unzipSync(new Uint8Array(await Packer.toBuffer(docx)));
+    const docxContent = new TextDecoder().decode(archive['word/document.xml']);
+    expect(docxContent).toContain('Automatyk Utrzymania');
+    expect(docxContent).not.toContain('Wyrażam zgodę');
+    expect(txt).not.toContain('Wyrażam zgodę');
+    expect(txt).not.toContain('KLAUZULA RODO');
+  });
+
+  it('eksportuje stanowisko docelowe, ale nie umieszcza firmy z oferty w treści CV', async () => {
+    const companyFromOffer = 'FirmaDocelowaKtorejNieMaWCV';
+    const doc = buildCvDocument(vault, facts, 'Rola docelowa', companyFromOffer);
+    const archive = unzipSync(new Uint8Array(await Packer.toBuffer(doc)));
+    const documentXml = new TextDecoder().decode(archive['word/document.xml']);
+
+    expect(documentXml).toContain('Rola docelowa');
+    expect(documentXml).not.toContain(companyFromOffer);
   });
 
   it('warstwa facts nadpisuje punktory doświadczenia, gdy istnieją', () => {

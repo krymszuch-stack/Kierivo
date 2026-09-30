@@ -88,13 +88,16 @@ const COMMON_LICENSES = ALL_LICENSES.map((lic) => ({
 const POPULAR_LICENSE_IDS = new Set([
   'b_license',
   'udt_forklift',
-  'sep_1kv',
-  'sep_g2',
-  'sep_g3',
+  'sep_g1_e_1kv',
+  'sep_g1_d_1kv',
+  'sep_g2_e',
+  'sep_g2_d',
+  'sep_g3_e',
+  'sep_g3_d',
   'fgas',
-  'welding_tig_mig',
+  'welding_tig',
   'sanepid',
-  'cloud_cert',
+  'cloud_cert_azure',
 ]);
 
 export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({

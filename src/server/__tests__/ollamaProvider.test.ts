@@ -254,7 +254,7 @@ describe('Provider AI: Ollama (Lokalny model językowy)', () => {
       };
     }
 
-    it('GET /api/ai/ollama/health zwraca status i modele bez ujawniania sekretów', async () => {
+    it('stary publiczny endpoint health Ollamy został usunięty', async () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
         const url =
           typeof input === 'string'
@@ -277,22 +277,13 @@ describe('Provider AI: Ollama (Lokalny model językowy)', () => {
       const { url, close } = await startTestServer();
       try {
         const res = await originalFetch(`${url}/ai/ollama/health`);
-        expect(res.status).toBe(200);
-        const data = (await res.json()) as Record<string, unknown>;
-
-        expect(data.success).toBe(true);
-        expect(data.provider).toBe('ollama');
-        expect(data.connected).toBe(true);
-        expect(Array.isArray(data.models)).toBe(true);
-        expect(data.activeModel).toBe('qwen-chat:latest');
-        // Upewniamy się, że wewnętrzny URL nie wyciekł do odpowiedzi
-        expect(JSON.stringify(data)).not.toContain('192.168.1.170');
+        expect(res.status).toBe(404);
       } finally {
         await close();
       }
     });
 
-    it('GET /api/ai/ollama/health zwraca connected: false gdy Ollama nie odpowiada', async () => {
+    it('nie wykonuje już health-checka lokalnego hosta Ollama', async () => {
       vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
         Object.assign(new Error('Connection refused'), { code: 'ECONNREFUSED' })
       );
@@ -300,18 +291,24 @@ describe('Provider AI: Ollama (Lokalny model językowy)', () => {
       const { url, close } = await startTestServer();
       try {
         const res = await originalFetch(`${url}/ai/ollama/health`);
-        expect(res.status).toBe(200);
-        const data = (await res.json()) as Record<string, unknown>;
-
-        expect(data.success).toBe(true);
-        expect(data.connected).toBe(false);
-        expect(data.models).toEqual([]);
+        expect(res.status).toBe(404);
       } finally {
         await close();
       }
     });
 
-    it('POST /api/advisor/chat zwraca odpowiedź z asystą lokalnej Ollamy', async () => {
+    it('status Doradcy nie obiecuje dostępu do Azure bez konta chmurowego', async () => {
+      const { url, close } = await startTestServer();
+      try {
+        const res = await originalFetch(`${url}/advisor/status`);
+        expect(res.status).toBe(501);
+        expect(await res.json()).toMatchObject({ success: false, error: 'Konta użytkowników nie są uruchomione w tej instalacji.' });
+      } finally {
+        await close();
+      }
+    });
+
+    it('POST /api/advisor/chat w trybie local nie zużywa anonimowo kredytów Azure', async () => {
       vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
         const url =
           typeof input === 'string'
@@ -347,12 +344,10 @@ describe('Provider AI: Ollama (Lokalny model językowy)', () => {
           }),
         });
 
-        expect(res.status).toBe(200);
+        expect(res.status).toBe(501);
         const data = (await res.json()) as Record<string, unknown>;
-        expect(data.success).toBe(true);
-        expect(data.provider).toBe('ollama');
-        expect(data.model).toBe('qwen-chat:latest');
-        expect(data.reply).toContain('W metodzie STAR skup się na mierzalnym rezultacie');
+        expect(data.success).toBe(false);
+        expect(data.error).toContain('Konta użytkowników nie są uruchomione');
       } finally {
         await close();
       }
@@ -367,7 +362,7 @@ describe('Provider AI: Ollama (Lokalny model językowy)', () => {
           body: JSON.stringify({ query: '   ' }),
         });
 
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(501);
         const data = (await res.json()) as Record<string, unknown>;
         expect(data.success).toBe(false);
       } finally {

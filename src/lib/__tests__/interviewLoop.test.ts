@@ -10,10 +10,12 @@ import {
   DEFAULT_PRE_CALL_CHECKLIST,
 } from '../interviewLoopEngine';
 import { MemoryStorage } from './helpers/memoryStorage';
+import { resetLastGoodCache } from '../storage';
 
 describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
   beforeEach(() => {
     (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
+    resetLastGoodCache();
   });
 
   describe('Tworzenie i zarządzanie sesją rozmowy', () => {
@@ -67,17 +69,25 @@ describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
       const session1 = createInterviewSession('Firma A', 'Rola A');
       const session2 = createInterviewSession('Firma B', 'Rola B');
 
-      saveInterviewSession(session1);
-      saveInterviewSession(session2);
+      saveInterviewSession('profile-a', session1);
+      saveInterviewSession('profile-a', session2);
 
-      const loaded = loadInterviewSessions();
+      const loaded = loadInterviewSessions('profile-a');
       expect(loaded.length).toBe(2);
       expect(loaded.some((s) => s.id === session1.id)).toBe(true);
 
-      deleteInterviewSession(session1.id);
-      const afterDelete = loadInterviewSessions();
+      deleteInterviewSession('profile-a', session1.id);
+      const afterDelete = loadInterviewSessions('profile-a');
       expect(afterDelete.length).toBe(1);
       expect(afterDelete[0].id).toBe(session2.id);
+    });
+
+    it('nie ujawnia rozmów innego profilu i usuwa tylko własne', () => {
+      const session = createInterviewSession('Tajna firma', 'Rola');
+      saveInterviewSession('profile-a', session);
+      expect(loadInterviewSessions('profile-b')).toEqual([]);
+      deleteInterviewSession('profile-b', session.id);
+      expect(loadInterviewSessions('profile-a')).toEqual([session]);
     });
   });
 });

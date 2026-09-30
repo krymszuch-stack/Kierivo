@@ -1,14 +1,18 @@
 import { MasterVault } from '../types';
 import { createEmptyVault } from './sampleVault';
+import { migrateAnonymousCVLibrary } from './cvLibraryStorage';
 import {
   StorageKeys,
   readJson,
   readRaw,
   removeRaw,
   applicationsKeyFor,
+  cvLibraryKeyFor,
+  listStorageKeys,
   vaultKeyFor,
-  wipeAppStorage,
+  wipeAppStorageDurably,
   writeJson,
+  writeJsonDurably,
 } from './storage';
 
 /**
@@ -33,7 +37,7 @@ export interface LocalProfile {
   name: string;
   /** Opcjonalny — profil lokalny nie wymaga adresu e-mail do niczego. */
   email?: string;
-  createdAt: string;
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -52,14 +56,63 @@ export function getActiveProfile(): LocalProfile | null {
   return parsed && typeof parsed.id === 'string' && parsed.id ? parsed : null;
 }
 
+function readSavedProfileIndex(): LocalProfile[] {
+  const saved = readJson<unknown>(StorageKeys.localProfiles, []);
+  if (!Array.isArray(saved)) return [];
+  return saved.filter((item): item is LocalProfile => (
+    typeof item === 'object' && item !== null &&
+    'id' in item && typeof item.id === 'string' && item.id.startsWith('local-') &&
+    'name' in item && typeof item.name === 'string' &&
+    (!('createdAt' in item) || typeof item.createdAt === 'string' || item.createdAt === undefined)
+  ));
+}
+
+async function rememberLocalProfile(profile: LocalProfile): Promise<boolean> {
+  const profiles = readSavedProfileIndex().filter((item) => item.id !== profile.id);
+  return writeJsonDurably(StorageKeys.localProfiles, [...profiles, profile]);
+}
+
+/** Zwraca zapisane lokalne CV, które można wznowić; odzyskuje też starsze vaulty bez indeksu. */
+export async function listSavedLocalProfiles(): Promise<LocalProfile[]> {
+  const profiles = new Map(readSavedProfileIndex().map((profile) => [profile.id, profile]));
+  const prefix = `${StorageKeys.vault}:`;
+  const vaultKeys = await listStorageKeys(prefix);
+
+  for (const key of vaultKeys) {
+    const id = key.slice(prefix.length);
+    if (!id.startsWith('local-') || profiles.has(id)) continue;
+    const vault = loadProfileVault(id);
+    if (!vault) continue;
+    profiles.set(id, {
+      id,
+      name: vault.personalInfo.fullName || 'Profil lokalny',
+      ...(vault.personalInfo.email ? { email: vault.personalInfo.email } : {}),
+    });
+  }
+
+  const resumable = [...profiles.values()].filter((profile) => loadProfileVault(profile.id) !== null);
+  writeJson(StorageKeys.localProfiles, resumable);
+  return resumable.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+}
+
+/** Wznawia jawnie wybrany profil lokalny; samo podanie nazwy nie może wybrać cudzej kopii. */
+export function activateLocalProfile(profileId: string): { profile: LocalProfile; vault: MasterVault } | null {
+  const profile = readSavedProfileIndex().find((candidate) => candidate.id === profileId);
+  if (!profile) return null;
+  const vault = loadProfileVault(profile.id);
+  if (!vault) return null;
+  writeJson(StorageKeys.profile, profile);
+  return { profile, vault };
+}
+
 /**
  * Zakłada profil w tej przeglądarce. Nie ma tu weryfikacji, bo nie ma czego
  * weryfikować — i właśnie dlatego funkcja nie nazywa się `login`.
  */
-export function createLocalProfile(
+export async function createLocalProfile(
   name: string,
   email?: string
-): { profile: LocalProfile; vault: MasterVault } {
+): Promise<{ profile: LocalProfile; vault: MasterVault }> {
   const trimmedName = name.trim();
   const trimmedEmail = email?.trim();
 
@@ -73,32 +126,48 @@ export function createLocalProfile(
     updatedAt: now,
   };
 
-  writeJson(StorageKeys.profile, profile);
-
-  // Praca wykonana przed założeniem profilu nie może przepaść w momencie, w
-  // którym użytkownik poda imię — to jest dokładnie ta chwila, w której klin
-  // ATS ma go przekonać, że warto zostać.
   const carriedOver = loadProfileVault(ANONYMOUS_PROFILE_ID);
-  if (carriedOver) {
-    saveProfileVault(profile.id, carriedOver);
-    removeRaw(vaultKeyFor(ANONYMOUS_PROFILE_ID));
+  const anonymousVaultKey = vaultKeyFor(ANONYMOUS_PROFILE_ID);
+  const anonymousApplicationsKey = applicationsKeyFor(ANONYMOUS_PROFILE_ID);
+  const anonymousLibraryKey = cvLibraryKeyFor(ANONYMOUS_PROFILE_ID);
+  const anonymousApplications = readRaw(anonymousApplicationsKey);
+  const stagedTargetKeys: string[] = [];
+
+  try {
+    // Nie usuwaj źródeł, dopóki każda kopia nie zostanie potwierdzona przez
+    // localStorage albo zatwierdzoną transakcję IndexedDB. Zwykły zapis ma
+    // kontrakt „najlepsza próba”; migracja źródłowych CV wymaga potwierdzenia.
+    if (carriedOver) {
+      if (!(await writeJsonDurably(vaultKeyFor(profile.id), carriedOver))) throw new Error('vault');
+      stagedTargetKeys.push(vaultKeyFor(profile.id));
+    }
+
+    if (anonymousApplications !== null) {
+      const applications = readJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), []);
+      if (!(await writeJsonDurably(applicationsKeyFor(profile.id), applications))) throw new Error('applications');
+      stagedTargetKeys.push(applicationsKeyFor(profile.id));
+    }
+
+    const libraryTargetKey = cvLibraryKeyFor(profile.id);
+    const libraryCopied = await migrateAnonymousCVLibrary(ANONYMOUS_PROFILE_ID, profile.id, false);
+    if (!libraryCopied) throw new Error('library');
+    if (readRaw(anonymousLibraryKey) !== null) stagedTargetKeys.push(libraryTargetKey);
+
+    if (!(await rememberLocalProfile(profile))) throw new Error('profile-index');
+    if (!(await writeJsonDurably(StorageKeys.profile, profile))) throw new Error('active-profile');
+  } catch {
+    stagedTargetKeys.forEach(removeRaw);
+    throw new Error('Nie udało się trwale zapisać danych nowego profilu. Dane źródłowe pozostawiono bez zmian; zwolnij miejsce i spróbuj ponownie.');
   }
 
-  // Historia utworzona przed podaniem imienia należy do osoby, która właśnie
-  // zakłada profil. Przenosimy wyłącznie klucz anonimowy, nigdy dawną wspólną
-  // historię — automatyczne przypisanie jej mogłoby ujawnić cudze aplikacje.
-  const anonymousApplications = readRaw(applicationsKeyFor(ANONYMOUS_PROFILE_ID));
-  if (anonymousApplications !== null) {
-    writeJson(applicationsKeyFor(profile.id), readJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), []));
-    removeRaw(applicationsKeyFor(ANONYMOUS_PROFILE_ID));
-  }
+  // Wszystkie cele są już trwale zapisane. Teraz można skasować przejściowe
+  // źródła bez ryzyka, że odświeżenie odtworzy pusty profil.
+  if (carriedOver) removeRaw(anonymousVaultKey);
+  if (anonymousApplications !== null) removeRaw(anonymousApplicationsKey);
+  removeRaw(anonymousLibraryKey);
 
-  if (carriedOver) {
-    return { profile, vault: carriedOver };
-  }
-
-  const existing = loadProfileVault(profile.id);
-  return { profile, vault: existing ?? createEmptyVault(trimmedName, trimmedEmail) };
+  const vault = carriedOver ?? createEmptyVault(trimmedName, trimmedEmail);
+  return { profile, vault };
 }
 
 /** Kończy korzystanie z profilu, ale zostawia zapisane dane na urządzeniu. */
@@ -136,6 +205,6 @@ export function saveProfileVault(profileId: string, vault: MasterVault): void {
  * i przez to zostawiała za sobą m.in. stan subskrypcji — a „usuń moje dane",
  * które czegoś nie usuwa, jest gorsze niż brak takiej funkcji.
  */
-export function deleteLocalProfile(): void {
-  wipeAppStorage();
+export function deleteLocalProfile(): Promise<boolean> {
+  return wipeAppStorageDurably();
 }

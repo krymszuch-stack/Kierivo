@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
@@ -11,6 +12,7 @@ import {
   LocalProfile,
   getActiveProfile,
   createLocalProfile,
+  activateLocalProfile,
   signOutLocalProfile,
   deleteLocalProfile,
   loadProfileVault,
@@ -24,7 +26,7 @@ import { oauthRedirectError, passwordRecoveryRedirectError, stripAuthErrorParams
 import { oauthProviderById, type OAuthProviderId } from '../lib/oauthProviders';
 import { getAuthRedirectUrl } from '../lib/authRedirect';
 import { resetEntitlementsToUnauthenticated } from '../store/useEntitlements';
-import { removeRaw, vaultKeyFor } from '../lib/storage';
+import { beginPrivacyWipe, isPrivacyWipeInProgress, removeRaw, vaultKeyFor } from '../lib/storage';
 import { showToast } from '../store/useToastStore';
 import { setAccessTokenProvider } from '../lib/apiClient';
 import {
@@ -32,6 +34,7 @@ import {
   enqueueCloudVaultSave,
   flushPendingCloudVault,
   getCloudVaultSyncStatus,
+  suspendCloudVaultFlush,
   subscribeCloudVaultSyncStatus,
   type VaultSyncStatus,
 } from '../lib/cloudVaultOutbox';
@@ -65,7 +68,8 @@ interface AuthContextType {
   oauthNotice: string | null;
   clearOAuthNotice: () => void;
 
-  signInLocally: (name: string, email?: string) => MasterVault;
+  signInLocally: (name: string, email?: string) => Promise<MasterVault>;
+  resumeLocalProfile: (profileId: string) => MasterVault | null;
   signUpCloud: (email: string, password: string, displayName: string) => Promise<AuthActionResult>;
   signInCloud: (email: string, password: string) => Promise<AuthActionResult>;
   /** Logowanie przez dostawcę z rejestru `oauthProviders` (Google, Microsoft, LinkedIn). */
@@ -131,6 +135,7 @@ export const AuthProvider: React.FC<{
   const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
   const [passwordRecoveryError, setPasswordRecoveryError] = useState<string | null>(null);
   const [oauthNotice, setOauthNotice] = useState<string | null>(null);
+  const cloudOwnerRef = useRef<string | null>(null);
 
   const supabase = getSupabaseBrowserClient();
   const cloudAvailable = supabase !== null;
@@ -174,6 +179,9 @@ export const AuthProvider: React.FC<{
     supabase.auth.getSession().then(({ data }) => {
       if (!active || !data.session) return;
       const profile = profileFromSession(data.session);
+      if (cloudOwnerRef.current !== profile.id) setUserVault(null);
+      cloudOwnerRef.current = profile.id;
+      suspendCloudVaultFlush(profile.id);
       setSession(data.session);
       setUser(profile);
       setMode('cloud');
@@ -185,6 +193,10 @@ export const AuthProvider: React.FC<{
 
       if (nextSession) {
         const profile = profileFromSession(nextSession);
+        if (cloudOwnerRef.current !== profile.id) setUserVault(null);
+        cloudOwnerRef.current = profile.id;
+        // Block before state changes can mount save effects in App.tsx.
+        suspendCloudVaultFlush(profile.id);
         setSession(nextSession);
         setUser(profile);
         setMode('cloud');
@@ -205,6 +217,7 @@ export const AuthProvider: React.FC<{
       }
 
       if (event === 'SIGNED_OUT') {
+        cloudOwnerRef.current = null;
         resetEntitlementsToUnauthenticated();
         setSession(null);
         setUser(null);
@@ -244,18 +257,33 @@ export const AuthProvider: React.FC<{
     return () => {
       window.removeEventListener('online', retry);
       unsubscribe();
+      suspendCloudVaultFlush(ownerId);
     };
   }, [mode, user?.id]);
 
   const signInLocally = useCallback(
-    (name: string, email?: string): MasterVault => {
-      const { profile, vault } = createLocalProfile(name, email);
+    async (name: string, email?: string): Promise<MasterVault> => {
+      const { profile, vault } = await createLocalProfile(name, email);
       setUser(profile);
       setMode('local');
       setVaultSyncStatus('local');
       setUserVault(vault);
       onVaultLoaded?.(vault);
       return vault;
+    },
+    [onVaultLoaded]
+  );
+
+  const resumeLocalProfile = useCallback(
+    (profileId: string): MasterVault | null => {
+      const resumed = activateLocalProfile(profileId);
+      if (!resumed) return null;
+      setUser(resumed.profile);
+      setMode('local');
+      setVaultSyncStatus('local');
+      setUserVault(resumed.vault);
+      onVaultLoaded?.(resumed.vault);
+      return resumed.vault;
     },
     [onVaultLoaded]
   );
@@ -299,6 +327,7 @@ export const AuthProvider: React.FC<{
         options: {
           redirectTo: redirectTarget(),
           queryParams: provider.queryParams,
+          scopes: provider.scopes,
         },
       });
 
@@ -385,9 +414,11 @@ export const AuthProvider: React.FC<{
       if (error) {
         return { ok: false, message: 'Nie udało się usunąć konta. Spróbuj ponownie za chwilę.' };
       }
+      beginPrivacyWipe();
       await supabase.auth.signOut();
       if (ownerId) removeRaw(cloudVaultOutboxKeyFor(ownerId));
-      deleteLocalProfile();
+      const localCleared = await deleteLocalProfile();
+      resetEntitlementsToUnauthenticated();
       setSession(null);
       setUser(null);
       setMode(null);
@@ -395,10 +426,12 @@ export const AuthProvider: React.FC<{
       setVaultSyncStatus('local');
       setPasswordRecoveryActive(false);
       setPasswordRecoveryError(null);
-      return { ok: true, message: '' };
+      return localCleared
+        ? { ok: true, message: '' }
+        : { ok: false, message: 'Konto usunięto z serwera, ale nie udało się potwierdzić wymazania danych z tej przeglądarki.' };
     }
 
-    deleteLocalProfile();
+    const localCleared = await deleteLocalProfile();
     resetEntitlementsToUnauthenticated();
     setUser(null);
     setMode(null);
@@ -406,12 +439,14 @@ export const AuthProvider: React.FC<{
     setVaultSyncStatus('local');
     setPasswordRecoveryActive(false);
     setPasswordRecoveryError(null);
-    return { ok: true, message: '' };
+    return localCleared
+      ? { ok: true, message: '' }
+      : { ok: false, message: 'Nie udało się potwierdzić wymazania danych z tej przeglądarki. Spróbuj ponownie.' };
   }, [mode, supabase, user?.id]);
 
   const saveUserVaultFunc = useCallback(
     (vault: MasterVault) => {
-      if (!user) return;
+      if (!user || isPrivacyWipeInProgress()) return;
 
       const ownerId = user.id;
       const stripTags = (value: string | undefined) => (value || '').replace(/<[^>]+>/g, '').trim();
@@ -471,6 +506,7 @@ export const AuthProvider: React.FC<{
       oauthNotice,
       clearOAuthNotice,
       signInLocally,
+      resumeLocalProfile,
       signUpCloud,
       signInCloud,
       signInWithProvider,
@@ -495,6 +531,7 @@ export const AuthProvider: React.FC<{
       oauthNotice,
       clearOAuthNotice,
       signInLocally,
+      resumeLocalProfile,
       signUpCloud,
       signInCloud,
       signInWithProvider,

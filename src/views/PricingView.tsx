@@ -141,7 +141,7 @@ export const PricingView: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
-                  <span>Audyt słów kluczowych i wielowskaźnikowy scoring ATS</span>
+                  <span>Audyt słów kluczowych i ocena dopasowania według reguł Kierivo</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-success-fg mt-0.5" />
@@ -273,7 +273,7 @@ export const PricingView: React.FC = () => {
       </section>
 
       <section className="rounded-3xl border border-line bg-elevated p-6 text-sm leading-relaxed text-muted">
-        <h2 className="font-bold text-ink">Jak czytać wynik ATS w Kierivo</h2>
+        <h2 className="font-bold text-ink">Jak czytać ocenę dopasowania Kierivo</h2>
         <p className="mt-2">
           Wynik 0–100 jest własną oceną Kierivo wyliczaną z cech dokumentu i treści ogłoszenia.
           Nie pochodzi z Workday, Greenhouse, Lever, Taleo ani innego zewnętrznego ATS. Nie przewiduje

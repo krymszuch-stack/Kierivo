@@ -699,4 +699,24 @@ describe('10 Real-World CV Parser & Vault Merger Test Scenarios', () => {
       'Przykładowa Firma Gamma Sp. z o.o.',
     ]);
   });
+
+  it('nie wciąga opisu obowiązków do firmy, gdy CV nie podaje nazwy stanowiska', () => {
+    const cv = `
+    Alicja Testowa
+    Doświadczenie zawodowe:
+    2021–2024 w firmie Przykład Sp. z o.o. Obsługa zgłoszeń użytkowników i diagnoza komputerów.
+    Edukacja:
+    Technik informatyk — Zespół Szkół Testowych, 2017–2021.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+
+    expect(parsed.history).toHaveLength(1);
+    expect(parsed.history[0]).toEqual(expect.objectContaining({
+      company: 'Przykład Sp. z o.o.',
+      role: '',
+      description: expect.stringContaining('Obsługa zgłoszeń użytkowników'),
+    }));
+    expect(parsed.personalInfo.title).toBe('');
+  });
 });

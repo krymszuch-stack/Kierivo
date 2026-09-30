@@ -75,14 +75,16 @@ export function hasMeasurableMetric(text?: string, metricField?: string): boolea
   const trimmed = text.trim();
   if (!trimmed) return false;
 
-  return METRIC_PATTERNS.some((pattern) => pattern.test(trimmed));
+  // Przykłady w nawiasach kwadratowych są instrukcją, a nie dowodem osiągnięcia.
+  const evidenceText = trimmed.replace(/\[[^\]]*\]/g, ' ');
+  return METRIC_PATTERNS.some((pattern) => pattern.test(evidenceText));
 }
 
 /**
  * Szablon rekomendacji Google X-Y-Z.
  */
 export const GOOGLE_XYZ_TEMPLATE =
-  'Osiągnąłem [konkretny rezultat], mierzone przez [wskaźnik, np. +25% / 100 tys. PLN / skrócenie o 2h], wdrażając [metodę lub narzędzie].';
+  'Osiągnąłem [konkretny rezultat], mierzone przez [rzeczywisty wskaźnik], wdrażając [metodę lub narzędzie].';
 
 /**
  * Wykrywa luki w zatrudnieniu >= 6 miesięcy (0.5 roku).

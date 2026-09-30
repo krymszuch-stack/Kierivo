@@ -26,14 +26,13 @@ Silnik rozdziela to, co widzi **ludzkie oko**, od tego, co odczytuje **maszyna**
 ### Warstwa 2: Semantyczna (dla parserów ATS)
 - **Tagged PDF (ISO 32000-1 / PDF/UA)**:
   - Każdy element wizualny jest powiązany z węzłem struktury logicznej (`/StructTreeRoot` + `/ParentTree`).
-  - Atrybut `/ActualText`: gdy rekruter widzi pigułkę `[ SQL ]`, parser ATS odczytuje pełne zdanie semantyczne:  
-    *„Relacyjne bazy danych SQL: zaawansowane zapytania, agregacja danych i optymalizacja raportów operacyjnych (MS SQL Server, PostgreSQL)”*.
+  - Atrybut `/ActualText` może dostarczyć parserowi tekst powiązany z widoczną treścią. Wartości umiejętności z Kierivo powtarzają dokładnie deklaracje z profilu; generator nie dopisuje poziomu biegłości, zastosowań ani narzędzi, których kandydat nie podał.
 - **Mikrodane maszynowe (`JSON-LD Schema.org/Person` w XMP `/Metadata`)**:
   - Nowoczesne systemy rekrutacyjne i modele scoringowe AI pobierają ustrukturyzowany profil kandydata bezpośrednio ze strumienia metadanych (lata stażu, uprawnienia formalne SEP/UDT, kompetencje, role).
-- **Załącznik `mastervault.json` (drzewo `EmbeddedFiles`)**:
-  - Pełny rekord źródłowy MasterVault jest zaszyty w pliku PDF, co umożliwia bezstratny import/eksport (round-trip).
-- **Klauzula RODO**:
-  - Dedykowana sekcja semantyczna w stopce dokumentu gwarantująca formalną ważność aplikacji.
+- **Import starszych dokumentów**:
+  - Nowy PDF nie zawiera pełnego rekordu MasterVault poza treścią CV. Importer Kierivo nadal potrafi odczytać załącznik `mastervault.json` ze starszych plików.
+- **Klauzula dodatkowa**:
+  - Stopka pokazuje wyłącznie tekst jawnie podany w profilu. Brak klauzuli pozostaje pusty; generator nie deklaruje zgody kandydata ani nie przesądza o formalnej ważności aplikacji.
 
 ---
 

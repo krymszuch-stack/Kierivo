@@ -39,6 +39,7 @@ import {
   calculateJobMatch,
   buildJobOfferFromScraped,
   buildJobOfferFromManual,
+  SYNTHETIC_JOB_OFFER_PORTAL,
 } from '../../lib/jobMatcherEngine';
 import { triggerConfetti } from '../../lib/confetti';
 import { consumeAiLocally } from '../../store/useEntitlements';
@@ -76,7 +77,7 @@ const SAMPLE_PRESETS: JobPreset[] = [
       title: 'Monter & Serwisant Pieców Gazowych',
       company: 'EkoTerm Serwis Sp. z o.o.',
       salary: '7 500 - 10 500 PLN brutto',
-      portal: 'Przykładowe ogłoszenie',
+      portal: SYNTHETIC_JOB_OFFER_PORTAL,
       requirements: ['Uprawnienia SEP G3 (eksploatacja)', 'Certyfikat F-Gaz', 'Diagnostyka kotłów gazowych (Junkers / Bosch)', 'Prawo jazdy kat. B'],
       description: `Poszukujemy doświadczonego Montera i Serwisanta urządzeń grzewczych i pomp ciepła na terenie województwa mazowieckiego.
 Wymagania:
@@ -99,7 +100,7 @@ Wymagania:
       title: 'Operator Wózka Widłowego / Magazynier WMS',
       company: 'LogiCenter Hub Polska',
       salary: '5 800 - 7 200 PLN brutto',
-      portal: 'Przykładowe ogłoszenie',
+      portal: SYNTHETIC_JOB_OFFER_PORTAL,
       requirements: ['Uprawnienia UDT na wózki jezdniowe podnośnikowe', 'Obsługa skanerów kodów kreskowych i systemów WMS', 'Doświadczenie w kompletacji zamówień', 'Dbałość o standardy BHP'],
       description: `Centrum logistyczne poszukuje Operatora Wózka Widłowego do obsługi magazynu wysokiego składu.
 Wymagania:
@@ -121,7 +122,7 @@ Wymagania:
       title: 'Senior React Developer (TypeScript)',
       company: 'ScaleApp Software',
       salary: '22 000 - 28 000 PLN netto B2B',
-      portal: 'Przykładowe ogłoszenie',
+      portal: SYNTHETIC_JOB_OFFER_PORTAL,
       requirements: ['React 19 / Next.js', 'TypeScript', 'Architektura SPA / SSR', 'Testy jednostkowe (Vitest / Jest)', 'Optymalizacja Web Vitals'],
       description: `Poszukujemy doświadczonego programisty Frontend do rozwoju platformy webowej.
 Wymagania:
@@ -175,14 +176,17 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
 
   const { saveApplication } = useApplications();
 
-  const handleMatchJob = async (job: JobOffer) => {
+  const handleMatchJob = async (job: JobOffer, sourceVault: MasterVault = vault) => {
     setSelectedJob(job);
     setIsTailoring(true);
     setMatchError(null);
     setIsAtsModalOpen(true);
 
     try {
-      const matchResult = calculateJobMatch(vault, job);
+      // Szybki start właśnie wyekstrahował vault i aktualizuje stan rodzica.
+      // Aktualizacja propsa nie jest synchroniczna, więc ten sam tick nadal
+      // widzi poprzedni, pusty vault. Przekazujemy świeży snapshot jawnie.
+      const matchResult = calculateJobMatch(sourceVault, job);
       setCanonicalResult(matchResult.canonicalResult);
       setAtsResult(matchResult.atsResult);
       setCoverLetter(matchResult.coverLetter);
@@ -217,7 +221,11 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     handleMatchJob(job);
   };
 
-  const parseScrapedJob = async (rawJdText: string): Promise<ParsedJobDescription> => {
+  const parseScrapedJob = async (rawJdText: string, consentToAiProcessing: boolean): Promise<ParsedJobDescription> => {
+    if (!consentToAiProcessing) {
+      return parseJobDescriptionLocal(rawJdText);
+    }
+
     const aiAvailable = consumeAiLocally();
     if (!aiAvailable) {
       showToast('Limit analiz AI wyczerpany', {
@@ -230,6 +238,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     try {
       const parseData = await api.post<{ parsedJd: unknown }>('/api/parse-jd', {
         rawJdText,
+        consentToAiProcessing: true,
       });
       return (
         parseJobDescriptionResponse(parseData.parsedJd) ||
@@ -251,7 +260,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     }
   };
 
-  const handleMatchUrl = async (url: string) => {
+  const handleMatchUrl = async (url: string, consentToAiProcessing: boolean) => {
     setUrlError(null);
     setIsFetchingUrl(true);
 
@@ -268,7 +277,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         return;
       }
 
-      const parsed = await parseScrapedJob(fetched.descriptionRaw);
+      const parsed = await parseScrapedJob(fetched.descriptionRaw, consentToAiProcessing);
       const job = buildJobOfferFromScraped({ url, fetched, parsed });
 
       // Ogłoszenie zostało rozpoznane — wysyłka jest anonimowa i „best effort"
@@ -286,10 +295,10 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
 
   return (
     <div className={`space-y-6 ${className}`}>
-      <PageHeader
+        <PageHeader
         title="Dopasowanie Ofert & Audyt ATS"
         description="Wklej link do oferty lub jej treść — audyt ATS sprawdzi pokrycie wymagań Twojego CV, a dokumenty aplikacyjne przygotujesz na tej podstawie."
-        badge="Analiza bez tokenów AI"
+        badge="Analiza lokalna · AI po zgodzie"
       />
 
       {/* Pasek wyboru trybu dopasowania: Uproszczony onboarding vs Tryb zaawansowany */}
@@ -300,7 +309,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
           </span>
           <p className="text-xs text-muted">
             {matcherMode === 'quick'
-              ? 'Wklej CV i ogłoszenie, aby natychmiast poznać wynik ATS i 3 główne problemy.'
+              ? 'Wklej CV i ogłoszenie, aby zobaczyć ocenę dopasowania Kierivo i 3 główne problemy.'
               : 'Pełny zestaw narzędzi: 7 modułów dopasowania, presety branżowe i kalkulator dojazdów.'}
           </p>
         </div>
@@ -321,7 +330,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
           onShowDetails={(newVault, jobOffer) => {
             onUpdateVault?.(newVault);
             setMatcherMode('advanced');
-            handleMatchJob(jobOffer);
+            handleMatchJob(jobOffer, newVault);
           }}
           onSwitchToAdvanced={() => setMatcherMode('advanced')}
         />
@@ -355,6 +364,9 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                       </div>
                     </div>
                   </div>
+                  <p role="note" className="rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-[11px] leading-relaxed text-ink-muted">
+                    To syntetyczne przykłady do sprawdzenia narzędzia. Nazwy firm, treść i wynagrodzenia nie opisują prawdziwych ani aktualnych ofert.
+                  </p>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {SAMPLE_PRESETS.map((preset) => {
@@ -564,7 +576,10 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                     position: selectedJob.title,
                     salary: selectedJob.salary || '',
                     date: new Date().toISOString().slice(0, 10),
-                    status: 'Wysłana',
+                    // Zapis migawki w trackerze nie dowodzi, że formularz
+                    // pracodawcy został wysłany — dopiero użytkownik może
+                    // zmienić etap po faktycznym złożeniu aplikacji.
+                    status: 'Do wysłania',
                     jobUrl: selectedJob.url,
                     atsScore: canonicalResult ? canonicalResult.score : atsResult.overallScore,
                     missingKeywords: canonicalResult?.missingRequirements?.length
@@ -575,7 +590,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
 
                   saveApplication(application);
                   showToast('Dodano do moich aplikacji', {
-                    message: `${selectedJob.title} — dopasowanie ${canonicalResult ? canonicalResult.score : atsResult.overallScore}%.`,
+                    message: `${selectedJob.title} — zapisano jako „Do wysłania”. To nie oznacza wysłania aplikacji. Dopasowanie: ${canonicalResult ? canonicalResult.score : atsResult.overallScore}%.`,
                   });
                   setIsAtsModalOpen(false);
                 }}

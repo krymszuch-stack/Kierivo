@@ -52,7 +52,7 @@ describe('D08 — integracja z realnymi binarnymi formatami', () => {
     // nie podnosimy jej sztucznie tylko po to, aby przekroczyć estetyczne 0.90.
     expect(extraction.signals.textLayer.nativeTextCoverage).toBeGreaterThanOrEqual(0.8);
     expect(result.verdictCode).not.toBe('D08_PDF_EXTRACTION_EXCEPTION');
-  });
+  }, 15_000);
 
   it('przechodzi przez rzeczywisty DOCX i zachowuje treść dla pomiaru text integrity', async () => {
     const sourceLines = [

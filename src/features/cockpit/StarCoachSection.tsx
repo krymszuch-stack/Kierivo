@@ -23,6 +23,8 @@ import { api, ApiError } from '../../lib/apiClient';
 import { Button } from '../../components/ui/Button';
 import { useEntitlements, consumeAiLocally } from '../../store/useEntitlements';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
+import { buildInterviewCoachProfileContext } from '../../lib/interviewCoachContext';
+import { DEFAULT_INTERVIEW_QUESTIONS, resolveInterviewTargetRole } from '../../lib/interviewCoachDefaults';
 import {
   InterviewQuestionItem,
   StarAnswerEvaluation,
@@ -32,48 +34,15 @@ export interface StarCoachSectionProps {
   vault: MasterVault;
 }
 
-const DEFAULT_QUESTIONS: InterviewQuestionItem[] = [
-  {
-    id: 'def-1',
-    category: 'behavioral',
-    question:
-      'Opowiedz o sytuacji, w której projekt napotkał krytyczną przeszkodę lub opóźnienie tuż przed wdrożeniem. Jak zareagowałeś?',
-    recruiterIntent:
-      'Rekruter bada Twoją odporność na stres, umiejętność priorytetyzacji i to, czy szukasz winnych, czy natychmiast bierzesz odpowiedzialność za rozwiązanie problemu.',
-    suggestedStarTips:
-      'S: krótki kontekst (maks. 20s); T: Twoja rola w zespole; A: konkretne działania naprawcze "ja zoptymalizowałem/wdrożyłem"; R: uratowany termin lub wdrożenie bez przestoju.',
-  },
-  {
-    id: 'def-2',
-    category: 'situational',
-    question:
-      'Opisz sytuację, gdy musiałeś przekonać nieprzychylnego interesariusza lub zespół do zmiany podejścia technologicznego lub procesowego.',
-    recruiterIntent:
-      'Sprawdzenie umiejętności perswazji opartej na twardych danych i metrykach (ROI, czas realizacji, dług techniczny), a nie na autorytecie czy emocjach.',
-    suggestedStarTips:
-      'Wskaż, jakich argumentów liczbowych użyłeś i jak pokazałeś korzyść biznesową, która ostatecznie zjednoczyła zespół.',
-  },
-  {
-    id: 'def-3',
-    category: 'competency',
-    question:
-      'Podaj przykład wdrożenia lub projektu, z którego jesteś najbardziej dumny – jaki był problem wyjściowy i jaki konkretny wynik liczbowy osiągnąłeś?',
-    recruiterIntent:
-      'Szansa na zaprezentowanie Twojego flagowego projektu – rekruter ocenia poziom skomplikowania i to, czy myślisz kategoriami wartości biznesowej.',
-    suggestedStarTips:
-      'Zastosuj formułę Google X-Y-Z: Osiągnąłem [X], mierzone przez [Y], poprzez wdrożenie [Z]. Koniecznie podaj twardy % lub kwotę.',
-  },
-];
-
 export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => {
   const { usage, refresh: refreshEntitlements } = useEntitlements();
 
   const [targetRole, setTargetRole] = useState(
-    () => vault.personalInfo?.title || 'Senior Software Engineer'
+    () => resolveInterviewTargetRole(vault.personalInfo?.title)
   );
   const [targetCompany, setTargetCompany] = useState('');
-  const [questions, setQuestions] = useState<InterviewQuestionItem[]>(DEFAULT_QUESTIONS);
-  const [selectedQuestion, setSelectedQuestion] = useState<InterviewQuestionItem>(DEFAULT_QUESTIONS[0]);
+  const [questions, setQuestions] = useState<InterviewQuestionItem[]>(DEFAULT_INTERVIEW_QUESTIONS);
+  const [selectedQuestion, setSelectedQuestion] = useState<InterviewQuestionItem>(DEFAULT_INTERVIEW_QUESTIONS[0]);
   const [customQuestionInput, setCustomQuestionInput] = useState('');
 
   const [candidateAnswer, setCandidateAnswer] = useState('');
@@ -82,6 +51,8 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   const [evaluation, setEvaluation] = useState<StarAnswerEvaluation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
+  const [confirmedDraftFacts, setConfirmedDraftFacts] = useState(false);
 
   // Stoper
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -107,6 +78,10 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   };
 
   const handleGenerateQuestions = async () => {
+    if (!consentToAiProcessing) {
+      setError('Zaznacz zgodę na wysłanie wybranego kontekstu do skonfigurowanego dostawcy AI.');
+      return;
+    }
     if (usage.aiUses <= 0 || !consumeAiLocally()) {
       setError('Wykorzystano dzisiejszy limit zapytań AI (odnowi się o północy). Możesz swobodnie trenować na gotowej liście pytań rekrutacyjnych poniżej.');
       return;
@@ -118,9 +93,10 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
       const data = await api.post<{ questions?: InterviewQuestionItem[] }>(
         '/api/ai/coach-star/generate-questions',
         {
-          vault,
+          profileContext: buildInterviewCoachProfileContext(vault),
           targetRole,
           targetCompany: targetCompany.trim() || undefined,
+          consentToAiProcessing: true,
         }
       );
 
@@ -142,6 +118,10 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   };
 
   const handleEvaluateAnswer = async () => {
+    if (!consentToAiProcessing) {
+      setError('Zaznacz zgodę na wysłanie odpowiedzi i wybranego kontekstu do skonfigurowanego dostawcy AI.');
+      return;
+    }
     if (!candidateAnswer.trim()) {
       setError('Wpisz swoją odpowiedź przed uruchomieniem analizy trenera.');
       return;
@@ -161,12 +141,13 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
           question: selectedQuestion.question,
           answer: candidateAnswer,
           targetRole,
-          vault,
+          consentToAiProcessing: true,
         }
       );
 
       if (data.evaluation) {
         setEvaluation(data.evaluation);
+        setConfirmedDraftFacts(false);
       }
       refreshEntitlements();
     } catch (err) {
@@ -182,7 +163,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   };
 
   const handleCopyExemplary = () => {
-    if (!evaluation?.exemplaryResponse) return;
+    if (!confirmedDraftFacts || !evaluation?.exemplaryResponse) return;
     navigator.clipboard.writeText(evaluation.exemplaryResponse);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -192,20 +173,20 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
     switch (verdict) {
       case 'EXCELLENT':
         return {
-          label: 'Mocna odpowiedź (Wysoka perswazja)',
+          label: 'Mocna struktura według AI',
           bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
           icon: Trophy,
         };
       case 'SOLID':
         return {
-          label: 'Dobra baza (Wymaga doprecyzowania)',
+          label: 'Do dopracowania według AI',
           bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
           icon: Target,
         };
       case 'NEEDS_REFINEMENT':
       default:
         return {
-          label: 'Zbyt ogólna (Brak twardych liczb)',
+          label: 'Wymaga dalszego dopracowania według AI',
           bg: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20',
           icon: AlertTriangle,
         };
@@ -227,14 +208,14 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                   Trener Rozmowy STAR (AI Coach)
                 </h3>
                 <span className="inline-flex items-center gap-1 rounded-full border border-brand-300 bg-brand-100 dark:bg-brand-900/40 dark:border-brand-700 px-2.5 py-0.5 text-xs font-semibold text-brand-800 dark:text-brand-300">
-                  <Sparkles className="h-3 w-3" /> Azure OpenAI gpt-4o
+                  <Sparkles className="h-3 w-3" /> Trener AI
                 </span>
                 <ModelQuotaCounter variant="badge" feature="coach" />
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-muted sm:text-sm">
+          <p className="mt-2 text-xs leading-relaxed text-muted sm:text-sm">
                 Ćwicz odpowiedzi metodą <strong>STAR</strong> (Situation, Task, Action, Result).
-                Model ocenia czy nie spędzasz zbyt wiele czasu na wstępie, czy mówisz o własnych działaniach
-                zamiast ogólnego „my”, i bezlitośnie weryfikuje obecność <strong>twardych liczb i metryk</strong>.
+                Trener AI daje orientacyjną informację zwrotną o strukturze i jasności odpowiedzi; brak liczbowej
+                metryki sam w sobie nie oznacza słabej odpowiedzi.
               </p>
             </div>
           </div>
@@ -243,23 +224,38 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
         {/* Formuła STAR ściągawka */}
         <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-line bg-surface p-3 text-xs">
-            <span className="font-bold text-brand-fg">S — Situation (20%)</span>
-            <p className="mt-1 text-muted">Krótkie tło, stawka i skala projektu.</p>
+            <span className="font-bold text-brand-fg">S — Situation</span>
+            <p className="mt-1 text-muted">Krótkie tło sytuacji.</p>
           </div>
           <div className="rounded-xl border border-line bg-surface p-3 text-xs">
-            <span className="font-bold text-brand-fg">T — Task (15%)</span>
-            <p className="mt-1 text-muted">Twoja konkretna rola i wyzwanie.</p>
+            <span className="font-bold text-brand-fg">T — Task</span>
+            <p className="mt-1 text-muted">Twoje zadanie lub odpowiedzialność.</p>
           </div>
           <div className="rounded-xl border border-line bg-surface p-3 text-xs">
-            <span className="font-bold text-brand-fg">A — Action (50%)</span>
-            <p className="mt-1 text-muted">Konkretne decyzje „Ja zrobiłem”, narzędzia.</p>
+            <span className="font-bold text-brand-fg">A — Action</span>
+            <p className="mt-1 text-muted">Konkretne działania i własna rola.</p>
           </div>
           <div className="rounded-xl border border-line bg-surface p-3 text-xs">
-            <span className="font-bold text-brand-fg">R — Result (15%)</span>
-            <p className="mt-1 text-muted">Twarde liczby, %, oszczędności, czas.</p>
+            <span className="font-bold text-brand-fg">R — Result</span>
+            <p className="mt-1 text-muted">Rzeczywisty skutek lub wniosek; liczby tylko, gdy je znasz.</p>
           </div>
         </div>
       </div>
+
+      <label className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning-soft/20 p-3 text-xs text-muted">
+        <input
+          type="checkbox"
+          checked={consentToAiProcessing}
+          onChange={(event) => setConsentToAiProcessing(event.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          Zgadzam się wysłać dane potrzebne do wybranej funkcji: przy generowaniu pytań ograniczony, lokalnie
+          pseudonimizowany wyciąg z profilu; przy ocenie treść pytania i mojej odpowiedzi. W trybie chmurowym
+          przetwarza je Azure OpenAI. Odpowiedź nie jest automatycznie anonimizowana — usunę z niej dane osobowe,
+          informacje poufne i dane osób trzecich.
+        </span>
+      </label>
 
       {error && (
         <div className="flex items-center gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs font-medium text-rose-700 dark:text-rose-400">
@@ -311,14 +307,14 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
 
         <div className="flex items-center justify-between pt-2">
           <span className="text-xs text-muted">
-            Generuj pytania w oparciu o Twoje doświadczenie z Master Vault.
+            Wygenerowanie pytań wyśle ograniczony kontekst zawodowy z profilu do dostawcy AI.
           </span>
           <Button
             type="button"
             variant="secondary"
             size="sm"
             onClick={handleGenerateQuestions}
-            disabled={isGeneratingQuestions || usage.aiUses <= 0}
+            disabled={isGeneratingQuestions || usage.aiUses <= 0 || !consentToAiProcessing}
             className="flex items-center gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${isGeneratingQuestions ? 'animate-spin' : ''}`} />
@@ -399,7 +395,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                       category: 'competency',
                       question: customQuestionInput.trim(),
                       recruiterIntent: 'Pytanie zdefiniowane przez kandydata.',
-                      suggestedStarTips: 'Zastosuj pełną strukturę STAR z twardymi metrykami.',
+                      suggestedStarTips: 'Opisz faktyczne działania i rezultat. Metryka liczbowa jest opcjonalna.',
                     };
                     setQuestions((prev) => [customQ, ...prev]);
                     setSelectedQuestion(customQ);
@@ -482,7 +478,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
             rows={7}
             value={candidateAnswer}
             onChange={(e) => setCandidateAnswer(e.target.value)}
-            placeholder="Wpisz lub podyktuj swoją odpowiedź... Pamiętaj: Sytuacja (maks. 2-3 zdania) -> Zadanie/Wyzwanie -> Konkretne działania [Ja] -> Wynik liczbowy (np. skróciłem czas o 40%, uratowałem 150k zł budżetu)."
+            placeholder="Wpisz lub podyktuj odpowiedź: sytuacja, Twoje zadanie, faktyczne działania i rzeczywisty skutek. Nie dodawaj danych ani wyników, których nie możesz potwierdzić."
             className="w-full rounded-2xl border border-line bg-elevated p-4 text-sm text-ink placeholder:text-subtle focus:border-brand-500 focus:outline-none leading-relaxed font-sans"
           />
 
@@ -492,18 +488,13 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 Słów: <strong className="text-ink">{wordCount}</strong>
               </span>
               <span>
-                Szacowany czas mowy: <strong className="text-ink">{estimatedSpeakingTime} s</strong>{' '}
-                {estimatedSpeakingTime > 0 && estimatedSpeakingTime <= 120 && (
-                  <span className="text-emerald-600 font-semibold">(Optymalny)</span>
-                )}
-                {estimatedSpeakingTime > 120 && (
-                  <span className="text-amber-600 font-semibold">(Uwaga: za długo, powyżej 2 min)</span>
-                )}
+                Szacowany czas mowy: <strong className="text-ink">około {estimatedSpeakingTime} s</strong>
+                <span className="text-subtle"> (orientacyjnie; tempo mówienia jest różne)</span>
               </span>
             </div>
             <div className="flex items-center gap-1.5 text-muted">
               <ShieldCheck className="h-3.5 w-3.5 text-brand-fg" />
-              <span>Zero PII: dane osobowe są usuwane przed analizą AI</span>
+              <span>Odpowiedź jest wysyłana do skonfigurowanego dostawcy AI. Usuń z niej nazwiska, kontakty i poufne dane.</span>
             </div>
           </div>
         </div>
@@ -516,7 +507,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
               variant="primary"
               size="md"
               onClick={handleEvaluateAnswer}
-              disabled={isEvaluating || !candidateAnswer.trim() || usage.aiUses <= 0}
+              disabled={isEvaluating || !candidateAnswer.trim() || usage.aiUses <= 0 || !consentToAiProcessing}
               className="flex items-center gap-2"
             >
               <Sparkles className={`h-4 w-4 ${isEvaluating ? 'animate-spin' : ''}`} />
@@ -541,7 +532,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 </h4>
               </div>
               <p className="mt-1 text-xs text-muted">
-                Wielowymiarowa analiza siły perswazji i obecności twardych metryk liczbowych.
+                Orientacyjna ocena wygenerowana przez AI. Nie jest obiektywnym pomiarem ani prognozą decyzji rekrutacyjnej.
               </p>
             </div>
 
@@ -668,12 +659,14 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-brand-fg" />
                   <h5 className="font-sans text-xs font-bold text-ink uppercase tracking-wider">
-                    Wzorcowa, ulepszona odpowiedź STAR (oparta na Twoich faktach):
+                    Szkic redakcyjny AI — sprawdź każde twierdzenie:
                   </h5>
                 </div>
                 <button
                   type="button"
                   onClick={handleCopyExemplary}
+                  disabled={!confirmedDraftFacts}
+                  title={!confirmedDraftFacts ? 'Najpierw sprawdź wszystkie fakty w szkicu.' : 'Kopiuj sprawdzony szkic'}
                   className="flex items-center gap-1.5 text-xs font-semibold text-brand-fg hover:underline bg-surface px-2.5 py-1 rounded-lg border border-line"
                 >
                   {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
@@ -685,9 +678,19 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 {evaluation.exemplaryResponse}
               </div>
 
+              <label className="flex items-start gap-2 text-[11px] text-muted">
+                <input
+                  type="checkbox"
+                  checked={confirmedDraftFacts}
+                  onChange={(event) => setConfirmedDraftFacts(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>Sprawdziłem, że szkic nie dodaje faktów, liczb ani osiągnięć, których nie podałem.</span>
+              </label>
+
               <p className="text-[11px] text-muted flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5 text-brand-fg shrink-0" />
-                Wersja wzorcowa łączy fakty z Twojej wypowiedzi i profilu z rygorem formuły STAR i wzorem Google X-Y-Z.
+                To propozycja sformułowania, nie zweryfikowany zapis faktów. Usuń elementy, których nie możesz potwierdzić.
               </p>
             </div>
           )}

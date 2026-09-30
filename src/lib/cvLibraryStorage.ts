@@ -9,7 +9,7 @@
  */
 
 import { MasterVault, TailoredResume } from '../types';
-import { StorageKeys, readJson, writeJson } from './storage';
+import { StorageKeys, cvLibraryKeyFor, readJson, removeRaw, writeJson, writeJsonDurably } from './storage';
 
 export interface SavedCVDocument {
   /** Wersja schematu danych encji (liczba całkowita, np. 1). */
@@ -46,14 +46,52 @@ export const PRESET_TAGS = [
   'Wysłane',
 ] as const;
 
-export function getSavedCVs(): SavedCVDocument[] {
+export function getSavedCVs(profileId: string): SavedCVDocument[] {
+  return readJson<SavedCVDocument[]>(cvLibraryKeyFor(profileId), []);
+}
+
+/** Stare dokumenty pozostają nieprzypisane do czasu świadomego działania. */
+export function getUnassignedLegacyCVs(): SavedCVDocument[] {
   return readJson<SavedCVDocument[]>(StorageKeys.cvLibrary, []);
 }
 
+/** Przenosi starą wspólną bibliotekę dopiero po potwierdzeniu przez użytkownika. */
+export function claimLegacyCVsFor(profileId: string): number {
+  if (!profileId) return 0;
+  const legacy = getUnassignedLegacyCVs();
+  if (legacy.length === 0) return 0;
+  const current = getSavedCVs(profileId);
+  const currentIds = new Set(current.map((doc) => doc.id));
+  writeJson(cvLibraryKeyFor(profileId), [...current, ...legacy.filter((doc) => !currentIds.has(doc.id))]);
+  removeRaw(StorageKeys.cvLibrary);
+  return legacy.length;
+}
+
+/** Jednorazowe przeniesienie danych z anonimowego profilu do właśnie utworzonego profilu. */
+export async function migrateAnonymousCVLibrary(
+  fromProfileId: string,
+  toProfileId: string,
+  removeSource = true,
+): Promise<boolean> {
+  const key = cvLibraryKeyFor(fromProfileId);
+  const anonymous = readJson<SavedCVDocument[]>(key, []);
+  if (anonymous.length === 0) return true;
+  const existing = getSavedCVs(toProfileId);
+  const ids = new Set(existing.map((doc) => doc.id));
+  const saved = await writeJsonDurably(
+    cvLibraryKeyFor(toProfileId),
+    [...existing, ...anonymous.filter((doc) => !ids.has(doc.id))],
+  );
+  if (!saved) return false;
+  if (removeSource) removeRaw(key);
+  return true;
+}
+
 export function saveCV(
+  profileId: string,
   data: Omit<SavedCVDocument, 'id' | 'createdAt' | 'updatedAt' | 'downloadCount'>
 ): SavedCVDocument {
-  const all = getSavedCVs();
+  const all = getSavedCVs(profileId);
   const now = new Date().toISOString();
   const newDoc: SavedCVDocument = {
     ...data,
@@ -66,12 +104,12 @@ export function saveCV(
   };
 
   all.unshift(newDoc);
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
   return newDoc;
 }
 
-export function updateCV(id: string, updates: Partial<SavedCVDocument>): SavedCVDocument | null {
-  const all = getSavedCVs();
+export function updateCV(profileId: string, id: string, updates: Partial<SavedCVDocument>): SavedCVDocument | null {
+  const all = getSavedCVs(profileId);
   const index = all.findIndex((doc) => doc.id === id);
   if (index === -1) return null;
 
@@ -83,12 +121,12 @@ export function updateCV(id: string, updates: Partial<SavedCVDocument>): SavedCV
   };
 
   all[index] = updated;
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
   return updated;
 }
 
-export function duplicateCV(id: string, customTitle?: string): SavedCVDocument | null {
-  const all = getSavedCVs();
+export function duplicateCV(profileId: string, id: string, customTitle?: string): SavedCVDocument | null {
+  const all = getSavedCVs(profileId);
   const source = all.find((doc) => doc.id === id);
   if (!source) return null;
 
@@ -104,34 +142,34 @@ export function duplicateCV(id: string, customTitle?: string): SavedCVDocument |
   };
 
   all.unshift(cloned);
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
   return cloned;
 }
 
-export function deleteCV(id: string): boolean {
-  const all = getSavedCVs();
+export function deleteCV(profileId: string, id: string): boolean {
+  const all = getSavedCVs(profileId);
   const filtered = all.filter((doc) => doc.id !== id);
   if (filtered.length === all.length) return false;
 
-  writeJson(StorageKeys.cvLibrary, filtered);
+  writeJson(cvLibraryKeyFor(profileId), filtered);
   return true;
 }
 
-export function recordDownload(id: string): void {
-  const all = getSavedCVs();
+export function recordDownload(profileId: string, id: string): void {
+  const all = getSavedCVs(profileId);
   const index = all.findIndex((doc) => doc.id === id);
   if (index === -1) return;
 
   all[index].downloadCount = (all[index].downloadCount || 0) + 1;
   all[index].lastExportedAt = new Date().toISOString();
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
 }
 
-export function addTag(id: string, tag: string): SavedCVDocument | null {
+export function addTag(profileId: string, id: string, tag: string): SavedCVDocument | null {
   const trimmed = tag.trim();
   if (!trimmed) return null;
 
-  const all = getSavedCVs();
+  const all = getSavedCVs(profileId);
   const index = all.findIndex((doc) => doc.id === id);
   if (index === -1) return null;
 
@@ -140,18 +178,18 @@ export function addTag(id: string, tag: string): SavedCVDocument | null {
   all[index].tags = Array.from(currentTags);
   all[index].updatedAt = new Date().toISOString();
 
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
   return all[index];
 }
 
-export function removeTag(id: string, tag: string): SavedCVDocument | null {
-  const all = getSavedCVs();
+export function removeTag(profileId: string, id: string, tag: string): SavedCVDocument | null {
+  const all = getSavedCVs(profileId);
   const index = all.findIndex((doc) => doc.id === id);
   if (index === -1) return null;
 
   all[index].tags = (all[index].tags || []).filter((t) => t !== tag);
   all[index].updatedAt = new Date().toISOString();
 
-  writeJson(StorageKeys.cvLibrary, all);
+  writeJson(cvLibraryKeyFor(profileId), all);
   return all[index];
 }

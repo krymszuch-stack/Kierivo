@@ -71,7 +71,8 @@ describe('modelQuotaFeedback - limity i feedback na operacje modelowe', () => {
       expect(notice.title).toContain('Limit analiz AI na dziś wyczerpany');
       expect(notice.message).toContain('Kierivo');
       expect(notice.fallbackActionName).toBe('Analizuj silnikiem regułowym');
-      expect(notice.fallbackDescription).toContain('scoring ATS');
+      expect(notice.fallbackDescription).toContain('reguł Kierivo');
+      expect(notice.fallbackDescription).not.toContain('w 100% bez utraty danych');
     });
 
     it('zwraca jasne komunikaty alternatywne dla trenera STAR', () => {

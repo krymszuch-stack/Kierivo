@@ -6,8 +6,8 @@ Sprawdza i raportuje obie warstwy:
   (pdfminer.six). Musi zawierać pigułki (np. ``SQL``) i NIE może zawierać
   sementyki z /ActualText (dowód: zero podwójnego/niewidzialnego tekstu).
 * WARSTWA SEMANTYCZNA (parser ATS): /ActualText w drzewie struktury,
-  JSON-LD Schema.org/Person w /Metadata (XMP), załącznik mastervault.json,
-  słownik /Info.
+  JSON-LD Schema.org/Person w /Metadata (XMP) i słownik /Info. Starsze PDF-y
+  mogą zawierać załącznik mastervault.json; nowe eksporty go nie osadzają.
 
 Ponadto kontrola anty-trikowa: brak trybu renderowania 3 (niewidzialny tekst)
 w strumieniach treści.
@@ -179,9 +179,9 @@ def verify_pdf(path: str, *, strict: bool = True) -> int:
     # --- warstwa 2c: załącznik
     emb = embedded_json(pdf)
     if emb:
-        print("\n[OK] załącznik mastervault.json (round-trip MasterVault)")
+        print("\n[INFO] starszy PDF zawiera załącznik mastervault.json")
     else:
-        notes.append("brak załącznika mastervault.json")
+        print("\n[OK] brak załącznika pełnego MasterVault")
 
     # --- Info dict
     info = pdf.trailer.get("/Info")

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MasterVault } from '../../types';
 import { verifyCvWithTripleLoop } from '../services/cvVerifier.service';
+import { generateWithUsage } from '../geminiClient';
 
 const sentPrompts: string[] = [];
 
@@ -31,7 +32,7 @@ vi.mock('../geminiClient', async () => {
             achievementMetricRatePct: 80,
           },
           logicComplianceLoop: {
-            complianceScore: 90,
+            consistencyScore: 90,
             chronologyValid: true,
             timelineAnomalies: [],
             logicalInconsistencies: [],
@@ -131,5 +132,70 @@ describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
     expect(sent).not.toContain('michal.kowalczyk@example.pl');
     expect(sent).not.toContain('+48 601 234 567');
     expect(sent).not.toContain('data:image');
+  });
+
+  it('oznacza brak oferty i stanowiska zamiast wstawiać fikcyjne wartości', async () => {
+    await verifyCvWithTripleLoop({ vault: { personalInfo: {} } as MasterVault });
+
+    expect(sentPrompts).toHaveLength(1);
+    expect(sentPrompts[0]).toContain('"targetRole": "nie podano"');
+    expect(sentPrompts[0]).toContain('"targetCompany": "nie podano"');
+    expect(sentPrompts[0]).toContain('Nie podano treści ogłoszenia.');
+    expect(sentPrompts[0]).not.toContain('Firma Rekrutująca');
+  });
+
+  it('zachowuje prawidłowe zera i wyprowadza werdykt z wyniku kanonicznego', async () => {
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    const response = {
+      ...baseline,
+      overallScore: 0,
+      verdict: 'READY_TO_APPLY',
+      atsLoop: { ...baseline.atsLoop, atsScore: 0 },
+      recruiterLoop: { ...baseline.recruiterLoop, recruiterScore: 0, achievementMetricRatePct: 0 },
+      logicComplianceLoop: { ...baseline.logicComplianceLoop, consistencyScore: 0 },
+    };
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({ text: JSON.stringify(response) } as never);
+
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+
+    expect(report.overallScore).toBe(0);
+    expect(report.atsLoop.atsScore).toBe(0);
+    expect(report.recruiterLoop.recruiterScore).toBe(0);
+    expect(report.recruiterLoop.achievementMetricRatePct).toBe(100);
+    expect(report.logicComplianceLoop.consistencyScore).toBe(0);
+    expect(report.logicComplianceLoop.rodoCompliant).toBeNull();
+    expect(report.verdict).toBe('CRITICAL_FIXES_NEEDED');
+  });
+
+  it('odrzuca brak chronologii i nigdy nie uznaje RODO na podstawie odpowiedzi modelu', async () => {
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    const incomplete = { ...baseline, logicComplianceLoop: { ...baseline.logicComplianceLoop } };
+    delete (incomplete.logicComplianceLoop as Partial<typeof incomplete.logicComplianceLoop>).chronologyValid;
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({ text: JSON.stringify(incomplete) } as never);
+
+    await expect(verifyCvWithTripleLoop({ vault: sampleVault as MasterVault }))
+      .rejects.toMatchObject({ status: 502 });
+
+    const claimsRodoCompliance = {
+      ...baseline,
+      logicComplianceLoop: { ...baseline.logicComplianceLoop, rodoCompliant: true },
+    };
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({ text: JSON.stringify(claimsRodoCompliance) } as never);
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    expect(report.logicComplianceLoop.rodoCompliant).toBeNull();
+  });
+
+  it('wylicza udział punktów z metryką z CV i pokazuje brak danych bez punktów', async () => {
+    const withTwoPoints = structuredClone(sampleVault) as MasterVault;
+    withTwoPoints.history![0].highlights.push({
+      id: 'hl2', text: 'Współpraca przy naprawach.', action: '', target: '', tool: '', metric: '', keywords: [],
+    });
+    const measured = await verifyCvWithTripleLoop({ vault: withTwoPoints });
+    expect(measured.recruiterLoop.achievementMetricRatePct).toBe(50);
+
+    const withoutPoints = structuredClone(sampleVault) as MasterVault;
+    withoutPoints.history![0].highlights = [];
+    const empty = await verifyCvWithTripleLoop({ vault: withoutPoints });
+    expect(empty.recruiterLoop.achievementMetricRatePct).toBeNull();
   });
 });

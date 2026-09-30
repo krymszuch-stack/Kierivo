@@ -149,9 +149,6 @@ export function generatePlainTextCvExport(
     lines.push(`Narzędzia: ${vault.skillsMatrix.toolsAndTech.join(', ')}`);
     lines.push(`Miękkie: ${vault.skillsMatrix.softSkills.join(', ')}\n`);
 
-    lines.push(`--- KLAUZULA RODO ---`);
-    lines.push(`Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji.`);
-
     return lines.join('\n');
   } catch (error) {
     // Vault bez personalInfo/history wywraca tu dostępem do właściwości pustki;

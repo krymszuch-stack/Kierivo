@@ -10,10 +10,12 @@ import {
   Award,
   RefreshCw,
 } from 'lucide-react';
-import { CoverLetter, MasterVault, JobOffer } from '../../types';
+import { CoverLetter, MasterVault, JobOffer, CvExportEvent } from '../../types';
 import { generateAntiTemplateCoverLetter } from '../../lib/coverLetterEngine';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { showToast } from '../../store/useToastStore';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
 
 export interface CoverLetterViewProps {
   coverLetter: CoverLetter;
@@ -22,7 +24,7 @@ export interface CoverLetterViewProps {
   /** Tryb tylko do odczytu dla historycznych snapshotów — blokuje re-generację */
   isReadOnly?: boolean;
   /** List wyszedł z aplikacji — patrz `DocumentRendererProps`. */
-  onExported?: () => void;
+  onExported?: (event: CvExportEvent) => void;
   className?: string;
 }
 
@@ -53,16 +55,28 @@ export const CoverLetterView: React.FC<CoverLetterViewProps> = ({
     setVariantIndex((prev) => (prev + 1) % 8);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(coverLetter.fullText);
-    onExported?.();
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copyTextAndNotifySuccess(coverLetter.fullText, () => onExported?.({
+        coverLetter,
+        document: { kind: 'cover-letter', format: 'plain-text', content: coverLetter.fullText },
+      }));
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      showToast('Nie udało się skopiować listu', {
+        message: 'Przeglądarka nie zapisała tekstu w schowku. Spróbuj ponownie.',
+        variant: 'error',
+      });
+    }
   };
 
   const handlePrint = () => {
     window.print();
-    onExported?.();
+    onExported?.({
+      coverLetter,
+      document: { kind: 'cover-letter', format: 'plain-text', content: coverLetter.fullText },
+    });
   };
 
   return (

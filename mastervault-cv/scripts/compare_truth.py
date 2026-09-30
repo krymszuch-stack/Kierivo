@@ -95,11 +95,11 @@ def compare(pdf_path: str, truth_path: str) -> int:
     print(f"  PRAWDA: {truth_path}")
     print()
 
-    # --- 1. Embedded mastervault.json
+    # --- 1. Starsze pliki mogły zawierać pełny rekord źródłowy.
     emb = get_embedded_json(pdf)
     if emb:
-        print("[OK] Embedded mastervault.json — round-trip OK")
-        # Porównaj kluczowe pola
+        print("[INFO] Starszy PDF zawiera załączony mastervault.json")
+        # Porównaj kluczowe pola tylko wtedy, gdy rekord historyczny istnieje.
         for field in ["name", "title", "contact", "skills", "experience", "education"]:
             truth_val = truth.get(field)
             emb_val = emb.get(field)
@@ -117,7 +117,7 @@ def compare(pdf_path: str, truth_path: str) -> int:
                 if truth_roles != emb_roles:
                     errors.append(f"  EMBEDDED roles mismatch: {truth_roles} vs {emb_roles}")
     else:
-        errors.append("  BRAK embedded mastervault.json")
+        print("[OK] Brak załącznika pełnego MasterVault w nowym eksporcie")
 
     # --- 2. JSON-LD w XMP
     jl = get_jsonld_xmp(pdf)

@@ -60,7 +60,10 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     // (1) Użycie EmptyStateScoreRing i ResultScoreRing
     expect(source).toContain('EmptyStateScoreRing');
     expect(source).toContain('ResultScoreRing');
-    expect(source).toContain('message="Brak danych"');
+    expect(source).toContain("message={isEmptyProfile");
+    expect(source).toContain("'Dodaj treść oferty'");
+    expect(source).toContain("const isScorable = canonical.state === 'SCORABLE'");
+    expect(source).toContain('{isScorable && <>');
 
     // (2) Cztery kafle w stanie pustym mają neutralny kolor tekstu (text-ink-muted), nie text-amber-500
     expect(source).toContain("if (isEmpty) return 'text-ink-muted';");
@@ -71,16 +74,16 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     expect(source).toContain('Dodaj doświadczenie, umiejętności lub zaimportuj CV');
 
     // (4) Mediana symulatora schowana w stanie pustym
-    expect(source).toContain('!isEmptyProfile &&');
+    expect(source).toContain('isScorable && (');
     expect(source).toContain('Mediana symulatora:');
     expect(source).toContain('odniesienie z 3 silników heurystycznych');
 
-    // (5) Wizualna reprezentacja wag (proporcje 40/25/20/15 i paski)
-    expect(source).toContain('sm:flex-[40_1_0%]');
-    expect(source).toContain('sm:flex-[25_1_0%]');
-    expect(source).toContain('sm:flex-[20_1_0%]');
-    expect(source).toContain('sm:flex-[15_1_0%]');
-    expect(source).toContain('style={{ width: `${pillar.weight}%` }}');
+    // (5) Widok pokazuje wagi efektywne, pomijając wymiary bez danych.
+    expect(source).toContain('canonical.effectiveWeights.skills * 100');
+    expect(source).toContain('style={{ flex: `${pillar.weight} 1 0%` }}');
+    expect(source).toContain('style={{ width: `${isScorable ? pillar.weight : 0}%` }}');
+    expect(source).toContain("pillar.value === null ? 'brak danych'");
+    expect(source).toContain('Waga w tym wyniku:');
 
     // (6) Nowa etykieta 'Dopasowanie profilu' z tooltipem metodologii
     expect(source).toContain('Dopasowanie profilu');

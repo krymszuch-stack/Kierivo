@@ -67,7 +67,7 @@ describe('STARStory Engine', () => {
   };
 
   describe('Model danych STARStory & Ekstrakcja z MasterVault', () => {
-    it('generuje kompletne obiekty STARStory ze wszystkimi wymaganymi polami', () => {
+    it('buduje szkice STAR ze źródłem i nie dopisuje brakujących elementów', () => {
       const vault = createMockVault();
       const stories = buildStarStoriesFromVault(vault);
 
@@ -76,14 +76,33 @@ describe('STARStory Engine', () => {
       const story = stories[0];
       expect(story.id).toBeTruthy();
       expect(story.title).toBeTruthy();
-      expect(story.situation).toBeTruthy();
-      expect(story.task).toBeTruthy();
-      expect(story.action).toBeTruthy();
-      expect(story.result).toBeTruthy();
+      expect(story.situation).toBe('');
+      expect(story.task).toBe('');
+      expect(story.action).toBe('');
+      expect(story.result).toBe('');
+      expect(story.sourceEvidence).toContain('Optymalizacja zapytań PostgreSQL');
+      expect(story.sourceEvidence).not.toMatch(/projekt zakończył się sukcesem|zidentyfikowano potrzebę|bezpieczne wdrożenie/i);
       expect(Array.isArray(story.metrics)).toBe(true);
       expect(Array.isArray(story.tags)).toBe(true);
       expect(story.projectId).toBeTruthy();
       expect(story.durationSec).toBe(90);
+    });
+
+    it('nie zamienia samego opisu projektu ani użytej technologii w twierdzenie o wdrożeniu', () => {
+      const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
+      vault.projects = [{
+        id: 'project-description-only',
+        name: 'Prototyp panelu',
+        role: 'Autor projektu',
+        description: 'Przygotowanie makiety i analiza potrzeb użytkowników.',
+        techStack: ['React'],
+      }];
+
+      const [story] = buildStarStoriesFromVault(vault);
+      expect(story.sourceEvidence).toContain('Przygotowanie makiety');
+      expect(story.action).toBe('');
+      expect(story.result).toBe('');
+      expect(story.sourceEvidence).not.toMatch(/wdrożono|spełnił wszystkie założenia|sukcesem/i);
     });
   });
 

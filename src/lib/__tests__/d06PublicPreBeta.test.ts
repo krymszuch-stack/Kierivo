@@ -28,7 +28,7 @@ describe('D06 — publiczne oznaczenie wersji przedpremierowej', () => {
     expect(shell).not.toContain('PUBLIC_PREBETA_LABEL');
     expect(home).not.toContain('PUBLIC_PREBETA_LABEL');
     expect(home).toContain('Trzy ruchy i masz kontrolę nad swoim CV.');
-    expect(sidebar).toContain('Doradca lokalny');
+    expect(sidebar).toContain('Doradca zaufany');
     expect(sidebar).not.toContain('badge="LOCAL"');
     expect(sidebar).not.toContain('badge="GOTOWE"');
   });

@@ -6,7 +6,7 @@
  * ukończenia materiałów treningowych.
  */
 
-import { StorageKeys, readJson, writeJson } from './storage';
+import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
 
 export type CockpitSectionId =
   | 'pitch'
@@ -73,11 +73,11 @@ export function getNegotiationTrapScripts(): NegotiationTrapScript[] {
         {
           title: 'Wariant B: Szerokie widełki rynkowe z uzasadnieniem',
           badge: 'Asertywny',
-          script: '„Na bazie moich dotychczasowych wdrożeń, udokumentowanych metryk i obecnego poziomu rynkowego dla ról o tym profilu, celuję w przedział X - Y PLN (B2B/UoP). Dokładna kwota w tych widełkach zależy od stopnia samodzielności i wyzwań architektonicznych.”',
-          rationale: 'Pokazuje pewność siebie i natychmiast wiąże wynagrodzenie z mierzalnymi wynikami.',
+          script: '„Na podstawie [źródło sprawdzonych widełek] oraz zakresu tej roli celuję w [kwota lub przedział] [brutto na UoP / netto + VAT na B2B]. Ostateczna kwota zależy od pełnego zakresu odpowiedzialności i pakietu.”',
+          rationale: 'Pomaga podać własne, sprawdzone oczekiwania. Uzupełnij pola przed użyciem i nie twierdź, że masz metryki lub doświadczenie, których nie możesz potwierdzić.',
         },
       ],
-      proTip: 'Nigdy nie tłumacz się ze swoich stawek. Wymień jedną kluczową metrykę biznesową tuż po podaniu widełek.',
+      proTip: 'Podaj tylko stawkę, którą rzeczywiście akceptujesz. Metrykę dodaj wyłącznie wtedy, gdy masz potwierdzony wynik i możesz go wyjaśnić.',
     },
     {
       id: 'trap_leaving',
@@ -86,19 +86,19 @@ export function getNegotiationTrapScripts(): NegotiationTrapScript[] {
       dangerReason: 'Nawet uzasadniona krytyka obecnego pracodawcy może zostać odebrana jako brak lojalności lub trudny charakter.',
       variants: [
         {
-          title: 'Wariant A: Poszukiwanie nowej skali i wyzwań technologicznych',
+          title: 'Wariant A: Rzeczywisty powód zmiany',
           badge: 'Pro-rozwojowy',
-          script: '„W mojej obecnej firmie zrealizowałem z sukcesem kluczowe cele — ustabilizowaliśmy system i wdrożyliśmy założoną architekturę. Czuję, że osiągnąłem sufit organizacyjny i szukam środowiska o większej skali wyzwań, gdzie moje doświadczenie przyniesie jeszcze większą dźwignię.”',
-          rationale: 'Zamyka etap sukcesem i pozycjonuje kandydata jako osobę zorientowaną na rezultaty.',
+          script: '„Szukam zmiany, ponieważ [prawdziwy powód]. W obecnej lub ostatniej roli [konkretny fakt, który możesz potwierdzić]. Teraz chcę [rzeczywisty cel związany z tą ofertą].”',
+          rationale: 'Pomaga krótko i rzeczowo wyjaśnić zmianę bez dopisywania osiągnięć ani krytykowania poprzedniego pracodawcy.',
         },
         {
-          title: 'Wariant B: Zmiana wektora specjalizacji',
+          title: 'Wariant B: Planowany kierunek rozwoju',
           badge: 'Ekspercki',
-          script: '„W ostatnich projektach skupiałem się mocno na [obszar X], natomiast mój długofalowy cel to pogłębienie ekspertyzy w [obszar Y z oferty]. Państwa projekt idealnie wpisuje się w ten kierunek.”',
-          rationale: 'Koncentruje narrację na dopasowaniu do konkretnej oferty, a nie na ucieczce z poprzedniego miejsca.',
+          script: '„Do tej pory zajmowałem się [faktyczny obszar]. Chcę rozwijać się w kierunku [rzeczywisty cel]. W tej ofercie zainteresowało mnie [konkretny element ogłoszenia].”',
+          rationale: 'Łączy doświadczenie i plan z konkretnym elementem oferty, jeśli rzeczywiście jest to Twój powód aplikacji.',
         },
       ],
-      proTip: 'Zachowaj proporcję: 20% czasu na szacunek dla poprzedniego miejsca, 80% na entuzjazm wobec nowej roli.',
+      proTip: 'Odpowiedz krótko i zgodnie z prawdą. Nie musisz podawać proporcji ani krytykować poprzedniego pracodawcy.',
     },
     {
       id: 'trap_weakness',
@@ -108,12 +108,12 @@ export function getNegotiationTrapScripts(): NegotiationTrapScript[] {
       variants: [
         {
           title: 'Wariant A: Rzeczywista strefa rozwoju + Aktywny system zabezpieczeń',
-          badge: 'Dojrzały inżyniersko',
-          script: '„Dawniej miałem tendencję do zbyt głębokiej optymalizacji kodu przed weryfikacją na produkcji (premature optimization). Zauważyłem to podczas projektu X. Aby temu zapobiegać, wdrożyłem żelazną zasadę: najpierw pomiar metryką i działający MVP, a dopiero po zebraniu danych profilera — dedykowana optymalizacja.”',
-          rationale: 'Ukazuje wysoką autorefleksję i inżynierskie podejście oparte na procedurach.',
+          badge: 'Konkretna autorefleksja',
+          script: '„Obszarem, nad którym pracuję, jest [rzeczywista słabość lub błąd]. Zauważyłem to, gdy [konkretny przykład]. Od tego czasu [działanie, które faktycznie stosujesz]; zauważyłem, że [rzeczywisty skutek albo informacja, że jeszcze go oceniasz].”',
+          rationale: 'Pozwala opisać prawdziwy przykład i sposób uczenia się. Wybierz doświadczenie, o którym możesz swobodnie opowiedzieć.',
         },
       ],
-      proTip: 'Prawdziwa siła tkwi w schemacie: Fakt -> Wnioski -> Zautomatyzowany mechanizm obronny.',
+      proTip: 'Prawdziwy przykład jest ważniejszy od idealnie brzmiącego szablonu. Nie przypisuj sobie zachowań ani skutków, których nie było.',
     },
   ];
 }
@@ -129,8 +129,8 @@ export function getRedFlagQuestions(): RedFlagCategoryQuestion[] {
       categoryLabel: 'Dług Technologiczny & Architektura',
       question: '„Jaki procent czasu w sprincie / kwartale zespół realnie przeznacza na refactoring i spłatę długu technicznego?”',
       intentExplanation: 'Pozwala zweryfikować, czy firma traktuje jakość kodu systemowo, czy tylko gasi pożary pod presją feature’ów.',
-      greenFlagAnswer: '„Mamy stały bufor 15-20% na dług techniczny w każdym sprincie oraz dedykowany backlog inżynierski.”',
-      redFlagWarning: '„Nie mamy na to dedykowanego czasu, naprawiamy jak coś padnie” — zwiastuje frustrację i pracę po godzinach.',
+      greenFlagAnswer: 'Zespół potrafi opisać, jak zgłasza, ocenia i planuje prace nad długiem technicznym; właściwy proces zależy od produktu i ryzyka.',
+      redFlagWarning: 'Brak jakiegokolwiek sposobu zgłaszania i omawiania znanych problemów może utrudniać pracę; dopytaj o przykład i wpływ na tę rolę.',
     },
     {
       id: 'rf_deploy_frequency',
@@ -138,8 +138,8 @@ export function getRedFlagQuestions(): RedFlagCategoryQuestion[] {
       categoryLabel: 'Proces Wdrożeń & Autonomia',
       question: '„Ile średnio czasu upływa od zmergowania Pull Requesta do momentu pojawienia się zmian na produkcji?”',
       intentExplanation: 'Testuje dojrzałość CI/CD, kulturę testów automatycznych i poziom biurokracji wdrożeniowej.',
-      greenFlagAnswer: '„Wdrażamy automatycznie po przejściu pipeline CI (kilka minut do kilku godzin), z mechanizmem feature flags i canaries.”',
-      redFlagWarning: '„Mamy wdrożenia raz w miesiącu w weekend, wymagające akceptacji 4 komitetów” — powolny proces i wysokie ryzyko awarii.',
+      greenFlagAnswer: 'Rozmówca jasno opisuje testy, akceptacje i sposób wycofania zmian; częstotliwość wdrożeń zależy od produktu i wymogów bezpieczeństwa.',
+      redFlagWarning: 'Niejasny proces albo brak kontroli zmian może utrudniać pracę; dopytaj o przyczynę, konsekwencje i to, jak dotyczy tej roli.',
     },
     {
       id: 'rf_growth_reason',
@@ -147,8 +147,8 @@ export function getRedFlagQuestions(): RedFlagCategoryQuestion[] {
       categoryLabel: 'Powód Rekrutacji & Stabilność',
       question: '„Z jakiego powodu otworzyła się ta rekrutacja — czy to rozbudowa zespołu pod nowy strumień, czy zastępstwo?”',
       intentExplanation: 'Odkrywa dynamikę zespołu, potencjalną rotację oraz to, czy rola ma jasno zdefiniowane cele.',
-      greenFlagAnswer: '„Pozyskaliśmy nowy rynek/klienta i skalujemy zespół o 2 osoby z konkretnym roadmapem na 12 miesięcy.”',
-      redFlagWarning: 'Unikanie odpowiedzi lub informacja, że poprzednie 2 osoby zrezygnowały po okresie próbnym.',
+      greenFlagAnswer: 'Rekruter potrafi wyjaśnić, czy chodzi o rozwój zespołu, czy zastępstwo, oraz jakie zadania czekają na nową osobę.',
+      redFlagWarning: 'Unikanie odpowiedzi lub sprzeczne informacje warto doprecyzować; samo zastępstwo nie przesądza o problemie w zespole.',
     },
     {
       id: 'rf_team_conflict',
@@ -165,8 +165,8 @@ export function getRedFlagQuestions(): RedFlagCategoryQuestion[] {
 /**
  * Wczytuje stan postępów kokpitu z LocalStorage
  */
-export function loadCockpitProgress(): CockpitProgressState {
-  const parsed = readJson<Partial<CockpitProgressState> | null>(StorageKeys.cockpitProgress, null);
+export function loadCockpitProgress(profileId: string): CockpitProgressState {
+  const parsed = readJson<Partial<CockpitProgressState> | null>(profileDataKeyFor(StorageKeys.cockpitProgress, profileId), null);
   if (!parsed) return { ...DEFAULT_PROGRESS };
   return {
     completedLessons: Array.isArray(parsed.completedLessons) ? parsed.completedLessons : [],
@@ -181,13 +181,13 @@ export function loadCockpitProgress(): CockpitProgressState {
  * `writeJson` połyka wyjątki (tryb prywatny, przepełniony limit), więc utrata
  * zapisu nie wywraca interfejsu — to samo robił tu wcześniejszy własny try/catch.
  */
-export function saveCockpitProgress(progress: CockpitProgressState): void {
-  writeJson(StorageKeys.cockpitProgress, progress);
+export function saveCockpitProgress(profileId: string, progress: CockpitProgressState): void {
+  writeJson(profileDataKeyFor(StorageKeys.cockpitProgress, profileId), progress);
 }
 
 /** Oznacza materiał treningowy jako ukończony albo przywraca go do pracy. */
-export function toggleLessonCompletion(lessonId: string): CockpitProgressState {
-  const current = loadCockpitProgress();
+export function toggleLessonCompletion(profileId: string, lessonId: string): CockpitProgressState {
+  const current = loadCockpitProgress(profileId);
   const exists = current.completedLessons.includes(lessonId);
   const updatedLessons = exists
     ? current.completedLessons.filter((id) => id !== lessonId)
@@ -199,6 +199,6 @@ export function toggleLessonCompletion(lessonId: string): CockpitProgressState {
     lastPracticeDate: new Date().toISOString(),
   };
 
-  saveCockpitProgress(updated);
+  saveCockpitProgress(profileId, updated);
   return updated;
 }

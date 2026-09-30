@@ -28,6 +28,8 @@ import { LiveTrackerView } from '../../components/loop/LiveTrackerView';
 import { PostCallDebriefView } from '../../components/loop/PostCallDebriefView';
 import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Chip';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 export interface InterviewLoopModalProps {
   isOpen: boolean;
@@ -44,16 +46,19 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
   vault,
   jobOffer,
 }) => {
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeTab, setActiveTab] = useState<LoopSubSkillTab>('CHECKLIST');
-  const [sessions, setSessions] = useState<InterviewLoopSession[]>([]);
+  const [sessionsState, setSessionsState] = useState<{ profileId: string; items: InterviewLoopSession[] }>({ profileId, items: [] });
+  const sessions = sessionsState.profileId === profileId ? sessionsState.items : [];
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   // Ładowanie sesji przy otwarciu
   useEffect(() => {
     if (isOpen) {
-      const stored = loadInterviewSessions();
+      const stored = loadInterviewSessions(profileId);
       if (stored.length > 0) {
-        setSessions(stored);
+        setSessionsState({ profileId, items: stored });
         setActiveSessionId(stored[0].id);
       } else {
         // Jeśli brak sesji, utwórz nową na bazie bieżącej oferty lub profilu
@@ -63,18 +68,21 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
           undefined,
           jobOffer?.id
         );
-        saveInterviewSession(newSession);
-        setSessions([newSession]);
+        saveInterviewSession(profileId, newSession);
+        setSessionsState({ profileId, items: [newSession] });
         setActiveSessionId(newSession.id);
       }
     }
-  }, [isOpen, jobOffer, vault]);
+  }, [isOpen, jobOffer, vault, profileId]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
 
   const handleUpdateSession = (updated: InterviewLoopSession) => {
-    setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    saveInterviewSession(updated);
+    setSessionsState((prev) => ({
+      profileId,
+      items: (prev.profileId === profileId ? prev.items : []).map((s) => (s.id === updated.id ? updated : s)),
+    }));
+    saveInterviewSession(profileId, updated);
   };
 
   const handleCreateNewSession = () => {
@@ -82,16 +90,16 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
       'Nowa Rozmowa',
       vault.personalInfo?.title || 'Stanowisko'
     );
-    saveInterviewSession(newSession);
-    setSessions((prev) => [newSession, ...prev]);
+    saveInterviewSession(profileId, newSession);
+    setSessionsState((prev) => ({ profileId, items: [newSession, ...(prev.profileId === profileId ? prev.items : [])] }));
     setActiveSessionId(newSession.id);
     setActiveTab('CHECKLIST');
   };
 
   const handleDeleteSession = (id: string) => {
-    deleteInterviewSession(id);
+    deleteInterviewSession(profileId, id);
     const remaining = sessions.filter((s) => s.id !== id);
-    setSessions(remaining);
+    setSessionsState({ profileId, items: remaining });
     if (activeSessionId === id && remaining.length > 0) {
       setActiveSessionId(remaining[0].id);
     }
@@ -243,6 +251,7 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
 
           {activeTab === 'DEBRIEF' && (
             <PostCallDebriefView
+              profileId={profileId}
               session={activeSession}
               vault={vault}
               onUpdateSession={handleUpdateSession}

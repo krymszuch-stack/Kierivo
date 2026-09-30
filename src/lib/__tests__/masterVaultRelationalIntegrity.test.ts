@@ -247,7 +247,8 @@ describe('MasterVault Relational Data Integrity & Multi-Module Interoperability'
       expect(bridge.missingSkill).toBeDefined();
       expect(bridge.adjacentSkill).toBeDefined();
       expect(bridge.bridgeExplanation).toBeDefined();
-      expect(bridge.confidenceScore).toBeGreaterThan(0);
+      expect(bridge).not.toHaveProperty('confidenceScore');
+      expect(bridge).not.toHaveProperty('learningCurveDays');
       // Dowód z MasterVault powinien odwoływać się do rzeczywistego projektu/firmy lub certyfikatu
       if (bridge.evidenceFromVault) {
         const containsVaultFact =

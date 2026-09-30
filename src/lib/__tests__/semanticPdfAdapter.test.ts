@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { adaptMasterVaultToSemanticProfile } from '../semanticPdfAdapter';
+import { applyManualCvOverrides } from '../cvPlainText';
 import { MasterVault, TailoredResume } from '../../types';
 import { createEmptyVault } from '../sampleVault';
 
@@ -38,6 +39,7 @@ describe('semanticPdfAdapter Suite (Zero Fabrication & Contract Integrity)', () 
         startDate: '2020-03',
         endDate: '2024-01',
         isCurrent: false,
+        description: 'Diagnozowanie usterek automatyki w zakładzie.',
         highlights: [
           {
             id: 'h1',
@@ -84,7 +86,7 @@ describe('semanticPdfAdapter Suite (Zero Fabrication & Contract Integrity)', () 
         { id: 'l1', language: 'polski', level: 'Native', context: 'ojczysty' },
         { id: 'l2', language: 'angielski', level: 'B2', context: 'techniczny' },
       ],
-      licenses: ['SEP E do 1 kV', 'Prawo jazdy kat. B'],
+      licenses: ['sep_g1_e_1kv', 'Prawo jazdy kat. B'],
     };
     return vault;
   };
@@ -117,13 +119,18 @@ describe('semanticPdfAdapter Suite (Zero Fabrication & Contract Integrity)', () 
     expect(exp.end).toBe('01.2024');
 
     // Podział na result i duty
-    expect(exp.bullets.length).toBe(2);
-    expect(exp.bullets[0].kind).toBe('result');
-    expect(exp.bullets[0].semantic).toContain('Rezultat mierzalny: 30%');
-    expect(exp.bullets[1].kind).toBe('duty');
+    expect(exp.bullets.length).toBe(3);
+    expect(exp.bullets[0]).toEqual({
+      kind: 'duty',
+      display: 'Diagnozowanie usterek automatyki w zakładzie.',
+      semantic: 'Diagnozowanie usterek automatyki w zakładzie.',
+    });
+    expect(exp.bullets[1].kind).toBe('result');
+    expect(exp.bullets[1].semantic).toContain('Rezultat mierzalny: 30%');
+    expect(exp.bullets[2].kind).toBe('duty');
 
     // Uprawnienia i certyfikaty
-    expect(profile.licenses).toEqual(['SEP E do 1 kV', 'Prawo jazdy kat. B']);
+    expect(profile.licenses).toEqual(['SEP G1 E1 do 1 kV — eksploatacja', 'Prawo jazdy kat. B']);
     expect(profile.certifications.length).toBe(1);
     expect(profile.certifications[0].name).toBe('SEP do 1 kV');
     expect(profile.languages.length).toBe(2);
@@ -180,6 +187,27 @@ describe('semanticPdfAdapter Suite (Zero Fabrication & Contract Integrity)', () 
     expect(profile.summary.display).toBe('Mój manualny override podsumowania');
   });
 
+  it('eksport PDF dostaje ręcznie poprawiony tytuł i podsumowanie z podglądu', () => {
+    const vault = createSampleVault();
+    const tailored: TailoredResume = {
+      targetJobTitle: 'Stanowisko z oferty',
+      companyName: 'Firma Testowa',
+      summary: 'Stare podsumowanie',
+      selectedHighlights: [],
+      skillsMatched: { hardSkills: [], toolsAndTech: [], softSkills: [] },
+      atsScore: 80,
+    };
+    const edited = applyManualCvOverrides(tailored, {
+      title: 'Ręczny tytuł',
+      summary: 'Ręczne podsumowanie',
+    });
+
+    const profile = adaptMasterVaultToSemanticProfile(vault, edited);
+
+    expect(profile.title).toBe('Ręczny tytuł');
+    expect(profile.summary.display).toBe('Ręczne podsumowanie');
+  });
+
   it('wspiera własną klauzulę RODO przekazaną w opcjach', () => {
     const vault = createSampleVault();
     const profile = adaptMasterVaultToSemanticProfile(vault, null, {
@@ -189,31 +217,40 @@ describe('semanticPdfAdapter Suite (Zero Fabrication & Contract Integrity)', () 
     expect(profile.clause).toBe('Zgadzam się na przetwarzanie danych dla firmy ABC.');
   });
 
-  it('wzbogaca semantycznie kompetencje (Skill Graph Enrichment) bez modyfikowania etykiety wizualnej', () => {
+  it('nie deklaruje zgody, gdy użytkownik nie podał klauzuli', () => {
+    const profile = adaptMasterVaultToSemanticProfile(createSampleVault());
+
+    expect(profile.clause).toBe('');
+  });
+
+  it('nie oznacza zakończonej pracy jako obecnej, gdy brakuje daty końca', () => {
+    const vault = createSampleVault();
+    vault.history[0].endDate = '';
+    vault.history[0].isCurrent = false;
+
+    const profile = adaptMasterVaultToSemanticProfile(vault);
+
+    expect(profile.experience[0].end).toBe('');
+  });
+
+  it('warstwa semantyczna PDF nie dopisuje umiejętności ani poziomu doświadczenia', () => {
     const vault = createSampleVault();
     vault.skillsMatrix.hardSkills.push('Spawanie TIG', 'Pneumatyka');
     vault.skillsMatrix.toolsAndTech.push('Docker');
 
     const profile = adaptMasterVaultToSemanticProfile(vault);
 
-    // Etykiety wizualne nienaruszone (Zasada 1: Zero wymyślonych danych na wydruku)
-    const plc = profile.skills.find((s) => s.label === 'Sterowniki PLC');
-    expect(plc).toBeDefined();
-    expect(plc?.label).toBe('Sterowniki PLC');
-    // Warstwa semantyczna ActualText i JSON-LD zawiera pełne synonimy i standardy
-    expect(plc?.semantic).toContain('Programmable Logic Controller');
-    expect(plc?.semantic).toContain('Siemens');
-
-    const scada = profile.skills.find((s) => s.label === 'SCADA');
-    expect(scada?.label).toBe('SCADA');
-    expect(scada?.semantic).toContain('Supervisory Control and Data Acquisition');
-
-    const tig = profile.skills.find((s) => s.label === 'Spawanie TIG');
-    expect(tig?.semantic).toContain('141');
-    expect(tig?.semantic).toContain('argon');
+    // /ActualText i JSON-LD są czytane przez ATS; powtarzają dokładnie wpis
+    // użytkownika, zamiast dopisywać poziom, metodę, narzędzia lub kontekst.
+    expect(profile.skills.map((skill) => skill.semantic)).toEqual(
+      profile.skills.map((skill) => skill.label),
+    );
+    expect(profile.skills.some((skill) => /zaawansowan|udokumentowan|Siemens|argon|141|DDL|ACID/i.test(skill.semantic)))
+      .toBe(false);
 
     const cert = profile.certifications[0];
     expect(cert.name).toBe('SEP do 1 kV');
-    expect(cert.semantic).toContain('Stowarzyszenie Elektryków Polskich');
+    expect(cert.semantic).toBe('SEP do 1 kV · Wydawca: SEP · Data: 2022-05');
+    expect(cert.semantic).not.toMatch(/potwierdzone kwalifikacje|eksploatacja i dozór/i);
   });
 });

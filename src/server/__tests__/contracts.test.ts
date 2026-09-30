@@ -49,7 +49,7 @@ describe('Kontrakt: zapis vaultu', () => {
   };
 
   it('przyjmuje minimalny poprawny kształt', () => {
-    expect(vaultPayloadSchema.safeParse({ vault: minimalVault }).success).toBe(true);
+    expect(vaultPayloadSchema.safeParse({ vault: minimalVault, expectedUpdatedAt: null }).success).toBe(true);
   });
 
   it('zachowuje pola nieopisane w schemacie', () => {
@@ -57,13 +57,19 @@ describe('Kontrakt: zapis vaultu', () => {
     // a obcinanie nieznanych pól znaczyłoby, że starszy serwer po cichu gubi
     // dane zapisane przez nowszy front.
     const parsed = vaultPayloadSchema.parse({
+      expectedUpdatedAt: '2026-08-22T10:00:00.000Z',
       vault: { ...minimalVault, sekcjaZPrzyszlosci: [{ cos: 'nowego' }] },
     });
     expect(parsed.vault).toHaveProperty('sekcjaZPrzyszlosci');
   });
 
   it('odrzuca vault bez wymaganych pól szkieletowych', () => {
-    expect(vaultPayloadSchema.safeParse({ vault: { version: '1' } }).success).toBe(false);
+    expect(vaultPayloadSchema.safeParse({ expectedUpdatedAt: null, vault: { version: '1' } }).success).toBe(false);
+  });
+
+  it('wymaga jawnej rewizji bazowej, aby nie dopuścić bezwarunkowego zapisu', () => {
+    expect(vaultPayloadSchema.safeParse({ vault: minimalVault }).success).toBe(false);
+    expect(vaultPayloadSchema.safeParse({ expectedUpdatedAt: 'nie-data', vault: minimalVault }).success).toBe(false);
   });
 });
 

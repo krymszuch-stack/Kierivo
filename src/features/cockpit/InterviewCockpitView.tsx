@@ -28,6 +28,8 @@ import {
   CockpitProgressState,
 } from '../../lib/interviewCockpitEngine';
 import { loadDrillHistory } from '../../lib/drillEngine';
+import { useAuth } from '../../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 export interface InterviewCockpitViewProps {
   vault: MasterVault;
@@ -48,8 +50,11 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
   onOpenPitch,
   className = '',
 }) => {
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeSection, setActiveSection] = useState<CockpitSectionId>('pitch');
-  const [progress, setProgress] = useState<CockpitProgressState>(() => loadCockpitProgress());
+  const [progressState, setProgressState] = useState<{ profileId: string; value: CockpitProgressState }>(() => ({ profileId, value: loadCockpitProgress(profileId) }));
+  const progress = progressState.profileId === profileId ? progressState.value : loadCockpitProgress(profileId);
 
   // Pitch state
   const [pitchVariant, setPitchVariant] = useState<'oneLiner' | 'thirtySeconds' | 'ninetySeconds'>('thirtySeconds');
@@ -82,7 +87,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
 
   const trapScripts = getNegotiationTrapScripts();
   const redFlagQuestions = getRedFlagQuestions();
-  const drillHistory = loadDrillHistory();
+  const drillHistory = loadDrillHistory(profileId);
 
   // Pitch timer interval
   useEffect(() => {
@@ -96,8 +101,8 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
   }, [isPitchTimerRunning]);
 
   const handleToggleLesson = (lessonId: string) => {
-    const updated = toggleLessonCompletion(lessonId);
-    setProgress(updated);
+    const updated = toggleLessonCompletion(profileId, lessonId);
+    setProgressState({ profileId, value: updated });
   };
 
   const navTabs = [
@@ -167,8 +172,8 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                   Taktyka 1: Jak zacząć rozmowę? (Zasada Past → Present → Future)
                 </h4>
                 <p className="mt-1 text-xs text-muted leading-relaxed">
-                  Pytanie „Opowiedz coś o sobie” to nie zaproszenie do streszczenia całego życiorysu.
-                  To Twój 30-sekundowy hak sprzedażowy. Wpleć <strong>dokładnie jedną twardą metrykę</strong> w pierwszych 20 sekundach, aby natychmiast skierować dyskusję na Twoje najmocniejsze wdrożenie.
+                  Pytanie „Opowiedz coś o sobie” nie wymaga streszczenia całego życiorysu.
+                  Jeśli masz konkretną, potwierdzoną metrykę, wybierz jedną; nie dopisuj liczby, której nie możesz uzasadnić.
                 </p>
               </div>
             </div>
@@ -280,12 +285,12 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 {pitchFromVault ? (
                   <>
                     <ShieldCheck className="h-4 w-4 text-success-fg" />
-                    <span>Wygenerowano z faktów i metryk MasterVault</span>
+                    <span>Szkic na podstawie wpisów MasterVault</span>
                   </>
                 ) : (
                   <>
                     <AlertTriangle className="h-4 w-4 text-warning-fg" />
-                    <span>Szablon zastępczy — uzupełnij profil w PROFIL, aby spersonalizować</span>
+                    <span>Brak danych zawodowych — uzupełnij profil, aby przygotować szkic</span>
                   </>
                 )}
               </div>
@@ -321,7 +326,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 </h4>
                 <p className="mt-1 text-xs text-muted leading-relaxed">
                   Rekruter pyta o technologię X, której nie znasz? <strong>Nigdy nie zgaduj ani nie udawaj.</strong> Zamiast tego zastosuj most kompetencyjny:
-                  uczciwie przyznaj brak X, wykaż ekwiwalencję pojęciową z narzędziem Y, wskaż dowód wdrożenia z MasterVault i podaj realistyczny czas adaptacji (np. 3-5 dni).
+                  uczciwie zaznacz, czego jeszcze nie potwierdza Twój profil, opisz pokrewne doświadczenie bez nazywania go równoważnym i wskaż rzeczywisty dowód z Vaultu.
                 </p>
               </div>
             </div>
@@ -378,27 +383,19 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
               <div className="flex items-center justify-between border-b border-line pb-3">
                 <div className="flex items-center gap-2">
                   <span className="rounded-md bg-danger-soft px-2.5 py-1 font-mono text-xs font-bold text-danger-fg">
-                    Brak: {activeBridge.missingSkill}
+                    Nie wykazano w profilu: {activeBridge.missingSkill}
                   </span>
                   <ArrowRight className="h-4 w-4 text-muted" />
                   <span className="rounded-md bg-success-soft px-2.5 py-1 font-mono text-xs font-bold text-success-fg">
-                    Most: {activeBridge.adjacentSkill}
+                    W profilu: {activeBridge.adjacentSkill}
                   </span>
                 </div>
-                {/* Czas renderowany tylko, gdy silnik go policzył: silnik ma
-                    własny default (7), a wpisanie tu drugiego (5) pokazywało
-                    liczbę, której nikt nie wyliczył (audyt treści §2.2). */}
-                {typeof activeBridge.learningCurveDays === 'number' && (
-                  <span className="font-mono text-xs font-bold text-brand-600">
-                    Czas wdrożenia: ~{activeBridge.learningCurveDays} dni
-                  </span>
-                )}
               </div>
 
               {/* Ready Script */}
               <div className="space-y-2">
                 <p className="text-label font-bold uppercase tracking-wider text-muted">
-                  Gotowa riposta do wypowiedzenia na głos:
+                  Szkic do edycji i sprawdzenia:
                 </p>
                 <div className="rounded-xl bg-sunken p-4 text-sm text-ink leading-relaxed font-sans border-l-4 border-brand-500">
                   „{activeBridge.talkingPoint}”
@@ -408,12 +405,12 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
               {/* Underlying Logic */}
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 text-xs text-muted pt-2">
                 <div className="p-3 rounded-lg bg-surface border border-line">
-                  <strong className="text-ink block mb-1">🔗 Ekwiwalencja pojęciowa:</strong>
-                  {activeBridge.conceptualEquivalence}
+                  <strong className="text-ink block mb-1">🔗 Powiązane zagadnienia (nie oznaczają równoważności):</strong>
+                  {activeBridge.relatedTopics}
                 </div>
                 <div className="p-3 rounded-lg bg-surface border border-line">
                   <strong className="text-ink block mb-1">📁 Dowód z MasterVault:</strong>
-                  {activeBridge.evidenceFromVault || 'Brak jawnego projektu — wykorzystaj ogólne doświadczenie.'}
+                  {activeBridge.evidenceFromVault || 'Brak jawnego przykładu w profilu — uzupełnij własnym, potwierdzonym doświadczeniem.'}
                 </div>
               </div>
 
@@ -449,6 +446,11 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                 </p>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-warning/20 bg-warning-soft/20 p-3 text-xs text-muted">
+            To szablony, nie gotowe odpowiedzi o Tobie. Uzupełnij nawiasy własnymi,
+            prawdziwymi przykładami i usuń każde zdanie, którego nie możesz potwierdzić.
           </div>
 
           <div className="space-y-4">
@@ -521,7 +523,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                   Taktyka 4: Pytania, które TY zadajesz (Demaskowanie Red Flags)
                 </h4>
                 <p className="mt-1 text-xs text-muted leading-relaxed">
-                  Końcowe 10 minut rozmowy to moment, w którym Ty rekrutujesz firmę. Zadaj pytania o dług technologiczny, proces decyzyjny i powód rekrutacji, aby uniknąć projektów z toksyczną kulturą lub paraliżem wdrożeniowym.
+                  Pytania pomagają zebrać informacje o procesie pracy. Przykłady dotyczą głównie zespołów technicznych; pojedyncza odpowiedź nie przesądza o kulturze firmy ani jakości pracy.
                 </p>
               </div>
             </div>

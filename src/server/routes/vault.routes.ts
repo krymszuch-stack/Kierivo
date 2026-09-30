@@ -35,9 +35,9 @@ vaultRouter.get('/vault', requireAuth, async (req: Request, res: Response, next:
 /**
  * PUT /api/vault
  *
- * Zapis całości, nie zmiana przyrostowa. Vault jest edytowany jako jeden
- * dokument w przeglądarce i wysyłany po zakończeniu edycji; scalanie po polach
- * dawałoby konflikty bez żadnej korzyści.
+ * Zapis całości, nie zmiana przyrostowa. `expectedUpdatedAt` jest rewizją
+ * zwróconą przez GET; warunek aktualizacji musi zostać wykonany w bazie, bo
+ * porównanie przed żądaniem nie zamknęłoby wyścigu dwóch urządzeń.
  *
  * `user_id` pochodzi wyłącznie z tokenu. Klient `service_role` omija RLS, więc
  * gdyby brać go z ciała żądania, wystarczyłoby podmienić jedno pole, żeby
@@ -49,23 +49,45 @@ vaultRouter.put(
   validateBody(vaultPayloadSchema),
   async (req: Request<unknown, unknown, VaultPayload>, res: Response, next: NextFunction) => {
     try {
-      const { vault } = req.body;
+      const { vault, expectedUpdatedAt } = req.body;
+      const supabase = getSupabase();
+      const updatedAt = new Date().toISOString();
+      const row = {
+        user_id: req.user!.id,
+        data: vault,
+        version: vault.version,
+        updated_at: updatedAt,
+      };
 
-      const { error } = await getSupabase()
+      if (expectedUpdatedAt === null) {
+        const { data, error } = await supabase.from('vaults').insert(row).select('updated_at').single();
+        if (error?.code === '23505') {
+          return next(Object.assign(new Error('CV zmieniło się na innym urządzeniu. Odczytaj aktualną wersję przed zapisem.'), {
+            status: 409,
+            expose: true,
+          }));
+        }
+        if (error) throw new Error(`Nie udało się zapisać profilu: ${error.message}`);
+        return res.json({ success: true, updatedAt: data?.updated_at ?? updatedAt });
+      }
+
+      const { data, error } = await supabase
         .from('vaults')
-        .upsert(
-          {
-            user_id: req.user!.id,
-            data: vault,
-            version: vault.version,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        );
+        .update({ data: row.data, version: row.version, updated_at: updatedAt })
+        .eq('user_id', req.user!.id)
+        .eq('updated_at', expectedUpdatedAt)
+        .select('updated_at')
+        .maybeSingle();
 
       if (error) throw new Error(`Nie udało się zapisać profilu: ${error.message}`);
+      if (!data) {
+        return next(Object.assign(new Error('CV zmieniło się na innym urządzeniu. Odczytaj aktualną wersję przed zapisem.'), {
+          status: 409,
+          expose: true,
+        }));
+      }
 
-      res.json({ success: true });
+      return res.json({ success: true, updatedAt: data.updated_at ?? updatedAt });
     } catch (err) {
       next(err);
     }

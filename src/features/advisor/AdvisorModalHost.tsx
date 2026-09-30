@@ -67,7 +67,7 @@ export const AdvisorModalHost: React.FC<GeminiAdvisorModalProps> = (props) => {
 
   return (
     <div key={generation}>
-      <ChunkErrorBoundary moduleName="Doradca lokalny" chunkName={ADVISOR_CHUNK_NAME} onDismiss={props.onClose} onRetry={retry}>
+      <ChunkErrorBoundary moduleName="Doradca zaufany" chunkName={ADVISOR_CHUNK_NAME} onDismiss={props.onClose} onRetry={retry}>
         <Suspense fallback={<AdvisorSkeleton status={status} onClose={props.onClose} />}>
           <GeminiAdvisorModalLazy {...props} />
         </Suspense>

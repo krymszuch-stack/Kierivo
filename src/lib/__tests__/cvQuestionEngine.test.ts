@@ -13,7 +13,7 @@ import {
   saveSkippedQuestionIds,
 } from '../cvQuestionEngine';
 import { createEmptyVault } from '../sampleVault';
-import { StorageKeys } from '../storage';
+import { profileDataKeyFor, resetLastGoodCache, StorageKeys } from '../storage';
 import { MasterVault, HighlightMetric, WorkExperience } from '../../types';
 import { MemoryStorage } from './helpers/memoryStorage';
 
@@ -294,6 +294,7 @@ describe('zapis odpowiedzi', () => {
 describe('pominięte pytania', () => {
   beforeEach(() => {
     (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
+    resetLastGoodCache();
   });
 
   const vault = vaultWith({
@@ -322,14 +323,21 @@ describe('pominięte pytania', () => {
   });
 
   it('klucz pominięć jest w rejestrze, więc znika przy „usuń moje dane”', () => {
-    saveSkippedQuestionIds(['metric:exp-1:hl-1']);
-    expect(localStorage.getItem(StorageKeys.cvQuestionsSkipped)).not.toBeNull();
+    const key = profileDataKeyFor(StorageKeys.cvQuestionsSkipped, 'profile-a');
+    saveSkippedQuestionIds('profile-a', ['metric:exp-1:hl-1']);
+    expect(localStorage.getItem(key)).not.toBeNull();
     expect(StorageKeys.cvQuestionsSkipped.startsWith('cvelocity:')).toBe(true);
-    expect(loadSkippedQuestionIds()).toEqual(['metric:exp-1:hl-1']);
+    expect(loadSkippedQuestionIds('profile-a')).toEqual(['metric:exp-1:hl-1']);
   });
 
   it('uszkodzona zawartość schowka nie wywraca karty pytań', () => {
-    localStorage.setItem(StorageKeys.cvQuestionsSkipped, '{"nie":"tablica"}');
-    expect(loadSkippedQuestionIds()).toEqual([]);
+    localStorage.setItem(profileDataKeyFor(StorageKeys.cvQuestionsSkipped, 'profile-a'), '{"nie":"tablica"}');
+    expect(loadSkippedQuestionIds('profile-a')).toEqual([]);
+  });
+
+  it('pominięcia jednego profilu nie ukrywają pytań w drugim', () => {
+    saveSkippedQuestionIds('profile-a', ['metric:exp-1:hl-1']);
+    expect(loadSkippedQuestionIds('profile-a')).toEqual(['metric:exp-1:hl-1']);
+    expect(loadSkippedQuestionIds('profile-b')).toEqual([]);
   });
 });

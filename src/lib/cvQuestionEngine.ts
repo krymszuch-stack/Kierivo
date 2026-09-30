@@ -1,7 +1,7 @@
 import { GapKind, HighlightMetric, MasterVault, WorkExperience } from '../types';
 import { eliminateSlogans } from './slotFillingEngine';
 import { matchSubRoles, suggestedProfileForSector } from './specializationIndex';
-import { readJson, StorageKeys, writeJson } from './storage';
+import { profileDataKeyFor, readJson, StorageKeys, writeJson } from './storage';
 
 /**
  * Pytania uzupełniające do CV — deterministycznie, za zero tokenów.
@@ -219,7 +219,7 @@ export const CV_QUESTION_RULES: readonly CvQuestionRule[] = [
     id: 'personal-title',
     kind: 'MISSING_FIELD',
     weight: 8,
-    blocks: 'Dopasowanie tytułu do ogłoszenia jest osobnym składnikiem wyniku ATS.',
+    blocks: 'Dopasowanie tytułu do ogłoszenia jest osobnym składnikiem oceny Kierivo.',
     collect: (vault) =>
       hasText(vault.personalInfo.title)
         ? []
@@ -239,7 +239,7 @@ export const CV_QUESTION_RULES: readonly CvQuestionRule[] = [
     id: 'skills-hard',
     kind: 'GAP',
     weight: 7,
-    blocks: 'Pokrycie słów kluczowych to najcięższy składnik wyniku ATS.',
+    blocks: 'Pokrycie słów kluczowych ma największą wagę w ocenie Kierivo.',
     collect: (vault) =>
       vault.skillsMatrix.hardSkills.length > 0
         ? []
@@ -646,13 +646,13 @@ export function applyAnswer(vault: MasterVault, question: CvQuestion, answer: st
  * danych iteruje po rejestrze — klucz spoza niego przeżyłby „usuń moje dane",
  * co w tym repozytorium zdarzyło się już raz.
  */
-export function loadSkippedQuestionIds(): string[] {
-  const stored = readJson<unknown>(StorageKeys.cvQuestionsSkipped, []);
+export function loadSkippedQuestionIds(profileId: string): string[] {
+  const stored = readJson<unknown>(profileDataKeyFor(StorageKeys.cvQuestionsSkipped, profileId), []);
   // Uszkodzona albo podmieniona wartość nie może wywrócić karty pytań:
   // czytamy defensywnie, bo to zwykły tekst w schowku przeglądarki.
   return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
 }
 
-export function saveSkippedQuestionIds(ids: readonly string[]): void {
-  writeJson(StorageKeys.cvQuestionsSkipped, ids);
+export function saveSkippedQuestionIds(profileId: string, ids: readonly string[]): void {
+  writeJson(profileDataKeyFor(StorageKeys.cvQuestionsSkipped, profileId), ids);
 }

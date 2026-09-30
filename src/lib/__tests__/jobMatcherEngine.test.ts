@@ -4,6 +4,8 @@ import {
   calculateJobMatch,
   buildJobOfferFromScraped,
   buildJobOfferFromManual,
+  isSyntheticJobOffer,
+  SYNTHETIC_JOB_OFFER_PORTAL,
 } from '../jobMatcherEngine';
 import { createEmptyVault } from '../sampleVault';
 import type { JobOffer, MasterVault } from '../../types';
@@ -82,9 +84,20 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(result.coverLetter.fullText.length).toBeGreaterThan(50);
     expect(result.advisorContext).toBeDefined();
     expect(result.advisorContext.offerTitle).toBe(sampleOffer.title);
+    expect(result.advisorContext.score).toBe(result.canonicalResult.score);
+    expect(result.advisorContext.missingRequirements).toEqual(result.canonicalResult.missingRequirements.slice(0, 8));
 
     // Flaga confetti
     expect(result.shouldCelebrate).toBe(result.canonicalResult.score >= 90);
+  });
+
+  it('nie tworzy podsumowania zawodowego, gdy nie ma go w profilu źródłowym', () => {
+    const vault = getTestVault();
+    vault.personalInfo.summary = '';
+    const result = calculateJobMatch(vault, sampleOffer);
+
+    expect(result.tailoredResume.summary).toBe('');
+    expect(result.tailoredResume.summary).not.toMatch(/dopasowany profil|praca w firmie/i);
   });
 
   it('Nie dopisuje podsumowania, gdy CV go nie zawiera', () => {
@@ -154,5 +167,18 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(job.id).toMatch(/^manual-/);
     expect(parsed).toBeDefined();
     expect(parsed.jobTitle).toBe('Monter instalacji sanitarnych');
+  });
+
+  it('zachowuje znacznik syntetycznej oferty, aby próba nie wyglądała jak prawdziwa aplikacja', () => {
+    const { job } = buildJobOfferFromManual({
+      title: 'Monter testowy',
+      company: 'Firma fikcyjna',
+      description: 'Wymagania: prawo jazdy kat. B, uprawnienia SEP G3.',
+      portal: SYNTHETIC_JOB_OFFER_PORTAL,
+    });
+
+    expect(job.portal).toBe(SYNTHETIC_JOB_OFFER_PORTAL);
+    expect(isSyntheticJobOffer(job)).toBe(true);
+    expect(isSyntheticJobOffer({ portal: 'Manual' })).toBe(false);
   });
 });

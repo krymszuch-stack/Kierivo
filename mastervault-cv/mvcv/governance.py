@@ -132,22 +132,11 @@ class GovernanceReport:
         return "\n".join(rows)
 
 
-DEFAULT_RODO_CLAUSE = (
-    "Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji "
-    "procesu rekrutacji zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 (RODO)."
-)
-
-
 def apply(profile: MasterProfile, *, content_width: float, measure,
           target_pages: int = 1, aggressive_fit: bool = False) -> tuple[MasterProfile, GovernanceReport]:
     """Zwróć skrojony profil zgodny z limitami (selekcja + priorytety)."""
     rep = GovernanceReport()
     out = replace(profile)
-
-    # --- domyślna klauzula RODO
-    if not out.clause:
-        out.clause = DEFAULT_RODO_CLAUSE
-        rep.notes.append("dodano standardowa klauzule RODO")
 
     # --- limity zależne od docelowej liczby stron oraz trybu agresywnego dopasowania A4
     if aggressive_fit:

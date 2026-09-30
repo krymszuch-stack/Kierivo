@@ -106,7 +106,8 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       expect(result.medianScore).toBeGreaterThanOrEqual(70);
       expect(result.meanScore).toBeGreaterThanOrEqual(70);
       expect(result.consensusGrade).toBe('EXCELLENT');
-      expect(result.summaryJustification).toContain('rynkowy konsensus');
+      expect(result.summaryJustification).toContain('Wynik reguł Kierivo');
+      expect(result.summaryJustification).not.toMatch(/przejdzie wstępne sito|ryzyko odrzucenia|ponad 85%/i);
 
       // Weryfikacja obecności 10 modułów wewnętrznych
       const engineIds = result.engines.map((e) => e.id);
@@ -141,6 +142,21 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       expect(result.careerFitAdvice.verdict).toContain('zasięgu');
     });
 
+    it('pokazuje wskazówki jako schematy bez wymyślonych osiągnięć i gwarancji ATS', () => {
+      const result = simulateMultiEngineATS(sampleVault, sampleJobOffer, 'Starszy Inżynier Chmurowy i DevOps');
+      const practices = result.globalBestPractices;
+      const copy = practices.map((practice) =>
+        `${practice.title} ${practice.badExample} ${practice.goodExample} ${practice.explanation}`,
+      ).join(' ');
+
+      expect(practices[0].goodExample).toContain('[potwierdzony wynik, jeśli go znasz]');
+      expect(practices[1].goodExample).toContain('[Twoje stanowisko lub kierunek zgodny z doświadczeniem]');
+      expect(practices[4].goodExample).toContain('[MM.RRRR]');
+      expect(copy).not.toMatch(/42%|10 tysięcy użytkowników|3 lata doświadczenia komercyjnego/i);
+      expect(copy).not.toMatch(/natychmiast porównują|najwyżej punktują|powodują pominięcie|odrzucają dokumenty/i);
+      expect(practices[5].explanation).toContain('generator nie powinien dopisywać zgody');
+    });
+
     it('generuje uczciwe ostrzeżenie i alternatywne ścieżki dla niedopasowanego kandydata', () => {
       const nonMatchingJob = `
         Stanowisko: Główny Spawacz Konstrukcji Mostowych
@@ -167,11 +183,12 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       expect(report.satisfiedCount).toBeGreaterThanOrEqual(1);
     });
 
-    it('uprawnienia SEP powyżej 1kV automatycznie spełniają wymóg do 1kV', () => {
+    it('uprawnienia SEP powyżej 1kV nie spełniają wymogu do 1kV bez potwierdzenia zakresu', () => {
       const jd = 'Konieczne ważne uprawnienia SEP do 1kV (eksploatacja).';
       const report = auditKnockouts(jd, sampleVault);
 
-      expect(report.blocking).toHaveLength(0);
+      expect(report.blocking.map((finding) => finding.ruleId)).toContain('sep_g1');
+      expect(report.findings.find((finding) => finding.ruleId === 'sep_g1')?.satisfied).toBe(false);
     });
   });
 

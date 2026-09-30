@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJobDescriptionLocal } from '../jdParser';
-import { preprocessJobOfferPaste } from '../jobOfferPreprocessor';
+import { inferPastedOfferHeader, preprocessJobOfferPaste } from '../jobOfferPreprocessor';
 
 const CORPUS = `ogramista (m/k)
 ELEKTROBUDOWA sp. z o.o.O firmie
@@ -76,6 +76,27 @@ Nasze wymagania
 Doświadczenie jako kucharz.`;
 
 describe('jobOfferPreprocessor', () => {
+  it('rozpoznaje jawne stanowisko i firmę z krótkiego nagłówka wklejonej oferty', () => {
+    expect(inferPastedOfferHeader('Specjalista IT Support\nTestowa Firma\n\nWymagania:\nWindows 11.')).toEqual({
+      title: 'Specjalista IT Support',
+      company: 'Testowa Firma',
+    });
+  });
+
+  it('nie zgaduje firmy z opisu, który nie zawiera granicy nagłówka', () => {
+    expect(inferPastedOfferHeader('Specjalista IT Support\nSzukamy osoby do naszego zespołu.\nWymagania')).toEqual({
+      title: 'Specjalista IT Support',
+      company: '',
+    });
+  });
+
+  it('oddziela tytuł od sekcji sklejonej w tym samym długim wierszu', () => {
+    expect(inferPastedOfferHeader('Specjalistka wsparcia IT. Wymagania: Windows 11, Microsoft 365, TCP/IP oraz obsługa klienta. Obowiązki obejmują rozwiązywanie problemów użytkowników.')).toEqual({
+      title: 'Specjalistka wsparcia IT',
+      company: '',
+    });
+  });
+
   it('pozostawia zwykłe krótkie ogłoszenie jako pojedynczą ofertę bez domyślania danych', () => {
     const plain = preprocessJobOfferPaste('Backend Developer\nWymagania\nNode.js, SQL');
     const linkedin = preprocessJobOfferPaste('Szukamy osoby do zespołu.\nPraca zdalna.\nAplikuj.');

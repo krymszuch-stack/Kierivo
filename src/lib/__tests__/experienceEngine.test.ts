@@ -6,7 +6,9 @@ import {
   formatActionWord,
   validateExperienceFact,
   ExperienceFact,
+  POLISH_VERB_FORMS,
 } from '../experienceEngine';
+import { getPolishStem, stripDiacriticsLower } from '../skillEvidence';
 
 describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
   it('udostępnia co najmniej 16 bogatych węzłów profesji w grafie wiedzy', () => {
@@ -72,10 +74,10 @@ describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
     expect(node.defaultTech.full_accounting).toContain('Comarch ERP Optima');
   });
 
-  it('poprawnie odmienia polskie czasowniki w stylach impersonal / male / female', () => {
-    expect(formatActionWord('projektowałem architekturę', 'impersonal')).toBe('Projektowanie architektury oprogramowania');
-    expect(formatActionWord('projektowałem architekturę', 'first_person_m')).toBe('Projektowałem architekturę oprogramowania');
-    expect(formatActionWord('projektowałem architekturę', 'first_person_f')).toBe('Projektowałam architekturę oprogramowania');
+  it('odmienia czasowniki, ale nie dopisuje niepodanych obiektów ani technologii', () => {
+    expect(formatActionWord('projektowałem architekturę', 'impersonal')).toBe('Projektowałem architekturę');
+    expect(formatActionWord('projektowałem architekturę', 'first_person_m')).toBe('Projektowałem architekturę');
+    expect(formatActionWord('projektowałem architekturę', 'first_person_f')).toBe('Projektowałam architekturę');
 
     expect(formatActionWord('montowałem', 'impersonal')).toBe('Montaż');
     expect(formatActionWord('montowałem', 'first_person_m')).toBe('Montowałem');
@@ -83,6 +85,29 @@ describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
 
     expect(formatActionWord('kompletowałem', 'impersonal')).toBe('Kompletacja');
     expect(formatActionWord('księgowałem', 'impersonal')).toBe('Księgowanie');
+    expect(formatActionWord('optymalizowałem zapytania', 'impersonal')).toBe('Optymalizowałem zapytania');
+    expect(formatActionWord('integrowałem API', 'impersonal')).toBe('Integrowałem API');
+  });
+
+  it('żadna forma w słowniku odmiany nie dodaje rzeczownika spoza czynności źródłowej', () => {
+    const connectors = new Set(['i', 'oraz', 'w', 'we', 'z', 'ze', 'na', 'do', 'od', 'po', 'za', 'o', 'przy', 'dla', 'nad']
+      .map((word) => getPolishStem(stripDiacriticsLower(word))));
+    const styles = ['impersonal', 'first_person_m', 'first_person_f'] as const;
+
+    for (const action of Object.keys(POLISH_VERB_FORMS)) {
+      const sourceTokens = new Set(
+        stripDiacriticsLower(action).split(/[^\p{L}\p{N}+#.]+/u).filter(Boolean).map(getPolishStem),
+      );
+      for (const style of styles) {
+        const result = formatActionWord(action, style);
+        const resultTokens = stripDiacriticsLower(result)
+          .split(/[^\p{L}\p{N}+#.]+/u)
+          .filter(Boolean)
+          .map(getPolishStem);
+        const ungrounded = resultTokens.slice(1).filter((token) => !sourceTokens.has(token) && !connectors.has(token));
+        expect(ungrounded, `${action} → ${style}: ${result}`).toEqual([]);
+      }
+    }
   });
 
   it('generuje kompletne, niepuste warianty opisu doświadczenia na podstawie faktów', () => {
@@ -110,6 +135,39 @@ describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
     expect(formal.fullParagraph).toContain('kotły gazowe kondensacyjne oraz pompy ciepła powietrze-woda');
     expect(formal.fullParagraph).toContain('SEP G3, F-Gaz oraz Analizator Testo');
     expect(formal.fullParagraph).toContain('ponad 300 wykonanych instalacji');
+    expect(formal.bulletPoints).toHaveLength(1);
+    for (const variant of variants) {
+      expect(variant.fullParagraph).not.toMatch(/najwyższe standardy|dbałości o wysoką jakość|terminowości|bezpieczeństwie realizowanych prac|współpracowałem|współpracowałam/i);
+    }
+  });
+
+  it('nie generuje zastępczego obiektu pracy ani twierdzeń o jakości, bezpieczeństwie lub współpracy', () => {
+    const fact: ExperienceFact = {
+      role: 'Pracownik obsługi klienta',
+      area: 'Obsługa zgłoszeń',
+      action: 'obsługiwałem',
+      objects: [],
+      technologies: [],
+      narrativeStyle: 'first_person_m',
+      verifiedByUser: true,
+    };
+
+    expect(generateExperienceVariants(fact)).toEqual([]);
+  });
+
+  it('nie uznaje kompletnego, ale niepotwierdzonego zestawu danych za gotowy do użycia', () => {
+    const validation = validateExperienceFact({
+      role: 'Magazynier',
+      area: 'Kompletacja',
+      action: 'kompletowałem',
+      objects: ['zamówienia'],
+      technologies: [],
+      narrativeStyle: 'first_person_m',
+      verifiedByUser: false,
+    });
+
+    expect(validation.isValid).toBe(false);
+    expect(validation.reason).toContain('potwierdź');
   });
 
   it('odrzuca niekompletny fakt bez wymaganej akcji lub obiektów', () => {

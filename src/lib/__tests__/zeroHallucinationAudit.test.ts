@@ -207,7 +207,16 @@ describe('Zero-Hallucination Contract Suite (BUG-001 Verification)', () => {
 
     // 3. SkillBridge dla AWS wykorzystuje istniejący Kubernetes z dowodem.
     // (Kafka ← Kubernetes nie ma definicji — taki most byłby fabrykacją F12.)
-    const bridge = findSkillBridgeForGap('AWS', richVault);
+    // AWS już jest w profilu, więc nie powinien być zgłaszany jako brak.
+    expect(findSkillBridgeForGap('AWS', richVault)).toBeUndefined();
+
+    const bridgeVault = structuredClone(richVault);
+    bridgeVault.skillsMatrix.hardSkills = bridgeVault.skillsMatrix.hardSkills.filter((skill) => skill !== 'AWS');
+    bridgeVault.projects = bridgeVault.projects.map((project) => ({
+      ...project,
+      techStack: project.techStack.filter((skill) => skill !== 'AWS'),
+    }));
+    const bridge = findSkillBridgeForGap('AWS', bridgeVault);
     expect(bridge).toBeDefined();
     expect(bridge?.adjacentSkill).toBe('Kubernetes'); // z realnych hardSkills kandydata
   });

@@ -10,6 +10,7 @@ import { showToast } from '../../store/useToastStore';
 import { checkPassword, passwordStrength, STRENGTH_LABELS } from '../../lib/passwordPolicy';
 import { checkLeakedPassword } from '../../lib/leakedPassword';
 import { OAUTH_PROVIDERS, type OAuthProviderId, type OAuthProviderMeta } from '../../lib/oauthProviders';
+import { listSavedLocalProfiles, type LocalProfile } from '../../lib/localProfile';
 
 /**
  * Wejście do aplikacji — dwa tryby, oba prawdziwe.
@@ -206,6 +207,8 @@ const AuthTabs: React.FC<{
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccessVaultLoaded }) => {
   const {
     signInLocally,
+    resumeLocalProfile,
+    user,
     signUpCloud,
     signInCloud,
     signInWithProvider,
@@ -226,13 +229,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   // równolegle z przepływem przekierowania.
   const [pracujeDostawca, setPracujeDostawca] = useState<OAuthProviderId | null>(null);
   const [isLocalInfoOpen, setIsLocalInfoOpen] = useState(false);
+  const [savedLocalProfiles, setSavedLocalProfiles] = useState<LocalProfile[]>([]);
 
   React.useEffect(() => {
     if (isOpen) {
       setWidok('wybor');
       setBlad('');
+      let active = true;
+      void listSavedLocalProfiles().then((profiles) => {
+        if (active) setSavedLocalProfiles(profiles.filter((profile) => profile.id !== user?.id));
+      });
+      return () => {
+        active = false;
+      };
     }
-  }, [isOpen]);
+  }, [isOpen, user?.id]);
 
   const wyczysc = useCallback(() => {
     setBlad('');
@@ -261,19 +272,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   /* --- profil lokalny --- */
 
   const zapiszProfilLokalny = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       if (!imie.trim()) return;
 
-      const vault = signInLocally(imie, email);
+      setPracuje(true);
+      setBlad('');
+      try {
+        const vault = await signInLocally(imie, email);
+        onSuccessVaultLoaded?.(vault);
+        showToast('Profil zapisany na tym urządzeniu', {
+          message: 'Dane nie opuszczają tej przeglądarki.',
+          variant: 'success',
+        });
+        zamknij();
+      } catch (error) {
+        setBlad(error instanceof Error ? error.message : 'Nie udało się zapisać profilu. Spróbuj ponownie.');
+      } finally {
+        setPracuje(false);
+      }
+    },
+    [imie, email, signInLocally, onSuccessVaultLoaded, zamknij]
+  );
+
+  const wznowProfilLokalny = useCallback(
+    (profileId: string) => {
+      const vault = resumeLocalProfile(profileId);
+      if (!vault) {
+        setBlad('Nie udało się otworzyć zapisanego profilu. Odśwież okno i spróbuj ponownie.');
+        return;
+      }
       onSuccessVaultLoaded?.(vault);
-      showToast('Profil zapisany na tym urządzeniu', {
-        message: 'Dane nie opuszczają tej przeglądarki.',
+      showToast('Profil lokalny wznowiony', {
+        message: 'CV wczytano z tej przeglądarki.',
         variant: 'success',
       });
       zamknij();
     },
-    [imie, email, signInLocally, onSuccessVaultLoaded, zamknij]
+    [resumeLocalProfile, onSuccessVaultLoaded, zamknij]
   );
 
   /* --- konto w chmurze --- */
@@ -454,6 +490,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <span className="text-[11px] font-bold uppercase tracking-wider text-muted px-1 block">
               Bez logowania
             </span>
+            {savedLocalProfiles.length > 0 && (
+              <div className="rounded-2xl border border-brand-500/20 bg-brand-50/30 dark:bg-brand-950/10 p-3.5 space-y-2">
+                <p className="text-sm font-semibold text-ink">Wznów zapisany profil lokalny</p>
+                <p className="text-xs text-muted leading-relaxed">
+                  To profile zapisane w tej przeglądarce. Nie mają hasła ani osobnej blokady.
+                </p>
+                <div className="space-y-1.5">
+                  {savedLocalProfiles.map((profile) => {
+                    const duplicateName = savedLocalProfiles.filter((item) => item.name === profile.name).length > 1;
+                    return (
+                      <button
+                        key={profile.id}
+                        type="button"
+                        onClick={() => wznowProfilLokalny(profile.id)}
+                        className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm font-semibold text-ink hover:border-brand-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
+                      >
+                        <span className="truncate">{profile.name}</span>
+                        {duplicateName && <span className="shrink-0 text-[10px] font-normal text-muted">…{profile.id.slice(-4)}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="rounded-2xl border border-line bg-surface p-3.5 text-left space-y-2">
               <button
                 type="button"
@@ -491,10 +551,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 {isLocalInfoOpen && (
                   <div className="mt-2 rounded-xl bg-sunken/60 p-3 text-[11px] text-muted leading-relaxed border border-line/60 space-y-1">
                     <p>
-                      <strong>Czy dane opuszczają przeglądarkę?</strong> Nie. Wszystkie wpisywane informacje o Twoim profilu, doświadczeniu i CV są zapisywane wyłącznie w lokalnej pamięci podręcznej tej przeglądarki (<code className="font-mono text-[10px]">localStorage</code>).
+                      <strong>Co dzieje się z danymi bez logowania?</strong> Profil jest zapisywany w pamięci tej przeglądarki i nie jest synchronizowany z kontem.
                     </p>
                     <p>
-                      Nie są przesyłane na żaden zewnętrzny serwer ani synchronizowane w chmurze. Jeśli wyczyścisz historię lub pamięć podręczną przeglądarki, dane zostaną trwale usunięte.
+                      Ta informacja dotyczy trybu bez logowania; późniejsze, osobno potwierdzane funkcje serwerowe mogą wysyłać wskazany tekst. Wyczyszczenie pamięci przeglądarki usuwa lokalną kopię, ale nie usuwa danych z oddzielnych usług, jeśli wcześniej włączono synchronizację.
                     </p>
                   </div>
                 )}
@@ -684,7 +744,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             synchronizacji — wyczyszczenie danych witryny usunie CV bezpowrotnie.
           </Alert>
 
-          <Button type="submit" variant="primary" className="w-full">
+          <Button type="submit" variant="primary" loading={pracuje} className="w-full">
             Zapisz profil
           </Button>
         </form>

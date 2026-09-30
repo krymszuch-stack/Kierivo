@@ -39,7 +39,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
           <div className="space-y-1">
             <h4 className="font-bold text-sm text-ink">Zasada Local-First i Zero Nieautoryzowanego Śledzenia</h4>
             <p className="text-muted text-[11px]">
-              Twoje dane zawodowe, życiorysy i historia zatrudnienia są przechowywane domyślnie w bezpiecznym magazynie Twojej przeglądarki. Nie sprzedajemy ani nie profilujemy Twoich danych do celów marketingowych.
+              Dane profilu są przechowywane zależnie od wybranego trybu: lokalnie w pamięci przeglądarki albo w chmurowym Vault przypisanym do konta po zalogowaniu i synchronizacji. Aplikacja nie szyfruje lokalnych danych osobno.
             </p>
           </div>
         </div>
@@ -88,7 +88,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               2. Zakres i Cel Przetwarzania
             </h5>
             <p className="text-muted">
-              Dane podawane w profilu (imię, nazwisko, historia kariery, umiejętności, dane kontaktowe) przetwarzane są wyłącznie w celu tworzenia, edycji, dopasowywania CV pod oferty pracy oraz generowania dokumentów rekrutacyjnych zgodnie z art. 6 ust. 1 lit. b RODO.
+              Profil służy do tworzenia i edycji CV, dopasowania do ofert oraz przygotowania dokumentów aplikacyjnych. Tryb lokalny przechowuje Vault w przeglądarce; w trybie chmurowym Vault synchronizuje się z usługą konta. To podsumowanie funkcji nie określa podstaw prawnych dla poszczególnych operacji.
             </p>
           </div>
 
@@ -98,7 +98,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
               3. Anonimizacja i AI
             </h5>
             <p className="text-muted">
-              Wszelkie zapytania optymalizacyjne przesyłane do modeli analizy semantycznej podlegają automatycznej pseudonimizacji i sanityzacji — dane wrażliwe nie są wykorzystywane do trenowania publicznych modeli.
+              Funkcje AI działają osobno od lokalnego przechowywania profilu. Przed wybranymi operacjami zobaczysz, jaki tekst zostanie wysłany, i potwierdzasz wysyłkę. Niektóre ścieżki zastępują rozpoznane dane kontaktowe, ale nie oznacza to pełnej anonimizacji — treść może nadal zawierać dane osobowe. Microsoft informuje, że prompty i odpowiedzi modeli Azure nie są używane do trenowania modeli bazowych bez zgody lub instrukcji klienta; zasady przechowywania i monitorowania zależą od usługi oraz jej konfiguracji. <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy" target="_blank" rel="noopener noreferrer" className="text-brand-fg underline">Zasady danych i prywatności modeli Azure</a>.
             </p>
           </div>
 
@@ -115,7 +115,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
 
         <div className="pt-4 border-t border-line/60 flex justify-end">
           <Button type="button" variant="secondary" size="sm" onClick={onClose}>
-            Rozumiem i akceptuję
+            Zamknij
           </Button>
         </div>
       </div>

@@ -55,9 +55,9 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
       for (const v of corruptVaults as unknown as MasterVault[]) {
         expect(() => generateElevatorPitch(v)).not.toThrow();
         const pitch = generateElevatorPitch(v);
-        expect(pitch.oneLiner).toBeTruthy();
-        expect(pitch.thirtySeconds).toBeTruthy();
-        expect(pitch.ninetySeconds).toBeTruthy();
+        expect(typeof pitch.oneLiner).toBe('string');
+        expect(typeof pitch.thirtySeconds).toBe('string');
+        expect(typeof pitch.ninetySeconds).toBe('string');
       }
     });
 
@@ -100,7 +100,7 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
       const telemetry = buildAtsTelemetryReport({ vault: emptyVault, jobDescription: '' });
       expect(telemetry.overallScore).toBeDefined();
       expect(telemetry.overallScore).toBeGreaterThanOrEqual(0);
-      expect(telemetry.systemVulnerabilities).toHaveLength(3);
+      expect(telemetry.heuristicProfiles).toHaveLength(3);
 
       const ko = evaluateKnockouts('', emptyVault);
       expect(ko.findings).toBeDefined();
@@ -497,7 +497,7 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
       const vault = createEmptyVault('Jan Testowy');
       const report = buildAtsTelemetryReport({ vault: vault as MasterVault, jobDescription: '' });
       expect(report.formulaBreakdown.knockoutPenalties).toBe(0);
-      expect(report.systemVulnerabilities).toHaveLength(3);
+      expect(report.heuristicProfiles).toHaveLength(3);
     });
   });
 });

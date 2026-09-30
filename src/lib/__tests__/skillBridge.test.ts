@@ -48,11 +48,13 @@ describe('Skill Bridge Matrix Engine (skill-bridge-matrix-v1)', () => {
       expect(bridge).toBeDefined();
       expect(bridge?.missingSkill).toBe('Kafka');
       expect(bridge?.adjacentSkill).toBe('RabbitMQ');
-      expect(bridge?.conceptualEquivalence).toContain('Publish/Subscribe');
+      expect(bridge?.relatedTopics).toContain('publikowanie i subskrypcja');
       expect(bridge?.talkingPoint).toContain('RabbitMQ');
       expect(bridge?.evidenceFromVault).toBe('Cloud Corp (Senior Backend Developer)');
-      expect(bridge?.learningCurveDays).toBe(5);
-      expect(bridge?.confidenceScore).toBeGreaterThanOrEqual(90);
+      expect(bridge).not.toHaveProperty('learningCurveDays');
+      expect(bridge).not.toHaveProperty('confidenceScore');
+      expect(bridge?.bridgeExplanation).toContain('nie zastępuje');
+      expect(bridge?.talkingPoint).not.toMatch(/kwestia paru dni|bezproblemowy transfer|natychmiast projektować/i);
     });
 
     it('buduje most dla uprawnień branżowych (SEP G2 na bazie SEP G1)', () => {
@@ -62,7 +64,20 @@ describe('Skill Bridge Matrix Engine (skill-bridge-matrix-v1)', () => {
       expect(bridge).toBeDefined();
       expect(bridge?.adjacentSkill).toBe('SEP G1');
       expect(bridge?.talkingPoint).toContain('SEP G1');
-      expect(bridge?.confidenceScore).toBeGreaterThanOrEqual(90);
+      expect(bridge).not.toHaveProperty('confidenceScore');
+      expect(bridge?.talkingPoint).toContain('nie potwierdza SEP G2');
+      expect(bridge?.talkingPoint).toContain('formalnych uprawnień');
+    });
+
+    it('rozpoznaje SEP G1 wybrane z katalogu uprawnień jako powiązany wpis, ale nie zalicza go jako G2', () => {
+      const vault = createMockVault();
+      vault.profiler.licenses = ['sep_1kv'];
+      vault.skillsMatrix.hardSkills = [];
+
+      const bridge = findSkillBridgeForGap('SEP G2', vault);
+      expect(bridge?.adjacentSkill).toContain('SEP G1');
+      expect(bridge?.talkingPoint).toContain('nie potwierdza SEP G2');
+      expect(bridge?.bridgeExplanation).toContain('nie zastępuje wymaganej kwalifikacji');
     });
 
     it('buduje most dla spawania TIG na bazie posiadanego spawania MIG/MAG', () => {
@@ -72,6 +87,14 @@ describe('Skill Bridge Matrix Engine (skill-bridge-matrix-v1)', () => {
       expect(bridge).toBeDefined();
       expect(bridge?.adjacentSkill).toBe('Spawanie MIG/MAG');
       expect(bridge?.talkingPoint).toContain('Spawanie MIG/MAG');
+      expect(bridge?.talkingPoint).toContain('nie potwierdza Spawanie TIG (141)');
+    });
+
+    it('nie tworzy mostu dla umiejętności, którą profil już zawiera', () => {
+      const vault = createMockVault();
+      vault.skillsMatrix.hardSkills.push('Apache Kafka 3');
+
+      expect(findSkillBridgeForGap('Kafka', vault)).toBeUndefined();
     });
 
     it('generuje zbiorczą listę mostów dla wielu brakujących umiejętności', () => {

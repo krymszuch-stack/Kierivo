@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { JobOffer } from '../../types';
 import type { ParsedJobDescription } from '../../lib/jdParser';
 import {
@@ -7,6 +7,7 @@ import {
   benefitSourcesFromOffer,
   buildAdvisorNote,
   calculateFeasibility,
+  canShowFeasibilityResult,
   detectBenefits,
   effectiveOfficeDays,
   type ContractType,
@@ -59,12 +60,18 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
   className = '',
 }) => {
   const prefs = preferences ?? DEFAULT_MOBILITY_PREFERENCES;
+  const [assumptionsConfirmed, setAssumptionsConfirmed] = useState(false);
 
   const benefits = useMemo(
     () => detectBenefits(benefitSourcesFromOffer(offer, parsed)),
     [offer, parsed]
   );
-  const result = useMemo(() => calculateFeasibility(prefs, benefits), [prefs, benefits]);
+  const result = useMemo(
+    () => canShowFeasibilityResult(prefs, assumptionsConfirmed)
+      ? calculateFeasibility(prefs, benefits)
+      : null,
+    [prefs, benefits, assumptionsConfirmed]
+  );
   const note = useMemo(() => (result ? buildAdvisorNote(result, prefs) : null), [result, prefs]);
 
   const patch = (changes: Partial<MobilityPreferences>) =>
@@ -89,6 +96,19 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
             Liczymy stawkę za godzinę Twojego życia, nie za godzinę na umowie. Wszystko dzieje się
             w Twojej przeglądarce — żadna z tych liczb nigdzie nie wychodzi.
           </p>
+          <p role="note" className="mt-2 max-w-prose rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-xs leading-relaxed text-warning-fg">
+            Parametry trybu pracy i dojazdu nie są pobierane z ogłoszenia. Przed odczytaniem wyniku
+            sprawdź wszystkie pola — ustawienia początkowe nie opisują Twojej sytuacji.
+          </p>
+          <label className="mt-2 flex max-w-prose items-start gap-2 text-xs leading-relaxed text-ink">
+            <input
+              type="checkbox"
+              checked={assumptionsConfirmed}
+              onChange={(event) => setAssumptionsConfirmed(event.target.checked)}
+              className="mt-0.5 accent-[#155EEF]"
+            />
+            <span>Sprawdziłem wynagrodzenie, formę umowy, tryb pracy i parametry dojazdu. Możesz pokazać wynik.</span>
+          </label>
         </div>
       </header>
 
@@ -278,8 +298,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
             </>
           ) : (
             <p className="mt-3 text-xs leading-relaxed text-muted">
-              Podaj kwotę wynagrodzenia, a policzymy resztę. Bez niej nie zgadujemy — wolimy pustkę
-              niż liczbę wziętą z powietrza.
+              {prefs.salaryAmount > 0
+                ? 'Sprawdź parametry i zaznacz potwierdzenie, aby zobaczyć wynik. Nie chcemy liczyć na niepotwierdzonych założeniach.'
+                : 'Podaj kwotę wynagrodzenia. Bez niej nie zgadujemy — wolimy pustkę niż liczbę wziętą z powietrza.'}
             </p>
           )}
         </div>

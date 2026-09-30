@@ -5,6 +5,8 @@ import { formatActionWord, joinWithPolishConjunction } from './polishForms';
  * Generuje zróżnicowane, w 100% oparte na faktach warianty opisu doświadczenia.
  */
 export function generateExperienceVariants(fact: ExperienceFact): GeneratedExperienceVariant[] {
+  if (!fact.role.trim() || !fact.action.trim() || fact.objects.length === 0) return [];
+
   const objectsStr = joinWithPolishConjunction(fact.objects, 'oraz');
   const techStr = fact.technologies.length > 0
     ? joinWithPolishConjunction(fact.technologies, 'oraz')
@@ -25,10 +27,6 @@ export function generateExperienceVariants(fact: ExperienceFact): GeneratedExper
     formalBullet1 += '.';
   }
 
-  const formalBullet2 = techStr
-    ? `Bieżąca praca w oparciu o ${techStr}, z dbałością o najwyższe standardy techniczne i jakościowe.`
-    : `Realizacja zadań w obszarze ${fact.area} zgodnie z dokumentacją i normami branżowymi.`;
-
   // 2. Wariant Aktywny (Czasowniki sprawcze 1 os. lp z uwzględnieniem formy gramatycznej)
   const actionVerb = formatActionWord(fact.action, fact.narrativeStyle);
   let activeBullet1 = `${actionVerb} ${objectsStr}`;
@@ -40,15 +38,6 @@ export function generateExperienceVariants(fact: ExperienceFact): GeneratedExper
   } else {
     activeBullet1 += '.';
   }
-
-  const isFemale = fact.narrativeStyle === 'first_person_f';
-  const activeBullet2 = fact.outcome
-    ? (isFemale
-        ? 'Konsekwentnie dbałam o wysoką jakość, terminowość i bezpieczeństwo realizowanych prac.'
-        : 'Konsekwentnie dbałem o wysoką jakość, terminowość i bezpieczeństwo realizowanych prac.')
-    : (isFemale
-        ? 'Współpracowałam w zespole nad ciągłym rozwojem, standaryzacją i optymalizacją procesów.'
-        : 'Współpracowałem w zespole nad ciągłym rozwojem, standaryzacją i optymalizacją procesów.');
 
   // 3. Wariant Techniczny / Narzędziowy
   let techBullet1 = techStr
@@ -62,8 +51,8 @@ export function generateExperienceVariants(fact: ExperienceFact): GeneratedExper
     {
       id: 'variant-formal',
       styleName: 'Formalny (Bezosobowy)',
-      bulletPoints: [formalBullet1, formalBullet2],
-      fullParagraph: `${formalBullet1} ${formalBullet2}`,
+      bulletPoints: [formalBullet1],
+      fullParagraph: formalBullet1,
       highlights: {
         action: actionNoun,
         object: objectsStr,
@@ -74,8 +63,8 @@ export function generateExperienceVariants(fact: ExperienceFact): GeneratedExper
     {
       id: 'variant-active',
       styleName: 'Osiągnięcia (Czasowniki)',
-      bulletPoints: [activeBullet1, activeBullet2],
-      fullParagraph: `${activeBullet1} ${activeBullet2}`,
+      bulletPoints: [activeBullet1],
+      fullParagraph: activeBullet1,
       highlights: {
         action: actionVerb,
         object: objectsStr,
