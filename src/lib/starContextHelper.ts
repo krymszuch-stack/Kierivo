@@ -63,7 +63,7 @@ export function detectIndustryFromRole(roleTitle?: string): IndustryDomain {
 
   // IT & Software
   if (
-    /(developer|programist|inżynier oprogramowania|frontend|backend|fullstack|devops|tester|qa|data|software|administrator it|sieciow)/i.test(
+    /(developer|programist|inżynier oprogramowania|frontend|backend|fullstack|devops|tester (?:oprogramowania|aplikacji|systemów|manualny it|automatyzacji testów)|\bqa (?:software|engineer|automation)\b|\bdata (?:scientist|engineer|analyst)\b|software|administrator it|sieciow)/i.test(
       norm
     )
   ) {

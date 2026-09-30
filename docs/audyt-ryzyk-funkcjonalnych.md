@@ -23,6 +23,20 @@ niżej i muszą przejść osobną weryfikację przed zmianą statusu na „Dzia�
 | Logowanie Microsoft było widoczne, lecz dostawca nie był skonfigurowany | Rejestracja Entra, callback Supabase, `xms_edov`, zakres `email`, włączony dostawca i `kierivo.com` jako Site URL | Rzeczywiste logowanie kontem właściciela i odświeżenie sesji przeszły; lokalny kod z zakresem `email` nie jest jeszcze na produkcji, a wydawca nie jest zweryfikowany |
 | Bank STAR kopiował do CV fikcyjne metryki, narzędzia i uprawnienia | Przykłady są oznaczone jako fikcyjne. Kliknięcie pokazuje szablon obok pola, ale nie zapisuje go jako faktu w Vault; placeholder nie zawiera wymyślonych liczb. Komunikat kontroli historii nie deklaruje już „100% spójności” przy pustych danych | Ekranowy test na fikcyjnym profilu potwierdził widoczną podpowiedź i brak jej tekstu w polach CV; zrzut `docs/audyt-star-szablon-obok-cv-2026-09-30.png`. Pełny eksport po wpisaniu własnego osiągnięcia pozostaje do sprawdzenia |
 
+Przejazd uzupełnionego fikcyjnego osiągnięcia potwierdził jego widoczność w
+podglądzie CV i brak tekstu szablonu (`docs/audyt-star-wlasna-tresc-podglad-2026-09-30.png`).
+Edytor podglądu miał osobną drogę dopisywania niepotwierdzonego zdania
+„Wdrożyłem / zrealizowałem zadanie osiągając mierzalny rezultat...”. Nowy punkt
+jest pusty i widoczny tylko podczas edycji. Scenariusz ekranowy po kliknięciu
+sprawdził puste pole, brak tego zdania w podglądzie oraz skopiowanym tekście CV;
+fikcyjne osiągnięcie podane przez użytkownika pozostało w kopii.
+Zrzut: `docs/audyt-star-pusty-punkt-podgladu-2026-09-30.png`.
+Lokalny profil nie może uruchomić pobrania serwerowego PDF bez zalogowanego
+konta chmurowego, więc zgodność pobranego artefaktu nadal nie jest dowiedziona.
+Ten sam zrzut ujawnił zbyt szeroką klasyfikację stanowiska: sam wyraz „Tester”
+przypisywał pracę przy procesie do IT. Reguła wymaga teraz kontekstu
+oprogramowania lub aplikacji, a test odróżnia te nazwy od testera produkcji.
+
 ## Inwentarz wejść głównych
 
 Konfiguracja `NAV_SECTIONS` i pasek boczny pokazują **10 wejść na poziomie

@@ -268,7 +268,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const handleAddHighlight = (historyId: string) => {
     const newHl: HighlightMetric = {
       id: `hl-${crypto.randomUUID()}`,
-      text: 'Wdrożyłem / zrealizowałem zadanie osiągając mierzalny rezultat...',
+      text: '',
       metric: '',
       target: '',
       action: '',
@@ -743,7 +743,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
                     {/* Highlights */}
                     <div className="space-y-1">
-                      {(h.highlights || []).filter((hl) => hl.text.trim().length > 0).map((hl) => (
+                      {(h.highlights || []).filter((hl) => isEditing || hl.text.trim().length > 0).map((hl) => (
                         <div key={hl.id} className="flex items-start gap-1.5 text-xs text-ink/90">
                           <span className="text-muted mt-0.5">•</span>
                           {isEditing ? (
@@ -751,6 +751,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
                               <input
                                 type="text"
                                 value={hl.text}
+                                placeholder="Wpisz własne, potwierdzone osiągnięcie"
                                 onChange={(e) =>
                                   handleUpdateHighlight(h.id, hl.id, e.target.value)
                                 }

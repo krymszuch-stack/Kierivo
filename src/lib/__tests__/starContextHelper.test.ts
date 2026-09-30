@@ -57,6 +57,9 @@ describe('starContextHelper — Dynamiczne dopasowanie kontekstu STAR do stanowi
   it('rozpoznaje IT & Software', () => {
     expect(detectIndustryFromRole('Senior React Developer')).toBe('it');
     expect(detectIndustryFromRole('Inżynier oprogramowania')).toBe('it');
+    expect(detectIndustryFromRole('Tester oprogramowania')).toBe('it');
+    expect(detectIndustryFromRole('Tester fikcyjnego procesu')).toBe('general');
+    expect(detectIndustryFromRole('Tester jakości produkcji')).toBe('general');
 
     const config = getStarContextConfig('Fullstack Developer');
     expect(config.domain).toBe('it');

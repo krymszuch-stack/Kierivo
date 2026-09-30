@@ -1,7 +1,7 @@
 /** E2E szablonu STAR wyłącznie na fikcyjnym profilu i osobnym kontekście. */
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext();
+const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
 const page = await context.newPage();
 
 try {
@@ -35,7 +35,34 @@ try {
     throw new Error('Szablon został zapisany w lokalnym Vault.');
   }
   await page.screenshot({ path: 'docs/audyt-star-szablon-obok-cv-2026-09-30.png', fullPage: true });
-  console.log('Podpowiedź widoczna obok pola; pola CV nie zawierają tekstu szablonu.');
+  await page.getByPlaceholder('np. Szpital Wojewódzki, Mostostal S.A., Zakład Pracy...').fill('Syntetyczna Firma');
+  await page.getByPlaceholder('np. Monter / Inżynier / Spawacz...').fill('Tester fikcyjnego procesu');
+  await page.locator('textarea').last().fill('Udokumentowałem trzy fikcyjne scenariusze testowe.');
+  await page.getByRole('button', { name: 'Otwórz Podgląd CV' }).click();
+  const preview = page.getByRole('dialog', { name: /Podgląd CV/ });
+  await preview.getByText('Udokumentowałem trzy fikcyjne scenariusze testowe.').waitFor();
+  const previewText = await preview.innerText();
+  if (previewText.includes('[Jeśli wykonano:') || previewText.includes('[Opisz rzeczywistą czynność]')) {
+    throw new Error('Szablon trafił do podglądu CV.');
+  }
+  await page.screenshot({ path: 'docs/audyt-star-wlasna-tresc-podglad-2026-09-30.png', fullPage: true });
+  await preview.getByRole('button', { name: 'Nanieś poprawki w dokumencie' }).click();
+  await preview.getByRole('button', { name: 'Dodaj punkt osiągnięcia' }).click();
+  const emptyAchievement = preview.getByPlaceholder('Wpisz własne, potwierdzone osiągnięcie').last();
+  if (await emptyAchievement.inputValue() !== '') {
+    throw new Error('Nowy punkt podglądu zawiera niepotwierdzoną treść.');
+  }
+  await preview.getByRole('button', { name: 'Zakończ poprawki w dokumencie' }).click();
+  if ((await preview.innerText()).includes('Wdrożyłem / zrealizowałem zadanie')) {
+    throw new Error('Podgląd dodał niepotwierdzone osiągnięcie.');
+  }
+  await preview.getByRole('button', { name: 'Kopiuj treść dokumentu do schowka' }).click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  if (!copied.includes('Udokumentowałem trzy fikcyjne scenariusze testowe.') || copied.includes('Wdrożyłem / zrealizowałem zadanie')) {
+    throw new Error('Skopiowana treść CV różni się od potwierdzonego wpisu.');
+  }
+  await page.screenshot({ path: 'docs/audyt-star-pusty-punkt-podgladu-2026-09-30.png', fullPage: true });
+  console.log('Szablon pozostał poza Vaultem; własna treść widoczna, nowy punkt podglądu pusty.');
 } finally {
   await context.close();
   await browser.close();
