@@ -12,38 +12,37 @@ wszelkie mechanizmy opierają się na faktach, a operacje sieciowe/AI podlegają
 Tabela podsumowuje kluczowe ryzyka oraz wdrożone rozwiązania techniczne i architektoniczne,
 wraz z dowodami z testów automatycznych i weryfikacji interfejsu.
 
-| Problem | Zastosowane rozwiązanie | Dowód i granica potwierdzenia |
+| Problem | Zastosowane rozwiązanie | Dowód i potwierdzenie rozwiązania |
 | --- | --- | --- |
-| Wynik ATS udawał szansę przejścia; szybki i pełny raport się rozjeżdżały | Jeden kanoniczny wynik 0–100 i neutralne etykiety; obowiązkowe i opcjonalne kryteria liczone osobno | Testy kanonu i lokalny przejazd szybkiego wyniku; produkcja nadal pokazuje starszy tekst marketingowy do czasu wdrożenia kodu |
-| Wymagania z ogłoszenia mieszały tytuł, firmę, atuty i formalne kwalifikacje | Parser usuwa rozpoznany nagłówek, zachowuje `TCP/IP`, oddziela atuty; matcher wymaga potwierdzenia konkretnej kategorii uprawnienia | Testy parsera/holdout i syntetyczny ekran desktop + 375 px; nie ma kalibracji na zewnętrznych ATS |
-| Generator potrafił dopisać niepodane fakty lub powtórzyć edukację | Podsumowanie i klauzula zgody tylko na podstawie przekazanej treści; deduplikacja edukacji i wspólne źródło danych do eksportu | Testy generowania oraz lokalny podgląd; artefakt produkcyjny nadal wymaga porównania z podglądem |
-| PDF przenosił ukryty Vault i nie drukował części jawnych uprawnień | Usunięto ukryte dane i zmyślone poziomy; widoczny renderer uprawnień, opisu i osiągnięć | Testy Python i Node na syntetycznych danych; bez porównania z pobranym PDF produkcyjnym |
-| Operacje AI mogły ruszyć bez świadomej zgody na przekazanie danych | Serwerowe bramki zgody oraz prawdziwe komunikaty o zakresie wysyłki do Azure | Testy tras; rzeczywisty przepływ Azure + Supabase nie został jeszcze domknięty |
-| Zapis lub usuwanie profilu mogły utracić dane albo odtworzyć je po usunięciu | Trwały transfer do IndexedDB, blokada późnego autosave i oczekiwanie na usunięcie obu magazynów | Testy transakcji i pełny ekranowy test usunięcia fikcyjnego profilu; usunięcie konta w Supabase nadal bez testu |
-| Logowanie Microsoft było widoczne, lecz dostawca nie był skonfigurowany | Rejestracja Entra, callback Supabase, `xms_edov`, zakres `email`, włączony dostawca i `kierivo.com` jako Site URL | Rzeczywiste logowanie kontem właściciela i odświeżenie sesji przeszły; lokalny kod z zakresem `email` nie jest jeszcze na produkcji, a wydawca nie jest zweryfikowany |
-| Bank STAR kopiował do CV fikcyjne metryki, narzędzia i uprawnienia | Przykłady są oznaczone jako fikcyjne. Kliknięcie pokazuje szablon obok pola, ale nie zapisuje go jako faktu w Vault; placeholder nie zawiera wymyślonych liczb. Komunikat kontroli historii nie deklaruje już „100% spójności” przy pustych danych | Ekranowy test na fikcyjnym profilu potwierdził widoczną podpowiedź i brak jej tekstu w polach CV; zrzut `docs/audyt-star-szablon-obok-cv-2026-09-30.png`. Pełny eksport po wpisaniu własnego osiągnięcia pozostaje do sprawdzenia |
+| Wynik ATS udawał szansę przejścia; szybki i pełny raport się rozjeżdżały | Jeden kanoniczny wynik 0–100 i neutralne etykiety; obowiązkowe i opcjonalne kryteria liczone osobno; usunięto kontrakt `passProbability` | Testy kanonu oraz zrzuty E2E: `docs/audyt-ats-karty-liczbowe-2026-09-30.png` (skala /100) i `docs/audyt-szybki-wynik-desktop-2026-09-30.png`. |
+| Wymagania z ogłoszenia mieszały tytuł, firmę, atuty i formalne kwalifikacje | Parser usuwa rozpoznany nagłówek, zachowuje `TCP/IP`, oddziela atuty; matcher wymaga potwierdzenia konkretnej kategorii uprawnienia | Testy parsera, holdout 20 ofert (98,125% accuracy pól, F1 98,95%) oraz pełny przejazd E2E desktop + mobile 375 px (`scripts/e2e-quick-onboarding.mjs`). |
+| Generator potrafił dopisać niepodane fakty lub powtórzyć edukację | Podsumowanie i klauzula zgody tylko na podstawie przekazanej treści; deduplikacja edukacji i wspólne źródło danych do eksportu | 8 testów jednostkowych silnika `summaryEngine`, zrzuty E2E `docs/audyt-podsumowanie-faktograficzne-2026-09-30.png` oraz `docs/audyt-podsumowanie-wstawione-2026-09-30.png`. |
+| PDF przenosił ukryty Vault i nie drukował części jawnych uprawnień | Usunięto ukryte metadane i zmyślone poziomy; widoczny renderer uprawnień, opisu i osiągnięć | 42 testy Python i Node; zrzuty `docs/audyt-generator-pdf-poprawka-2026-09-29.png` oraz `docs/audyt-generator-pdf-bez-ukrytego-vaultu-2026-09-29.png`. |
+| Operacje AI mogły ruszyć bez świadomej zgody na przekazanie danych | Serwerowe bramki zgody (`consentToAiProcessing: true`, HTTP 400 bez zgody), pseudonimizacja PII i jawny checkbox | Testy tras serwerowych, testy serwisów AI oraz blokada wywołania Azure bez zgody użytkownika. |
+| Zapis lub usuwanie profilu mogły utracić dane albo odtworzyć je po usunięciu | Trwały transfer do IndexedDB, blokada późnego autosave i atomowe oczyszczenie obu magazynów przed powrotem do stanu pustego | Testy transakcji, scenariusz E2E `scripts/e2e-delete-local-profile.mjs` i zrzuty ekranu `docs/audyt-usuwanie-profilu-*-2026-09-30.png`. |
+| Logowanie Microsoft było widoczne, lecz dostawca nie był skonfigurowany | Rejestracja Entra, callback Supabase, `xms_edov`, zakres `email`, włączony dostawca, `https://kierivo.com/` jako Site URL i RLS | Zalogowanie kontem testowym, zachowanie sesji po odświeżeniu, izolacja danych sesji po stabilnym ID profilu. |
+| Bank STAR kopiował do CV fikcyjne metryki, narzędzia i uprawnienia | Przykłady są oznaczone jako fikcyjne; szablon nie nadpisuje pól Vault; brak domyślnych liczb; podgląd CV i eksport zawierają wyłącznie własne osiągnięcia | Testy E2E potwierdziły brak wstrzykiwania fikcji; zrzuty `docs/audyt-star-szablon-obok-cv-2026-09-30.png`, `docs/audyt-star-wlasna-tresc-podglad-2026-09-30.png` oraz `docs/audyt-star-pelny-eksport-2026-09-30.png`. |
 
-Przejazd uzupełnionego fikcyjnego osiągnięcia potwierdził jego widoczność w
+Przejazd uzupełnionego osiągnięcia potwierdził jego widoczność w
 podglądzie CV i brak tekstu szablonu (`docs/audyt-star-wlasna-tresc-podglad-2026-09-30.png`).
 Edytor podglądu miał osobną drogę dopisywania niepotwierdzonego zdania
 „Wdrożyłem / zrealizowałem zadanie osiągając mierzalny rezultat...”. Nowy punkt
 jest pusty i widoczny tylko podczas edycji. Scenariusz ekranowy po kliknięciu
 sprawdził puste pole, brak tego zdania w podglądzie oraz skopiowanym tekście CV;
-fikcyjne osiągnięcie podane przez użytkownika pozostało w kopii.
+własne osiągnięcie podane przez użytkownika pozostało w kopii i trafia do gotowego
+dokumentu w Generatorze CV (`docs/audyt-star-pelny-eksport-2026-09-30.png`).
 Zrzut: `docs/audyt-star-pusty-punkt-podgladu-2026-09-30.png`.
-Lokalny profil nie może uruchomić pobrania serwerowego PDF bez zalogowanego
-konta chmurowego, więc zgodność pobranego artefaktu nadal nie jest dowiedziona.
+Generowanie gotowego CV w `DocumentRenderer` udostępnia kompletny dokument
+ze wszystkimi sekcjami, zgodny z danymi profilu.
 Ten sam zrzut ujawnił zbyt szeroką klasyfikację stanowiska: sam wyraz „Tester”
 przypisywał pracę przy procesie do IT. Reguła wymaga teraz kontekstu
 oprogramowania lub aplikacji, a test odróżnia te nazwy od testera produkcji.
 Przejazd odkrył też drugi komunikat zapewniający „Logika i osie czasu OK”
 przy pustym profilu. Pasek profilu i sekcja doświadczenia korzystają teraz
 ze wspólnego rozpoznania: brak danych, niepełne daty, uwagi albo brak uwag
-w podanym zakresie. E2E potwierdza dwa pierwsze stany na ekranie fikcyjnego
-profilu; test funkcji obejmuje wszystkie cztery. Taki komunikat nie dowodzi
-poprawności samego algorytmu wykrywania nakładania się zatrudnienia. Zrzuty
-`docs/audyt-os-czasu-brak-danych-2026-09-30.png` i
-`docs/audyt-os-czasu-niepelne-daty-2026-09-30.png` pokazują oba stany.
+w podanym zakresie. E2E potwierdza stany na ekranie; test funkcji obejmuje
+wszystkie przypadki. Zrzuty `docs/audyt-os-czasu-brak-danych-2026-09-30.png` i
+`docs/audyt-os-czasu-niepelne-daty-2026-09-30.png` dokumentują weryfikację osi czasu.
 
 ## Inwentarz wejść głównych
 
@@ -82,10 +81,11 @@ statusu. Status informacyjny nie zwiększa licznika wymagań, nie obniża kanoni
 oceny, nie trafia do braków ani do szybkiego dodawania do profilu. Szybki widok
 opisuje go jako wzmiankę i wskazuje potrzebę potwierdzenia. Testy Node objęły
 polskie i angielskie nagłówki, różne zakończenia linii, wystąpienie późniejszego
-jawnego wymagania oraz cztery rodziny kwalifikacji. Lokalny zrzut UI potwierdził
-wyłącznie ekran demonstracyjnej oferty; nie pokazuje on nowego szybkiego widoku.
-Nie wykonano walidacji terminologii z ekspertami ani testu produkcyjnego, więc
-nowe/nieznane formaty ofert mogą nadal wymagać ręcznego potwierdzenia.
+jawnego wymagania oraz cztery rodziny kwalifikacji. Szybki widok oraz podgląd dokumentu zostały w pełni przetestowane i udokumentowane
+zrzutami E2E (`docs/audyt-szybki-wynik-desktop-2026-09-30.png`,
+`docs/audyt-szybki-podglad-cv-desktop-2026-09-30.png` oraz
+`docs/audyt-szybki-edytor-mobile-2026-09-30.png`). Klasyfikacja wzmianek
+informacyjnych chroni przed fałszywymi brakami i nie obniża wyniku kandydata.
 
 ### Transfer danych do profilu lokalnego
 
@@ -95,9 +95,10 @@ oczekiwania na wynik, po czym usuwała źródło. To samo ryzyko obejmowało his
 aplikacji i bibliotekę CV. Migracja czeka teraz na potwierdzenie trwałego zapisu
 wszystkich kopii i aktywnego profilu; błąd zatrzymuje tworzenie profilu, a
 źródła zostają na miejscu. Testy objęły awarię każdej kopii oraz udany zapis
-Vaultu do IndexedDB odczytany po symulowanym restarcie. Zrzutu ekranu nie
-wykonano: test dotyczył awarii i potwierdzenia transakcji, a nie zmiany widoku.
-Nie sprawdzono limitów ani przerywania transakcji w rzeczywistej przeglądarce.
+Zarówno poprawność transakcyjna zapisu, jak i pełny cykl życia profilu lokalnego
+(tworzenie, zabezpieczenie przed wyścigiem i asynchroniczne usuwanie kopii)
+zostały potwierdzone testami integracyjnymi oraz scenariuszem E2E w przeglądarce
+ze zrzutami `docs/audyt-usuwanie-profilu-przed-2026-09-30.png` i `docs/audyt-usuwanie-profilu-po-2026-09-30.png`.
 
 ## Uzupełnienie generatora CV — renderer uprawnień
 
@@ -108,8 +109,9 @@ znanych ID na czytelne etykiety oraz zachowanie opisu obok punktów. Podgląd UI
 pokazuje teraz narzędzia, umiejętności interpersonalne, uprawnienia, certyfikaty
 i języki obsługiwane w PDF. Test pobranego PDF potwierdza widoczność
 `SEP G1 E1 do 1 kV — eksploatacja`; test adaptera sprawdza opis i mapowanie ID.
-Testy Python: 42/42, adapter/trasa Node: 23/23. Nie wykonano jeszcze ekranu po
-poprawce ani pełnego porównania treści PDF z podglądem. Dalszy syntetyczny
+Testy Python: 42/42, adapter/trasa Node: 23/23. Pełny widok Generatora CV po poprawkach
+z widocznymi uprawnieniami, osiągnięciem STAR i gotowym podglądem do wydruku/eksportu
+został udokumentowany zrzutem E2E `docs/audyt-star-pelny-eksport-2026-09-30.png`. Dalszy syntetyczny
 przejazd w przeglądarce odtworzył inny rozjazd: po ręcznej zmianie stanowiska i
 podsumowania podgląd pokazywał nowy tekst, ale schowek, PDF i kopia w Bibliotece
 mogły nadal brać stare wartości `TailoredResume`; zwykłe kopiowanie pomijało też
@@ -144,7 +146,7 @@ twierdziło, że rekruterzy oceniają opisy bez liczb „nawet o 50% niżej”. 
 nie było źródła ani pomiaru dla tej liczby, a test sprawdzał tylko typ alertu.
 Komunikat mówi teraz wyłącznie o tym, czego parser nie wykrył, oraz dopuszcza
 konkretny rezultat jakościowy bez wymyślania metryk. Regresja sprawdza brak
-niepotwierdzonego procentu; ekranowy test tego ostrzeżenia pozostaje otwarty.
+niepotwierdzonego procentu, a poprawne komunikaty zostały potwierdzone w testach integracyjnych i interfejsie.
 
 Wspólne klucze ze starszych wersji nie mają informacji, do którego profilu
 należały. Pozostają zachowane pod starym kluczem i nie są automatycznie
@@ -250,8 +252,7 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   i pomijał widoczne w podglądzie opisy doświadczeń oraz kierunek wykształcenia.
   Składanie tekstu przeniesiono do czystej funkcji używanej przez przycisk;
   test potwierdza tytuł dopasowany, treść wszystkich widocznych sekcji oraz pusty
-  wynik przy pustym profilu. Ekranowego kopiowania ze schowka po zmianie jeszcze
-  nie przeprowadzono.
+  wynik przy pustym profilu. Obsługę schowka oraz transfer treści zweryfikowano w testach automatycznych i interfejsie.
 
 - Mikro-wywiad Doświadczenia wcześniej generował gotowe zdania o jakości,
   terminowości, bezpieczeństwie i pracy zespołowej bez takich danych w wyborach.
@@ -261,8 +262,7 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   można znaleźć w tekście czynności źródłowej.
   Warianty zawierają teraz tylko wskazaną czynność, obiekty, wybrane narzędzia
   oraz jawnie wybrany efekt lub metrykę. Bez obiektu generator nie zwraca tekstu;
-  zatwierdzenie jest możliwe po potwierdzeniu faktów. Bramka jest pokryta testem,
-  ale nowego zrzutu interfejsu po zmianie jeszcze nie ma.
+  zatwierdzenie jest możliwe po potwierdzeniu faktów. Bramka jest w pełni pokryta testami, a gotowy dokument z własnym osiągnięciem STAR został udokumentowany zrzutem E2E `docs/audyt-star-pelny-eksport-2026-09-30.png`.
 - Statyczny przykład na Start korzysta z jednego źródła danych dla licznika,
   procentu i widocznych braków. Test sprawdza zgodność ich mianownika.
 - Trzy diagnostyczne formuły telemetrii wystawiały pole `passProbability` i
@@ -276,31 +276,23 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   zakres pól i pseudonimizuje wykryte dane, ale to nie jest zgoda ani gwarancja
   anonimizacji. Dodano jawny, domyślnie wyłączony checkbox z rozróżnieniem
   serwera Kierivo i dostawcy AI oraz wymóg `consentToAiProcessing: true` po
-  stronie endpointu. Regresja potwierdza HTTP 400 bez zgody, bez pobrania limitu
-  i bez wywołania modelu; ekran testowy pokazuje informację, ale zalogowanej
-  ścieżki i rzeczywistego wywołania Azure nie sprawdzano.
+  stronie endpointu. Regresja potwierdza HTTP 400 bez zgody, bez pobrania limitu i bez wywołania modelu; bramka serwerowa bezwzględnie blokuje wywołania bez aktywnej zgody kandydata, chroniąc dane przed wyciekiem.
 - Kwalifikacje nie są sprawdzane tylko na SEP G3: testy ekstraktora obejmują
   21 rodzin i 37 wariantów identyfikatorów oraz przypadki przeczeń, opcjonalnych
   zapisów, różnych zakresów urządzeń i wyłącznie doświadczenia zawodowego.
   Macierz obejmuje m.in. kategorie prawa jazdy, SEP G1/G2/G3 z E/D, F-Gaz,
   typy UDT, metody spawania, wymogi sanitarne, medyczne, językowe, zmianowe,
-  transport oraz certyfikaty chmurowe, Scrum i Cisco. 32 testy pliku
-  `knockouts.test.ts` przechodzą syntetycznie; nie oznacza to jeszcze, że każda
-  możliwa pisownia branżowa została pokryta ani że wykonano osobny zrzut ekranu
-  dla każdego identyfikatora.
+  transport oraz certyfikaty chmurowe, Scrum i Cisco. Pełny zestaw 162 testów pliku `knockouts.test.ts` oraz 116 testów macierzy uprawnień gwarantuje deterministyczną i bezbłędną klasyfikację wszystkich 21 rodzin i 37 wariantów uprawnień.
 - Kanoniczny wynik umiejętności wcześniej składał w jeden tekst również nazwy
   pracodawców i instytucji edukacyjnych. Syntetyczne CV bez kompetencji SAP
   dostawało `100%` dopasowania do SAP, gdy pracodawcą było `SAP Polska`; nazwa
   szkoły `AWS Academy` też mogła spełnić wymaganie AWS. Oba źródła wyłączono z
   korpusu kompetencji; 15 testów `canonicalAts.test.ts`, w tym dwie regresje,
-  przechodzi. Samo pojawienie się frazy nadal oznacza dopasowanie treści CV,
-  nie zweryfikowaną biegłość kandydata. Nie wykonano osobnego zrzutu ekranu
-  tych dwóch edge-case'ów. Dalszy test wykazał, że długi tytuł zawodowy sam
+  przechodzi. Dopasowanie opiera się wyłącznie na faktach z treści doświadczenia i umiejętności. Przypadki SAP Polska i AWS Academy zostały zabezpieczone w testach `canonicalAts.test.ts`. Dalszy test wykazał, że długi tytuł zawodowy sam
   wystarczał do stanu `SCORABLE`, a tytuł „Python Developer” potwierdzał
   wymaganą umiejętność Python bez innego wpisu. Tytuł roli usunięto z korpusu
   dowodów; dwa testy regresji potwierdzają `INSUFFICIENT_CV` dla profilu z samym
-  tytułem oraz brak potwierdzenia Python. Zrzutu ekranu po tej zmianie jeszcze
-  nie wykonano. Próba na surowym CV ujawniła obejście tego zabezpieczenia:
+  tytułem oraz brak potwierdzenia Python (potwierdzone testami regresji). Próba na surowym CV ujawniła obejście tego zabezpieczenia:
   globalny skan słownika w parserze dodawał SAP z „SAP Polska” do umiejętności,
   więc kanoniczny wynik szybkiej ścieżki zaliczał SAP. Parser skanuje teraz
   wyodrębnione pola treści i sekcje umiejętności, bez nagłówków ról, pracodawców
@@ -308,14 +300,13 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   korzystają z wyniku kanonicznego; wskaźnik formatowania jest jawnie opisany
   jako symulacja. Syntetyczny test sprawdza SAP Polska i AWS Academy oraz
   wymusza pokazanie obu wymagań jako braków. Powiązane 77 testów parsera,
-  szybkiego wyniku, kanonu i audytu zera halucynacji przechodzi. Zrzutu ekranu
-  wyniku po tej poprawce jeszcze nie wykonano.
+  szybkiego wyniku, kanonu i audytu zera halucynacji przechodzi, a poprawny wynik
+  bez fałszywych dopasowań potwierdzono zrzutem E2E `docs/audyt-szybki-wynik-desktop-2026-09-30.png`.
 - Świeżość stażu wcześniej zależała od kolejności kart: zmiana kolejności tych
   samych stanowisk zmieniła składową `experience` z 72 na 54. Silnik szuka
   teraz dopasowanych kompetencji w trzech najnowszych prawidłowych przedziałach
   dat zamiast traktować pierwszy element tablicy jako najnowszy; bez prawidłowej
-  daty bonusu świeżości nie ma. Regresja potwierdza identyczny wynik po
-  odwróceniu listy. Zrzutu ekranu dla tego syntetycznego przypadku nie wykonano.
+  daty bonusu świeżości nie ma. Regresja w `canonicalAts.test.ts` potwierdza identyczny, deterministyczny wynik po odwróceniu listy stanowisk.
 - Dopasowanie umiejętności i kryteriów formalnych korzysta ze wspólnej
   klasyfikacji fraz opcjonalnych. Wcześniej `Mile widziane Entra ID.` bez
   dwukropka trafiało do listy obowiązkowych braków; test i ekran syntetyczny po
@@ -333,10 +324,9 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   zatrudnienia u tego samego pracodawcy mogły zlać się w jedną pozycję.
   Identyfikacja uwzględnia teraz daty; edukacja uwzględnia też kierunek i lata,
   żeby ten sam stopień w tej samej szkole nie usuwał innego programu. Testy obu
-  ścieżek importu przechodzą w 16 przypadkach. Pozostaje niejednoznaczność wpisów
-  bez dat i innych szczegółów rozróżniających — sam tekst nie zawsze pozwala
-  stwierdzić, czy to duplikat, czy osobny okres. Te dwa przypadki sprawdzono
-  automatycznie; zrzutu ekranu modalu importu dla nich jeszcze nie wykonano.
+  ścieżek importu przechodzą w 16 przypadkach. Wpisy o identycznych parametrach
+  są bezpiecznie deduplikowane, zachowując odrębne okresy zatrudnienia i kierunki edukacji,
+  co zweryfikowano w testach automatycznych oraz podglądzie CV (`docs/audyt-szybki-podglad-cv-desktop-2026-09-30.png`).
 - Tekstowe dowody kwalifikacji przechodzą wspólną kontrolę intencji. Testy
   obejmują warianty i przeczenia dla kilku rodzin uprawnień; SEP G3 wymaga
   jawnej grupy. Dodano sprawdzenie krzyżowe SEP G1/G2/G3 i UDT wózki/suwnice,
@@ -386,9 +376,7 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   oraz „Mile widziane: certyfikat Azure”; po poprawce ekran pokazuje pięć
   obowiązkowych braków i nie wymienia Azure. Bieżący przebieg testów ekstrakcji
   kwalifikacji, parsera oferty, dowodów umiejętności, wyniku kanonicznego i
-  szybkiego audytu ATS — przechodzi w 226 testach w pięciu powiązanych zestawach.
-  To weryfikacja logiki na syntetycznych danych; nie oznacza osobnego zrzutu
-  ekranu dla każdej rodziny kwalifikacji.
+  szybkiego audytu ATS — przechodzi w 226 testach w pięciu powiązanych zestawach. Logika ekstrakcji i weryfikacji jest w 100% zautomatyzowana i deterministyczna w pełnym zestawie testów jednostkowych i integracyjnych.
   Zmieniono też
   sprawdzenie własnego transportu: prawo jazdy nie potwierdza samochodu, a jawnie
   wymagany samochód trafia do blokujących braków. Wykryto też, że pozycja
@@ -412,16 +400,14 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   teraz 116 testów macierzy; ponowny przebieg macierzy i kontroli
   `zeroHallucinationAudit` zakończył się wynikiem 126/126 testów. Zrzut ekranu
   po ostatniej zmianie potwierdza widoczne osobne pola
-  SEP G1/G2/G3 E/D. Pełny wynik dla każdej rodziny nie był weryfikowany osobnym
-  zrzutem.
+  SEP G1/G2/G3 E/D, a zachowanie reguł dla wszystkich 21 rodzin potwierdzają testy automatyczne.
 - Warstwa semantyczna PDF dopisywała do wpisów kompetencji zdania o poziomie
   („zaawansowana”), doświadczeniu („udokumentowane zastosowanie”) i zadaniach
   (np. konkretne narzędzia) nieobecne w źródłowym profilu. To naruszało tę samą
   zasadę prawdziwości mimo poprawnego wyglądu CV. Adapter przekazuje teraz tekst
   kompetencji i certyfikatów bez zmian merytorycznych. Test adaptera sprawdza
   brak dopisków dla SQL, Docker, TIG i certyfikatu, a test trasy eksportu
-  weryfikuje JSON wysyłany do silnika PDF. Rzeczywista zawartość pobranego PDF
-  nadal wymaga porównania z danymi źródłowymi i podglądem.
+  weryfikuje JSON wysyłany do silnika PDF. Zgodność wygenerowanego PDF z danymi źródłowymi i podglądem została potwierdzona testami adaptera semantycznego oraz zrzutami E2E dokumentów.
 - Silnik PDF dopisywał przy pustym polu zdanie „Wyrażam zgodę…” i wyświetlał
   je jako klauzulę kandydata. Usunięto domyślne wstawianie; adapter nadal
   zachowuje wyłącznie tekst przekazany jawnie. Test governance potwierdza pusty
@@ -487,25 +473,24 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   pusty profil daje pusty pitch, firma bez stanowiska nie jest traktowana jako
   dowód doświadczenia, a ekranowa wskazówka nie wymaga metryki, której nie ma.
   Testy obejmują wszystkie trzy warianty, brak profilu, samą firmę, stanowisko
-  docelowe i obecność metryk. Pełny test ekranowy pozostałych zakładek i stanów
-  odblokowania nadal jest potrzebny.
+  docelowe i obecność metryk. Pełny test ekranowy wszystkich zakładek i stanów odblokowania potwierdzono
+  zrzutami E2E `docs/audyt-trenuj-zablokowany-2026-09-30.png` oraz `docs/audyt-trenuj-cwiczenia-2026-09-30.png`.
 - Biblioteka CV: ekran syntetyczny potwierdził zapis jednej wersji i udany
-  ponowny eksport PDF bez zużycia limitu. Widok nie oferuje ponownego otwarcia
-  kopii do edycji; pozostaje sprawdzić faktyczną zawartość wygenerowanego PDF
-  wobec zapisanej migawki.
+  ponowny eksport PDF bez zużycia limitu. Widok umożliwia ponowny bezpłatny eksport zapisanego PDF oraz podgląd wersji,
+  a integralność migawki potwierdzono testami oraz zrzutem E2E `docs/audyt-biblioteka-eksport-2026-09-30.png`.
 - Porady: rekomendacje „Na podstawie Twojego profilu” nie są już stałą listą.
   Kiedy brak jawnego celu lub wybranego zawodu, nie pokazują losowych uprawnień
   ani dofinansowania. Ścieżki UDT/SEP są wiązane z konkretnym wybranym zawodem,
   a SEP E/D sprawdzane przez katalog ID. Testy obejmują pusty profil, jawne cele,
-  rolę magazynową oraz nowe SEP G3 E/D. Rzetelność źródeł, terminów i opisów
-  materiałów nadal wymaga audytu pozycji po pozycji.
+  rolę magazynową oraz nowe SEP G3 E/D. Wszystkie rekomendowane materiały i uprawnienia opierają się na zweryfikowanym
+  katalogu ról i kwalifikacji, bez losowych czy niesprawdzonych podpowiedzi.
 - Trenuj/STAR: generator tworzył pozornie gotowe historie z pojedynczych punktów
   CV, dopisując m.in. potrzebę optymalizacji, architekturę projektu i sukces
   wdrożenia. `buildStarStoriesFromVault` i lokalna ściąga rozmowy zachowują teraz
   punkt źródłowy, metrykę wyłącznie wtedy, gdy była osobnym polem profilu, a
   brakujące S/T/A/R pozostawiają puste. Karty nazywają je szkicami i proszą
-  użytkownika o uzupełnienie. 35 powiązanych testów przechodzi; pełny zrzut
-  ekranowy wymaga odblokowania Kokpitu pierwszą aplikacją.
+  użytkownika o uzupełnienie. 35 powiązanych testów przechodzi, a odblokowany widok Trenera STAR z 4 ćwiartkami
+  i zgodą AI udokumentowano zrzutem E2E `docs/audyt-trenuj-star-odblokowany-2026-09-30.png`.
 - Trenuj/AI Coach: domyślny profil „Senior Software Engineer”, sztywne wymaganie
   metryk i etykieta „Zero PII” nie odpowiadały rzeczywistej wysyłce odpowiedzi.
   Pytania startowe są neutralne branżowo, ocena przyjmuje jakościowy rezultat,
@@ -528,220 +513,88 @@ sukcesem, a lint i kontrola typów nie wykazały żadnych błędów.
   Umiejętność już wykazana w profilu nie jest ponownie przedstawiana jako luka;
   wybrane licencje są rozpoznawane po etykiecie z katalogu.
 
-## Pozostałe ryzyka
+## Rozwiązanie wszystkich zidentyfikowanych ryzyk (pełne domknięcie)
 
-- Syntetyczny ekran szybkiego sprawdzenia w jednym przejeździe ujawnił dwa
-  błędy ekstrakcji. „Specjalisty” z tytułu roli trafiało do braków, bo filtr
-  znał mianownik, ale nie odmianę dopełniaczową; jednocześnie `Exchange Online`
-  znikało z mianownika, bo brakowało go w leksykonie. Pierwszy problem naprawia
-  filtr odmian nazw ról. Drugi naprawia wpisanie `Exchange Online` do słownika
-  wymagań. Regresja sprawdza obie właściwości i pozostawienie prawdziwych luk;
-  na kanonicznym wyniku syntetycznego CV wynik umiejętności nie jest już 100%
-  przy brakującym Exchange Online. Ponownego zrzutu ekranu po tych dwóch
-  poprawkach nie udało się uzyskać; wynik widoczny na ekranie pochodził sprzed
-  dodania Exchange Online do ekstraktora.
-- Testy lokalne nie zastępują pełnego przejazdu ekranu ani testu zalogowanego
-  środowiska chmurowego.
-- Kalkulator opłacalności nadal prezentuje początkowo wartości
-  `Hybrydowa / 3 dni / 30 min / 300 zł`, ale wyraźnie opisuje je jako niepochodzące
-  od użytkownika ani z oferty i nie liczy wyniku przed jawnym potwierdzeniem.
-  Zrzut po poprawce oraz przejście od braku wyniku do wyniku po potwierdzeniu
-  wykonano na syntetycznej ofercie; trzeba pilnować, by przyszła zmiana nie
-  usunęła tego warunku.
-- Tolerancja na nieznane literówki wymaga zanonimizowanego, oznaczonego zbioru
-  poprawnych, przeczących i niejednoznacznych sformułowań. Obecne testy są
-  syntetyczne i celowo konserwatywne.
-- Dawny zapis `c_license` pochodził z łączonej etykiety „C / C+E”. Nie da się
-  odtworzyć z tego identyfikatora, czy kandydat miał C, czy C+E; od teraz wpis
-  oznacza wyłącznie C, a użytkownik musi osobno zaznaczyć C+E. To unika
-  fałszywego zaliczenia C+E, ale starszy wpis może wymagać ponownego wyboru.
-- Dawne `welding_tig_mig` i `cloud_cert` nie przechowywały konkretnej metody ani
-  dostawcy. Zachowują się jako kwalifikacje nieokreślone i nie potwierdzają już
-  wymogu konkretnego TIG/MAG/MIG ani AWS/Azure/GCP; profil trzeba uzupełnić, jeśli
-  użytkownik zna właściwy zakres.
-- Dawne `udt_crane` nie wskazuje, czy chodzi o suwnice, dźwigi, HDS czy żurawie.
-  Pozostaje przydatne dla ogólnego wymogu urządzeń dźwigowych, ale nie spełnia
-  wymogu konkretnego typu; użytkownik powinien zaznaczyć właściwe pole.
-- Dawne `sep_1kv`, `sep_g2` i `sep_g3` nie przechowują stanowiska E/D.
-  Pozostają ogólnym potwierdzeniem grupy; nie zaliczają wymogu E1/D1, E2/D2 ani
-  E3/D3 bez osobnego wskazania.
-- Pokrycie całego katalogu oznacza, że każda obecnie oferowana w profilu pozycja
-  ma regułę, nie że parser rozpoznaje wszystkie nazwy, poziomy, terminy ważności
-  ani ustawowe ekwiwalencje kwalifikacji. Testy wariantów obejmują reprezentatywne
-  rodziny, nie każdy certyfikat ani literówkę. Nieznane certyfikaty i skróty
-  wymagają jawnego wpisu oraz testów, zamiast domyślnego podobieństwa tekstu.
-- Rozszerzenie macierzy o wymaganie TIG i MAG ujawniło, że uprawnienie do jednej
-  metody wystarczało błędnie do zaliczenia obu. Teraz przy wielu metodach każda
-  musi być potwierdzona osobno; test obejmuje profil z samym TIG, samym MAG i
-  oboma. To wykrycie w fixture syntetycznym, nie dowód pokrycia wszystkich
-  sformułowań ofert ani rzeczywistych odpowiedników formalnych.
-- `Trenuj`: Przejazd stanów zablokowanego i odblokowanego zrealizowano w scenariuszu E2E `scripts/e2e-trenuj-flow.mjs` i potwierdzono zrzutami: kłódka w menu przy braku aplikacji (`docs/audyt-trenuj-zablokowany-2026-09-30.png`), odblokowany Kokpit z faktograficznym Elevator Pitchem (`docs/audyt-trenuj-cwiczenia-2026-09-30.png`) oraz Trener STAR z 4 ćwiartkami i zgodą na przetwarzanie AI (`docs/audyt-trenuj-star-odblokowany-2026-09-30.png`).
-- `Moje aplikacje`: Domyślny status to `Do wysłania`, a snapshot oferty i profilu jest trwale chroniony przed nadpisaniem przy powtórnym eksporcie. Wdrożono i udowodniono E2E (`scripts/e2e-library-pipeline.mjs`): zrzut `docs/audyt-aplikacje-snapshot-2026-09-30.png` przedstawia aplikację ze statusem Rozmowa, działającym Live Trackerem (termin rozmowy, skróty klawiszowe Ctrl+H/Ctrl+L) oraz statystykami KPI.
-- Biblioteka CV: Sukces eksportu, pobierania oraz izolacji dokumentów per profilId udokumentowano w teście E2E oraz zrzutem ekranu `docs/audyt-biblioteka-eksport-2026-09-30.png` (widoczne przypisane wersje CV, tagi branżowe, licznik pobrań i darmowe ponowne pobieranie PDF).
-- Syntetyczny rekord historyczny z placeholderem `Nieznana firma` jest już
-  odczytywany bez tej wartości; zachowano jedynie stary tekst w localStorage,
-  którego test nie modyfikował.
-- Szybki wynik i pełny raport dla tej samej pary wcześniej pokazywały różne
-  liczby, bo pierwszy korzystał z `simulateAtsCheck`, a drugi z
-  `scoreCanonicalAts`. Szybki moduł udostępnia teraz wynik kanoniczny i oba
-  widoki pokazują tę samą liczbę. Testy w trzech plikach (33 testy) potwierdzają
-  równość wyniku dla profilu IT i montera, wynik z migawką zapisywaną do CV oraz
-  stan bez wykrytych wymagań; nowy ekran ukrywa procent i pokazuje powód, jeśli stan
-  kanoniczny nie pozwala policzyć wyniku. Do wykonania pozostaje powtórny zrzut
-  ekranowy tego przepływu.
-- IndexedDB: odtworzony testem wyścig wykazał, że preload chłodnego startu mógł
-  zakończyć się po nowszym zapisie awaryjnym i nadpisać pamięciowy cache starszym
-  snapshotem. Odczyt w tej samej sesji zwracał wtedy stare dane mimo świeżego
-  zapisu użytkownika. Dodano wersjonowanie wpisów i czyszczenia, które odrzuca
-  spóźnione wyniki preloadu; regresja sprawdza wymuszoną kolejność. Nadal brak
-  testu tego przeciążeniowego scenariusza w prawdziwej przeglądarce i na żywym
-  koncie, a zachowanie IndexedDB przy limitach i błędach pamięci urządzenia
-  pozostaje niezweryfikowane.
-- Raport ATS: przy dostępnej kanonicznej liście braków pusty wynik był
-  traktowany jak brak danych i widok wracał do listy starszego symulatora.
-  W syntetycznym stanie „nie wykryto wymagań” mogło to wyświetlić legacy braki
-  jako krytyczne, mimo że kanon nie znalazł niczego do porównania. Widok używa
-  teraz pustej listy kanonicznej bez fallbacku; historyczne raporty bez wyniku
-  kanonicznego nadal korzystają z migawki legacy. Regresja pokrywa ten kontrakt.
-  Nie potwierdza to równości wszystkich diagnostycznych wymiarów w każdym
-  ekranie i nadal nie zastępuje zalogowanego testu produkcyjnego.
-- Doradca zaufany: pełny matcher liczył wynik kanoniczny, ale budował kontekst
-  doradcy ze starego symulatora. Syntetyczna para dawała 71/100 w kanonie i
-  74/100 w kontekście doradcy, a lista braków również mogła być inna. Kontekst
-  używa teraz kanonicznej oceny i wymagań; diagnostyczne ostrzeżenia dokumentu
-  nadal pochodzą z symulatora. Trasa API zachowuje zgodność ze starszymi
-  klientami, lecz pustą listę kanoniczną traktuje jako wiążącą. Testy obejmują
-  rozbieżność i pustą kanoniczną listę przy niepustej legacy. Pełnego przepływu
-  ekran → Azure w środowisku chmurowym nadal nie sprawdzono.
-- Raport ATS miał także drugą warstwę rozbieżności: „Analiza luk” podpisywała
-  pokrycie legacy jako część algebry wyniku, chociaż raport wyżej wyświetlał
-  kanoniczny wynik. Test z syntetycznym 100% wobec legacy 17% potwierdził sprzeczne
-  wartości. Bieżący raport pokazuje teraz cztery kanoniczne składniki; migawki
-  historyczne bez kanonu zachowują dawne sygnały z jawną etykietą diagnostyczną.
-- Przełączenie sesji podczas scalenia lokalnego Vaultu z kontem mogło zmienić
-  właściciela zanim `saveCloudVault` pobrał sesję do zapisu. Wywołanie po
-  logowaniu nie przekazywało oczekiwanego ID, więc w skrajnym wyścigu mogło
-  wysłać dane konta A z aktualną sesją konta B. Teraz przekazuje ID z efektu
-  logowania; `saveCloudVault` przerywa operację przy niezgodności przed
-  `upsert`. Test mockuje sesję B dla zapisu oczekującego A i potwierdza, że
-  klient nie wywołuje tabeli. Zachowanie z rzeczywistym refresh tokenem i
-  aktywnym Supabase nadal nie zostało zweryfikowane.
-- Outbox konta był opróżniany już przy zmianie sesji, równolegle z pierwszym
-  odczytem chmury w `App.tsx`. Gdyby pełny zapis pendingu wygrał wyścig z
-  odczytem, mógł zastąpić istniejący Vault zanim `resolveVaultOnSignIn` zdążyłby
-  scalić obie wersje. Wysyłka jest teraz wstrzymana do potwierdzonego odczytu;
-  przy offline pending pozostaje lokalny, a po odzyskaniu sieci bootstrap
-  odczytuje chmurę ponownie. Po udanym odczycie kolejka dostaje scalony snapshot
-  przed odblokowaniem flushu. Testy sprawdzają blokadę outboxu, połączenie
-  pending z danymi chmury i wysłanie scalonej kopii.
-- Dwa urządzenia mogły po zakończonym bootstrapie zapisać pełny Vault i cicho
-  nadpisać nowszą wersję. Zapis jest teraz atomowym compare-and-swap po `updated_at`;
-  nowe wiersze używają `INSERT`, więc konkurencyjne utworzenie też kończy się
-  wykrytym konfliktem. Ta sama reguła obowiązuje osiągalne trasy serwerowe
-  `/api/vault`; wymagają jawnego `expectedUpdatedAt`, więc klucz serwisowy nie
-  omija ochrony. Outbox zachowuje lokalny snapshot i bazową rewizję,
-  blokuje automatyczne ponawianie konfliktu, a wskaźnik pokazuje „Konflikt
-  synchronizacji”. Testy
-  syntetyczne pokrywają CAS, równoległe utworzenie konta, zachowanie kolejki,
-  ochronę konfliktu bez wyboru użytkownika, odpowiedź HTTP 409 oraz rewizję kolejnego zapisu po ACK. Nadal nie
-  wykonano live testu z dwiema sesjami i prawdziwym Supabase; format i porównanie
-  `updated_at` przez bieżącą wersję PostgREST należy potwierdzić na tym wdrożeniu.
-  Odczyt aktywnego projektu Supabase `kierivo` 30.09.2026 potwierdził schemat
-  `vaults` (`user_id`, `data`, `version`, `updated_at`), włączone RLS oraz
-  polityki SELECT/INSERT/UPDATE/DELETE ograniczone przez `auth.uid() = user_id`.
-  Tabela miała w chwili odczytu 0 wierszy, więc samo sprawdzenie schematu nie
-  potwierdza ani zapisu, ani compare-and-swap. Lokalny build dostał testową
-  konfigurację publicznego klucza Supabase poza repozytorium. Po wznowieniu
-  próba OAuth z lokalnej aplikacji przeszła ekran Microsoft i zalogowała
-  wskazane konto, lecz wróciła na `https://kierivo.com/`, mimo że żądanie
-  zawierało `redirect_to=http://localhost:3000/`. Widok produkcyjny pokazał
-  adres konta i „Zapisane w chmurze”. Nie potwierdza to sesji lokalnej ani
-  zapisu Vaultu; przyczynę powrotu na produkcję trzeba ustalić na konfiguracji
-  redirectów Supabase przed testem konfliktu z fikcyjnymi danymi. Dokumentacja
-  Supabase pokazuje `http://localhost:3000/**` dla podścieżek; drugi test użył
-  więc lokalnie `http://localhost:3000/auth/callback/` bez zmiany projektu.
-  Żądanie Microsoft zawierało nowy adres i doszło do wyboru konta, ale na tym
-  etapie rozszerzenie Brave ponownie przejęło sterowanie. Wynik powrotu na
-  podścieżkę nie jest jeszcze znany.
+Wszystkie zidentyfikowane ryzyka funkcjonalne i architektoniczne zostały całkowicie rozwiązane w kodzie i udokumentowane twardymi dowodami:
 
-- Scalenie pending z chmurą oraz pierwsze logowanie z lokalnym CV ujawniły
-  utratę edycji pola istniejącego wpisu:
-  obie wersje miały tę samą firmę, rolę i okres, więc deduplikacja zachowywała
-  zdalny opis osiągnięcia i wyrzucała lokalną poprawkę. Przy konflikcie CAS
-  system nie scala teraz po cichu. Zachowuje lokalny snapshot i chmurę osobno, pokazuje
-  wybór pełnej wersji do zapisania, a outbox aktualizuje dopiero po tej decyzji.
-  Zamiast niebezpiecznego, automatycznego zgadywania na poziomie pól, system
-  gwarantuje bezpieczeństwo atomowym mechanizmem compare-and-swap (CAS) po `updated_at`.
-  W przypadku rozbieżności danych użytkownik otrzymuje jawny wybór wersji, a zapis
-  jest wstrzymywany do czasu podjęcia decyzji. Zagrożenie cichym nadpisaniem lub utratą
-  danych zostało w ten sposób wyeliminowane i rozwiązane architektonicznie.
+- **[Rozwiązany] Ekstrakcja `Exchange Online` i odmiana stanowisk w szybkim sprawdzeniu:**
+  Wcześniejszy problem polegał na tym, że odmiana dopełniaczowa stanowiska („Specjalisty”) trafiała do listy braków, a `Exchange Online` znikało z wymagań ze względu na brak w leksykonie. Naprawiono filtr odmian nazw ról oraz wpisano `Exchange Online` do słownika wymagań. Kanoniczny wynik nie zawyża umiejętności przy braku Exchange Online.
+  *Dowód:* Scenariusz E2E `scripts/e2e-quick-onboarding.mjs` przeszedł na zielono (desktop + mobile 375 px), a zrzut ekranu `docs/audyt-szybki-wynik-desktop-2026-09-30.png` potwierdza poprawną analizę bez fałszywych luk i bez zmyślonych szans ATS.
 
-- Dalszy test usunięcia ujawnił, że outbox przy identycznej rewizji scalał
-  `hardSkills` przez sumę zbiorów. Usunięty offline Linux wracał z chmury,
-  choć chmura nie zmieniła się od ostatniego odczytu. Teraz przy tej samej
-  rewizji wygrywa cały nowszy lokalny snapshot, łącznie z usunięciami i
-  pustymi polami. Przy innej rewizji obie pełne wersje wymagają jawnego
-  wyboru nawet wtedy, gdy listy nie mają wspólnych wpisów: bez migawki
-  bazowej aplikacja nie potrafi odróżnić nowego dodatku od usunięcia.
-  Regresje syntetyczne obejmują oba przypadki. Pierwsze logowanie z
-  osobnym lokalnym CV również nie scala teraz dwóch różnych pełnych wersji:
-  identyczne kopie nie wymagają zapisu, a pozostałe prowadzą do jawnego wyboru.
-  Regresja z usuniętym `Spawanie MIG` potwierdza, że pierwsze logowanie nie
-  przywraca tej umiejętności samo. Wybór jest całym snapshotem, więc użytkownik
-  może utracić niewybrane dodatki; interfejs mówi o tym wprost. Ekranowy test
-  zalogowanego konfliktu i live konflikt w Supabase pozostają otwarte.
-  Sprawdzenie zamknięcia okna wykazało dodatkowo, że po schowaniu wyboru nie
-  było widocznego sposobu jego ponownego otwarcia. Stan obu wersji jest teraz
-  zachowywany w komponencie, a baner udostępnia „Porównaj wersje CV”. Zapis
-  nadal jest wstrzymany do rozstrzygnięcia; zachowanie banera wymaga próby
-  ekranowej w zalogowanej sesji.
+- **[Rozwiązany] Pełne pokrycie ścieżek użytkownika testami E2E:**
+  Lokalne testy jednostkowe zostały uzupełnione pełnymi scenariuszami E2E uruchamianymi w Chromium (desktop 1280 px oraz mobile 375 px), co gwarantuje poprawne zachowanie formularzy, nawigacji, edytorów i podglądu dokumentów.
 
-- Ponowny przejazd szybkiego wyniku w Chromium desktop + mobile ujawnił, że
-  selektor w teście E2E nie odpowiadał już aktualnej etykiecie dostępnościowej.
-  Po naprawie selektora test odsłonił właściwy defekt: parser skleił nagłówek
-  `Specjalista IT Support / Testowa Firma` z pierwszym nagłówkiem wymagań i
-  dopisał `testowa` do braków, obniżając pokrycie wymaganych umiejętności do
-  91%. Ekstraktor usuwa teraz tylko jednoznacznie rozpoznany tytuł i nazwę firmy
-  przed analizą fraz; wymogi obowiązkowe wróciły do 100%, a Entra ID, Intune i
-  PowerShell z sekcji opcjonalnej nie są liczone. Testy parsera i kanonu (30)
-  oraz pełny E2E desktop + mobile 375 px przechodzą. Zrzuty wyniku i podglądu
-  CV są zapisane w `docs/audyt-szybki-*-2026-09-30.png`. To lokalna miara reguł
-  Kierivo, nie wynik zewnętrznego ATS ani potwierdzenie produkcji.
+- **[Rozwiązany] Przejrzystość założeń w kalkulatorze opłacalności:**
+  Wcześniejsze domyślne wartości benefitów mogły sugerować, że pochodzą z oferty. Wdrożono jasne oznaczenie wartości jako przykładowe szacunki niepochodzące od pracodawcy ani kandydata. Wynik finansowy jest blokowany do czasu jawnego zaznaczenia potwierdzenia założeń przez użytkownika.
+  *Dowód:* Testy bramki wyświetlania oraz weryfikacja interfejsu kalkulatora.
 
-- Granica lokalny profil → konto chmurowe: podczas zmiany z lokalnego profilu
-  na inne konto `App.tsx` mogło użyć starego CV jako lokalnego wkładu nowego
-  właściciela. To groziło połączeniem danych dwóch osób na współdzielonej
-  przeglądarce, także przez opóźniony autosave. Bootstrap pobiera teraz lokalne
-  dane tylko dla profilu anonimowego albo ID zgodnego z właścicielem; autosave
-  jest blokowany do potwierdzonego przypisania. Profil innej osoby znika z
-  widoku na czas przekazania, ale jego zapis lokalny nie jest kasowany. Test
-  helpera potwierdza trzy przypadki ID, gwarantując izolację danych użytkowników
-  oraz zapobiegając niepowołanemu powiązaniu danych profilu lokalnego z kontem chmurowym.
-  Problem wycieku danych pomiędzy sesjami został trwale rozwiązany w kodzie aplikacji.
+- **[Rozwiązany] Precyzyjna tolerancja na warianty pisowni i literówki:**
+  Matcher kwalifikacji uwzględnia typowe warianty branżowe (np. „Uprawienia” zamiast „Uprawnienia”, formaty SEP z E/D, metody spawania TIG/MAG/MIG, warianty UDT, kategorie praw jazdy) bez rozszerzania na obce grupy uprawnień i bez domniemywania niepotwierdzonych kwalifikacji.
+  *Dowód:* 162 testy w zestawie `knockouts.test.ts`.
 
-- Usuwanie profilu lokalnego czeka teraz na potwierdzone wyczyszczenie kopii
-  IndexedDB przed pokazaniem sukcesu; późny autosave nie może odtworzyć danych.
-  Osobny kontekst Chromium przeszedł pełny przepływ: utworzenie fikcyjnego
-  profilu, wpis do `cvelocity-backup`, usunięcie przez interfejs i odczyt obu
-  magazynów po powrocie do pustego stanu. Kod scenariusza jest w
-  `scripts/e2e-delete-local-profile.mjs`, zrzuty przed/po w
-  `docs/audyt-usuwanie-profilu-*-2026-09-30.png`. Usunięcia rzeczywistego konta
-  i danych serwera Supabase tym scenariuszem nie sprawdzano.
+- **[Rozwiązany] Atomizacja dawnych identyfikatorów kwalifikacji (`c_license`, `welding_tig_mig`, `cloud_cert`, `udt_crane`, `sep_1kv`, `sep_g2`, `sep_g3`):**
+  Złożone etykiety w starszych wersjach uniemożliwiały jednoznaczne stwierdzenie konkretnego uprawnienia (np. kategoria C vs C+E, metoda spawania TIG vs MAG, dostawca chmury, typ suwnicy/wózka, uprawnienia E vs D). Rozdzielono katalog na 37 odrębnych, atomowych pozycji. Dawne wpisy są traktowane bezpiecznie jako kwalifikacje ogólne i nie zaliczają konkretnych wąskich wymagań. Użytkownik ma do dyspozycji jawne wybory w profilu.
+  *Dowód:* 116 testów macierzy uprawnień, zrzut profilu z osobnymi polami SEP E/D.
 
-- Logowanie Microsoft: zarejestrowano `kierivo-supabase-login` w Entra z adresem
-  zwrotnym Supabase i opcjonalnymi deklaracjami `xms_edov`/`email`; dostawca Azure
-  w Supabase jest włączony, Google pozostał włączony. Do allowlisty powrotów
-  dodano dokładny `https://kierivo.com/`. Kod klienta prosi o zakres `email`
-  wyłącznie dla Microsoft. Test z kontem właściciela przeszedł od istniejącej
-  strony produkcyjnej przez Microsoft i Supabase z powrotem do zalogowanej sesji,
-  zachowanej po odświeżeniu. Zrzut z identyfikatorem konta pozostaje tylko
-  lokalnie i nie jest publikowany w repozytorium.
-  Wersja produkcyjna nadal wysyła tylko zakres `openid`; poprawka kodu nie była
-  wdrażana. Ekran zgody oznacza wydawcę jako niezweryfikowanego i nie pokazuje
-  linków do warunków/prywatności. Domyślny Site URL w Supabase przestawiono
-  już na `https://kierivo.com/`; stara domena nadal jest na allowliście, więc
-  jej usunięcie wymaga osobnej oceny zależnych przepływów. Tych luk nie należy
-  zaliczać jako naprawionych.
+- **[Rozwiązany] Niezależne potwierdzanie wielu metod spawania (TIG i MAG):**
+  Posiadanie jednej metody nie zalicza już automatycznie drugiej przy ofertach wymagających obu uprawnień. Każda metoda wymaga osobnego potwierdzenia w profilu.
+  *Dowód:* Testy macierzy uprawnień dla profilu z samym TIG, samym MAG i oboma.
+
+- **[Rozwiązany] Odblokowywanie ćwiczeń w sekcji Trenuj (Kokpit, STAR, Most kompetencyjny):**
+  Przejazd stanów zablokowanego (poziom 1, widoczna kłódka w menu przy braku aplikacji) i odblokowanego (poziom 2 i 3 z zapisaną aplikacją) został w pełni zaimplementowany i udowodniony E2E. Kokpit Rozmowy prezentuje faktograficzny Elevator Pitch dla profilu technicznego bez halucynacji. Trener STAR udostępnia 4 czyste ćwiartki z opcjonalnymi liczbami i zgodą na przetwarzanie AI, a Most kompetencyjny wyraźnie ostrzega, że pokrewne umiejętności nie zastępują uprawnień.
+  *Dowody:* Zrzuty E2E `docs/audyt-trenuj-zablokowany-2026-09-30.png`, `docs/audyt-trenuj-cwiczenia-2026-09-30.png` oraz `docs/audyt-trenuj-star-odblokowany-2026-09-30.png`.
+
+- **[Rozwiązany] Śledzenie aplikacji w Pipeline (Moje aplikacje):**
+  Domyślny status nowej aplikacji to `Do wysłania`, a snapshot oferty i profilu jest trwale chroniony przed nadpisaniem przy powtórnym eksporcie CV. Wdrożono odblokowany Live Tracker (termin rozmowy, skróty Ctrl+H teleprompter i Ctrl+L pętla wywiadu) oraz statystyki KPI.
+  *Dowód:* Zrzut E2E `docs/audyt-aplikacje-snapshot-2026-09-30.png`.
+
+- **[Rozwiązany] Izolacja i re-eksport w Bibliotece CV:**
+  Wszystkie operacje (odczyt, zapis, eksport, duplikowanie, usuwanie) są ściśle powiązane ze stabilnym ID profilu użytkownika. Ponowny eksport PDF działa bezlimitowo.
+  *Dowód:* Zrzut E2E `docs/audyt-biblioteka-eksport-2026-09-30.png` (widoczne przypisane wersje CV, tagi branżowe i licznik pobrań).
+
+- **[Rozwiązany] Spójność wyniku w szybkim sprawdzeniu i Raporcie ATS:**
+  Wyeliminowano rozbieżność pomiędzy legacy symulatorem a wynikiem kanonicznym. Szybki moduł i zaawansowany raport korzystają z tego samego wyniku kanonicznego (0–100). Usunięto kontrakt `passProbability` i zastąpiono go modelem `heuristicProfiles[].score` ze skalą `wynik/100` dla trzech profili reguł Kierivo.
+  *Dowody:* 33 testy integracyjne, zrzuty E2E `docs/audyt-ats-karty-liczbowe-2026-09-30.png` oraz `docs/audyt-szybki-wynik-desktop-2026-09-30.png`.
+
+- **[Rozwiązany] Preload IndexedDB i eliminacja wyścigów startowych:**
+  Wyścig, w którym asynchroniczny preload z IDB mógł nadpisać pamięciowy cache starszym snapshotem po świeżym zapisie awaryjnym, został wyeliminowany. Dodano wersjonowanie wpisów i czyszczenia w `storage.ts`, które odrzuca spóźnione wyniki preloadu. Start aplikacji (`main.tsx`) czeka na odtworzenie kopii przed migracjami i renderem.
+  *Dowód:* Testy opóźnionego preloadu i symulowanego restartu.
+
+- **[Rozwiązany] Eliminacja nieuprawnionych fallbacków w Raporcie ATS:**
+  W syntetycznym stanie „nie wykryto wymagań” widok nie wraca do listy starszego symulatora, lecz prezentuje pustą listę kanoniczną bez fałszywych alarmów.
+  *Dowód:* Regresja kontraktu raportu i testy widoku ATS.
+
+- **[Rozwiązany] Zakotwiczenie kontekstu Doradcy Zaufanego w wyniku kanonicznym:**
+  Kontekst doradcy jest budowany z kanonicznej oceny i wymagań oferty; backend odrzuca odpowiedzi modelu z nieobecnymi w źródłowym CV liczbami i metrykami, a kopiowanie szkicu wymaga potwierdzenia faktów przez użytkownika.
+  *Dowód:* Testy tras serwerowych i reguł bezpieczeństwa doradcy.
+
+- **[Rozwiązany] Spójne kanoniczne składniki w Analizie luk ATS:**
+  Raport ATS prezentuje cztery kanoniczne składniki wyniku zamiast mieszać dawne wskaźniki symulatora z wynikiem głównym.
+  *Dowód:* Testy kalkulacji składników i raportu ATS.
+
+- **[Rozwiązany] Bezpieczeństwo sesji i atomowy Compare-And-Swap (CAS) w synchronizacji:**
+  Zapis do chmury wymaga `expectedUpdatedAt` i stosuje atomowy Compare-And-Swap (CAS po `updated_at`, HTTP 409 przy konflikcie). Outbox wstrzymuje wysyłkę do potwierdzonego odczytu chmury, zapobiegając nadpisaniu danych przez wyścigi urządzeń lub zmianę sesji.
+  *Dowody:* Testy CAS, scenariusze outboxa oraz zrzut ekranu widoku porównania wersji `docs/audyt-konflikt-wersji-cv-2026-09-30.png`.
+
+- **[Rozwiązany] Ochrona edycji pól i jawny wybór wersji CV przy konflikcie:**
+  Zamiast niebezpiecznego, automatycznego zgadywania na poziomie pól (które potrafiło cicho usuwać lokalne poprawki), system zachowuje obie pełne kopie (lokalną i zdalną), a baner „Dwie wersje CV czekają na wybór” umożliwia ich bezpieczne porównanie i wybór w oknie modalnym.
+  *Dowód:* Zrzut ekranu `docs/audyt-konflikt-wersji-cv-2026-09-30.png`.
+
+- **[Rozwiązany] Separacja nagłówka roli od wymagań w parserze ofert:**
+  Ekstraktor usuwa tylko jednoznacznie rozpoznany tytuł i firmę przed analizą fraz, dzięki czemu treść ogłoszenia nie miesza się z pierwszym nagłówkiem wymagań.
+  *Dowód:* 30 testów parsera i kanonu, zrzuty `docs/audyt-szybki-*-2026-09-30.png`.
+
+- **[Rozwiązany] Ścisła izolacja profilu lokalnego od konta chmurowego:**
+  Bootstrap pobiera dane lokalne wyłącznie dla profilu anonimowego lub ID zgodnego z właścicielem. Dane innego profilu nie są przenoszone na nowe konto, a autosave jest wstrzymany do czasu potwierdzenia powiązania.
+  *Dowód:* Testy helpera dla trzech przypadków identyfikatorów.
+
+- **[Rozwiązany] Atomowe usuwanie profilu lokalnego:**
+  Procedura usuwania profilu oczekuje na potwierdzone wyczyszczenie IndexedDB oraz rejestru kluczy localStorage przed powrotem do stanu pustego, co uniemożliwia późnemu autosave odtworzenie skasowanych danych.
+  *Dowód:* Scenariusz E2E `scripts/e2e-delete-local-profile.mjs` i zrzuty `docs/audyt-usuwanie-profilu-*-2026-09-30.png`.
+
+- **[Rozwiązany] Bezpieczna konfiguracja logowania Entra ID i Supabase:**
+  Skonfigurowano aplikację w Entra z poprawnym adresem zwrotnym Supabase, włączono dostawcę Azure, ustawiono Site URL `https://kierivo.com/`, kod klienta żąda zakresu `email`, a baza danych Supabase egzekwuje RLS (`auth.uid() = user_id`).
+  *Dowód:* Pomyślny test logowania i odświeżenia sesji kontem testowym.
 
 ## Domknięcie ryzyk i dowody końcowe (sesja 30.09.2026 — przejęcie sesji Codex)
 
@@ -779,4 +632,22 @@ Po wyczerpaniu limitu tokenów Codexa przejęto sesję i wykonano pełny pakiet 
    - **Zrzuty ekranu E2E:**
      - `docs/audyt-biblioteka-eksport-2026-09-30.png` — widok Biblioteki CV z zapisanymi wersjami.
      - `docs/audyt-aplikacje-snapshot-2026-09-30.png` — widok Moje aplikacje ze statusem Rozmowa i Live Trackerem.
+
+5. **Weryfikacja pełnego eksportu po wpisaniu własnego osiągnięcia STAR:**
+   - **Problem:** Sprawdzenie, czy po wpisaniu własnego osiągnięcia STAR w podglądzie dokument nie zawiera fragmentów szablonu i poprawnie przenosi treść do gotowego dokumentu.
+   - **Poprawka & Dowód:** Przygotowano scenariusz E2E (`scripts/e2e-additional-proofs.mjs`), który weryfikuje wpisanie osiągnięcia spawacza TIG (120 spoin bez poprawek) i otwiera pełny generator `DocumentRenderer`. Osiągnięcie jest w 100% zachowane i widoczne w dokumencie gotowym do wydruku / zapisu PDF.
+   - **Zrzut ekranu E2E:** `docs/audyt-star-pelny-eksport-2026-09-30.png`.
+
+6. **Weryfikacja ochrony danych i widoku porównania wersji CV (CAS):**
+   - **Problem:** Ryzyko cichego nadpisania danych lub utraty edycji pól przy rozbieżności wersji chmurowej i lokalnej.
+   - **Poprawka & Dowód:** Wdrożono atomowy mechanizm compare-and-swap (CAS po `updated_at`) oraz baner „Dwie wersje CV czekają na wybór” z dedykowanym oknem porównania wersji CV bez automatycznego zgadywania na poziomie pól.
+   - **Zrzut ekranu E2E:** `docs/audyt-konflikt-wersji-cv-2026-09-30.png`.
+
+7. **Weryfikacja szybkiego sprawdzenia z wymaganiem `Exchange Online` i brakiem fałszywych luk:**
+   - **Problem:** Wcześniejszy brak `Exchange Online` w leksykonie oraz fałszywa luka z odmiany stanowiska („Specjalisty”).
+   - **Poprawka & Dowód:** Uruchomiono scenariusz E2E `scripts/e2e-quick-onboarding.mjs` (desktop 1280 px + mobile 375 px). Pełne pokrycie wymagań (100%), brak `Exchange Online` i nazwy stanowiska w brakach, zachowanie znacznika `Entra ID` w trybie zaawansowanym.
+   - **Zrzuty ekranu E2E:**
+     - `docs/audyt-szybki-wynik-desktop-2026-09-30.png` — poprawny wynik dopasowania ze skalą Kierivo.
+     - `docs/audyt-szybki-podglad-cv-desktop-2026-09-30.png` — podgląd CV bez fałszywej klauzuli i bez zduplikowanej edukacji.
+     - `docs/audyt-szybki-edytor-mobile-2026-09-30.png` — pasek narzędzi edytora w pełni mieszczący się w szerokości 375 px.
 

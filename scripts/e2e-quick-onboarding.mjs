@@ -31,13 +31,18 @@ const SLOWMO_MS = Number(process.env.SLOWMO_MS || 0);
 
 let chromium;
 try {
-  ({ chromium } = await import('playwright'));
+  const modPath = process.env.PLAYWRIGHT_MODULE || 'file:///C:/Users/Adrian/AppData/Local/npm-cache/_npx/d71ea5ed3eabc9b3/node_modules/playwright/index.mjs';
+  ({ chromium } = await import(modPath));
 } catch {
-  console.error(
-    'Brak pakietu playwright. Zainstaluj go doraźnie:\n' +
-      '  npx --yes playwright@1 install chromium'
-  );
-  process.exit(2);
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch {
+    console.error(
+      'Brak pakietu playwright. Zainstaluj go doraźnie:\n' +
+        '  npx --yes playwright@1 install chromium'
+    );
+    process.exit(2);
+  }
 }
 
 /* ------------------------------------------------------------------ dane */
@@ -215,10 +220,15 @@ async function przejdzDoZaawansowanego(page) {
 
 /* ------------------------------------------------------------------ przebiegi */
 
-const browser = await chromium.launch({
+const launchOptions = {
   headless: !HEADFUL,
   slowMo: SLOWMO_MS,
-});
+};
+if (process.env.PLAYWRIGHT_CHROME_PATH || 'C:/Users/Adrian/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe') {
+  launchOptions.executablePath = process.env.PLAYWRIGHT_CHROME_PATH || 'C:/Users/Adrian/AppData/Local/ms-playwright/chromium-1243/chrome-win64/chrome.exe';
+}
+
+const browser = await chromium.launch(launchOptions);
 console.log(`Przeglądarka: chromium ${HEADFUL ? 'headful' : 'headless'}`);
 
 try {

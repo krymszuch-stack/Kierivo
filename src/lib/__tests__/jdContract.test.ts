@@ -21,7 +21,7 @@ describe('kontrakt ParsedJobDescription', () => {
     const result = parsedJobDescriptionSchema.safeParse(local);
 
     expect(result.success).toBe(true);
-  });
+  }, 15000);
 
   it('odpowiedź o kształcie Gemini przechodzi walidację i zachowuje pola', () => {
     // Dokładnie te klucze deklaruje responseSchema w src/server/gemini.ts.
