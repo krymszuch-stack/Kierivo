@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Sparkles,
   HelpCircle,
@@ -109,6 +109,12 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
   const [isDrillOpen, setIsDrillOpen] = useState(false);
   const [isPitchOpen, setIsPitchOpen] = useState(false);
   const [isLoopModalOpen, setIsLoopModalOpen] = useState(false);
+
+  // Przy przełączeniu na inną ofertę czyścimy stan wzbogacenia AI, by nie wyciekał między aplikacjami
+  useEffect(() => {
+    setEnrichment(null);
+    setEnrichError(null);
+  }, [jobOffer.id]);
 
   const parsedJD = useMemo(() => toParsedJobDescription(jobOffer), [jobOffer]);
 

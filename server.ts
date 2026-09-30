@@ -20,6 +20,7 @@ import { intelRouter } from "./src/server/routes/intel.routes";
 import { errorsRouter } from "./src/server/routes/errors.routes";
 import { stripeWebhookRouter } from "./src/server/routes/stripe.routes";
 import { pdfRouter } from "./src/server/routes/pdf.routes";
+import { mobilityRouter } from "./src/server/routes/mobility.routes";
 import { errorHandler } from "./src/server/middleware/errorHandler";
 import { standardApiLimiter } from "./src/server/middleware/rateLimiter";
 import { validateStartupEnv } from "./src/server/config";
@@ -158,6 +159,7 @@ async function startServer() {
   app.use("/api", aiRouter);
   app.use("/api", statsRouter);
   app.use("/api", pdfRouter);
+  app.use("/api", mobilityRouter);
 
   // Trasy wymagające konta. Rejestrowane zawsze — `requireAuth` odpowiada 501
   // w trybie `BACKEND_MODE=local`, więc klient dostaje jasną informację, że ta

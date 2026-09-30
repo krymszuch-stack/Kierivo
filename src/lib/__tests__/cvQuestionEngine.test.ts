@@ -340,4 +340,17 @@ describe('pominięte pytania', () => {
     expect(loadSkippedQuestionIds('profile-a')).toEqual(['metric:exp-1:hl-1']);
     expect(loadSkippedQuestionIds('profile-b')).toEqual([]);
   });
+
+  it('zastąpienie odpowiedzi w slocie nie kumuluje myślników i podmienia poprzednią wartość', () => {
+    const text1 = composeHighlightText('Obsługa obrabiarek', 'Sinumerik');
+    expect(text1).toBe('Obsługa obrabiarek — Sinumerik');
+
+    // Podmiana narzędzia z Sinumerik na Heidenhain
+    const text2 = composeHighlightText(text1, 'Heidenhain', 'Sinumerik');
+    expect(text2).toBe('Obsługa obrabiarek — Heidenhain');
+
+    // Ponowne podanie tej samej odpowiedzi nie dubluje jej
+    const text3 = composeHighlightText(text2, 'Heidenhain');
+    expect(text3).toBe('Obsługa obrabiarek — Heidenhain');
+  });
 });

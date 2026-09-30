@@ -160,7 +160,11 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
 
   const handleNextStep = () => {
     if (activeStep === 1) {
-      const result = validateExperienceStep(vault.history);
+      const isFirstJob = Boolean(
+        vault.profiler?.careerGoal === 'FIRST_JOB' ||
+        vault.profiler?.experienceYears === 'NONE'
+      );
+      const result = validateExperienceStep(vault.history, { allowEmpty: isFirstJob });
       if (!result.isValid) {
         setExperienceErrors(result.errors);
         showToast(result.errors && Object.keys(result.errors).length > 0 ? 'Uzupełnij wymagane pola' : 'Wymagane stanowisko', {

@@ -486,11 +486,26 @@ export function pruneSkippedIds(vault: MasterVault, skippedIds: readonly string[
  * funkcja losuje synonimy — przepisałaby użytkownikowi jego własne słowa
  * i przy dwóch uruchomieniach dała dwa różne CV.
  */
-export function composeHighlightText(text: string, answer: string): string {
-  const base = text.trim().replace(/[.\s]+$/, '');
+export function composeHighlightText(text: string, answer: string, previousSlotValue?: string): string {
   const addition = answer.trim();
-  if (!base) return addition;
   if (!addition) return text;
+
+  let base = text.trim();
+  // Jeśli użytkownik zmieniał poprzednią wartość slotu (np. narzędzie lub metrykę), usuwamy stare wystąpienie
+  if (previousSlotValue && previousSlotValue.trim()) {
+    const prevTrimmed = previousSlotValue.trim();
+    const escaped = prevTrimmed.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    base = base.replace(new RegExp(`\\s*[—–-]\\s*${escaped}\\b`, 'i'), '').trim();
+  }
+
+  // Jeśli nowa odpowiedź już znajduje się w tekście, nie powielamy jej
+  const escapedAdd = addition.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  if (new RegExp(`(?:^|\\s|[—–-])${escapedAdd}(?:$|\\s|[—–-])`, 'i').test(base)) {
+    return base;
+  }
+
+  base = base.replace(/[.\s—–-]+$/, '').trim();
+  if (!base) return addition;
   return `${base} — ${addition}`;
 }
 
@@ -571,11 +586,14 @@ export function applyAnswer(vault: MasterVault, question: CvQuestion, answer: st
         ...vault,
         history: vault.history.map((job) =>
           job.id === target.experienceId
-            ? updateHighlight(job, target.highlightId, (highlight) => ({
-                ...highlight,
-                [target.slot]: trimmed,
-                text: composeHighlightText(highlight.text, trimmed),
-              }))
+            ? updateHighlight(job, target.highlightId, (highlight) => {
+                const prevValue = String(highlight[target.slot] || '');
+                return {
+                  ...highlight,
+                  [target.slot]: trimmed,
+                  text: composeHighlightText(highlight.text, trimmed, prevValue),
+                };
+              })
             : job
         ),
       };

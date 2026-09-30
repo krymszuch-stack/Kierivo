@@ -1,26 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" role="img" aria-labelledby="kld-title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 80" width="400" height="80" role="img" aria-labelledby="kld-title">
   <title id="kld-title">Kierivo — wersja na ciemne tło</title>
-  <!--
-    Nowe logo Kierivo — wersja na ciemne tło.
-    Chevrony: biały (#FFFFFF) i bladoniebieski (#A8BFFF).
-    Tekst: biały.
-  -->
-
-  <!-- Sygnet: chevron tył (bladoniebieski) -->
-  <path
-    fill="#A8BFFF"
-    d="M 28 10 L 10 40 L 28 70 L 40 70 L 22 40 L 40 10 Z"
-  />
-
-  <!-- Sygnet: chevron przód (biały) -->
-  <path
-    fill="#FFFFFF"
-    d="M 48 10 L 30 40 L 48 70 L 60 70 L 42 40 L 60 10 Z"
-  />
-
+  <g transform="translate(2, 0) scale(1.0)">
+    <rect x="14" y="16" width="11.5" height="48" rx="3.5" fill="#FFFFFF"/>
+    <path fill="#FFFFFF" d="
+      M 25.5 36.5
+      L 33.5 16.5
+      Q 34 16 35 16
+      L 44.5 16
+      Q 45.8 16 45.3 17.2
+      L 30.2 39.2
+      Q 29.6 40 30.2 40.8
+      L 45.8 62.8
+      Q 46.3 64 45 64
+      L 35 64
+      Q 34 64 33.5 63.5
+      L 25.5 43.5
+      Z
+    "/>
+    <path fill="#9FB3E8" d="
+      M 36.5 39.2
+      L 50.8 16.8
+      Q 51.5 16 52.5 16
+      L 63.5 16
+      Q 65 16 64.3 17.3
+      L 48.2 39.2
+      Q 47.6 40 48.2 40.8
+      L 64.3 62.7
+      Q 65 64 63.5 64
+      L 52.5 64
+      Q 51.5 64 50.8 63.2
+      L 36.5 40.8
+      Q 35.8 40 36.5 39.2
+      Z
+    "/>
+  </g>
   <!-- Napis Kierivo na ciemne tło -->
   <text
-    x="80"
+    x="84"
     y="55"
     fill="#FFFFFF"
     font-family="'Helvetica Neue', Arial, sans-serif"

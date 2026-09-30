@@ -181,10 +181,10 @@ describe('parseJobDescriptionLocal na wyjściu segmentera (scenariusz PIPELINE, 
     ]));
   });
 
-  it('POPRAWNE ZACHOWANIE: workModel dla trybów jednoznacznie podanych w metadanych portalu jest trafny dla 5/6 ofert', () => {
+  it('POPRAWNE ZACHOWANIE: workModel dla trybów jednoznacznie podanych w metadanych portalu jest trafny dla co najmniej 5/6 ofert', () => {
     const statuses = OFFER_ORDER.map((key) => fieldStatus(GOLD[key].workMode, parsedByKey[key].workModel));
     const correctCount = statuses.filter((s) => s === 'CORRECT').length;
-    expect(correctCount).toBe(5);
+    expect(correctCount).toBeGreaterThanOrEqual(5);
   });
 });
 

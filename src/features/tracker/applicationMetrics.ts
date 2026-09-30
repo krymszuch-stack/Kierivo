@@ -15,7 +15,7 @@ export interface ApplicationProgressMetric {
 export function calculateApplicationProgress(
   statuses: readonly ApplicationStatus[],
 ): ApplicationProgressMetric {
-  const eligibleStatuses: readonly ApplicationStatus[] = ['Wysłana', 'Rozmowa', 'Oferta'];
+  const eligibleStatuses: readonly ApplicationStatus[] = ['Wysłana', 'Rozmowa', 'Oferta', 'Odrzucona'];
   const eligibleCount = statuses.filter((status) => eligibleStatuses.includes(status)).length;
   const progressedCount = statuses.filter((status) => status === 'Rozmowa' || status === 'Oferta').length;
 

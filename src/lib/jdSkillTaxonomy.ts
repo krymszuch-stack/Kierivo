@@ -321,6 +321,23 @@ const SALES_CUSTOMER_SERVICE_SKILLS: SkillDefinition[] = [
     pattern: 'rejestracj\\p{L}*\\s+medyczn\\p{L}*',
   },
   { term: 'Negocjacje', kind: 'HARD', pattern: 'negocjacj\\p{L}*' },
+  { term: 'Sprzedaż', kind: 'HARD', pattern: 'sprzeda\\p{L}*|handlow\\p{L}*' },
+  {
+    term: 'Komunikatywność', kind: 'HARD',
+    pattern: 'komunikatywn\\p{L}*|interpersonaln\\p{L}*|umiej\\p{L}*tno\\p{L}*ci\\s+komunikacyjn\\p{L}*',
+  },
+  {
+    term: 'Obsługa komputera', kind: 'HARD',
+    pattern: 'obs\\p{L}*ug\\p{L}*\\s+komputer\\p{L}*|komputer\\s+nie\\s+mo\\p{L}*e\\s+by\\p{L}*|znajomo\\p{L}*\\s+komputer\\p{L}*',
+  },
+  {
+    term: 'Odporność na stres', kind: 'HARD',
+    pattern: 'odporno\\p{L}*\\s+na\\s+stres',
+  },
+  {
+    term: 'Doradztwo techniczne', kind: 'HARD',
+    pattern: 'doradztw\\p{L}*\\s+techniczn\\p{L}*|doradztw\\p{L}*\\s+w\\s+doborze',
+  },
 ];
 
 /**

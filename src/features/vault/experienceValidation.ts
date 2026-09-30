@@ -6,22 +6,34 @@ export interface ExperienceStepValidationResult {
   message?: string;
 }
 
+export interface ValidateExperienceOptions {
+  /** Zezwala na pustą historię zatrudnienia (np. absolwenci, osoby bez wcześniejszej pracy, przebranżowienie) */
+  allowEmpty?: boolean;
+}
+
 /**
  * Walidacja minimalnych wymagań kroku Doświadczenie (Krok 2 w Master Vault):
- * - Wymagane jest co najmniej jedno stanowisko
+ * - Wymagane jest co najmniej jedno stanowisko (chyba że zaznaczono allowEmpty)
  * - Każde dodane stanowisko musi mieć nazwę firmy i stanowisko
  * - Daty, opis i osiągnięcia STAR są opcjonalne i mogą być uzupełnione później
  */
 export function validateExperienceStep(
-  history: WorkExperience[] | undefined
+  history: WorkExperience[] | undefined,
+  options?: ValidateExperienceOptions
 ): ExperienceStepValidationResult {
   const items = history || [];
 
   if (items.length === 0) {
+    if (options?.allowEmpty) {
+      return {
+        isValid: true,
+        errors: {},
+      };
+    }
     return {
       isValid: false,
       errors: {},
-      message: 'Dodaj co najmniej jedno stanowisko pracy (minimum: nazwa firmy i stanowisko).',
+      message: 'Dodaj co najmniej jedno stanowisko pracy lub zaznacz brak wcześniejszego doświadczenia.',
     };
   }
 
@@ -60,10 +72,11 @@ export function validateExperienceStep(
  */
 export function canNavigateToNextStep(
   currentStep: number,
-  history: WorkExperience[] | undefined
+  history: WorkExperience[] | undefined,
+  options?: ValidateExperienceOptions
 ): { allowed: boolean; nextStep: number; result: ExperienceStepValidationResult } {
   if (currentStep === 1) {
-    const result = validateExperienceStep(history);
+    const result = validateExperienceStep(history, options);
     if (!result.isValid) {
       return { allowed: false, nextStep: currentStep, result };
     }

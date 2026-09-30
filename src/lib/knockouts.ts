@@ -340,7 +340,14 @@ export const KNOCKOUT_RULES: KnockoutRule[] = [
   {
     id: 'welding',
     label: 'Uprawnienia spawalnicze (metoda wymagana w ogłoszeniu)',
-    detect: [/\bspawa\w*/i, /\btig\b/i, /\bmag\b\s*13[15]/i, /\bmig\b/i, /\b14[19]\b/, /\b13[15]\b/],
+    detect: [
+      /\bspawa\w*/i,
+      /\btig\b/i,
+      /\bmag\b\s*13[15]/i,
+      /\bmig\b/i,
+      /(?:metod\w*|proces\w*|norm\w*|uprawnieni\w*)\s*(?:14[19]|13[15])\b/i,
+      /\b(?:14[19]|13[15])\s*(?:metod\w*|proces\w*)/i,
+    ],
     satisfiedByLicenseIds: ['welding_tig_mig', 'welding_tig', 'welding_mag', 'welding_mig'],
     satisfiedByText: [/\bspawa\w*/i, /\btig\b/i, /\bmag\b/i, /\bmig\b/i],
     severity: 'knockout',
@@ -407,9 +414,21 @@ export const KNOCKOUT_RULES: KnockoutRule[] = [
   {
     id: 'language_advanced',
     label: 'Język obcy na poziomie zaawansowanym (C1+)',
-    detect: [/\bc1\b/i, /\bc2\b/i, /\bbieg[łl]\w*\s+(?:znajomo[śs][ćc]|j[ęe]zyk\w*)/i, /\bfluent\b/i],
+    detect: [
+      /(?:j[ęe]zyk\w*|angielsk\w*|niemieck\w*|francusk\w*|znajomo[śs][ćc]|poziom\w*|cefr|english|german|language)\s*[:\-–—]?\s*(?:c1|c2)\b/i,
+      /(?:poziom\w*|level)\s*[:\-–—]?\s*(?:c1|c2)\b/i,
+      /\b(?:c1|c2)\s*(?:poziom|level|cefr|w\s+mowie|w\s+pi[śs]mie|angielsk|niemieck)/i,
+      /\bbieg[łl]\w*\s+(?:znajomo[śs][ćc]|j[ęe]zyk\w*)/i,
+      /\bfluent\b/i,
+    ],
     satisfiedByLicenseIds: [],
-    satisfiedByText: [/\bc1\b/i, /\bc2\b/i, /bieg[łl]\w*/i, /\bfluent\b/i, /\bnative\b/i],
+    satisfiedByText: [
+      /(?:j[ęe]zyk\w*|angielsk\w*|niemieck\w*|cefr|english|language|poziom|level)\s*[:\-–—]?\s*(?:c1|c2)\b/i,
+      /\b(?:c1|c2)\s*(?:poziom|level|cefr|angielsk|niemieck)/i,
+      /bieg[łl]\w*/i,
+      /\bfluent\b/i,
+      /\bnative\b/i,
+    ],
     severity: 'knockout',
   },
   // ---------- Certyfikaty IT ----------
@@ -508,9 +527,13 @@ function hasPositiveWeldingEvidence(jobDescription: string, vaultText: string): 
 
 function extractWeldingMethods(text: string): string[] {
   const methods = new Set(text.match(/\b(?:tig|mag|mig)\b/gi)?.map((method) => method.toLowerCase()) ?? []);
-  if (/\b141\b/.test(text)) methods.add('tig');
-  if (/\b135\b/.test(text)) methods.add('mag');
-  if (/\b131\b/.test(text)) methods.add('mig');
+  // Numery metod 141, 135, 131 są metodami tylko w kontekście spawania, procesów lub norm
+  const hasWeldingContext = /\b(?:spaw\w*|welding|metod\w*|proces\w*|iso\s*9606|norm\w*)\b/i.test(text);
+  if (hasWeldingContext) {
+    if (/\b141\b/.test(text)) methods.add('tig');
+    if (/\b135\b/.test(text)) methods.add('mag');
+    if (/\b131\b/.test(text)) methods.add('mig');
+  }
   return [...methods];
 }
 
@@ -580,10 +603,11 @@ function collectVaultText(vault: MasterVault | Partial<MasterVault> | undefined 
     vault.personalInfo?.summary || '',
     vault.personalInfo?.title || '',
     ...(vault.skillsMatrix?.hardSkills ?? []),
+    ...(vault.skillsMatrix?.softSkills ?? []),
     ...(vault.skillsMatrix?.toolsAndTech ?? []),
     ...(vault.skillsMatrix?.certifications ?? []).flatMap((cert) => [cert?.name || '', cert?.issuer || '']),
     ...(vault.history ?? []).flatMap((exp) => [
-      exp?.role || '',
+      exp?.role || ('title' in (exp || {}) ? String((exp as { title?: unknown })?.title || '') : ''),
       exp?.description ?? '',
       ...(exp?.highlights ?? []).map((highlight) => typeof highlight === 'string' ? highlight : (highlight?.text || '')),
     ]),

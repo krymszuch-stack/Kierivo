@@ -99,13 +99,25 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
   const handleDeleteSession = (id: string) => {
     deleteInterviewSession(profileId, id);
     const remaining = sessions.filter((s) => s.id !== id);
+    if (remaining.length === 0) {
+      const freshSession = createInterviewSession(
+        'Nowa Rozmowa',
+        vault.personalInfo?.title || 'Stanowisko'
+      );
+      saveInterviewSession(profileId, freshSession);
+      setSessionsState({ profileId, items: [freshSession] });
+      setActiveSessionId(freshSession.id);
+      setActiveTab('CHECKLIST');
+      return;
+    }
+
     setSessionsState({ profileId, items: remaining });
-    if (activeSessionId === id && remaining.length > 0) {
+    if (activeSessionId === id) {
       setActiveSessionId(remaining[0].id);
     }
   };
 
-  if (!isOpen || !activeSession) return null;
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">

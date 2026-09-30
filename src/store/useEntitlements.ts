@@ -179,6 +179,21 @@ export function consumeAiLocally(): boolean {
   return consumeLocal('ai');
 }
 
+export function refundAiLocally(): void {
+  const field = 'aiUses';
+  setState((prev) => {
+    if (!prev.usage) return prev;
+    return {
+      ...prev,
+      usage: {
+        ...prev.usage,
+        [field]: Math.min(FREE_DAILY_AI_USES, (prev.usage[field] ?? 0) + 1),
+      },
+    };
+  });
+}
+
+
 export function useEntitlements() {
   const [state, setLocalState] = useState<EntitlementsState>(globalState);
 

@@ -16,7 +16,10 @@ export type RequirementSectionContext = 'required' | 'optional' | 'non_requireme
 
 const REQUIRED_SECTION_HEADERS = new Set([
   'wymagania', 'nasze wymagania', 'twoje wymagania', 'wymagania obowiazkowe',
-  'wymagania i kwalifikacje', 'czego oczekujemy', 'oczekujemy', 'wymagamy',
+  'wymagania i kwalifikacje', 'wymagania na stanowisku',
+  'czego oczekujemy', 'oczekujemy', 'wymagamy', 'nasze oczekiwania',
+  'od kandydatow oczekujemy', 'od kandydata oczekujemy', 'czego oczekujemy od kandydata',
+  'kogo szukamy', 'kogo szukamy do zespolu', 'profil kandydata', 'idealny kandydat',
   'wymagane', 'wymagane kwalifikacje', 'kwalifikacje', 'kwalifikacje wymagane',
   'requirements', 'required qualifications', 'minimum qualifications',
   'must have', 'must haves', 'must-haves', 'your qualifications', 'what you will bring',

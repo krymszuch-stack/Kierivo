@@ -26,11 +26,19 @@ describe('Wskaźnik przejścia do rozmowy/oferty', () => {
     });
   });
 
-  it('nie zakłada, że status Odrzucona zawsze oznacza odpowiedź pracodawcy', () => {
+  it('uwzględnia status Odrzucona w mianowniku, dając 0% przejść zamiast fałszywego 100%', () => {
     expect(calculateApplicationProgress(['Odrzucona'])).toEqual({
-      percent: null,
-      eligibleCount: 0,
+      percent: 0,
+      eligibleCount: 1,
       progressedCount: 0,
+    });
+  });
+
+  it('poprawnie liczy wskaźnik przy 1 rozmowie i 1 odrzuceniu (50%)', () => {
+    expect(calculateApplicationProgress(['Rozmowa', 'Odrzucona'])).toEqual({
+      percent: 50,
+      eligibleCount: 2,
+      progressedCount: 1,
     });
   });
 });

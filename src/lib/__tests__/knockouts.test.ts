@@ -740,6 +740,20 @@ describe('Ogłoszenia korporacyjne — brak regresji', () => {
     expect(report.blocking).toHaveLength(0);
   });
 
+  it('stawka godzinowa 135 zł/h i numer lokalu 141 nie wyzwalają wymogu spawania', () => {
+    const jd = 'Oferujemy stawkę 135 zł/h brutto. Nasze biuro mieści się przy ul. Marszałkowskiej 141.';
+    const report = auditKnockouts(jd, vaultWith([]));
+    const ids = report.findings.map((f) => f.ruleId);
+    expect(ids).not.toContain('welding');
+  });
+
+  it('prawo jazdy kat. C1 oraz sektor magazynu C1 nie wyzwalają wymogu języka angielskiego C1', () => {
+    const jd = 'Wymagane prawo jazdy kat. C1, praca przy załadunku w sektorze C1 magazynu.';
+    const report = auditKnockouts(jd, vaultWith([]));
+    const ids = report.findings.map((f) => f.ruleId);
+    expect(ids).not.toContain('language_advanced');
+  });
+
   it('pusta treść ogłoszenia nie wywraca audytu', () => {
     expect(() => auditKnockouts('', vaultWith([]))).not.toThrow();
     expect(auditKnockouts('', vaultWith([])).requirementCount).toBe(0);

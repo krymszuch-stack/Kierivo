@@ -163,15 +163,15 @@ export function buildJobOfferFromManual(manualOffer: Partial<JobOffer>): {
 
   const job: JobOffer = {
     id: manualOffer.id || `manual-${Date.now()}`,
-    title: manualOffer.title || '',
-    company: manualOffer.company || '',
-    salary: manualOffer.salary || '',
-    location: manualOffer.location || '',
+    title: manualOffer.title || preparedSegment?.titleCandidate || parsed.jobTitle || '',
+    company: manualOffer.company || preparedSegment?.companyCandidate || parsed.companyName || '',
+    salary: manualOffer.salary || parsed.salaryRange || '',
+    location: manualOffer.location || parsed.location || '',
     description: parserInput,
-    requirements: manualOffer.requirements || [],
-    remote: manualOffer.remote ?? false,
+    requirements: manualOffer.requirements?.length ? manualOffer.requirements : (parsed.requiredHardSkills || []),
+    remote: manualOffer.remote ?? (parsed.workModel === 'REMOTE'),
     portal: manualOffer.portal || 'Manual',
-    techStack: manualOffer.requirements || [],
+    techStack: manualOffer.requirements?.length ? manualOffer.requirements : (parsed.toolsAndTech || []),
     parsedJd: parsed,
   };
 

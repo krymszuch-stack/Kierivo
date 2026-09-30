@@ -16,6 +16,7 @@ import {
   ArrowRight,
   Lightbulb,
   Zap,
+  Briefcase,
 } from 'lucide-react';
 import { MasterVault } from '../../types';
 import { simulateMultiEngineATS, AtsEngineResult } from '../../lib/atsSimulator';
@@ -78,6 +79,10 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   useEffect(() => {
     saveAtsLabDraft(profileId, { jd: customJdText, role: customRole });
   }, [customJdText, customRole, profileId]);
+
+  const [isJdEditorOpen, setIsJdEditorOpen] = useState(
+    !customJdText || customJdText.trim().length < 20
+  );
 
   const [selectedEngineId, setSelectedEngineId] = useState<string | null>('konsensus_cvelocity');
   const [openPracticeIdx, setOpenPracticeIdx] = useState<number | null>(0);
@@ -235,6 +240,66 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             <Zap className="h-3.5 w-3.5" /> reguły deterministyczne
           </span>
         </div>
+      </div>
+
+      {/* Sekcja wprowadzania i edycji oferty pracy i roli docelowej */}
+      <div className="rounded-2xl border border-line bg-surface-raised p-4 sm:p-5 shadow-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-brand-fg" />
+            <span className="text-sm font-bold text-ink">
+              Kontekst ogłoszenia o pracę i rola docelowa
+            </span>
+            {customJdText && customJdText.trim().length >= 20 ? (
+              <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                Wprowadzono ({customJdText.length} znaków)
+              </span>
+            ) : (
+              <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-600">
+                Wymaga wklejenia oferty
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsJdEditorOpen(!isJdEditorOpen)}
+            className="flex items-center gap-1 text-xs font-semibold text-brand-fg hover:underline cursor-pointer"
+          >
+            {isJdEditorOpen ? 'Zwiń edycję' : 'Edytuj ofertę i rolę'}
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isJdEditorOpen ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+
+        {isJdEditorOpen && (
+          <div className="mt-4 grid grid-cols-1 gap-4 pt-3 border-t border-line/60">
+            <div>
+              <label htmlFor="ats-lab-role-input" className="block text-xs font-bold text-ink-muted mb-1">
+                Stanowisko docelowe / Tytuł roli:
+              </label>
+              <input
+                id="ats-lab-role-input"
+                type="text"
+                value={customRole}
+                onChange={(e) => setCustomRole(e.target.value)}
+                placeholder="np. Monter instalacji sanitarnych, Spawacz TIG, Senior Frontend Developer"
+                className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs font-medium text-ink focus:border-brand focus:outline-none"
+              />
+            </div>
+            <div>
+              <label htmlFor="ats-lab-jd-textarea" className="block text-xs font-bold text-ink-muted mb-1">
+                Treść ogłoszenia o pracę (wymagania, opis roli, kwalifikacje):
+              </label>
+              <textarea
+                id="ats-lab-jd-textarea"
+                rows={4}
+                value={customJdText}
+                onChange={(e) => setCustomJdText(e.target.value)}
+                placeholder="Wklej tutaj pełną treść oferty pracy lub sekcję wymagań, aby uruchomić audyt reguł Kierivo..."
+                className="w-full rounded-xl border border-line bg-surface p-3 text-xs font-mono leading-relaxed text-ink focus:border-brand focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="relative overflow-hidden rounded-3xl border border-brand/20 bg-surface-raised/80 p-6 shadow-card-glass backdrop-blur-xl sm:p-8">

@@ -243,15 +243,23 @@ export function scoreCanonicalAts(
   // Cyrylica nie jest wadą dokumentu (F7); tabele/kolumny bez surowego tekstu
   // przyjmują dokument kanoniczny (stabilny z konstrukcji).
   const penalties: string[] = [];
-  const headerAliases: Array<[string, string[]]> = [
-    ['Doświadczenie', ['doświadczenie', 'historia zatrudnienia', 'work experience']],
-    ['Umiejętności', ['umiejętności', 'kompetencje', 'skills', 'technologie']],
-    ['Kontakt', ['kontakt', 'dane osobowe', 'contact']],
-  ];
+  const hasExperienceSection =
+    (vault.history?.length ?? 0) > 0 ||
+    ['doświadczenie', 'historia zatrudnienia', 'work experience'].some((a) => containsPhrase(corpus, a));
+  const hasSkillsSection =
+    (vault.skillsMatrix?.hardSkills?.length ?? 0) > 0 ||
+    (vault.skillsMatrix?.toolsAndTech?.length ?? 0) > 0 ||
+    (vault.skillsMatrix?.softSkills?.length ?? 0) > 0 ||
+    ['umiejętności', 'kompetencje', 'skills', 'technologie'].some((a) => containsPhrase(corpus, a));
+  const hasContactSection =
+    Boolean(vault.personalInfo?.email || vault.personalInfo?.phone) ||
+    ['kontakt', 'dane osobowe', 'contact'].some((a) => containsPhrase(corpus, a));
+
   let missingHeaders = 0;
-  for (const [, aliases] of headerAliases) {
-    if (!aliases.some((a) => containsPhrase(corpus, a))) missingHeaders++;
-  }
+  if (!hasExperienceSection) missingHeaders++;
+  if (!hasSkillsSection) missingHeaders++;
+  if (!hasContactSection) missingHeaders++;
+
   if (missingHeaders > 0) penalties.push(`Brak ${missingHeaders} standardowych nagłówków sekcji.`);
   if (!vault.personalInfo?.email || !vault.personalInfo.email.includes('@')) {
     penalties.push('Brak prawidłowego adresu e-mail.');

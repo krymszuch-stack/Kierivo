@@ -256,7 +256,7 @@ export function convertResumeDataToParsedCVResult(
       action: '',
       target: '',
       tool: exp.tech?.[0] || '',
-      metric: b.kind === 'result' ? 'zweryfikowano' : '',
+      metric: '',
       keywords: exp.tech || [],
     })),
   }));
@@ -278,8 +278,8 @@ export function convertResumeDataToParsedCVResult(
     date: cert.year || '',
   }));
 
-  const normalizeCefr = (lvl?: string): LanguageProficiency['level'] => {
-    if (!lvl) return 'B2';
+  const normalizeCefr = (lvl?: string): LanguageProficiency['level'] | null => {
+    if (!lvl) return null;
     const clean = lvl.trim();
     if (['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'Native'].includes(clean)) {
       return clean as LanguageProficiency['level'];
@@ -289,15 +289,21 @@ export function convertResumeDataToParsedCVResult(
       return upper as LanguageProficiency['level'];
     }
     if (upper === 'NATIVE') return 'Native';
-    return 'B2';
+    return null;
   };
 
-  const languages: LanguageProficiency[] = (resume.languages || []).map((lang, idx) => ({
-    id: `lang-portable-${idx + 1}`,
-    language: lang.name || '',
-    level: normalizeCefr(lang.level),
-    context: '',
-  }));
+  const languages: LanguageProficiency[] = (resume.languages || [])
+    .map((lang, idx) => {
+      const level = normalizeCefr(lang.level);
+      if (!level) return null;
+      return {
+        id: `lang-portable-${idx + 1}`,
+        language: lang.name || '',
+        level,
+        context: '',
+      };
+    })
+    .filter((l): l is LanguageProficiency => l !== null);
 
   const projects: Project[] = (resume.projects || []).map((p: any, idx: number) => ({
     id: `proj-portable-${idx + 1}`,

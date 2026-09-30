@@ -29,7 +29,7 @@ export type ParseJdInput = z.infer<typeof parseJdSchema>;
  */
 export const vaultPayloadSchema = z.object({
   /** `null` oznacza: klient odczytał pustą tabelę i próbuje wstawić pierwszy wiersz. */
-  expectedUpdatedAt: z.string().datetime().nullable(),
+  expectedUpdatedAt: z.string().datetime({ offset: true }).nullable(),
   vault: z.object({
     schemaVersion: z.number().int().positive().optional(),
     version: z.string(),

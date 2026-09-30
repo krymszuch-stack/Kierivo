@@ -446,13 +446,30 @@ export class SqliteGraphRepository {
   }
 
   public async getEntityByName(name: string): Promise<Entity | null> {
-    const norm = normalizeTerm(name).normalized;
-    const rows = this.prepare('SELECT * FROM entities').all();
-    for (const row of rows) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const norm = normalizeTerm(trimmed).normalized;
+
+    // 1. Bezpośrednie dopasowanie po indeksie nazwy
+    const directRow = this.prepare('SELECT * FROM entities WHERE name = ? COLLATE NOCASE').get(trimmed);
+    if (directRow) return this.mapRowToEntity(directRow);
+
+    if (norm !== trimmed) {
+      const normRow = this.prepare('SELECT * FROM entities WHERE name = ? COLLATE NOCASE').get(norm);
+      if (normRow) return this.mapRowToEntity(normRow);
+    }
+
+    // 2. Wyszukanie kandydatów po aliasach lub podobieństwie z limitem zamiast pełnego skanu tabeli
+    const candidateRows = this.prepare(
+      'SELECT * FROM entities WHERE aliases LIKE ? OR aliases LIKE ? LIMIT 50'
+    ).all(`%"${trimmed}"%`, `%"${norm}"%`);
+
+    for (const row of candidateRows) {
       const e = this.mapRowToEntity(row);
       if (normalizeTerm(e.name).normalized === norm) return e;
       if (e.aliases.some((a) => normalizeTerm(a).normalized === norm)) return e;
     }
+
     return null;
   }
 

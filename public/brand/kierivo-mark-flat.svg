@@ -1,19 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-labelledby="kmf-title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80" role="img" aria-labelledby="kmf-title">
   <title id="kmf-title">Sygnet Kierivo — wersja płaska</title>
-  <!--
-    Sygnet płaski (jednobarwny, bez gradientu).
-    Stosowany przy druku jednobarwnym i małych rozmiarach.
-  -->
+  <!-- K Stem -->
+  <rect x="14" y="16" width="11.5" height="48" rx="3.5" fill="#0C1828"/>
 
-  <!-- Chevron tył (niebieski) -->
-  <path
-    fill="#155EEF"
-    d="M 28 18 L 16 40 L 28 62 L 38 62 L 26 40 L 38 18 Z"
-  />
+  <!-- K Diagonals -->
+  <path fill="#0C1828" d="
+    M 25.5 36.5
+    L 33.5 16.5
+    Q 34 16 35 16
+    L 44.5 16
+    Q 45.8 16 45.3 17.2
+    L 30.2 39.2
+    Q 29.6 40 30.2 40.8
+    L 45.8 62.8
+    Q 46.3 64 45 64
+    L 35 64
+    Q 34 64 33.5 63.5
+    L 25.5 43.5
+    Z
+  "/>
 
-  <!-- Chevron przód (granatowy) -->
-  <path
-    fill="#0C1828"
-    d="M 44 18 L 32 40 L 44 62 L 54 62 L 42 40 L 54 18 Z"
-  />
+  <!-- Chevron pointing left -->
+  <path fill="#155EEF" d="
+    M 36.5 39.2
+    L 50.8 16.8
+    Q 51.5 16 52.5 16
+    L 63.5 16
+    Q 65 16 64.3 17.3
+    L 48.2 39.2
+    Q 47.6 40 48.2 40.8
+    L 64.3 62.7
+    Q 65 64 63.5 64
+    L 52.5 64
+    Q 51.5 64 50.8 63.2
+    L 36.5 40.8
+    Q 35.8 40 36.5 39.2
+    Z
+  "/>
 </svg>

@@ -13,7 +13,7 @@ import { rankExperienceByRelevance } from './relevanceRanking';
 import { lookupGlossaryDefinition, hasGlossaryDefinition } from '../data/interviewGlossaryDictionary';
 import { api, ApiError } from './apiClient';
 import { StorageKeys, cheatSheetCacheKeyFor, readJson, removeRaw, writeJson } from './storage';
-import { consumeAiLocally } from '../store/useEntitlements';
+import { consumeAiLocally, refundAiLocally, getEntitlementsState } from '../store/useEntitlements';
 
 /**
  * 0-Token local "skeleton" builder for the Interview Cheat Sheet — mirrors the
@@ -443,10 +443,13 @@ export async function generateCheatSheetEnrichmentWithAI(
     return { enrichment: cached, fromCache: true };
   }
 
+  const authState = getEntitlementsState();
+  if (authState.source === 'unauthenticated' || authState.isAuthenticated === false) {
+    throw new Error('Zaloguj się, aby wygenerować spersonalizowaną ściągę AI dla tej oferty.');
+  }
+
   // Podpowiedź licznika przed strzałem: gdy interfejs wie, że darmowy dobowy
   // limit stoi na zerze, wysyłka skazana na 402 tylko marnowałaby czas.
-  // Ostateczną decyzję i tak podejmuje serwer — ten komunikat obsługuje wyłącznie
-  // przypadek, w którym podpowiedź i prawda się zgadzają.
   if (!consumeAiLocally()) {
     throw new Error(
       'Dzisiejszy limit darmowych wywołań AI jest wyczerpany. Limit odnowi się automatycznie o północy.'
@@ -464,9 +467,8 @@ export async function generateCheatSheetEnrichmentWithAI(
       consentToAiProcessing,
     });
   } catch (err) {
-    // `api` niesie już komunikat z serwera (limit zapytań, wyczerpana kwota).
-    // Podmiana go na własny tekst zabrałaby użytkownikowi jedyną informację
-    // o tym, czy ma poczekać, czy zmienić plan.
+    // Zwracamy pobrany kredyt w razie błędu sieciowego lub awarii serwera
+    refundAiLocally();
     if (err instanceof ApiError) throw err;
     throw new Error('Nie udało się wygenerować spersonalizowanej ściągi przez Gemini Flash.', {
       cause: err,

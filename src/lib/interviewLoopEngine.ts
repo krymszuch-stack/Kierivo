@@ -185,7 +185,7 @@ export function addLiveNote(
  */
 export function generateFollowUpEmail(
   session: InterviewLoopSession,
-  candidateName = 'Kandydat',
+  candidateName = '',
   debriefData?: Partial<PostCallDebrief>,
   variantIndex?: number
 ): string {
@@ -199,11 +199,14 @@ export function generateFollowUpEmail(
   const idx = selectVariantIndex(variantIndex ?? session.companyName + role, openings.length);
   const opening = openings[idx];
 
+  const signLine = candidateName.trim() && candidateName.trim().toLowerCase() !== 'kandydat'
+    ? `\n\nZ poważaniem,\n${candidateName.trim()}`
+    : '\n\nZ poważaniem';
+
   return (
     `${opening}\n\n` +
-    `Potwierdzam duże zainteresowanie dołączeniem do Państwa zespołu i będę wdzięczny za informację dotyczącą kolejnych kroków w procesie rekrutacyjnym.\n\n` +
-    `Z poważaniem,\n` +
-    `${candidateName}`
+    `Potwierdzam duże zainteresowanie dołączeniem do Państwa zespołu i z przyjemnością poznam kolejne kroki w procesie rekrutacyjnym.` +
+    signLine
   );
 }
 

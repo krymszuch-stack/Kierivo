@@ -1,9 +1,9 @@
 import { WorkExperience } from '../../types';
 import { ConsistencyAlert } from './types';
-import { formatMonthYear } from '../dateUtils';
+import { formatMonthYear, parseMonthYear } from '../dateUtils';
 
 /**
- * Zwraca znormalizowany rok i miesiąc z ciągu daty (np. '2022-05', '2022.05', '2022', 'Obecnie').
+ * Zwraca znormalizowany rok i miesiąc z ciągu daty (np. '2022-05', '2022.05', '05.2022', '2022', 'Obecnie').
  */
 export function parseYearMonthToNumbers(dateStr: string | undefined | null): { year: number; month: number } | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
@@ -14,12 +14,15 @@ export function parseYearMonthToNumbers(dateStr: string | undefined | null): { y
     return { year: now.getFullYear(), month: now.getMonth() + 1 };
   }
 
-  const matchYm = /^(\d{4})(?:[-/.](\d{1,2}))?/.exec(trimmed);
-  if (matchYm) {
-    const year = parseInt(matchYm[1], 10);
-    const month = matchYm[2] ? parseInt(matchYm[2], 10) : 1;
-    if (isNaN(year)) return null;
-    return { year, month: Math.min(12, Math.max(1, month)) };
+  // Używamy zunifikowanego parseMonthYear (zgodnie z Regułą 3: jedno źródło prawdy)
+  const normalized = parseMonthYear(dateStr);
+  if (normalized) {
+    const parts = normalized.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    if (!isNaN(year) && !isNaN(month)) {
+      return { year, month };
+    }
   }
 
   const parsed = Date.parse(dateStr);

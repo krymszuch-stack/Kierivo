@@ -848,6 +848,15 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
               </div>
             )}
 
+            {/* Klauzula RODO / GDPR — wymagana prawnie w procesach rekrutacyjnych */}
+            <div data-cv-section="gdpr-clause" className="mt-8 border-t border-line/40 pt-3">
+              <p className="text-[9px] leading-relaxed text-muted/80 text-justify">
+                {vault.personalInfo?.rodoClause ||
+                  vault.personalInfo?.gdprClause ||
+                  'Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 (RODO).'}
+              </p>
+            </div>
+
           </div>
         </div>
       </div>

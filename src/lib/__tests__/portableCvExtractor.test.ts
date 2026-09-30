@@ -117,7 +117,7 @@ describe('portableCvExtractor Suite (Smart Portable CV Round-Trip)', () => {
     expect(parsed!.history[0].role).toBe('Główny Automatyk');
     expect(parsed!.history[0].isCurrent).toBe(true);
     expect(parsed!.history[0].highlights[0].text).toBe('Zmniejszono przestoje linii o 25%.');
-    expect(parsed!.history[0].highlights[0].metric).toBe('zweryfikowano');
+    expect(parsed!.history[0].highlights[0].metric).toBe('');
 
     // Certyfikaty i edukacja
     expect(parsed!.certifications.length).toBe(1);

@@ -21,6 +21,7 @@ import {
   selectVariantIndex,
 } from '../phrasingVariations';
 import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
+import { parseMonthYear } from '../dateUtils';
 
 /**
  * Stała określająca maksymalną dopuszczalną rozbieżność czasu trwania (w latach).
@@ -29,7 +30,7 @@ import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
 export const MAX_ALLOWED_YEAR_DIFFERENCE = 0.5;
 
 /**
- * Parsuje ciąg daty (YYYY, YYYY-MM, YYYY-MM-DD, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
+ * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
  */
 export function parseDateToDecimalYear(dateStr: string | undefined): number | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
@@ -38,6 +39,18 @@ export function parseDateToDecimalYear(dateStr: string | undefined): number | nu
   if (['obecnie', 'present', 'current', 'teraz', 'now'].includes(normalized)) {
     const now = new Date();
     return now.getFullYear() + (now.getMonth() + 0.5) / 12;
+  }
+
+  // Używamy zunifikowanego parseMonthYear dla formatów YYYY-MM, MM.YYYY, MM/YYYY, słownych
+  const parsedYm = parseMonthYear(dateStr);
+  if (parsedYm) {
+    const [yStr, mStr] = parsedYm.split('-');
+    const year = parseInt(yStr, 10);
+    const month = parseInt(mStr, 10);
+    if (!isNaN(year) && !isNaN(month)) {
+      const clampedMonth = Math.min(12, Math.max(1, month));
+      return year + (clampedMonth - 0.5) / 12;
+    }
   }
 
   // Format YYYY-MM lub YYYY-MM-DD

@@ -37,4 +37,12 @@ describe('experience — unia przedziałów (F5)', () => {
       { id: '3', startDate: '2099-01', endDate: '2100-01', isCurrent: false },
     ])).toBe(0);
   });
+
+  it('poprawnie liczy staż dla polskich formatów dat MM.YYYY i MM/YYYY', () => {
+    expect(unionExperienceYears([
+      { id: '1', startDate: '01.2020', endDate: '01.2022', isCurrent: false },
+      { id: '2', startDate: '01/2022', endDate: '01/2024', isCurrent: false },
+    ])).toBeCloseTo(4, 1);
+  });
 });
+

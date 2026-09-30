@@ -3,6 +3,8 @@
  * Nie odgaduje brakujących danych: segment niepewny pozostaje niepewny.
  */
 
+import { cleanPastedJobOffer } from './jobOfferCleaner';
+
 export type OfferCompleteness = 'complete' | 'partial' | 'uncertain';
 
 export interface PreparedJobOfferSegment {
@@ -103,12 +105,21 @@ function analyzePastedOfferHeader(rawText: string): {
 /** Wyciąga czytelny nagłówek z wklejonej oferty do szybkiego startu. */
 export function inferPastedOfferHeader(rawText: string): { title: string; company: string } {
   const { title, company } = analyzePastedOfferHeader(rawText);
-  return { title, company };
+  if (title) {
+    return { title, company };
+  }
+  const cleaned = cleanPastedJobOffer(rawText);
+  return { title: cleaned.title, company: cleaned.company };
 }
 
 /** Usuwa wyłącznie jednoznacznie rozpoznany nagłówek, by nie liczyć go jako wymagania. */
 export function stripInferredPastedOfferHeader(rawText: string): string {
-  return analyzePastedOfferHeader(rawText).body;
+  const { title, body } = analyzePastedOfferHeader(rawText);
+  if (title) {
+    return body;
+  }
+  const cleaned = cleanPastedJobOffer(rawText);
+  return cleaned.cleanText || rawText;
 }
 
 function metadata(lines: string[]): { location: string; salary: string; workMode: string } {
@@ -181,6 +192,27 @@ export function preprocessJobOfferPaste(rawText: string): JobOfferPreparation {
       .filter((nearby) => LOCATION.test(nearby) || SALARY.test(nearby) || WORK_MODE.test(nearby) || CONTRACT.test(nearby) || SENIORITY.test(nearby)).length;
     return company && signals >= 2 ? { index, company } : null;
   }).filter((entry): entry is { index: number; company: string } => entry !== null);
+
+  if (starts.length <= 1) {
+    const cleaned = cleanPastedJobOffer(rawText);
+    if (cleaned.hasNoiseRemoved) {
+      const segLines = cleaned.cleanText.split('\n');
+      const validation = validate(segLines, cleaned.title || null, cleaned.company || null);
+      return {
+        sourceType: 'multi-offer-paste',
+        classification: 'noisy',
+        segments: [{
+          id: 'segment-1',
+          titleCandidate: cleaned.title || null,
+          companyCandidate: cleaned.company || null,
+          rawText,
+          cleanText: cleaned.cleanText,
+          ...validation,
+          duplicateOfSegmentId: null,
+        }],
+      };
+    }
+  }
 
   const ranges = starts.length
     ? starts.map((start, index) => ({ start: start.index, end: starts[index + 1]?.index ?? lines.length, company: start.company }))

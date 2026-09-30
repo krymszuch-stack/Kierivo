@@ -170,12 +170,27 @@ function normalizeDate(rawDate: unknown): string {
   if (typeof rawDate !== 'string' || !rawDate.trim()) {
     return new Date().toISOString().slice(0, 10);
   }
-  const trimmed = rawDate.trim().replace(/\//g, '-');
+  const raw = rawDate.trim();
   // Sprawdź czy format to YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
   }
-  const parsed = new Date(trimmed);
+  // Format DD.MM.YYYY lub DD-MM-YYYY lub DD/MM/YYYY
+  const dmyMatch = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (dmyMatch) {
+    const day = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  // Format YYYY-MM
+  const ymMatch = raw.match(/^(\d{4})[-/.](\d{1,2})$/);
+  if (ymMatch) {
+    const year = ymMatch[1];
+    const month = String(parseInt(ymMatch[2], 10)).padStart(2, '0');
+    return `${year}-${month}-01`;
+  }
+  const parsed = new Date(raw.replace(/\//g, '-'));
   return isNaN(parsed.getTime()) ? new Date().toISOString().slice(0, 10) : parsed.toISOString().slice(0, 10);
 }
 

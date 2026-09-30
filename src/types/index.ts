@@ -77,6 +77,8 @@ export interface PersonalInfo {
   photoUrl?: string;
   title: string;
   summary: string;
+  rodoClause?: string;
+  gdprClause?: string;
 }
 
 export interface Certification {

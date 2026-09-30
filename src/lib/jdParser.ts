@@ -6,6 +6,7 @@ import {
   dedupeSkillDefinitions, extractGenericRequirementCandidates, extractNiceLanguageSkills,
   findSkillDefinitions,
 } from './jdSkillTaxonomy';
+import { cleanPastedJobOffer } from './jobOfferCleaner';
 
 export interface StructuredSalary {
   min: number;
@@ -165,15 +166,24 @@ function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-
   // Mandatory requirements / Dealbreakers detection
   const mandatory: string[] = [];
   if (/prawo jazdy|driver'?s license|kat\.?\s*b/i.test(lower)) mandatory.push('Prawo Jazdy Kat. B (Wymóg Konieczny)');
-  if (/c1|c2|fluent english|biegły angielski/i.test(lower)) mandatory.push('Język Angielski poziom min. C1');
+  if (/(?:c1|c2)\s*(?:poziom|level|cefr|angielsk|english)|(?:angielsk|english|j[ęe]zyk)\s*[:\-–—]?\s*(?:c1|c2)|fluent english|bieg[łl]y angielski/i.test(lower)) {
+    mandatory.push('Język Angielski poziom min. C1');
+  }
   if (/studia wyższe|wykształcenie wyższe|bachelor|master degree/i.test(lower)) mandatory.push('Wykształcenie Wyższe (Inżynier / Magister)');
-  if (/3\+?\s*lat|5\+?\s*lat|years of experience/i.test(lower)) mandatory.push('Min. 3-5 lat udokumentowanego doświadczenia');
+  if (/(?:min(?:imum)?\.?\s*)?(?:3|5)\+?\s*lat\s*(?:do[śs]wiadczeni|sta[żz]u)|years\s+of\s+experience/i.test(lower)) {
+    mandatory.push('Min. 3-5 lat udokumentowanego doświadczenia');
+  }
   if (/stacjonarnie|z biura|office only/i.test(lower)) mandatory.push('Praca Stacjonarna z Biura');
 
-  // Work model
-  let workModel = 'HYBRID';
-  if (/zdaln|remote|100% zdalnie/i.test(lower)) workModel = 'REMOTE';
-  else if (/stacjonarn|z biura|in-office/i.test(lower)) workModel = 'ON_SITE';
+  // Work model — domyślnie praca stacjonarna (ON_SITE), hybryda tylko przy jawnej wzmiance
+  let workModel = 'ON_SITE';
+  if (/hybryd|hybrid|cz[ęe][śs]ciowo\s+zdaln/i.test(lower)) {
+    workModel = 'HYBRID';
+  } else if (/100%\s*zdaln|w\s+pe[łl]ni\s+zdaln|praca\s+zdaln|remote\s+only|fully\s+remote/i.test(lower)) {
+    workModel = 'REMOTE';
+  } else if (/zdaln|remote/i.test(lower) && !/nie\s+(?:jest\s+)?zdaln/i.test(lower)) {
+    workModel = 'REMOTE';
+  }
 
   // Salary range
   let salaryRange = '';
@@ -241,7 +251,7 @@ function parseJobDescriptionLocalLegacy(rawJdText: string, defaultTitle = 'Full-
  * sześciu ofert `requiredLines`/`niceLines` wychodziły puste niezależnie od
  * tego, co zawierał słownik umiejętności.
  */
-const SECTION_HEADER_NAMES = "(mile widziane|nice[- ]to[- ]have|preferred qualifications?|preferred|dodatkowo|nasze wymagania|twoje wymagania|wymagania|wymagane|(?:required|minimum|basic) qualifications?|qualifications?|must[- ]haves?|requirements?|what we (?:expect|require|need)|what you(?:'|’)ll bring|what you will bring|your profile|who you are|to oferujemy|we offer|benefity|benefits|perks|twój zakres|zakres obowiązków|obowiązki|responsibilities|what you.?ll do|o projekcie|about the project|o firmie|about us|about the company|technologie|tech stack|technologies)";
+const SECTION_HEADER_NAMES = "(mile widziane|nice[- ]to[- ]have|preferred qualifications?|preferred|dodatkowo|nasze wymagania|twoje wymagania|wymagania|wymagane|(?:required|minimum|basic) qualifications?|qualifications?|must[- ]haves?|requirements?|what we (?:expect|require|need)|what you(?:'|’)ll bring|what you will bring|your profile|who you are|czego oczekujemy(?:\\s+od\\s+naszych\\s+pracowników|\\s+od\\s+kandydatów|\\s+od\\s+ciebie)?|nasze oczekiwania|oczekiwania|czego szukamy|to oferujemy|co oferujemy(?:\\s+naszym\\s+pracownikom|\\s+kandydatom)?|we offer|benefity|benefits|perks|twój zakres|zakres obowiązków|obowiązki|czym będziesz się zajmować|responsibilities|what you.?ll do|o projekcie|about the project|o firmie|about us|about the company|technologie|tech stack|technologies)";
 const SECTION_HEADER_PATTERN = new RegExp(`^${SECTION_HEADER_NAMES}\\s*[:.]?\\s*$`, 'i');
 const INLINE_SECTION_HEADER_PATTERN = new RegExp(`^${SECTION_HEADER_NAMES}\\s*:\\s*(.+)$`, 'i');
 
@@ -269,6 +279,7 @@ const REQUIRED_SECTION_HEADERS = [
   /^(required|minimum|basic) qualifications?\s*[:.]?$/i, /^qualifications?\s*[:.]?$/i,
   /^must[- ]haves?\s*[:.]?$/i, /^what you(?:'|’)ll bring\s*[:.]?$/i,
   /^what you will bring\s*[:.]?$/i, /^your profile\s*[:.]?$/i, /^who you are\s*[:.]?$/i,
+  /^(?:czego oczekujemy|nasze oczekiwania|oczekiwania|czego szukamy)(?:\s+(?:od\s+ciebie|od\s+kandydatów|od\s+naszych\s+pracowników))?\s*[:.]?$/i,
 ];
 
 /** Wyciąga próg stażu tylko z tej samej sekcji wymagań, którą widzi parser oferty. */
@@ -301,8 +312,10 @@ export function formatExperienceRequirementLabel(years: number): string {
  * może zasilać ATS rzeczownikami z benefitu ani stopki portalu.
  */
 export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full-Stack Developer'): ParsedJobDescription {
-  const legacy = parseJobDescriptionLocalLegacy(rawJdText, defaultTitle);
-  const text = rawJdText.trim();
+  const cleaned = cleanPastedJobOffer(rawJdText);
+  const effectiveRaw = cleaned.hasNoiseRemoved ? cleaned.cleanText : rawJdText;
+  const legacy = parseJobDescriptionLocalLegacy(effectiveRaw, cleaned.title || defaultTitle);
+  const text = effectiveRaw.trim();
   const lines = normalizeInlineSectionHeaders(text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
   const requiredLines = parseSectionLines(lines, REQUIRED_SECTION_HEADERS);
   const niceLines = parseSectionLines(lines, [
@@ -327,13 +340,16 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
   // patrz `looksLikeGenericSkillToken` w `jdSkillTaxonomy.ts`. Filtrujemy też
   // nazwy miękkich kompetencji (`softNames`), żeby nie duplikować ich jako
   // twardych umiejętności.
+  const PORTAL_NOISE = /^(?:juwentus|aplikuj|zgłoś|otodom|olx|grupa pracuj|the network|tiktok|instagram|współadministrator|facebook|linkedin)$/i;
   const genericRequired = extractGenericRequirementCandidates(requiredSectionText)
     .filter((token) => !requiredTaxonomyTerms.some((skill) => skill.toLowerCase() === token.toLowerCase()))
-    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()));
+    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()))
+    .filter((token) => !PORTAL_NOISE.test(token));
   const genericNice = extractGenericRequirementCandidates(niceSectionText)
     .filter((token) => !requiredTaxonomyTerms.some((skill) => skill.toLowerCase() === token.toLowerCase()))
     .filter((token) => !genericRequired.some((skill) => skill.toLowerCase() === token.toLowerCase()))
-    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()));
+    .filter((token) => !softNames.some((skill) => skill.toLowerCase() === token.toLowerCase()))
+    .filter((token) => !PORTAL_NOISE.test(token));
   // Nazwa języka bez poziomu w sekcji "Mile widziane" liczy się jako dodatkowa
   // umiejętność (np. „Angielski.”) — ale TYLKO tam. W sekcji wymagań język
   // pozostaje wyłącznie formalnym progiem (`structuredLanguages`), inaczej
@@ -385,15 +401,20 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
       sourceText: language.sourceText,
     });
   });
-  const companyName = text.match(/^(.{2,100}?)\s*o firmie\s*$/im)?.[1]?.trim() || legacy.companyName;
+  const companyName = cleaned.company || text.match(/^(.{2,100}?)\s*o firmie\s*$/im)?.[1]?.trim() || legacy.companyName;
   const usefulTitle = defaultTitle.length > 3 && !/^(full-stack developer|stanowisko)$/i.test(defaultTitle);
   const titleFromText = lines.find((line) => /^(poszukujemy|rekrutacja na|stanowisko:|oferta:)/i.test(line))
     ?.replace(/^(poszukujemy|rekrutacja na|stanowisko:|oferta:)\s*/i, '').trim();
-  const jobTitle = usefulTitle ? defaultTitle : titleFromText || lines.find((line) => line.length > 3 && line.length < 90 && !/^(firma|wymagania|o firmie)/i.test(line)) || legacy.jobTitle;
+  const jobTitle = usefulTitle ? defaultTitle : (cleaned.title || titleFromText || lines.find((line) => line.length > 3 && line.length < 90 && !/^(firma|wymagania|o firmie|lokalizacja|wynagrodzenie)/i.test(line)) || legacy.jobTitle);
   const mandatoryRequirements = formalRequirements.filter((requirement) => requirement.required).map((requirement) => requirement.label);
-  const location = lines.find((line) => /warszawa|katowice|gliwice|kraków|wrocław|gdańsk|poznań|łódź|szczecin|białołęka|polska/i.test(line));
+  const explicitLocationLine = lines.find((line) => /^lokalizacja:\s*(.+)$/i.test(line));
+  const explicitLocation = explicitLocationLine ? explicitLocationLine.replace(/^lokalizacja:\s*/i, '').trim() : '';
+  const location = explicitLocation || cleaned.location || lines.find((line) => /warszawa|katowice|gliwice|kraków|wrocław|gdańsk|poznań|łódź|szczecin|białołęka|polska|oświęcim|zielona góra|luzino|bochnia|trzebnica|sandomierz|siedlce|korsze|piaseczno/i.test(line));
   const contractTypes = Array.from(new Set(lines.filter((line) => /umowa o pracę|umowa zlecenie|umowa o dzieło|kontrakt b2b|pełny etat|część etatu/i.test(line))));
   const workModel: ParsedJobDescription['workModel'] = /praca zdalna|zdalnie|remote/i.test(lower) ? 'REMOTE' : /stacjonarn|z biura|in-office/i.test(lower) ? 'ON_SITE' : legacy.workModel;
+  const explicitSalaryLine = lines.find((line) => /^wynagrodzenie:\s*(.+)$/i.test(line));
+  const explicitSalary = explicitSalaryLine ? explicitSalaryLine.replace(/^wynagrodzenie:\s*/i, '').trim() : '';
+  const salaryRange = explicitSalary || cleaned.salary || salaryMatch?.[0];
   return {
     ...legacy,
     jobTitle,
@@ -407,7 +428,7 @@ export function parseJobDescriptionLocal(rawJdText: string, defaultTitle = 'Full
     coreResponsibilities: parseSectionLines(lines, [/^(twój|twoje)?\s*zakres obowiązków/i, /^obowiązki/i]).slice(0, 10),
     keyKeywords: Array.from(new Set([...required, ...nice, ...soft, ...niceSoft, ...mandatoryRequirements])).filter((keyword) => !HR_AND_COMMON_STOP_WORDS.has(keyword.toLowerCase())).slice(0, 30),
     mandatoryRequirements,
-    salaryRange: salaryMatch?.[0],
+    salaryRange,
     workModel,
     niceToHaveHardSkills: nice,
     niceToHaveSoftSkills: niceSoft,

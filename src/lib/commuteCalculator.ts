@@ -40,6 +40,10 @@ export interface MobilityPreferences {
   officeCity?: string;
   /** Obliczona odległość drogowa w km. */
   roadDistanceKm?: number;
+  /** Typ pojazdu dojazdu. */
+  vehicleEngineType?: 'combustion' | 'electric' | 'transit';
+  /** Warunki drogowe (szczyt vs płynny ruch). */
+  trafficMode?: 'peak' | 'smooth';
 }
 
 export const DEFAULT_MOBILITY_PREFERENCES: MobilityPreferences = {
@@ -49,6 +53,8 @@ export const DEFAULT_MOBILITY_PREFERENCES: MobilityPreferences = {
   officeDaysPerWeek: 3,
   oneWayMinutes: 30,
   monthlyCommuteCost: 300,
+  vehicleEngineType: 'combustion',
+  trafficMode: 'peak',
 };
 
 /**
@@ -472,9 +478,12 @@ export function calculateFeasibility(
   const benefitValue = benefitPackageValue(benefits);
 
   const nominalHourlyRate = netMonthly / NOMINAL_MONTHLY_HOURS;
-  const realHourlyRate = (netMonthly - commuteCost) / (NOMINAL_MONTHLY_HOURS + commuteHours);
-  const realHourlyRateWithBenefits =
-    (netMonthly - commuteCost + benefitValue) / (NOMINAL_MONTHLY_HOURS + commuteHours);
+  const realHourlyRate = Math.max(0, (netMonthly - commuteCost) / (NOMINAL_MONTHLY_HOURS + commuteHours));
+  const realHourlyRateWithBenefits = Math.max(
+    0,
+    (netMonthly - commuteCost + benefitValue) / (NOMINAL_MONTHLY_HOURS + commuteHours)
+  );
+  const hourlyRateLoss = Math.max(0, nominalHourlyRate - realHourlyRate);
 
   const days = effectiveOfficeDays(prefs);
   const savingsPerRemoteDay =
@@ -489,7 +498,7 @@ export function calculateFeasibility(
     netMonthly,
     nominalHourlyRate,
     realHourlyRate,
-    hourlyRateLoss: nominalHourlyRate - realHourlyRate,
+    hourlyRateLoss,
     commuteHours,
     commuteCost,
     commuteWorkdays: commuteHours / 8,
@@ -500,7 +509,7 @@ export function calculateFeasibility(
 }
 
 /* ------------------------------------------------------------------ */
-/* Notatka doradcy                                                     */
+/* Notatka doradcy i taktyki negocjacyjne                              */
 /* ------------------------------------------------------------------ */
 
 export interface AdvisorNote {
@@ -508,6 +517,14 @@ export interface AdvisorNote {
   body: string;
   /** Konkretna rzecz do zrobienia na rozmowie. Zawsze wykonalna. */
   tactic: string;
+}
+
+export interface NegotiationTacticItem {
+  id: string;
+  title: string;
+  gainDescription: string;
+  script: string;
+  difficulty: 'EASY' | 'MEDIUM';
 }
 
 const zl = (value: number) => `${Math.round(value).toLocaleString('pl-PL')} zł`;
@@ -519,8 +536,7 @@ const h = (value: number) => value.toFixed(0);
  * Notatka jest deterministyczna i zbudowana wyłącznie z liczb policzonych
  * wyżej. Świadomie nie ma tu porównań w rodzaju „o 15% lepiej niż rynek":
  * nie mamy danych o rynku dla tego stanowiska, więc taka zdanie byłoby
- * wymyślone (reguła 1). Gdy zbierzemy je z wiedzy zbiorowej, dopiszemy je
- * jako osobne, oznaczone źródło.
+ * wymyślone (reguła 1).
  */
 export function buildAdvisorNote(
   result: FeasibilityResult,
@@ -538,7 +554,7 @@ export function buildAdvisorNote(
   }
 
   const lossShare = result.nominalHourlyRate
-    ? (result.hourlyRateLoss / result.nominalHourlyRate) * 100
+    ? Math.min(100, Math.max(0, (result.hourlyRateLoss / result.nominalHourlyRate) * 100))
     : 0;
 
   const body =
@@ -556,4 +572,94 @@ export function buildAdvisorNote(
       : 'Bilans wychodzi na plus';
 
   return { headline, body, tactic };
+}
+
+/**
+ * Generuje zestaw konkretnych taktyk i gotowych zdań do wykorzystania podczas negocjacji.
+ */
+export function buildNegotiationTactics(
+  result: FeasibilityResult,
+  prefs: MobilityPreferences
+): NegotiationTacticItem[] {
+  const days = effectiveOfficeDays(prefs);
+  const tactics: NegotiationTacticItem[] = [];
+
+  if (days > 1 && result.savingsPerRemoteDay) {
+    tactics.push({
+      id: 'tactic-remote-day',
+      title: 'Zamiana 1 dnia w biurze na pracę zdalną',
+      gainDescription: `Odzyskujesz ${h(result.savingsPerRemoteDay.hours)} h życia i ${zl(result.savingsPerRemoteDay.cost)} miesięcznie`,
+      script: `„Zależy mi na długoterminowej współpracy i wysokiej efektywności. Ponieważ dojazd w dwie strony zajmuje mi ok. ${prefs.oneWayMinutes * 2} minut dziennie, chciałbym ustalić możliwość pracy zdalnej np. we czwartki. Pozwoli mi to zaoszczędzić czas na dojazdach i skupić się na zadaniach koncepcyjnych.”`,
+      difficulty: 'EASY',
+    });
+  }
+
+  if (days > 0) {
+    tactics.push({
+      id: 'tactic-flexible-hours',
+      title: 'Przesunięcie godzin pracy poza szczyt drogowy',
+      gainDescription: 'Skrócenie czasu w korkach o 25–40% w obie strony',
+      script: `„Chciałbym zapytać o elastyczność godzin rozpoczęcia pracy. Gdybym rozpoczynał dzień o 7:00 zamiast o 8:30 (lub odpowiednio 9:30), omijam największe zatory drogowe na trasie, co przekłada się na lepszą dyspozycyjność i mniejsze zmęczenie.”`,
+      difficulty: 'EASY',
+    });
+
+    const commuteMonthly = result.commuteCost;
+    if (commuteMonthly > 250) {
+      tactics.push({
+        id: 'tactic-commute-allowance',
+        title: 'Dofinansowanie dojazdów lub karta paliwowa/bilet',
+        gainDescription: `Zrekompensowanie ${zl(commuteMonthly)} miesięcznych kosztów transportu`,
+        script: `„Oferowane wynagrodzenie jest interesujące, natomiast ze względu na lokalizację biura mój miesięczny koszt dojazdu wynosi ok. ${zl(commuteMonthly)}. Czy firma oferuje ryczałt na dojazdy, kartę paliwową lub dofinansowanie biletów okresowych?”`,
+        difficulty: 'MEDIUM',
+      });
+    }
+  }
+
+  return tactics;
+}
+
+export interface OfferComparisonSummary {
+  otherCompanyName: string;
+  otherRole: string;
+  otherRealHourlyRate: number;
+  rateDifferencePln: number;
+  hoursDifference: number;
+  winner: 'CURRENT' | 'OTHER' | 'EQUAL';
+  verdictText: string;
+}
+
+/**
+ * Porównuje bieżącą ofertę z inną ofertą pod kątem realnej stawki za godzinę życia.
+ */
+export function compareOfferWithAnother(
+  currentResult: FeasibilityResult,
+  otherOffer: { company: string; role: string; salaryNet: number; commuteMinutes: number; officeDays: number; commuteCost: number }
+): OfferComparisonSummary {
+  const otherCommuteHours = (otherOffer.officeDays * (otherOffer.commuteMinutes * 2) * WEEKS_PER_MONTH) / 60;
+  const otherCost = otherOffer.officeDays === 0 ? 0 : Math.max(0, otherOffer.commuteCost);
+  const otherRealRate = Math.max(0, (otherOffer.salaryNet - otherCost) / (NOMINAL_MONTHLY_HOURS + otherCommuteHours));
+
+  const diffRate = Math.round((currentResult.realHourlyRate - otherRealRate) * 100) / 100;
+  const diffHours = Math.round(currentResult.commuteHours - otherCommuteHours);
+
+  let winner: 'CURRENT' | 'OTHER' | 'EQUAL' = 'EQUAL';
+  let verdictText = 'Obie oferty dają zbliżoną realną stawkę za godzinę życia.';
+
+  if (diffRate > 1.5) {
+    winner = 'CURRENT';
+    verdictText = `Bieżąca oferta daje o ${diffRate.toFixed(2)} zł więcej za każdą godzinę Twojego życia niż oferta w ${otherOffer.company}.`;
+  } else if (diffRate < -1.5) {
+    winner = 'OTHER';
+    verdictText = `Oferta w ${otherOffer.company} daje o ${Math.abs(diffRate).toFixed(2)} zł/h więcej na rękę za godzinę życia po odliczeniu transportu.`;
+  }
+
+  return {
+    otherCompanyName: otherOffer.company,
+    otherRole: otherOffer.role,
+    otherRealHourlyRate: otherRealRate,
+    rateDifferencePln: diffRate,
+    hoursDifference: diffHours,
+    winner,
+    verdictText,
+  };
 }
