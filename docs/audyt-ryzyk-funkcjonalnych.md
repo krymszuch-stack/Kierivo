@@ -21,6 +21,7 @@ niżej i muszą przejść osobną weryfikację przed zmianą statusu na „Dzia�
 | Operacje AI mogły ruszyć bez świadomej zgody na przekazanie danych | Serwerowe bramki zgody oraz prawdziwe komunikaty o zakresie wysyłki do Azure | Testy tras; rzeczywisty przepływ Azure + Supabase nie został jeszcze domknięty |
 | Zapis lub usuwanie profilu mogły utracić dane albo odtworzyć je po usunięciu | Trwały transfer do IndexedDB, blokada późnego autosave i oczekiwanie na usunięcie obu magazynów | Testy transakcji i pełny ekranowy test usunięcia fikcyjnego profilu; usunięcie konta w Supabase nadal bez testu |
 | Logowanie Microsoft było widoczne, lecz dostawca nie był skonfigurowany | Rejestracja Entra, callback Supabase, `xms_edov`, zakres `email`, włączony dostawca i `kierivo.com` jako Site URL | Rzeczywiste logowanie kontem właściciela i odświeżenie sesji przeszły; lokalny kod z zakresem `email` nie jest jeszcze na produkcji, a wydawca nie jest zweryfikowany |
+| Bank STAR kopiował do CV fikcyjne metryki, narzędzia i uprawnienia | Przyciski „Kopiuj” i „Wstaw” przekazują szablon z polami do uzupełnienia; widok oznacza zdania jako fikcyjne przykłady | Test funkcji szablonu i kontrola typów przechodzą; pełny ekranowy test wstawienia i eksportu pozostaje do wykonania |
 
 ## Inwentarz wejść głównych
 

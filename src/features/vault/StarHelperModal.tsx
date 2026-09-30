@@ -18,6 +18,7 @@ import {
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { showToast } from '../../store/useToastStore';
+import { starTemplateForExample, starTemplateForVerb } from './starTemplate';
 
 export interface StarVerb {
   verb: string;
@@ -347,6 +348,10 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
       size="xl"
     >
       <div className="space-y-5 text-ink">
+        <p className="rounded-xl border border-warning-500/30 bg-warning-500/5 p-3 text-xs text-muted">
+          Poniższe zdania są fikcyjnymi przykładami. Liczby, narzędzia i uprawnienia nie pochodzą z Twojego profilu.
+          Przyciski wstawiają wyłącznie szablon do uzupełnienia własnymi, sprawdzonymi danymi.
+        </p>
         {/* Formuła STAR — prosty schemat */}
         <div className="rounded-2xl border border-brand-500/30 bg-brand-500/5 p-4">
           <div className="flex items-center gap-2 font-bold text-xs text-brand-fg uppercase tracking-wider mb-2">
@@ -467,17 +472,17 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
                       variant="ghost"
                       size="sm"
                       icon={Copy}
-                      onClick={() => handleCopyOrInsert(v.exampleSnippet)}
+                      onClick={() => handleCopyOrInsert(starTemplateForVerb(v.verb))}
                       className="text-[11px] h-7 px-2.5"
                     >
-                      Kopiuj przykład
+                      Kopiuj szablon
                     </Button>
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
                       icon={Plus}
-                      onClick={() => handleCopyOrInsert(v.exampleSnippet)}
+                      onClick={() => handleCopyOrInsert(starTemplateForVerb(v.verb))}
                       className="text-[11px] h-7 px-2.5"
                     >
                       {onApplySnippet ? 'Wstaw do osiągnięcia' : 'Użyj wzorca'}
@@ -542,7 +547,7 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
                       variant="secondary"
                       size="sm"
                       icon={Plus}
-                      onClick={() => handleCopyOrInsert(ex.good)}
+                      onClick={() => handleCopyOrInsert(starTemplateForExample())}
                       className="text-[11px] h-7 px-2.5"
                     >
                       {onApplySnippet ? 'Wstaw ten wzorzec' : 'Skopiuj wzorzec'}
