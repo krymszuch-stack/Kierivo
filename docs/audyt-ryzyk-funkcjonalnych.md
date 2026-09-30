@@ -650,10 +650,18 @@ dużych chunkach i mieszanym imporcie `cloudVaultOutbox`; nie blokują kompilacj
   polityki SELECT/INSERT/UPDATE/DELETE ograniczone przez `auth.uid() = user_id`.
   Tabela miała w chwili odczytu 0 wierszy, więc samo sprawdzenie schematu nie
   potwierdza ani zapisu, ani compare-and-swap. Lokalny build dostał testową
-  konfigurację publicznego klucza Supabase poza repozytorium; próba OAuth
-  doszła do ekranu wyboru konta Microsoft, ale rozszerzenie Brave przejęło
-  stronę i wstrzymało automatyzację. Test na fikcyjnych danych zostanie
-  wznowiony po zamknięciu tego okna przez właściciela sesji.
+  konfigurację publicznego klucza Supabase poza repozytorium. Po wznowieniu
+  próba OAuth z lokalnej aplikacji przeszła ekran Microsoft i zalogowała
+  wskazane konto, lecz wróciła na `https://kierivo.com/`, mimo że żądanie
+  zawierało `redirect_to=http://localhost:3000/`. Widok produkcyjny pokazał
+  adres konta i „Zapisane w chmurze”. Nie potwierdza to sesji lokalnej ani
+  zapisu Vaultu; przyczynę powrotu na produkcję trzeba ustalić na konfiguracji
+  redirectów Supabase przed testem konfliktu z fikcyjnymi danymi. Dokumentacja
+  Supabase pokazuje `http://localhost:3000/**` dla podścieżek; drugi test użył
+  więc lokalnie `http://localhost:3000/auth/callback/` bez zmiany projektu.
+  Żądanie Microsoft zawierało nowy adres i doszło do wyboru konta, ale na tym
+  etapie rozszerzenie Brave ponownie przejęło sterowanie. Wynik powrotu na
+  podścieżkę nie jest jeszcze znany.
 
 - Scalenie pending z chmurą oraz pierwsze logowanie z lokalnym CV ujawniły
   utratę edycji pola istniejącego wpisu:
