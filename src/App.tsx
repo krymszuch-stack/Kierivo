@@ -116,6 +116,7 @@ function MainApp() {
     remoteVault: MasterVault | null;
     remoteUpdatedAt: string | null;
   } | null>(null);
+  const [cloudVaultConflictOpen, setCloudVaultConflictOpen] = useState(false);
   const [resolvingCloudVaultConflict, setResolvingCloudVaultConflict] = useState(false);
   const retryCloudBootstrapOnOnline = useRef(false);
 
@@ -287,6 +288,7 @@ function MainApp() {
             remoteVault: remoteSnapshot.conflictRemoteVault ?? null,
             remoteUpdatedAt: remoteSnapshot.remoteUpdatedAt,
           });
+          setCloudVaultConflictOpen(true);
           return;
         }
 
@@ -301,6 +303,7 @@ function MainApp() {
             remoteVault: remoteSnapshot.vault,
             remoteUpdatedAt: remoteSnapshot.remoteUpdatedAt,
           });
+          setCloudVaultConflictOpen(true);
           return;
         }
         setVault(wynik.vault);
@@ -434,6 +437,7 @@ function MainApp() {
       setVaultProfileId(cloudVaultConflict.ownerId);
       if (status === 'conflict') {
         setCloudVaultConflict(null);
+        setCloudVaultConflictOpen(false);
         syncedForUser.current = null;
         setCloudSyncRetryTick((current) => current + 1);
         showToast('Pojawiła się nowsza zmiana w chmurze', {
@@ -443,6 +447,7 @@ function MainApp() {
         return;
       }
       setCloudVaultConflict(null);
+      setCloudVaultConflictOpen(false);
       showToast(status === 'cloud' ? 'Konflikt rozstrzygnięty' : 'Wersja wybrana i zapisana lokalnie', {
         message: status === 'cloud'
           ? 'Wybrana wersja CV została zapisana w chmurze.'
@@ -493,6 +498,18 @@ function MainApp() {
       cloudAvailable={cloudAvailable}
       planStatus={planStatus}
     >
+      {visibleCloudVaultConflict && !cloudVaultConflictOpen && (
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-soft/60 p-4 text-sm text-ink">
+          <p>Dwie wersje CV czekają na wybór. Żadna nie została automatycznie połączona ani nadpisana.</p>
+          <button
+            type="button"
+            onClick={() => setCloudVaultConflictOpen(true)}
+            className="min-h-11 rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white"
+          >
+            Porównaj wersje CV
+          </button>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -613,11 +630,11 @@ function MainApp() {
         }}
       />
 
-      {visibleCloudVaultConflict && (
+      {visibleCloudVaultConflict && cloudVaultConflictOpen && (
         <Modal
           isOpen
           onClose={() => {
-            if (!resolvingCloudVaultConflict) setCloudVaultConflict(null);
+            if (!resolvingCloudVaultConflict) setCloudVaultConflictOpen(false);
           }}
           title="Konflikt dwóch wersji CV"
           description="Lokalne CV i wersja z konta są różne. Bez wspólnej historii zmian połączenie mogłoby przywrócić usunięte wpisy. Wybierz jedną pełną wersję do zapisania."
@@ -673,7 +690,7 @@ function MainApp() {
               </div>
             </div>
             <p className="text-xs text-muted">
-              Niewybrana wersja nie zostanie scalona. Przed wyborem możesz zamknąć okno; konflikt i lokalny zapis pozostaną zachowane.
+              Niewybrana wersja nie zostanie scalona. Możesz zamknąć okno i wrócić do wyboru z przycisku na stronie; konflikt i lokalny zapis pozostaną zachowane.
             </p>
           </div>
         </Modal>

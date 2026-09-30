@@ -695,6 +695,11 @@ dużych chunkach i mieszanym imporcie `cloudVaultOutbox`; nie blokują kompilacj
   przywraca tej umiejętności samo. Wybór jest całym snapshotem, więc użytkownik
   może utracić niewybrane dodatki; interfejs mówi o tym wprost. Ekranowy test
   zalogowanego konfliktu i live konflikt w Supabase pozostają otwarte.
+  Sprawdzenie zamknięcia okna wykazało dodatkowo, że po schowaniu wyboru nie
+  było widocznego sposobu jego ponownego otwarcia. Stan obu wersji jest teraz
+  zachowywany w komponencie, a baner udostępnia „Porównaj wersje CV”. Zapis
+  nadal jest wstrzymany do rozstrzygnięcia; zachowanie banera wymaga próby
+  ekranowej w zalogowanej sesji.
 
 - Ponowny przejazd szybkiego wyniku w Chromium desktop + mobile ujawnił, że
   selektor w teście E2E nie odpowiadał już aktualnej etykiecie dostępnościowej.
