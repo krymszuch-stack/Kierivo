@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   generateSummarySuggestions,
   extractProfileFromVault,
-  recordPositiveFeedback,
-  loadLearnedLexicon,
-  harvestNewPatterns,
-  LEXICON,
+  calculateYearsOfExperience,
 } from '../summaryEngine';
 import { MasterVault } from '../../types';
 import { wipeAppStorage } from '../storage';
@@ -33,8 +30,8 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
         company: 'TechCorp',
         location: 'Warszawa',
         startDate: '01/2020',
-        endDate: '',
-        isCurrent: true,
+        endDate: '12/2023',
+        isCurrent: false,
         description: 'Budowa architektury React i Next.js',
         highlights: [],
       },
@@ -81,20 +78,74 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
     },
   };
 
-  it('poprawnie ekstrahuje profil, staż i seniority z MasterVault', () => {
+  it('poprawnie ekstrahuje profil, staż i umiejętności z MasterVault bez zmyślonych ról', () => {
     const profile = extractProfileFromVault(sampleVault);
 
     expect(profile.title).toBe('Senior Frontend Engineer');
-    expect(profile.yearsOfExperience).toBeGreaterThanOrEqual(5);
-    expect(profile.seniority).toBe('senior');
-    expect(profile.industry).toBe('it');
+    expect(profile.yearsOfExperience).toBe(6);
     expect(profile.topSkills).toContain('React');
+    expect(profile.workEntries.length).toBe(2);
+    expect(profile.workEntries[0]).toEqual({
+      role: 'Senior Frontend Engineer',
+      company: 'TechCorp',
+    });
   });
 
-  it('generuje 5 poprawnych gramatycznie propozycji o różnym stylu', () => {
-    const suggestions = generateSummarySuggestions(sampleVault, 5);
+  it('nie podwaja stażu przy równoległych okresach zatrudnienia (unia przedziałów)', () => {
+    const parallelHistory: MasterVault['history'] = [
+      {
+        id: 'p1',
+        role: 'Konsultant IT',
+        company: 'Firma A',
+        location: 'Warszawa',
+        startDate: '01/2020',
+        endDate: '12/2021',
+        isCurrent: false,
+        description: '',
+        highlights: [],
+      },
+      {
+        id: 'p2',
+        role: 'Programista',
+        company: 'Firma B',
+        location: 'Warszawa',
+        startDate: '06/2020',
+        endDate: '12/2021',
+        isCurrent: false,
+        description: '',
+        highlights: [],
+      },
+    ];
 
-    expect(suggestions.length).toBeGreaterThanOrEqual(3);
+    const years = calculateYearsOfExperience(parallelHistory);
+    // 01/2020 do 12/2021 to 24 miesiące = 2 lata (a nie 4 lata przy sumowaniu bez unii)
+    expect(years).toBe(2);
+  });
+
+  it('nie traktuje niedatowanego zakończenia jako pracy obecnej, gdy isCurrent=false', () => {
+    const missingEndHistory: MasterVault['history'] = [
+      {
+        id: 'm1',
+        role: 'Stażysta',
+        company: 'Firma Dawna',
+        location: 'Warszawa',
+        startDate: '01/2018',
+        endDate: '',
+        isCurrent: false,
+        description: '',
+        highlights: [],
+      },
+    ];
+
+    const years = calculateYearsOfExperience(missingEndHistory);
+    // Niedatowane zakończenie przeszłego stanowiska nie może rozciągać się do roku bieżącego
+    expect(years).toBe(0);
+  });
+
+  it('generuje deterministyczne, faktograficzne propozycje bez zmyślonych metryk (% lub liczb)', () => {
+    const suggestions = generateSummarySuggestions(sampleVault, 4);
+
+    expect(suggestions.length).toBeGreaterThanOrEqual(2);
 
     for (const sug of suggestions) {
       // Brak niedomkniętych slotów
@@ -103,11 +154,10 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
       expect(sug.text).not.toContain('undefined');
       expect(sug.text).not.toContain('null');
 
-      // Poprawność słów
-      expect(sug.wordCount).toBeGreaterThan(10);
-      expect(sug.wordCount).toBeLessThan(70);
+      // Brak zmyślonych procentów typu "redukując koszty o 25%"
+      expect(sug.text).not.toMatch(/\d+%/);
 
-      // Zawiera nazwę stanowiska lub kluczowe umiejętności
+      // Zawiera nazwę stanowiska lub kluczowe umiejętności z profilu
       expect(
         sug.text.toLowerCase().includes('engineer') ||
         sug.text.toLowerCase().includes('frontend') ||
@@ -116,9 +166,9 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
     }
   });
 
-  it('generuje deterministyczne wyniki dla tego samego seeda / profilu', () => {
-    const run1 = generateSummarySuggestions(sampleVault, 5);
-    const run2 = generateSummarySuggestions(sampleVault, 5);
+  it('generuje identyczne wyniki dla tego samego profilu (determinizm)', () => {
+    const run1 = generateSummarySuggestions(sampleVault, 4);
+    const run2 = generateSummarySuggestions(sampleVault, 4);
 
     expect(run1.map((s) => s.text)).toEqual(run2.map((s) => s.text));
   });
@@ -137,93 +187,79 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
           company: 'InstalSerwis',
           location: 'Kraków',
           startDate: '01/2021',
-          endDate: '',
-          isCurrent: true,
+          endDate: '12/2023',
+          isCurrent: false,
           description: '',
           highlights: [],
         },
       ],
       skillsMatrix: {
-        hardSkills: ['Zgrzewanie rur', 'Próby ciśnieniowe', 'SEP 1kV', 'Lutowanie twarde'],
+        hardSkills: ['Zgrzewanie rur', 'Próby ciśnieniowe', 'Lutowanie twarde'],
         softSkills: [],
         toolsAndTech: [],
         certifications: [],
       },
     };
 
-    const suggestions = generateSummarySuggestions(tradeVault, 5);
+    const suggestions = generateSummarySuggestions(tradeVault, 4);
     expect(suggestions.length).toBeGreaterThan(0);
 
     const first = suggestions[0].text;
     expect(first).not.toContain('{');
     expect(first.toLowerCase()).toContain('monter');
+    expect(first).toContain('Zgrzewanie rur');
   });
 
-  it('zawiera wzmocniony bank leksemów (LEXICON) o objętości powyżej 200 pozycji (wzrost 3x)', () => {
-    expect(LEXICON.adjectives.junior.length).toBeGreaterThanOrEqual(12);
-    expect(LEXICON.adjectives.mid.length).toBeGreaterThanOrEqual(12);
-    expect(LEXICON.adjectives.senior.length).toBeGreaterThanOrEqual(12);
-    expect(LEXICON.adjectives.lead.length).toBeGreaterThanOrEqual(12);
+  it('zwraca pustą listę propozycji dla zupełnie pustego Vaultu (zero halucynacji)', () => {
+    const emptyVault: MasterVault = {
+      version: '1.0.0',
+      updatedAt: '2026-09-30T00:00:00Z',
+      personalInfo: {
+        fullName: '',
+        title: '',
+        email: '',
+        phone: '',
+        location: '',
+        summary: '',
+      },
+      history: [],
+      skillsMatrix: {
+        hardSkills: [],
+        softSkills: [],
+        toolsAndTech: [],
+        certifications: [],
+      },
+      education: [],
+      projects: [],
+      profiler: {
+        flags: [],
+        experienceLevel: 'MID',
+        location: {
+          city: '',
+          radiusKm: 0,
+          willingnessToTravel: false,
+          hybridWork: false,
+          remoteOnly: false,
+        },
+        languages: [],
+      },
+    };
 
-    expect(LEXICON.achieveVerbs.it.length).toBeGreaterThanOrEqual(15);
-    expect(LEXICON.achieveVerbs.trades.length).toBeGreaterThanOrEqual(15);
-    expect(LEXICON.achieveVerbs.medical.length).toBeGreaterThanOrEqual(15);
-    expect(LEXICON.achieveVerbs.sales.length).toBeGreaterThanOrEqual(15);
-    expect(LEXICON.achieveVerbs.general.length).toBeGreaterThanOrEqual(15);
-
-    expect(LEXICON.connectors.length).toBeGreaterThanOrEqual(15);
-    expect(LEXICON.valuePrefixes.length).toBeGreaterThanOrEqual(12);
-
-    const totalEntries =
-      Object.values(LEXICON.adjectives).flat().length +
-      Object.values(LEXICON.achieveVerbs).flat().length +
-      LEXICON.connectors.length +
-      Object.values(LEXICON.impactPhrases).flat().length +
-      LEXICON.valuePrefixes.length;
-
-    expect(totalEntries).toBeGreaterThanOrEqual(200);
+    const suggestions = generateSummarySuggestions(emptyVault, 4);
+    expect(suggestions).toEqual([]);
   });
 
-  describe('Samouczący się bank leksemów i adaptacyjne wagi (RLAIF / Knowledge Distillation)', () => {
-    it('zapisuje sygnał nagrody feedbacku i podnosi wagi wybranych elementów', () => {
-      recordPositiveFeedback('style_results', {
-        verb: 'projektowałem i wdrażałem',
-        impact: 'skracając czas wdrożeń i podnosząc stabilność',
-      }, 1.0);
+  it('ekstrakcja nie przypisuje zmyślonego tytułu Specjalista przy braku tytułu i roli', () => {
+    const noTitleVault: MasterVault = {
+      ...sampleVault,
+      personalInfo: {
+        ...sampleVault.personalInfo,
+        title: '',
+      },
+      history: [],
+    };
 
-      const store = loadLearnedLexicon();
-      expect(store.feedbackCount).toBe(1);
-      expect(store.weights['style_results']).toBe(2.0);
-      expect(store.weights['verb:projektowałem i wdrażałem']).toBe(2.0);
-      expect(store.weights['impact:skracając czas wdrożeń i podnosząc stabilność']).toBe(2.0);
-    });
-
-    it('pozyskuje nowe zweryfikowane czasowniki i odrzuca zakazany żargon', () => {
-      const result = harvestNewPatterns('it', [
-        'refaktoryzowałem architekturę i', // poprawny
-        'dynamiczny pracownik',             // zakazany żargon
-      ], [
-        'zmniejszając opóźnienia API o 40%', // poprawny
-        'praca pod presją czasu',            // zakazany żargon
-      ]);
-
-      expect(result.addedVerbs).toBe(1);
-      expect(result.addedImpacts).toBe(1);
-
-      const store = loadLearnedLexicon();
-      expect(store.customVerbs['it']).toContain('refaktoryzowałem architekturę i');
-      expect(store.customVerbs['it']).not.toContain('dynamiczny pracownik');
-    });
-
-    it('faworyzuje warianty o wyższych wagach i umieszcza je na szczycie listy', () => {
-      // Dajemy dużą nagrodę dla stylu Specjalistyczny
-      recordPositiveFeedback('style_tech', {
-        verb: 'projektowałem i wdrażałem',
-      }, 5.0);
-
-      const suggestions = generateSummarySuggestions(sampleVault, 5);
-      expect(suggestions[0].styleId).toBe('style_tech');
-      expect(suggestions[0].weight).toBeGreaterThan(5.0);
-    });
+    const profile = extractProfileFromVault(noTitleVault);
+    expect(profile.title).toBe('');
   });
 });

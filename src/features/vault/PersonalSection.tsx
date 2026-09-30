@@ -332,8 +332,8 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
           rows={4}
           value={data.summary}
           onChange={(e) => handleChange('summary', e.target.value)}
-          placeholder="Doświadczony inżynier oprogramowania z ponad 6-letnim stażem w budowie systemów chmurowych..."
-          hint="Podsumowanie powinno zawierać Twoje 3 najmocniejsze atuty i kluczowe technologie"
+          placeholder="Wpisz zwięzłe podsumowanie doświadczenia zawodowego, specjalizacji i kluczowych umiejętności..."
+          hint="Podsumowanie powinno zawierać Twoje najważniejsze atuty i kluczowe umiejętności"
         />
       </div>
 

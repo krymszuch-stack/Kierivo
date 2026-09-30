@@ -1,27 +1,19 @@
-export type SeniorityLevel = 'junior' | 'mid' | 'senior' | 'lead';
-
 export interface ExtractedProfileData {
   title: string;
   yearsOfExperience: number;
-  location: string;
   topSkills: string[];
-  domain: string;
-  seniority: SeniorityLevel;
-  industry: 'it' | 'trades' | 'medical' | 'sales' | 'general';
+  workEntries: Array<{ role: string; company: string }>;
+  sourceHighlight: string;
 }
 
 export interface SummarySuggestion {
   id: string;
-  styleId?: string;
-  styleName: 'Mocne Osiągnięcia' | 'Specjalistyczny' | 'Zorientowany na Wyniki' | 'Kompaktowy' | 'Menedżerski';
+  styleName: 'Kompaktowy' | 'Historia zawodowa' | 'Umiejętności' | 'Opis z profilu';
   text: string;
   wordCount: number;
   sentenceCount: number;
   highlightedKeywords: string[];
-  usedLexemes?: {
-    verb?: string;
-    impact?: string;
-    adj?: string;
-  };
+  styleId?: string;
+  usedLexemes?: Record<string, string>;
   weight?: number;
 }

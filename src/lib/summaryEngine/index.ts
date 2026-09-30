@@ -4,22 +4,25 @@ import { generateSummaries } from './generator';
 import { SummarySuggestion } from './types';
 
 export * from './types';
-export * from './lexicon';
-export * from './grammar';
 export * from './extractor';
-export * from './constraints';
 export * from './generator';
-export * from './learnedStore';
 
 /**
  * Główny punkt wejściowy do beztokenowego generatora podsumowania zawodowego.
  * Czerpie fakty bezpośrednio z MasterVault i tworzy deterministyczne,
- * wysokiej jakości propozycje podsumowań.
+ * oparte wyłącznie na potwierdzonych danych propozycje podsumowań.
  */
 export function generateSummarySuggestions(
   vault: MasterVault,
-  count = 5
+  count = 4
 ): SummarySuggestion[] {
   const profile = extractProfileFromVault(vault);
   return generateSummaries(profile, count);
 }
+
+/** Zachowane dla kompatybilności wstecznej — nie tworzy ani nie modyfikuje fałszywych wag. */
+export function recordPositiveFeedback(
+  _styleId?: string,
+  _usedLexemes?: Record<string, string>,
+  _rewardWeight?: number
+): void {}
