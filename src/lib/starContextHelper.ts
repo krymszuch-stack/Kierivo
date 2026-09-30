@@ -81,8 +81,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'medical',
         domainLabel: 'Medycyna & Zdrowie',
-        placeholder:
-          'np. Przeprowadziłem 200+ procedur diagnostycznych na oddziale, skracając czas oczekiwania pacjentów o 25% przy 100% zgodności z procedurami NFZ...',
+        placeholder: 'Opisz własne działania dotyczące pacjentów i potwierdzony rezultat. Nie wpisuj szacowanych liczb.',
         defaultVerbs: [
           'Przeprowadziłem procedury',
           'Wdrożyłem procedurę triage',
@@ -97,8 +96,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'tech',
         domainLabel: 'Techniczne & Produkcja',
-        placeholder:
-          'np. Zdiagnozowałem i naprawiłem 120+ awarii pieców kondensacyjnych Vaillant, uzyskując 98% napraw przy 1. wizycie i 0 reklamacji protokołów SEP...',
+        placeholder: 'Opisz własną diagnozę awarii lub montaż i potwierdzony rezultat. Uprawnienia podaj tylko, jeśli je posiadasz.',
         defaultVerbs: [
           'Zmontowałem i podłączyłem',
           'Zdiagnozowałem i naprawiłem',
@@ -113,8 +111,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'logistics',
         domainLabel: 'Magazyn & Logistyka',
-        placeholder:
-          'np. Obsługiwałem wózek wysokiego składu (UDT) w systemie SAP WMS, osiągając średnio 45 pobrań/h przy 0 błędach kompletacji...',
+        placeholder: 'Opisz własną pracę magazynową i użycie WMS tylko, jeśli rzeczywiście z niego korzystałeś.',
         defaultVerbs: [
           'Zoptymalizowałem strefę w WMS',
           'Obsługiwałem wózek (UDT)',
@@ -129,8 +126,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'sales',
         domainLabel: 'Sprzedaż & Klient',
-        placeholder:
-          'np. Wynegocjowałem warunki handlowe z 20 kluczowymi kontrahentami, realizując 125% rocznego planu sprzedaży B2B...',
+        placeholder: 'Opisz własną pracę z kontrahentami i potwierdzony rezultat. Nie wpisuj szacowanych liczb.',
         defaultVerbs: [
           'Wynegocjowałem warunki',
           'Zwiększyłem sprzedaż o',
@@ -145,8 +141,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'mgmt',
         domainLabel: 'Zarządzanie & Operacje',
-        placeholder:
-          'np. Zreorganizowałem obieg dokumentów i procedury akceptacji, skracając czas realizacji spraw z 7 dni do 24 godzin w 12-osobowym zespole...',
+        placeholder: 'Opisz własną pracę w zespole i potwierdzony rezultat. Nie wpisuj szacowanych liczb.',
         defaultVerbs: [
           'Zreorganizowałem proces',
           'Wynegocjowałem oszczędności na poziomie',
@@ -161,8 +156,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'it',
         domainLabel: 'IT & Software',
-        placeholder:
-          'np. Zaprojektowałem architekturę mikroserwisów w Node.js/TypeScript, redukując średni czas odpowiedzi API z 450ms do 80ms...',
+        placeholder: 'Opisz własną pracę przy oprogramowaniu. Nie dopisuj mikroserwisów, jeśli ich nie używałeś.',
         defaultVerbs: [
           'Zaprojektowałem i wdrożyłem',
           'Zoptymalizowałem zapytania SQL/indeksy',
@@ -177,8 +171,7 @@ export function getStarContextConfig(roleTitle?: string): StarContextConfig {
       return {
         domain: 'general',
         domainLabel: 'Wzorce Uniwersalne',
-        placeholder:
-          'np. Zrealizowałem [zadanie/projekt] z użyciem [narzędzia/metody], osiągając [mierzalny rezultat, np. wzrost o 25%, skrócenie czasu o 40%, 0 reklamacji]...',
+        placeholder: 'Opisz [zadanie/projekt], rzeczywiście użyte narzędzie i potwierdzony rezultat.',
         defaultVerbs: [
           'Zoptymalizowałem',
           'Wdrożyłem',

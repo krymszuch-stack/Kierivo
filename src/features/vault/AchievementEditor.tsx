@@ -26,6 +26,7 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
 }) => {
   const [isStarModalOpen, setIsStarModalOpen] = useState(false);
   const [targetHighlightId, setTargetHighlightId] = useState<string | null>(null);
+  const [suggestedTemplate, setSuggestedTemplate] = useState<string | null>(null);
   const contextConfig = getStarContextConfig(roleTitle);
   const handleAddHighlight = () => {
     const newHighlight: HighlightMetric = {
@@ -71,36 +72,10 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
   };
 
   const handleApplySnippet = (snippet: string) => {
-    if (targetHighlightId) {
-      handleUpdateText(targetHighlightId, snippet);
-    } else if (highlights.length > 0) {
-      const emptyHl = highlights.find((h) => !h.text.trim());
-      if (emptyHl) {
-        handleUpdateText(emptyHl.id, snippet);
-      } else {
-        const newHl: HighlightMetric = {
-          id: `hl-${Date.now()}`,
-          text: snippet,
-          metric: '',
-          target: '',
-          action: '',
-          tool: '',
-          keywords: [],
-        };
-        onChange([...highlights, newHl]);
-      }
-    } else {
-      const newHl: HighlightMetric = {
-        id: `hl-${Date.now()}`,
-        text: snippet,
-        metric: '',
-        target: '',
-        action: '',
-        tool: '',
-        keywords: [],
-      };
-      onChange([newHl]);
-    }
+    // Eksport traktuje tekst osiągnięcia jako fakt, więc nie zapisujemy w nim
+    // nawet niewypełnionego szablonu z nawiasami.
+    setSuggestedTemplate(snippet);
+    if (highlights.length === 0) handleAddHighlight();
   };
 
   return (
@@ -111,7 +86,7 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
             Kluczowe Osiągnięcia i Rezultaty (Metoda STAR)
           </h4>
           <p className="text-meta text-subtle">
-            Formułuj punkty jako: Działanie + Zastosowane Narzędzie + Mierzalny Rezultat (%).
+            Opisz własne działanie i potwierdzony rezultat. Liczby dodawaj tylko wtedy, gdy je znasz.
           </p>
         </div>
 
@@ -142,6 +117,13 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
           </Button>
         </div>
       </div>
+
+      {suggestedTemplate && (
+        <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-3 text-xs text-ink">
+          <p className="font-semibold">Szablon do własnego uzupełnienia — nie zapisano go w CV</p>
+          <p className="mt-1">{suggestedTemplate}</p>
+        </div>
+      )}
 
       {/* Szybkie czasowniki sprawcze (one-click starters) dopasowane do branży */}
       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">

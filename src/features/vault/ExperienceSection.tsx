@@ -314,10 +314,10 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
             <div className="rounded-xl border border-success/30 bg-success-soft/30 px-3.5 py-2.5 flex items-center justify-between text-xs text-success-fg">
               <span className="flex items-center gap-2 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-success-fg" />
-                Chronologia, lokalizacje i mierzalne metryki w historii są w 100% spójne.
+                Nie wykryto rozbieżności w podanych danych. Brak dat lub wyników ogranicza zakres kontroli.
               </span>
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-success-soft px-2 py-0.5 rounded-full border border-success/30">
-                Spójność OK
+                Bez uwag
               </span>
             </div>
           )}

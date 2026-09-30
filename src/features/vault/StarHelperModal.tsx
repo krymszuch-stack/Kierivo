@@ -350,7 +350,7 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
       <div className="space-y-5 text-ink">
         <p className="rounded-xl border border-warning-500/30 bg-warning-500/5 p-3 text-xs text-muted">
           Poniższe zdania są fikcyjnymi przykładami. Liczby, narzędzia i uprawnienia nie pochodzą z Twojego profilu.
-          Przyciski wstawiają wyłącznie szablon do uzupełnienia własnymi, sprawdzonymi danymi.
+          Przyciski pokazują szablon do uzupełnienia własnymi, sprawdzonymi danymi. Szablon nie jest zapisywany w CV.
         </p>
         {/* Formuła STAR — prosty schemat */}
         <div className="rounded-2xl border border-brand-500/30 bg-brand-500/5 p-4">
@@ -485,7 +485,7 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
                       onClick={() => handleCopyOrInsert(starTemplateForVerb(v.verb))}
                       className="text-[11px] h-7 px-2.5"
                     >
-                      {onApplySnippet ? 'Wstaw do osiągnięcia' : 'Użyj wzorca'}
+                      {onApplySnippet ? 'Pokaż szablon obok pola' : 'Użyj wzorca'}
                     </Button>
                   </div>
                 </div>
@@ -550,7 +550,7 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
                       onClick={() => handleCopyOrInsert(starTemplateForExample())}
                       className="text-[11px] h-7 px-2.5"
                     >
-                      {onApplySnippet ? 'Wstaw ten wzorzec' : 'Skopiuj wzorzec'}
+                      {onApplySnippet ? 'Pokaż szablon obok pola' : 'Skopiuj wzorzec'}
                     </Button>
                   </div>
                 </div>
