@@ -14,10 +14,15 @@ try {
   await page.locator('[role="dialog"]').waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: /^Profil$/ }).click();
   await page.waitForTimeout(2000);
+  await page.getByRole('button', { name: 'Dodaj doświadczenie do kontroli' }).waitFor();
+  await page.screenshot({ path: 'docs/audyt-os-czasu-brak-danych-2026-09-30.png', fullPage: true });
   await page.getByRole('button', { name: /Krok 2 Doświadczenie/ }).click();
   await page.waitForTimeout(1200);
   await page.getByRole('button', { name: 'Dodaj pierwsze stanowisko' }).click();
   await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Daty niepełne — kontrola ograniczona' }).waitFor();
+  await page.getByText('Niepełne daty zatrudnienia — chronologia nie została w pełni sprawdzona.').waitFor();
+  await page.screenshot({ path: 'docs/audyt-os-czasu-niepelne-daty-2026-09-30.png', fullPage: true });
   await page.getByRole('button', { name: 'Rozwiń edytor osiągnięć STAR' }).click();
   await page.getByRole('button', { name: 'Słowniczek STAR' }).click();
   const dialog = page.getByRole('dialog', { name: /Słowniczek STAR/ });

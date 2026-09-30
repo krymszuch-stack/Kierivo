@@ -24,6 +24,7 @@ import { Combobox } from '../../components/ui/Combobox';
 import { MonthYearPicker } from '../../components/ui/MonthYearPicker';
 import { validateDateRange } from '../../lib/dateUtils';
 import { auditExperienceTimelineAndMetrics } from '../../lib/consistencyGuard';
+import { getExperienceReviewState } from '../../lib/experienceReviewState';
 import type { SuggestFn } from '../../hooks/useFieldSuggestions';
 import { AchievementEditor } from './AchievementEditor';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -87,6 +88,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
   }, [errors]);
 
   const audit = useMemo(() => auditExperienceTimelineAndMetrics(history), [history]);
+  const reviewState = getExperienceReviewState(history, audit.alerts.length);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -270,7 +272,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
       {/* Asystent Spójności i Chronologii */}
       {history.length > 0 && (
         <>
-          {!audit.isHealthy ? (
+          {reviewState === 'attention' ? (
             <div className="rounded-2xl border border-line bg-elevated/70 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
               <div className="flex items-start sm:items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600/10 text-brand-600">
@@ -310,11 +312,15 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                 )}
               </div>
             </div>
+          ) : reviewState === 'limited' ? (
+            <div className="rounded-xl border border-line bg-sunken px-3.5 py-2.5 text-xs text-muted">
+              Niepełne daty zatrudnienia — chronologia nie została w pełni sprawdzona.
+            </div>
           ) : (
             <div className="rounded-xl border border-success/30 bg-success-soft/30 px-3.5 py-2.5 flex items-center justify-between text-xs text-success-fg">
               <span className="flex items-center gap-2 font-medium">
                 <CheckCircle2 className="h-4 w-4 text-success-fg" />
-                Nie wykryto rozbieżności w podanych danych. Brak dat lub wyników ogranicza zakres kontroli.
+                Nie wykryto rozbieżności w podanych danych.
               </span>
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-success-soft px-2 py-0.5 rounded-full border border-success/30">
                 Bez uwag

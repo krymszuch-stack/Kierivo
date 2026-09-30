@@ -36,6 +36,14 @@ konta chmurowego, więc zgodność pobranego artefaktu nadal nie jest dowiedzion
 Ten sam zrzut ujawnił zbyt szeroką klasyfikację stanowiska: sam wyraz „Tester”
 przypisywał pracę przy procesie do IT. Reguła wymaga teraz kontekstu
 oprogramowania lub aplikacji, a test odróżnia te nazwy od testera produkcji.
+Przejazd odkrył też drugi komunikat zapewniający „Logika i osie czasu OK”
+przy pustym profilu. Pasek profilu i sekcja doświadczenia korzystają teraz
+ze wspólnego rozpoznania: brak danych, niepełne daty, uwagi albo brak uwag
+w podanym zakresie. E2E potwierdza dwa pierwsze stany na ekranie fikcyjnego
+profilu; test funkcji obejmuje wszystkie cztery. Taki komunikat nie dowodzi
+poprawności samego algorytmu wykrywania nakładania się zatrudnienia. Zrzuty
+`docs/audyt-os-czasu-brak-danych-2026-09-30.png` i
+`docs/audyt-os-czasu-niepelne-daty-2026-09-30.png` pokazują oba stany.
 
 ## Inwentarz wejść głównych
 
