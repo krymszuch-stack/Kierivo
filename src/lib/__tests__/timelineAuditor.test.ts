@@ -273,6 +273,8 @@ describe('TimelineAuditor & Logic Validator', () => {
       expect(alerts[0].type).toBe('MISSING_METRICS');
       expect(alerts[0].severity).toBe('WARNING');
       expect(alerts[0].details?.suggestedFormula).toBe(GOOGLE_XYZ_TEMPLATE);
+      expect(alerts[0].message).toContain('bez wymyślania liczb');
+      expect(alerts[0].message).not.toContain('50%');
     });
 
     it('nie zgłasza MISSING_METRICS gdy stanowisko posiada choć jedno osiągnięcie z metryką', () => {

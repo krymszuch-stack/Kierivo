@@ -139,6 +139,13 @@ kluczowych wskaźników” bez dowodu z profilu. Nie miał wywołań z tras ani
 interfejsu, więc usunięto metodę wraz z jej niepodłączonym wywołaniem modelu i
 testem tego martwego toru. Dostępna ścieżka produktu nie zmieniła się.
 
+Dalsze przeszukanie komunikatów wykryło aktywne ostrzeżenie osi czasu, które
+twierdziło, że rekruterzy oceniają opisy bez liczb „nawet o 50% niżej”. W kodzie
+nie było źródła ani pomiaru dla tej liczby, a test sprawdzał tylko typ alertu.
+Komunikat mówi teraz wyłącznie o tym, czego parser nie wykrył, oraz dopuszcza
+konkretny rezultat jakościowy bez wymyślania metryk. Regresja sprawdza brak
+niepotwierdzonego procentu; ekranowy test tego ostrzeżenia pozostaje otwarty.
+
 Wspólne klucze ze starszych wersji nie mają informacji, do którego profilu
 należały. Pozostają zachowane pod starym kluczem i nie są automatycznie
 przypisywane do pierwszego zalogowanego profilu. Ich bezpieczne odzyskanie

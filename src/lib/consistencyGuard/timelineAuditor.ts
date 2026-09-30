@@ -272,8 +272,8 @@ export function detectMissingMetrics(history: WorkExperience[]): ConsistencyAler
         sectionId: 'experience',
         type: 'MISSING_METRICS',
         severity: 'WARNING',
-        title: 'Brak mierzalnych rezultatów (Formuła Google X-Y-Z)',
-        message: `Stanowisko „${exp.role || 'Nowe stanowisko'}” w „${exp.company || 'Firma'}” nie posiada liczb, procentów ani wymiernych osiągnięć. Rekruterzy oceniają opisy bez twardych metryk nawet o 50% niżej.`,
+        title: 'Nie wykryto wyniku liczbowego w opisie',
+        message: `W opisie stanowiska „${exp.role || 'Nowe stanowisko'}” w „${exp.company || 'Firma'}” nie wykryto wyniku liczbowego. Jeśli masz sprawdzalne dane, możesz je dopisać. W przeciwnym razie opisz konkretną czynność i jej jakościowy rezultat bez wymyślania liczb.`,
         details: {
           sourceProject: exp.company,
           experienceId: exp.id,
