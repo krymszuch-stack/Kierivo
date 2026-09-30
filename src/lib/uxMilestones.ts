@@ -121,9 +121,10 @@ export function deriveUnlocks(milestones: UxMilestones): UnlockState {
   const level = levelOf(milestones);
 
   const sections: Record<NavSectionId, boolean> = {
-    // Profil i Aplikuj to cała ścieżka pierwszego kroku — nigdy nie blokowane.
+    // Profil, Aplikuj i CV to cała ścieżka przygotowania — nigdy nie blokowane.
     profil: true,
     aplikuj: true,
+    cv: true,
     trenuj: level >= 2,
     pipeline: level >= 2,
   };

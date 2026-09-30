@@ -30,7 +30,10 @@ import { Button } from '../../components/ui/Button';
 import { requestApplicationConfirmation } from '../../store/usePendingApplication';
 import { isSyntheticJobOffer } from '../../lib/jobMatcherEngine';
 
+import { MatchOverview11 } from './MatchOverview11';
+
 export type SubTabId =
+  | 'overview'
   | 'generator'
   | 'editor'
   | 'report'
@@ -59,7 +62,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   onSaveTailoredCV,
   className = '',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<SubTabId>('generator');
+  const [activeSubTab, setActiveSubTab] = useState<SubTabId>('overview');
   const isSyntheticOffer = isSyntheticJobOffer(jobOffer);
 
   /**
@@ -90,6 +93,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   };
 
   const subTabs = [
+    { id: 'overview' as SubTabId, label: 'Dopasowanie & Rachunek', icon: Sparkles },
     { id: 'generator' as SubTabId, label: 'Generator gotowego CV', icon: Eye },
     { id: 'editor' as SubTabId, label: 'Edytor Dokumentu', icon: FileEdit },
     { id: 'report' as SubTabId, label: 'Raport ATS & Wynik', icon: ShieldCheck },
@@ -136,6 +140,18 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.22, ease: [0.19, 1, 0.22, 1] }}
         >
+          {activeSubTab === 'overview' && (
+            <MatchOverview11
+              vault={vault}
+              jobOffer={jobOffer}
+              atsResult={atsResult}
+              canonicalResult={canonicalResult}
+              tailoredResume={tailoredResume}
+              onGoToCv={() => setActiveSubTab('generator')}
+              onSaveApplication={onSaveTailoredCV}
+            />
+          )}
+
           {activeSubTab === 'generator' && (
             <DocumentRenderer
               vault={vault}

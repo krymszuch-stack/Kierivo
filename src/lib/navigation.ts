@@ -14,21 +14,28 @@
  * jest celem sam w sobie — są sposobem na uzupełnienie profilu.
  */
 
-/** Cztery kroki podróży. To jest to, co widać w pasku bocznym. */
-export type NavSectionId = 'profil' | 'aplikuj' | 'trenuj' | 'pipeline';
+/** Główne sekcje aplikacji (model Kierivo 11/10). */
+export type NavSectionId = 'profil' | 'aplikuj' | 'trenuj' | 'cv' | 'pipeline';
 
 /**
- * Ekrany poza czterema sekcjami. `home` to ekran startowy z rekomendacją
- * „następny krok", `pricing` siedzi w menu konta, a `ats-lab` to dedykowane
- * laboratorium audytu wielosilnikowego.
+ * Ekrany aplikacji. Obok głównych obiektów kariery (`profil`, `aplikuj`, `cv`, `pipeline`)
+ * obejmuje `home` (Start), `trenuj` (Rozmowy / Trening powiązany z aplikacją),
+ * `ats-lab`, `pricing`, `porady` i `biblioteka`.
  */
-export type NavTabId = NavSectionId | 'home' | 'pricing' | 'ats-lab' | 'porady' | 'biblioteka';
+export type NavTabId =
+  | NavSectionId
+  | 'home'
+  | 'pricing'
+  | 'ats-lab'
+  | 'porady'
+  | 'biblioteka';
 
 export const NAV_SECTION_IDS: readonly NavSectionId[] = [
   'profil',
   'aplikuj',
-  'trenuj',
+  'cv',
   'pipeline',
+  'trenuj',
 ] as const;
 
 export function isNavSectionId(value: string): value is NavSectionId {
@@ -49,22 +56,22 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     id: 'profil',
     label: 'Profil',
-    hint: 'Twoje dane, doświadczenie i preferencje — jedno źródło dla wszystkich dokumentów.',
+    hint: 'Twoje dane, doświadczenie i umiejętności — jedno źródło prawdy dla wszystkich dokumentów.',
   },
   {
     id: 'aplikuj',
-    label: 'Sprawdź dopasowanie',
-    hint: 'Wklej ofertę, zobacz dopasowanie i przygotuj dokument do wysłania.',
+    label: 'Oferty',
+    hint: 'Wklej link lub treść ogłoszenia, sprawdź dopasowanie i odkryj ukryte kompetencje.',
   },
   {
-    id: 'trenuj',
-    label: 'Trenuj',
-    hint: 'Przygotowanie do rozmowy: pitch, mosty kompetencyjne, pułapki, próbne pytania.',
+    id: 'cv',
+    label: 'CV',
+    hint: 'Workspace życiorysu, live preview, dopasowanie pod ofertę i eksport do PDF.',
   },
   {
     id: 'pipeline',
-    label: 'Moje aplikacje',
-    hint: 'Wysłane aplikacje, ich etapy i notatki z rozmów. Tu nic nie wpada do czarnej dziury.',
+    label: 'Aplikacje',
+    hint: 'Oś czasu procesu rekrutacyjnego, statusy i przygotowanie do rozmów.',
   },
 ] as const;
 
@@ -83,7 +90,11 @@ const LEGACY_TAB_MAP: Record<string, NavTabId> = {
   profiler: 'profil',
   consistency: 'profil',
   matcher: 'aplikuj',
+  oferty: 'aplikuj',
+  generator: 'cv',
+  cv: 'cv',
   cockpit: 'trenuj',
+  trenuj: 'trenuj',
   applications: 'pipeline',
 };
 
@@ -96,6 +107,7 @@ export function resolveTabId(value: string): NavTabId {
   if (
     isNavSectionId(value) ||
     value === 'home' ||
+    value === 'trenuj' ||
     value === 'pricing' ||
     value === 'ats-lab' ||
     value === 'porady' ||

@@ -67,7 +67,20 @@ export const StorageKeys = {
   pipelineAdvancedMode: `${PREFIX}pipeline-advanced-mode`,
   /** Plan nauki użytkownika (Mój plan nauki / Mój następny krok). */
   learningPlan: `${PREFIX}learning-plan`,
+  /** Ostatnia wykonana analiza dopasowania oferty (stanowisko, firma, wynik, mocne strony, braki). */
+  lastJobAnalysis: `${PREFIX}last-job-analysis`,
 } as const;
+
+export interface LastJobAnalysisSummary {
+  position: string;
+  company: string;
+  score: number;
+  strengths: string[];
+  gaps: string[];
+  analyzedAt: string;
+  requirementsCount?: number;
+  matchedCount?: number;
+}
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
 
@@ -376,7 +389,8 @@ function isEnvelope(value: unknown): value is StorageEnvelope {
     value !== null &&
     'cvel' in value &&
     'crc' in value &&
-    'data' in value
+    'data' in value &&
+    typeof (value as { data?: unknown }).data === 'string'
   );
 }
 
@@ -393,7 +407,7 @@ export function readJson<T>(key: string, fallback: T): T {
 
     if (isEnvelope(parsed)) {
       version = parsed.cvel;
-      // Suma kontrola liczy się z dokładnym stringiem danych w kopercie.
+      // Suma kontrolna liczy się z dokładnym stringiem danych w kopercie.
       if (fnv1a(parsed.data) !== parsed.crc) {
         console.warn(`[storage] Suma kontrolna się nie zgadza dla ${key} — wracam do ostatniego poprawnego stanu.`);
         return (lastGood.get(key) as T | undefined) ?? fallback;

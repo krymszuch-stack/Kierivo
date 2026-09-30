@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Layers,
+  Clock,
 } from 'lucide-react';
 import {
   MasterVault,
@@ -53,6 +54,7 @@ import { JobApplication } from '../../types';
 import { showToast } from '../../store/useToastStore';
 import type { AdvisorContext } from '../advisor/advisorContext';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
+import { StorageKeys, writeJson, LastJobAnalysisSummary } from '../../lib/storage';
 
 interface JobPreset {
   id: string;
@@ -192,6 +194,21 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       setCoverLetter(matchResult.coverLetter);
       setTailoredResume(matchResult.tailoredResume);
       onAdvisorContext?.(matchResult.advisorContext);
+
+      // Zapis ostatniej analizy do pamięci (dla HomeView 11/10)
+      const matched = matchResult.canonicalResult?.matchedRequirements ?? matchResult.atsResult.matchedKeywords;
+      const missing = matchResult.canonicalResult?.missingRequirements ?? matchResult.atsResult.missingHardSkills;
+      const lastSummary: LastJobAnalysisSummary = {
+        position: job.title || 'Stanowisko',
+        company: job.company || 'Firma',
+        score: matchResult.canonicalResult ? matchResult.canonicalResult.score : matchResult.atsResult.overallScore,
+        strengths: matched,
+        gaps: missing,
+        analyzedAt: new Date().toISOString(),
+        requirementsCount: matched.length + missing.length,
+        matchedCount: matched.length,
+      };
+      writeJson(StorageKeys.lastJobAnalysis, lastSummary);
 
       if (matchResult.shouldCelebrate) {
         triggerConfetti({ count: 90, durationMs: 3000 });
@@ -596,11 +613,35 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                 }}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center p-12 text-center">
-                <Sparkles className="h-8 w-8 animate-spin text-brand-600 mb-3" />
-                <p className="font-sans text-sm font-bold text-ink">
-                  Kalkulacja dopasowania ATS i generowanie dokumentów aplikacyjnych...
-                </p>
+              <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center space-y-5">
+                <Sparkles className="h-9 w-9 text-brand-500 animate-pulse" />
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-ink">
+                    Analizuję dopasowanie do oferty...
+                  </h4>
+                  <p className="text-xs text-muted">
+                    Sprawdzam profil, wykrywam luki i szukam ukrytych kompetencji.
+                  </p>
+                </div>
+
+                <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-4 text-left font-mono text-xs space-y-2.5 shadow-xs">
+                  <div className="flex items-center gap-2 text-ink">
+                    <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    <span>Czytam ofertę i wyodrębniam wymagania</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-ink">
+                    <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
+                    <span>Porównuję z faktami z Twojego profilu</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-brand-fg font-semibold">
+                    <Sparkles className="h-4 w-4 text-brand-fg animate-spin shrink-0" />
+                    <span>Odkrywam ukryte kompetencje w MasterVault</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted">
+                    <Clock className="h-4 w-4 text-muted shrink-0" />
+                    <span>Generuję raport i przygotowuję dopasowane CV</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>

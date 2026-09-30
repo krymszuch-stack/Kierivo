@@ -84,7 +84,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             icon={Building2}
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            placeholder="np. Snowflake, Google, SoftwarePlant"
+            placeholder="np. Budimex, DHL Express, Volvo, TechCorp"
             required={!initialData}
           />
 
@@ -93,7 +93,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             icon={Briefcase}
             value={position}
             onChange={(e) => setPosition(e.target.value)}
-            placeholder="np. Senior Frontend Architect"
+            placeholder="np. Monter instalacji HVAC, Kierownik magazynu, Spawacz TIG"
             required
           />
         </div>
@@ -104,7 +104,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             icon={DollarSign}
             value={salary}
             onChange={(e) => setSalary(e.target.value)}
-            placeholder="np. 24 000 - 30 000 PLN B2B"
+            placeholder="np. 6 500 - 8 500 PLN brutto / UoP"
           />
 
           <Input
@@ -137,7 +137,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             type="url"
             value={jobUrl}
             onChange={(e) => setJobUrl(e.target.value)}
-            placeholder="https://justjoin.it/..."
+            placeholder="https://pracuj.pl/... lub https://olx.pl/..."
           />
         </div>
 
@@ -146,7 +146,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
           rows={3}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="np. I etap techniczny z lematyzacji i Reacta zaliczony, feedback do piątku..."
+          placeholder="np. Rozmowa telefoniczna z HR zaliczona, termin próbki spawalniczej / weryfikacji uprawnień w piątek..."
         />
 
         <div className="flex items-center justify-end gap-2 border-t border-line pt-4">

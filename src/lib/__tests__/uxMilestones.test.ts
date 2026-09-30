@@ -36,6 +36,7 @@ describe('Progresywne odblokowania', () => {
       expect(unlocks.sections).toEqual({
         profil: true,
         aplikuj: true,
+        cv: true,
         trenuj: false,
         pipeline: false,
       });

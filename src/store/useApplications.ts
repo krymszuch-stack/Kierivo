@@ -123,14 +123,16 @@ export function useApplications() {
   const saveApplication = useCallback((application: JobApplication) => {
     const applications = currentApplications(profileId);
     const index = applications.findIndex((entry) => entry.id === application.id);
+    const now = new Date().toISOString();
     if (index === -1) {
-      saveApplicationsFor(profileId, [application, ...applications]);
+      saveApplicationsFor(profileId, [{ ...application, updatedAt: application.updatedAt || now }, ...applications]);
       return;
     }
     const next = [...applications];
     next[index] = {
       ...applications[index],
       ...application,
+      updatedAt: now,
     };
     saveApplicationsFor(profileId, next);
   }, [profileId]);
@@ -140,9 +142,10 @@ export function useApplications() {
   }, [profileId]);
 
   const patchApplication = useCallback((id: string, changes: Partial<JobApplication>) => {
+    const now = new Date().toISOString();
     saveApplicationsFor(
       profileId,
-      currentApplications(profileId).map((entry) => (entry.id === id ? { ...entry, ...changes } : entry))
+      currentApplications(profileId).map((entry) => (entry.id === id ? { ...entry, ...changes, updatedAt: now } : entry))
     );
   }, [profileId]);
 

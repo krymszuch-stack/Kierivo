@@ -96,38 +96,31 @@ export const Topbar: React.FC<TopbarProps> = ({
           onClick={() => {
             window.dispatchEvent(new Event('cvelocity:open-command-palette'));
           }}
-          aria-label="Otwórz wyszukiwarkę funkcji"
-          className="hidden sm:flex items-center gap-2 rounded-xl border border-line bg-elevated px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-ink transition-colors"
-          title="Otwórz wyszukiwarkę funkcji"
+          aria-label="Otwórz wyszukiwarkę (Ctrl+K)"
+          className="flex items-center gap-2 rounded-xl border border-line bg-elevated px-2.5 py-1.5 text-xs text-muted hover:border-line-strong hover:text-ink transition-colors cursor-pointer"
+          title="Szukaj w Kierivo (Ctrl + K)"
         >
           <Search className="h-3.5 w-3.5" />
-          <span>Szukaj...</span>
+          <span className="hidden sm:inline">Szukaj...</span>
+          <kbd className="hidden sm:inline-block rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted border border-line">
+            ⌘K
+          </kbd>
         </button>
 
-        <ModelQuotaCounter
-          variant="badge"
-          onClick={onSelectTab ? () => onSelectTab('pricing') : undefined}
-        />
-
-        <AdvisorButton onClick={onOpenAdvisor} />
-
-        {import.meta.env.DEV && onOpenDesignTokens && (
-          <motion.button
+        {onSelectTab && (
+          <button
             type="button"
-            onClick={onOpenDesignTokens}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ duration: 0.18, ease: [0.19, 1, 0.22, 1] }}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-elevated text-muted hover:text-brand-fg hover:bg-brand-50 focus-visible:outline-none"
-            aria-label="Podgląd Tokenów Design System"
-            title="Podgląd Tokenów Design System"
+            onClick={() => onSelectTab('porady')}
+            aria-label="Pomoc i baza wiedzy"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-elevated text-muted hover:text-ink hover:border-line-strong transition-colors cursor-pointer"
+            title="Pomoc & Porady"
           >
-            <Palette className="h-4 w-4" />
-          </motion.button>
+            <span className="font-mono text-xs font-bold">?</span>
+          </button>
         )}
 
-        <AccessibilityButton onClick={() => setIsA11yModalOpen(true)} />
         <ThemeToggle />
+        <AccessibilityButton onClick={() => setIsA11yModalOpen(true)} />
         <AccessibilityModal
           isOpen={isA11yModalOpen}
           onClose={() => setIsA11yModalOpen(false)}

@@ -43,6 +43,7 @@ import {
   resolveVaultOnSignIn,
 } from './lib/vaultSync';
 import { AdvisorModalHost, preloadAdvisorModal } from './features/advisor/AdvisorModalHost';
+import { ContextualAdvisorFab } from './components/layout/ContextualAdvisorFab';
 import { ElevatorPitchModal } from './features/pitch/ElevatorPitchModal';
 import { DrillModeModal } from './features/drill/DrillModeModal';
 import { RecruiterVoiceLabModal } from './features/recruiter/RecruiterVoiceLabModal';
@@ -565,6 +566,22 @@ function MainApp() {
               />
             )}
 
+            {/* CV — dedykowany Workspace życiorysu, live preview, dopasowanie i eksport PDF */}
+            {activeTab === 'cv' && (
+              <div className="space-y-4">
+                <DocumentRenderer
+                  vault={vault}
+                  onUpdateVault={setVault}
+                  onExported={() => {
+                    showToast('Eksport CV zakończony', {
+                      message: 'Twój dokument PDF został pobrany i zachowany.',
+                      variant: 'success',
+                    });
+                  }}
+                />
+              </div>
+            )}
+
             {/* Tab: Laboratorium Audytu ATS 360° (Multi-Engine Consensus) */}
             {activeTab === 'ats-lab' && (
               <AtsLabView
@@ -740,6 +757,9 @@ function MainApp() {
       {/* Wyszukiwarka funkcji otwierana widocznym przyciskiem. Dostaje `navigate`, nie `setActiveTab`: wcześniej omijała blokady
           sekcji, bo jedyny strażnik odblokowań siedzi w `navigate`. */}
       <CommandPalette onNavigate={navigate} />
+
+      {/* Pływający kontekstowy doradca AI dostosowany do aktywnej zakładki (11/10) */}
+      <ContextualAdvisorFab activeTab={activeTab} onOpenAdvisor={handleOpenAdvisor} />
     </GlobalShell>
   );
 }

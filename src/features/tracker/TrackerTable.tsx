@@ -10,6 +10,8 @@ import {
   Briefcase,
   Eye,
   BookOpen,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { JobApplication } from './ApplicationModal';
@@ -52,8 +54,20 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
     return (
       <EmptyState
         icon={Briefcase}
-        title="Brak aplikacji w tej kategorii"
-        description="Nie znaleziono żadnych zgłoszeń odpowiadających wybranemu filtrowi. Dodaj aplikację przyciskiem powyżej albo zapisz dopasowaną ofertę z sekcji APLIKUJ."
+        title="Jeszcze nic tu nie ma."
+        description="Gdy dodasz ofertę i wyślesz CV, Kierivo będzie śledzić cały proces krok po kroku."
+        action={
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            icon={Plus}
+            onClick={() => window.dispatchEvent(new CustomEvent('cvelocity:navigate', { detail: 'aplikuj' }))}
+            className="cursor-pointer font-bold"
+          >
+            Dodaj pierwszą ofertę
+          </Button>
+        }
         className={className}
       />
     );
@@ -304,6 +318,65 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
+
+                {/* Timeline procesu rekrutacyjnego (CRM) */}
+                <div className="col-span-12 border-t border-line/50 pt-2 pb-0.5 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-muted">
+                  <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
+                    <span className="flex items-center gap-1 text-ink font-semibold">
+                      <span className="h-1.5 w-1.5 rounded-full bg-brand-500" />
+                      Oferta dodana
+                    </span>
+                    <span className="text-line-strong">→</span>
+                    <span className={`flex items-center gap-1 ${app.documentSnapshot ? 'text-ink font-semibold' : 'text-muted'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${app.documentSnapshot ? 'bg-brand-500' : 'bg-line-strong'}`} />
+                      CV przygotowane
+                    </span>
+                    <span className="text-line-strong">→</span>
+                    <span className={`flex items-center gap-1 ${app.status !== 'Do wysłania' ? 'text-ink font-semibold' : 'text-muted'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${app.status !== 'Do wysłania' ? 'bg-brand-500' : 'bg-line-strong'}`} />
+                      Aplikacja wysłana
+                    </span>
+                    <span className="text-line-strong">→</span>
+                    <span className={`flex items-center gap-1 ${app.status === 'Rozmowa' || app.status === 'Oferta' ? 'text-brand-fg font-bold' : 'text-muted'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${app.status === 'Rozmowa' || app.status === 'Oferta' ? 'bg-amber-500' : 'bg-line-strong'}`} />
+                      Rozmowa
+                    </span>
+                    <span className="text-line-strong">→</span>
+                    <span className={`flex items-center gap-1 ${app.status === 'Oferta' ? 'text-success-fg font-bold' : 'text-muted'}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${app.status === 'Oferta' ? 'bg-success' : 'bg-line-strong'}`} />
+                      Oferta pracy
+                    </span>
+                  </div>
+
+                  <span className="text-subtle font-mono text-[9px]">
+                    {app.updatedAt ? `Aktualizacja: ${app.updatedAt.slice(0, 10)}` : `Zgłoszenie: ${app.date}`}
+                  </span>
+                </div>
+
+                {/* Progresywne odsłanianie treningu, gdy aplikacja wchodzi w etap Rozmowa */}
+                {app.status === 'Rozmowa' && (
+                  <div className="col-span-12 rounded-xl border border-brand-500/30 bg-brand-500/[0.04] p-3 text-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-ink flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5 text-brand-fg" />
+                        Masz zaplanowaną rozmowę w {companyLabel}?
+                      </span>
+                      <span className="text-muted block text-[11px]">
+                        Przygotujemy: prawdopodobne pytania, odpowiedzi STAR oparte na Twoim doświadczeniu i pytania techniczne.
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      icon={Sparkles}
+                      onClick={() => onOpenCheatSheet(app)}
+                      className="font-bold shrink-0 cursor-pointer text-xs"
+                    >
+                      Rozpocznij trening →
+                    </Button>
+                  </div>
+                )}
               </motion.div>
             );
           })}

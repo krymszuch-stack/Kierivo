@@ -6,7 +6,7 @@ import {
   LogIn,
   User,
   Target,
-  GraduationCap,
+  FileText,
   Kanban,
   Eye,
   Sparkles,
@@ -14,6 +14,7 @@ import {
   FolderArchive,
   House,
   LucideIcon,
+  HelpCircle,
 } from 'lucide-react';
 import { NavItem } from './NavItem';
 import { Tooltip } from '../ui/Tooltip';
@@ -29,8 +30,9 @@ import { getAccountPresentation } from './accountPresentation';
 const SECTION_ICONS: Record<NavSectionId, LucideIcon> = {
   profil: User,
   aplikuj: Target,
-  trenuj: GraduationCap,
+  cv: FileText,
   pipeline: Kanban,
+  trenuj: Sparkles,
 };
 
 export interface SidebarProps {
@@ -121,57 +123,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={House}
             label="Start"
-            hint="Krótki przewodnik po Kierivo i najbliższy sensowny krok."
+            hint="Twój następny krok i podsumowanie aktywności."
             isActive={activeTab === 'home'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('home')}
           />
-          {!isCollapsed && <p className="px-3 pb-1 pt-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">Twoje CV i aplikacje</p>}
-          {NAV_SECTIONS.map((section) => {
-            const isLocked = unlockedSections?.[section.id] === false;
-
-            return (
-              <NavItem
-                key={section.id}
-                icon={SECTION_ICONS[section.id]}
-                label={section.label}
-                hint={section.hint}
-                isLocked={isLocked}
-                lockedReason={lockReasons?.[section.id]}
-                isActive={activeTab === section.id}
-                isCollapsed={isCollapsed}
-                onClick={() => onSelectTab(section.id)}
-              />
-            );
-          })}
-        </nav>
-
-        {/* Narzędzia pomocnicze — bez plakietek marketingowych. */}
-        <div className="pt-2 border-t border-line/60 space-y-1">
           {!isCollapsed && (
-            <p className="px-3 pb-1 pt-2 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
-              Narzędzia
+            <p className="px-3 pb-1 pt-3 font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-subtle">
+              Kariera
             </p>
           )}
+          {NAV_SECTIONS.map((section) => (
+            <NavItem
+              key={section.id}
+              icon={SECTION_ICONS[section.id]}
+              label={section.label}
+              hint={section.hint}
+              isActive={activeTab === section.id}
+              isCollapsed={isCollapsed}
+              onClick={() => onSelectTab(section.id)}
+            />
+          ))}
+        </nav>
+
+        {/* Doradca i Narzędzia pomocnicze */}
+        <div className="pt-2 border-t border-line/60 space-y-1">
           <NavItem
-            icon={Eye}
-            label="Generator CV"
-            hint="Wybierz wygląd gotowego CV, wprowadź ostatnie poprawki i przygotuj plik do wysłania."
+            icon={Sparkles}
+            label="Doradca zaufany"
+            hint="Feedback z Azure OpenAI przez API — po potwierdzeniu wysłania treści."
             isCollapsed={isCollapsed}
-            onClick={() => {
-              if (onOpenCvPreview) {
-                onOpenCvPreview();
-              } else {
-                onSelectTab('profil');
-              }
-            }}
-            className="text-brand-fg hover:bg-brand-500/10 border border-brand-500/20 bg-brand-500/5 font-semibold"
+            onClick={onOpenAdvisor}
+            className="text-brand-fg hover:bg-brand-500/10 font-semibold"
           />
 
           <NavItem
             icon={BookOpen}
-            label="Porady"
-            hint="Baza wiedzy, strategie rekrutacyjne, algorytmy ATS i wzorce rozmów."
+            label="Porady & Baza wiedzy"
+            hint="Praktyczne poradniki zawodowe, standardy techniczne, uprawnienia i strategie."
             isActive={activeTab === 'porady'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('porady')}
@@ -180,31 +169,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <NavItem
             icon={FolderArchive}
             label="Biblioteka CV"
-            hint="Zapisane wersje CV z tagami — szybki powrót, klonowanie pod inną ofertę i ponowny eksport bez limitu."
+            hint="Zapisane wersje CV z tagami — szybki powrót i re-eksport."
             isActive={activeTab === 'biblioteka'}
             isCollapsed={isCollapsed}
             onClick={() => onSelectTab('biblioteka')}
           />
-
-          <NavItem
-            icon={Sparkles}
-            label="Doradca zaufany"
-            hint="Feedback z Azure OpenAI przez API — po potwierdzeniu wysłania treści."
-            isCollapsed={isCollapsed}
-            onClick={onOpenAdvisor}
-            className="text-brand-fg hover:bg-brand-500/10"
-          />
-
-          <NavItem
-            icon={ShieldCheck}
-            label="Audyt ATS"
-            hint="Laboratorium Kierivo mierzące strukturę, frazy, język i wymagania oferty. To nie są wyniki zewnętrznych ATS."
-            isActive={activeTab === 'ats-lab'}
-            isCollapsed={isCollapsed}
-            onClick={() => onSelectTab('ats-lab')}
-          />
         </div>
-
       </div>
 
       {/* Dolny pasek: pomoc i konto. Bez duplikowania etapu wydania. */}
