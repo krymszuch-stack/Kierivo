@@ -6,7 +6,7 @@ pracujących nad projektem.
 
 ## Projekt i bieżąca praca
 
-- Projekt Linear: [CVelocity](https://linear.app/oathcry/project/cvelocity-efadf4f2bd56), zespół Adrian.
+- Projekt Linear: [Kierivo](https://linear.app/oathcry/project/kierivo-efadf4f2bd56), ID `38abc197-7045-4392-8544-c7d85b2c8907`, zespół Adrian.
 - Audyt całości: [ADR-125](https://linear.app/oathcry/issue/ADR-125/audyt-kierivo-eliminacja-bledow-logicznych-i-krytycznych-04092026).
 - Publikacja snapshotu: [ADR-126](https://linear.app/oathcry/issue/ADR-126/publikacja-snapshotu-audytu-na-github-i-kierivocom-05102026).
 - Repozytorium GitHub: [krymszuch-stack/Kierivo](https://github.com/krymszuch-stack/Kierivo).
@@ -24,6 +24,10 @@ pracujących nad projektem.
 6. Jeśli połączenie z Linear jest niedostępne, zgłoś konkretny błąd, zachowaj
    notatkę w audycie i uzupełnij Linear po przywróceniu dostępu. Nie deklaruj
    aktualizacji, której narzędzie nie potwierdziło.
+7. Starsze issues aktualizuj dowodami bieżącej naprawy, zachowując historyczne
+   ustalenia i techniczne identyfikatory. Nowe oraz planowane zadania przypisuj
+   do istniejącego projektu Kierivo. CVelocity jest wycofaną nazwą produktu;
+   nie twórz pod nią osobnego projektu ani nowych zgłoszeń.
 
 ## Dowody i prywatność
 

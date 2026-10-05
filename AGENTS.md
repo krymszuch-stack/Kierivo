@@ -1,4 +1,4 @@
-# AGENTS.md — wytyczne pracy nad CVelocity
+# AGENTS.md — wytyczne pracy nad Kierivo
 
 ## Linear — zasada właściciela od 05.10.2026 dla każdego agenta
 
