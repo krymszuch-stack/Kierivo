@@ -31,6 +31,11 @@ import { describeProfileClaim } from './pitchStatements';
  */
 export const MAX_ALLOWED_YEAR_DIFFERENCE = 0.5;
 
+function formatClaimDateRange(range: ClaimDateRange | string | undefined): string {
+  if (!range) return 'Daty niepodane w profilu';
+  return typeof range === 'string' ? range : `${range.start} – ${range.end}`;
+}
+
 /**
  * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
  */
@@ -52,9 +57,17 @@ export function parseDateRangeToYears(
   let endStr: string | undefined;
 
   if (typeof dateRange === 'string') {
-    const parts = dateRange.split(/\s*[-–—/]\s*/);
-    startStr = parts[0];
-    endStr = parts[1] || parts[0];
+    // Myślnik i ukośnik należą też do daty. Podział wolno przyjąć dopiero,
+    // gdy oba końce przejdą wspólny parser; pojedyncze ISO nie jest zakresem.
+    if (parseDateToDecimalYear(dateRange) !== null) {
+      startStr = endStr = dateRange;
+    } else {
+      const candidates = Array.from(dateRange.matchAll(/[-–—/]/g))
+        .map(match => [dateRange.slice(0, match.index).trim(), dateRange.slice(match.index + 1).trim()])
+        .filter(([start, end]) => parseDateToDecimalYear(start) !== null && parseDateToDecimalYear(end) !== null);
+      if (candidates.length !== 1) return null;
+      [startStr, endStr] = candidates[0];
+    }
   } else {
     startStr = dateRange.start;
     endStr = dateRange.end;
@@ -63,16 +76,16 @@ export function parseDateRangeToYears(
   const startYear = parseDateToDecimalYear(startStr);
   const endYear = parseDateToDecimalYear(endStr);
 
-  if (startYear === null || endYear === null) {
+  if (startYear === null || endYear === null || endYear < startYear) {
     return null;
   }
 
-  // Czas trwania to różnica końcowego i początkowego roku (minimum 1 miesiąc = 0.08 roku)
-  const durationYears = Math.max(0.08, Math.abs(endYear - startYear));
+  // Odwróconego okresu nie normalizujemy do pozornie poprawnej historii.
+  const durationYears = Math.max(1 / 12, endYear - startYear);
 
   return {
-    startYear: Math.min(startYear, endYear),
-    endYear: Math.max(startYear, endYear),
+    startYear,
+    endYear,
     durationYears,
   };
 }
@@ -80,10 +93,9 @@ export function parseDateRangeToYears(
 /**
  * Oblicza bezwzględną różnicę w latach pomiędzy dwoma zakresami dat.
  *
- * @deprecated Nie używać do stażu — pojedyncze daty (`2020-01`) parsuje jako
- * przedziały (19 lat) i wynik zgadza się tylko przez przypadkowe skasowanie
- * dwóch błędów. Staż liczy `unionExperienceYears` (`lib/experience.ts`).
- * Zostaje dla kompatybilności testów spójności rendererów.
+ * Porównuje tylko długości, nie zgodność dat rozpoczęcia i zakończenia.
+ * Nie używać do stażu ani walidacji projekcji. Staż liczy `unionExperienceYears`
+ * (`lib/experience.ts`), a walidator porównuje oba końce okresów.
  */
 export function calculateYearsDifference(
   rangeA: ClaimDateRange | string | undefined,
@@ -304,7 +316,8 @@ export interface ProjectedClaimItem {
 /**
  * Główny walidator modułu ConsistencyGuard.
  * Sprawdza:
- * 1. Czy różnica w latach pomiędzy claimem a źródłem w MasterVault przekracza 0.5 roku.
+ * 1. Czy daty początku, końca lub długość okresu różnią się od źródła o ponad 0.5 roku,
+ *    oraz czy oba zakresy można w ogóle odczytać.
  * 2. Czy istnieją sprzeczności w umiejętnościach (skill contradictions).
  * 3. Czy każdy odpytany claimId istnieje w MasterVault.
  */
@@ -392,13 +405,33 @@ export function validateConsistency(
         continue;
       }
 
-      // Sprawdzenie różnicy w latach > 0.5 roku
+      // Porównanie dat z faktami źródłowymi, bez potwierdzania nieczytelnych danych.
       if (item.claimedDateRange) {
         const sourceYears = parseDateRangeToYears(sourceClaim.dateRange);
         const projectedYears = parseDateRangeToYears(item.claimedDateRange);
 
+        if (!sourceYears || !projectedYears) {
+          const invalidAlert: ConsistencyAlert = {
+            id: `alert_invalid_date_${item.claimId}`,
+            claimId: item.claimId,
+            sectionId: secKey,
+            type: 'INVALID_DATE_RANGE',
+            severity: 'ALERT',
+            title: 'Nie można potwierdzić zgodności dat',
+            message: `Zakres dat źródła lub projekcji dla „${sourceClaim.sourceProject}” jest niepełny, nieczytelny albo odwrócony. Sprawdź daty przed użyciem dokumentu.`,
+          };
+          alerts.push(invalidAlert);
+          sectionsMap[secKey].alerts.push(invalidAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
         if (sourceYears && projectedYears) {
-          const diff = Math.abs(sourceYears.durationYears - projectedYears.durationYears);
+          // Ta sama długość po przesunięciu całej historii nie oznacza tych
+          // samych faktów. Próg obejmuje oba końce i zmianę długości okresu.
+          const diff = Math.max(
+            Math.abs(sourceYears.durationYears - projectedYears.durationYears),
+            Math.abs(sourceYears.startYear - projectedYears.startYear),
+            Math.abs(sourceYears.endYear - projectedYears.endYear),
+          );
           if (diff > MAX_ALLOWED_YEAR_DIFFERENCE) {
             const dateAlert: ConsistencyAlert = {
               id: `alert_date_${item.claimId}`,
@@ -407,11 +440,7 @@ export function validateConsistency(
               type: 'DATE_MISMATCH',
               severity: 'ALERT',
               title: 'Rozbieżność dat > 0.5 roku',
-              message: `Różnica czasu trwania dla „${sourceClaim.sourceProject}” wynosi ${diff.toFixed(
-                1
-              )} lat (oczekiwano ${sourceYears.durationYears.toFixed(1)} lat, zadeklarowano ${projectedYears.durationYears.toFixed(
-                1
-              )} lat).`,
+              message: `Daty rozpoczęcia, zakończenia lub długość okresu dla „${sourceClaim.sourceProject}” różnią się o maksymalnie ${diff.toFixed(1)} lat. W profilu: ${formatClaimDateRange(sourceClaim.dateRange)}; w podglądzie: ${formatClaimDateRange(item.claimedDateRange)}.`,
               details: {
                 claimedDurationYears: projectedYears.durationYears,
                 sourceDurationYears: sourceYears.durationYears,
@@ -517,11 +546,7 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
     const claim = getClaimById(vault, claimId);
     if (!claim) continue;
 
-    const dateRangeDisplay = !claim.dateRange
-      ? 'Daty niepodane w profilu'
-      : typeof claim.dateRange === 'string'
-        ? claim.dateRange
-        : `${claim.dateRange.start} – ${claim.dateRange.end}`;
+    const dateRangeDisplay = formatClaimDateRange(claim.dateRange);
 
     const item = {
       claimId: claim.id,

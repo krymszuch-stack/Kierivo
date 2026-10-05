@@ -103,6 +103,7 @@
     "test:e2e:jd-keyword-mapper-honest-coverage": "node scripts/e2e-jd-keyword-mapper-honest-coverage.mjs",
     "test:e2e:claim-dates-not-fabricated": "node scripts/e2e-claim-dates-not-fabricated.mjs",
     "test:e2e:consistency-pitch-grounded": "node scripts/e2e-consistency-pitch-grounded.mjs",
+    "test:e2e:consistency-projected-dates": "node scripts/e2e-consistency-projected-dates.mjs",
     "test:e2e:cover-letter-profile-only": "node scripts/e2e-cover-letter-profile-only.mjs",
     "test:e2e:follow-up-email-grounded": "node scripts/e2e-follow-up-email-grounded.mjs",
     "test:e2e:payroll-estimate-2026": "node scripts/e2e-payroll-estimate-2026.mjs",

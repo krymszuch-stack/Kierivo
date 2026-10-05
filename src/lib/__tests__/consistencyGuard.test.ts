@@ -85,6 +85,13 @@ describe('ConsistencyGuard Engine', () => {
   };
 
   describe('Parsowanie dat i obliczanie różnicy w latach', () => {
+    it('nie rozcina pojedynczej daty ISO i zachowuje daty wewnątrz zakresu tekstowego', () => {
+      expect(parseDateRangeToYears('2020-01')?.durationYears).toBeCloseTo(1 / 12, 5);
+      for (const range of ['2020-01 – 2022-01', '2020-01 - 2022-01', '2020-01-2022-01', '01/2020 / 01/2022']) {
+        expect(parseDateRangeToYears(range)?.durationYears).toBeCloseTo(2, 5);
+      }
+      expect(parseDateRangeToYears({ start: '2022-01', end: '2020-01' })).toBeNull();
+    });
     it('poprawnie oblicza czas trwania dla formatu YYYY-MM', () => {
       const parsed = parseDateRangeToYears({ start: '2021-01', end: '2023-01' });
       expect(parsed).not.toBeNull();
@@ -146,6 +153,38 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Główny walidator (validateConsistency)', () => {
+    it('nie potwierdza dodanych w projekcji dat, gdy źródło nie podało okresu', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'undated', sourceProject: 'Projekt testowy', tags: [] }];
+      const result = validateConsistency(vault, { skipTimelineAudit: true, projectedItems: [{
+        sectionId: 'cv', sectionName: 'CV', claimId: 'undated', claimedDateRange: '2020 – 2022',
+      }] });
+      expect(result.isConsistent).toBe(false);
+      expect(result.alerts[0].type).toBe('INVALID_DATE_RANGE');
+    });
+    it.each(['cv', 'hud', 'pitch'])('wykrywa przesunięte daty mimo identycznego czasu trwania w %s', (sectionId) => {
+      const result = validateConsistency(createMockVault(), {
+        skipTimelineAudit: true,
+        projectedItems: [{ sectionId, sectionName: sectionId, claimId: 'claim_exp_exp_1',
+          claimedDateRange: { start: '2018-01', end: '2020-01' } }],
+      });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.alerts.some(alert => alert.type === 'DATE_MISMATCH')).toBe(true);
+    });
+
+    it.each([
+      { start: '2023-01', end: '2021-01' },
+      { start: '2021-13', end: '2023-01' },
+    ])('nie potwierdza zgodności niepoprawnego zakresu projekcji %j', (claimedDateRange) => {
+      const result = validateConsistency(createMockVault(), {
+        skipTimelineAudit: true,
+        projectedItems: [{ sectionId: 'cv', sectionName: 'CV', claimId: 'claim_exp_exp_1', claimedDateRange }],
+      });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections.cv.isConsistent).toBe(false);
+      expect(result.alerts.some(alert => alert.type === 'INVALID_DATE_RANGE')).toBe(true);
+    });
     it('zwraca isConsistent: true gdy wszystkie projekcje są zgodne z MasterVault', () => {
       const vault = createMockVault();
       const result = validateConsistency(vault, {
