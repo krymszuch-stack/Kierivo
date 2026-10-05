@@ -127,6 +127,32 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Wykrywanie sprzeczności w skillach (Skill Contradictions)', () => {
+    it.each(['Brak znajomości SQL', 'No SQL', 'Bez SEP', 'Brak uprawnień', 'Brak prawa jazdy'])('nie traktuje samej negacji %s jako dodatniej kompetencji', (tag) => {
+      const claim = { id: 'negative', sourceProject: 'Profil testowy', tags: [tag] };
+      expect(detectSkillContradictions(claim, [claim], [tag])).toEqual([]);
+    });
+
+    it('nie tworzy konfliktu między dwoma zgodnymi deklaracjami braku SEP', () => {
+      const claim = { id: 'a', sourceProject: 'Monter', tags: ['Bez SEP'], dateRange: '2020 – 2022' };
+      const other = { ...claim, id: 'b', sourceProject: 'Magazynier' };
+      expect(detectSkillContradictions(claim, [claim, other])).toEqual([]);
+    });
+
+    it('wykrywa polską negację uprawnień wobec dodatniego SEP', () => {
+      const claim = { id: 'a', sourceProject: 'Monter', tags: ['Brak uprawnień', 'SEP G1'] };
+      expect(detectSkillContradictions(claim, [claim]).length).toBeGreaterThan(0);
+    });
+
+    it('nie utożsamia negacji Java z deklaracją JavaScript w macierzy', () => {
+      const claim = { id: 'a', sourceProject: 'Projekt', tags: ['Nie znam Java'] };
+      expect(detectSkillContradictions(claim, [claim], ['JavaScript'])).toEqual([]);
+      expect(detectSkillContradictions(claim, [claim], ['Java']).length).toBeGreaterThan(0);
+    });
+
+    it('zachowuje dodatni dowód oddzielony od negacji średnikiem', () => {
+      const claim = { id: 'a', sourceProject: 'Spawacz', tags: ['Bez SEP; SEP G1'] };
+      expect(detectSkillContradictions(claim, [claim]).length).toBeGreaterThan(0);
+    });
     it('wykrywa sprzeczność tagu negującego bazę danych z tagiem SQL', () => {
       const claim = {
         id: 'claim_conflict',

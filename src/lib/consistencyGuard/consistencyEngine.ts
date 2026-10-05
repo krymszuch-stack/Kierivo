@@ -24,6 +24,7 @@ import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
 import { parseDateToYearMonth } from '../dateUtils';
 import { claimDateRangeFromProfile } from './claimDateRange';
 import { describeProfileClaim } from './pitchStatements';
+import { hasPositiveSkillEvidence, stripDiacriticsLower } from '../skillEvidence';
 
 /**
  * Stała określająca maksymalną dopuszczalną rozbieżność czasu trwania (w latach).
@@ -218,17 +219,17 @@ export function getClaimById(vault: MasterVault, claimId: string): Claim | undef
  */
 const KNOWN_SKILL_CONTRADICTIONS: Array<{ tagA: RegExp; tagB: RegExp; reason: string }> = [
   {
-    tagA: /\b(?:brak|no|bez)\s+(?:znajomości\s+)?(?:sql|baz\s+danych)\b/i,
+    tagA: /\b(?:brak|no|bez)\s+(?:znajomosci\s+)?(?:sql|baz\s+danych)\b/i,
     tagB: /\b(?:sql|postgresql|mysql|oracle|database\s+expert)\b/i,
     reason: 'Deklaracja braku znajomości SQL stoi w sprzeczności z tagiem technologii bazodanowej SQL.',
   },
   {
-    tagA: /\b(?:tylko\s+junior|junior\s+only|brak\s+doświadczenia|entry\s+level\s+only)\b/i,
+    tagA: /\b(?:tylko\s+junior|junior\s+only|brak\s+doswiadczenia|entry\s+level\s+only)\b/i,
     tagB: /\b(?:senior|lead|architect|principal|kierownik|architekt)\b/i,
     reason: 'Deklaracja profilu wyłącznie Junior / początkującego kłóci się z rolą Senior/Lead/Architect.',
   },
   {
-    tagA: /\b(?:brak\s+uprawnień|bez\s+sep)\b/i,
+    tagA: /\b(?:brak\s+uprawnien|bez\s+sep)\b/i,
     tagB: /\b(?:sep|sep\s+g1|sep\s+g2|sep\s+g3|udt|f-gaz)\b/i,
     reason: 'Deklaracja braku uprawnień technicznych jest sprzeczna z certyfikatem uprawnień SEP/UDT.',
   },
@@ -238,6 +239,24 @@ const KNOWN_SKILL_CONTRADICTIONS: Array<{ tagA: RegExp; tagB: RegExp; reason: st
     reason: 'Deklaracja braku prawa jazdy stoi w sprzeczności z wpisem o posiadaniu prawa jazdy lub roli kierowcy.',
   },
 ];
+
+const NEGATED_TAG_PREFIX = /^(?:brak|no|nie\s+znam|bez)\s+/i;
+
+/** Negacja nie może być jednocześnie dowodem dodatnim. Średnik rozdziela
+ * niezależne deklaracje; granice i aliasy kompetencji rozstrzyga wspólny matcher. */
+function positiveTagClauses(tags: string[]): string[] {
+  return tags.flatMap(tag => stripDiacriticsLower(tag).split(/[;\n]/))
+    .map(tag => tag.trim())
+    .filter(tag => !NEGATED_TAG_PREFIX.test(tag)
+      && !KNOWN_SKILL_CONTRADICTIONS.some(rule => rule.tagA.test(tag)));
+}
+
+function hasPositiveRuleTag(tags: string[], rule: typeof KNOWN_SKILL_CONTRADICTIONS[number]): boolean {
+  return positiveTagClauses(tags).some(tag => {
+    const matches = tag.match(new RegExp(rule.tagB.source, `${rule.tagB.flags}g`)) || [];
+    return matches.some(phrase => hasPositiveSkillEvidence(tag, phrase));
+  });
+}
 
 /**
  * Wykrywa sprzeczności w umiejętnościach i tagach danego claimu względem pozostałych claimów lub bazy MasterVault.
@@ -252,8 +271,8 @@ export function detectSkillContradictions(
 
   // 1. Sprawdzenie wewnętrznych wykluczeń w obrębie tagów danego claimu
   for (const rule of KNOWN_SKILL_CONTRADICTIONS) {
-    const hasA = claimTags.some((t) => rule.tagA.test(t));
-    const hasB = claimTags.some((t) => rule.tagB.test(t));
+    const hasA = claimTags.some((t) => rule.tagA.test(stripDiacriticsLower(t)));
+    const hasB = hasPositiveRuleTag(claimTags, rule);
     if (hasA && hasB) {
       issues.push(rule.reason);
     }
@@ -275,8 +294,8 @@ export function detectSkillContradictions(
 
     if (datesOverlap) {
       for (const rule of KNOWN_SKILL_CONTRADICTIONS) {
-        const claimHasA = claimTags.some((t) => rule.tagA.test(t));
-        const otherHasB = otherTags.some((t) => rule.tagB.test(t));
+        const claimHasA = claimTags.some((t) => rule.tagA.test(stripDiacriticsLower(t)));
+        const otherHasB = hasPositiveRuleTag(otherTags, rule);
         if (claimHasA && otherHasB) {
           issues.push(
             `Sprzeczność między projektem „${claim.sourceProject}” a „${otherClaim.sourceProject}”: ${rule.reason}`
@@ -288,9 +307,10 @@ export function detectSkillContradictions(
 
   // 3. Sprawdzenie deklaracji zaprzeczających głównemu zestawowi umiejętności MasterVault
   for (const tag of claimTags) {
-    if (/\b(?:brak|no|nie\s+znam)\b/i.test(tag)) {
-      const normalizedSkill = tag.replace(/\b(?:brak|no|nie\s+znam|znajomości)\b/gi, '').trim().toLowerCase();
-      if (normalizedSkill && masterVaultSkills.some((s) => s.toLowerCase().includes(normalizedSkill))) {
+    const normalizedTag = stripDiacriticsLower(tag).trim();
+    if (NEGATED_TAG_PREFIX.test(normalizedTag)) {
+      const normalizedSkill = normalizedTag.replace(NEGATED_TAG_PREFIX, '').replace(/^znajomosci\s+/i, '').trim();
+      if (normalizedSkill && positiveTagClauses(masterVaultSkills).some((s) => hasPositiveSkillEvidence(s, normalizedSkill))) {
         issues.push(
           `Claim zawiera tag wykluczający „${tag}”, podczas gdy MasterVault deklaruje kompetencję w tej dziedzinie.`
         );
