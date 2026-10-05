@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { cleanPastedJobOffer } from '../jobOfferCleaner';
 import { parseJobDescriptionLocal, analyzeJdMatchWithVault } from '../jdParser';
 import { buildJobOfferFromManual } from '../jobMatcherEngine';
@@ -14,13 +16,13 @@ import {
   accountMagazynierUnigast,
 } from './fixtures/practicalAccounts.fixtures';
 
-const LIVE_TEST_FILE = 'C:\\Users\\Adrian\\Desktop\\test_na_zywca\\test_praktyczny1.md';
+const LIVE_TEST_FILE = fileURLToPath(new URL('./fixtures/portal-corpus/test_praktyczny1.md.gz', import.meta.url));
 
 function loadRawSections(): string[] {
   if (!fs.existsSync(LIVE_TEST_FILE)) {
     throw new Error(`Plik testowy nie istnieje: ${LIVE_TEST_FILE}`);
   }
-  const content = fs.readFileSync(LIVE_TEST_FILE, 'utf-8');
+  const content = gunzipSync(fs.readFileSync(LIVE_TEST_FILE)).toString('utf-8');
   return content.split(/\n\s*-{3,}\s*\n/).map((s) => s.trim()).filter(Boolean);
 }
 

@@ -290,7 +290,9 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Sukces (200) i poprawny format odpowiedzi', () => {
-    it('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {
+    // Osobny krok CI ustawia tę flagę po instalacji silnika; pozostałe
+    // workflowy testują kontrakt trasy bez wymagania środowiska Python.
+    it.runIf(process.env.RUN_PDF_INTEGRATION === '1')('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {
       // ATS jest tu odizolowany od testu renderowania. Trasa, adapter oraz
       // proces Python/ReportLab/pikepdf pozostają prawdziwe.
       vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValueOnce(SUCCESS_FIXTURE);

@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
-import * as path from 'path';
+import * as path from 'node:path';
+import { gunzipSync } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { cleanPastedJobOffer } from '../jobOfferCleaner';
 import { parseJobDescriptionLocal } from '../jdParser';
 
-const CODEX_OUTPUTS_DIR = 'C:\\Users\\Adrian\\Documents\\Codex\\2026-09-30\\po\\outputs';
+const CODEX_OUTPUTS_DIR = fileURLToPath(new URL('./fixtures/portal-corpus/', import.meta.url));
+
+function readCorpusFile(filename: string): string {
+  return gunzipSync(fs.readFileSync(path.join(CODEX_OUTPUTS_DIR, `${filename}.gz`))).toString('utf-8');
+}
 
 const HTML_TAG_REGEX = /<[^>]+>/;
 const HTML_ENTITY_REGEX = /&(?:nbsp|amp|quot|apos|lt|gt|#\d+|#x[0-9a-fA-F]+);/i;
@@ -51,8 +57,7 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
   if (!isAvailable) return;
 
   describe('1. kierivo_dirty_job_offers_300.md (301 stron ofert z Aplikuj.pl)', () => {
-    const fpath = path.join(CODEX_OUTPUTS_DIR, 'kierivo_dirty_job_offers_300.md');
-    const content = fs.readFileSync(fpath, 'utf-8');
+    const content = readCorpusFile('kierivo_dirty_job_offers_300.md');
     const offers = content.split(/\n(?=## Oferta \d+)/).filter((s) => s.trim());
 
     it('wczytuje 301 ofert ze zrzutu Aplikuj.pl', () => {
@@ -92,8 +97,7 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
   });
 
   describe('2. kierivo_chrome_raw_job_pages.md (surowe zrzuty Chrome z tagami)', () => {
-    const fpath = path.join(CODEX_OUTPUTS_DIR, 'kierivo_chrome_raw_job_pages.md');
-    const content = fs.readFileSync(fpath, 'utf-8');
+    const content = readCorpusFile('kierivo_chrome_raw_job_pages.md');
     const tabs = content.split(/\n(?=## (?:Tab|Clipboard) )/).filter((s) => s.trim());
 
     it('oczyszcza 100% zrzutów Chrome z tagów <browser__document> i HTML', () => {
@@ -112,8 +116,7 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
     const files = ['kierivo_pracuj_round_2.md', 'kierivo_pracuj_round_3.md'];
     files.forEach((fname) => {
       it(`oczyszcza ${fname} z 0% błędów`, () => {
-        const fpath = path.join(CODEX_OUTPUTS_DIR, fname);
-        const content = fs.readFileSync(fpath, 'utf-8');
+        const content = readCorpusFile(fname);
         const tabs = content.split(/\n(?=## Chrome tab )/).filter((s) => s.trim());
 
         tabs.forEach((tabRaw, idx) => {
@@ -131,8 +134,7 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
   });
 
   describe('4. kierivo_dirty_clipboard_batch_20260930.md (300 ofert ze schowka)', () => {
-    const fpath = path.join(CODEX_OUTPUTS_DIR, 'kierivo_dirty_clipboard_batch_20260930.md');
-    const content = fs.readFileSync(fpath, 'utf-8');
+    const content = readCorpusFile('kierivo_dirty_clipboard_batch_20260930.md');
     const batch = content.split(/\n(?=## Clipboard \d+)/).filter((s) => s.trim()).slice(0, 300);
 
     it('0% HTML i 0% szumu na 300 ofertach ze schowka', () => {
