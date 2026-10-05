@@ -6,7 +6,7 @@ import {
   saveApplicationsFor,
 } from '../../../store/useApplications';
 import { getApplicationDisplayInfo, getApplicationSnapshotDisplayInfo } from '../applicationDisplay';
-import { calculateApplicationProgress } from '../applicationMetrics';
+import { calculateCurrentApplicationStageShare } from '../applicationMetrics';
 import { getPipelineFilters, matchesStatusFilter, mapStatusToSimplified } from '../trackerStatusConfig';
 import { createApplicationDocumentSnapshot } from '../../../lib/applicationSnapshot';
 import { createEmptyVault } from '../../../lib/sampleVault';
@@ -56,29 +56,26 @@ describe('Application Tracker - Cykl życia i powiązania modułu aplikacji', ()
     expect(stored[0].interviewAt).toBeUndefined();
   });
 
-  it('oblicza metryki progresu pipeline (calculateApplicationProgress) zgodnie z regułą 1', () => {
-    // Puste aplikacje -> null (brak dzielenia przez 0, zero wymyślonych danych)
-    expect(calculateApplicationProgress([])).toEqual({
+  it('liczy wylacznie udzial aplikacji w aktualnych statusach rozmowy lub oferty', () => {
+    // Puste aplikacje -> null (brak dzielenia przez 0, zero wymyslonych danych)
+    expect(calculateCurrentApplicationStageShare([])).toEqual({
       percent: null,
-      eligibleCount: 0,
-      progressedCount: 0,
+      submittedCount: 0,
+      currentAdvancedStageCount: 0,
     });
 
-    // Tylko szkice 'Do wysłania' -> brak wysłanych, percent: null
-    expect(calculateApplicationProgress(['Do wysłania', 'Do wysłania'])).toEqual({
+    // Tylko szkice 'Do wyslania' -> brak wyslanych, percent: null
+    expect(calculateCurrentApplicationStageShare(['Do wys\u0142ania', 'Do wys\u0142ania'])).toEqual({
       percent: null,
-      eligibleCount: 0,
-      progressedCount: 0,
+      submittedCount: 0,
+      currentAdvancedStageCount: 0,
     });
 
-    // 2 wysłane, 1 rozmowa, 1 oferta, 1 odrzucona
-    // Łącznie kwalifikujących się: 2+1+1+1 = 5
-    // Z sukcesem (Rozmowa lub Oferta): 2
-    // 2 / 5 = 40%
-    const progress = calculateApplicationProgress(['Wysłana', 'Wysłana', 'Rozmowa', 'Oferta', 'Odrzucona', 'Do wysłania']);
-    expect(progress.eligibleCount).toBe(5);
-    expect(progress.progressedCount).toBe(2);
-    expect(progress.percent).toBe(40);
+    // Status Odrzucona nie zawiera historii etapow i nie jest biezaca rozmowa/oferta.
+    const share = calculateCurrentApplicationStageShare(['Wys\u0142ana', 'Wys\u0142ana', 'Rozmowa', 'Oferta', 'Odrzucona', 'Do wys\u0142ania']);
+    expect(share.submittedCount).toBe(5);
+    expect(share.currentAdvancedStageCount).toBe(2);
+    expect(share.percent).toBe(40);
   });
 
   it('prawidłowo formatuje etykiety aplikacji i snaphotu (applicationDisplay)', () => {

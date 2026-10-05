@@ -2,10 +2,11 @@ import React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 
 export interface ScoreRingProps {
-  score: number;
+  score: number | null;
   size?: number;
   strokeWidth?: number;
   label?: string;
+  isPreliminary?: boolean;
   className?: string;
 }
 
@@ -14,12 +15,13 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
   size = 140,
   strokeWidth = 10,
   label = 'ATS Score',
+  isPreliminary = false,
   className = '',
 }) => {
   const shouldReduceMotion = useReducedMotion();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const progressOffset = circumference - (score / 100) * circumference;
+  const progressOffset = score === null ? circumference : circumference - (score / 100) * circumference;
 
   const getScoreColor = (val: number) => {
     if (val >= 80) return { stroke: 'var(--success, #10b981)', text: 'text-success-fg', bg: 'bg-success-soft' };
@@ -27,7 +29,11 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
     return { stroke: 'var(--danger, #ef4444)', text: 'text-danger-fg', bg: 'bg-danger-soft' };
   };
 
-  const colors = getScoreColor(score);
+  const colors = score === null
+    ? { stroke: 'var(--line-strong, #64748b)', text: 'text-muted' }
+    : isPreliminary
+      ? { stroke: 'var(--warning, #f59e0b)', text: 'text-warning-fg', bg: 'bg-warning-soft' }
+      : getScoreColor(score);
 
   return (
     <div className={`relative flex flex-col items-center justify-center ${className}`}>
@@ -67,7 +73,7 @@ export const ScoreRing: React.FC<ScoreRingProps> = ({
             transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.5, delay: 0.2 }}
             className={`font-mono text-4xl font-extrabold tracking-tight ${colors.text}`}
           >
-            {score}%
+            {score === null ? '—' : `${score}%`}
           </motion.span>
           <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted">
             {label}

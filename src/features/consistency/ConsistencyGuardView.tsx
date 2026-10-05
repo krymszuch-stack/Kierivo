@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   ShieldCheck,
-  Lock,
   FileText,
   Activity,
   Mic,
@@ -47,7 +46,7 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       sectionId: index % 2 === 0 ? 'cv_experience' : 'cv_projects',
       sectionName: index % 2 === 0 ? 'Doświadczenie Zawodowe' : 'Projekty i Osiągnięcia',
       claimId: c.id,
-      claimedDateRange: c.dateRange,
+      ...(c.dateRange ? { claimedDateRange: c.dateRange } : {}),
       claimedTags: c.tags,
     }));
   }, [vaultClaims]);
@@ -266,8 +265,11 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
         <div className="space-y-6">
           <div>
             <span className="text-label font-bold uppercase tracking-wider text-muted">
-              30-Second Elevator Pitch & Kluczowe Argumenty
+              Szkic wypowiedzi z wpisów profilu
             </span>
+            <p className="mt-1 text-xs text-muted">
+              Tekst pochodzi z wpisów MasterVault. Generator nie weryfikuje ich prawdziwości ani poziomu biegłości.
+            </p>
           </div>
 
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-6">
@@ -283,18 +285,18 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
             <div className="space-y-3">
               <div className="border-b border-line pb-1.5">
                 <h4 className="text-label font-extrabold uppercase tracking-wider text-ink font-mono">
-                  Filary Doświadczenia (Zasilane Claimami)
+                Wpisy profilu użyte w szkicu
                 </h4>
               </div>
 
               <div className="grid gap-3">
-                {pitchOutput.coreStrengths.map((strength) => (
+                {pitchOutput.profileStatements.map((strength) => (
                   <div
                     key={strength.claimId}
                     className="flex items-start gap-3 rounded-xl border border-line bg-elevated p-3.5 shadow-xs"
                   >
                     <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600/10 text-brand-600 text-xs font-bold">
-                      <Lock className="h-3 w-3" />
+                      <FileText className="h-3 w-3" />
                     </div>
                     <div className="flex-1 min-w-0 space-y-1">
                       <p className="text-xs font-medium text-ink leading-relaxed">
@@ -352,9 +354,11 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
                 <div className="flex items-center gap-4 text-xs text-muted font-mono">
                   <span>
                     Zakres:{' '}
-                    {typeof claim.dateRange === 'string'
-                      ? claim.dateRange
-                      : `${claim.dateRange.start} – ${claim.dateRange.end}`}
+                    {!claim.dateRange
+                      ? 'Daty niepodane w profilu'
+                      : typeof claim.dateRange === 'string'
+                        ? claim.dateRange
+                        : `${claim.dateRange.start} – ${claim.dateRange.end}`}
                   </span>
                   {claim.metric && (
                     <span className="text-success-fg font-bold">Metryka: {claim.metric}</span>

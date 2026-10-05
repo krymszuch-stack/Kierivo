@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import * as storage from '../storage';
 import {
   createLocalProfile,
   getActiveProfile,
@@ -28,6 +29,155 @@ beforeEach(() => {
 });
 
 describe('Profil lokalny', () => {
+  it('zamknięcie profilu unieważnia rozpoczęte tworzenie kolejnego profilu', async () => {
+    await createLocalProfile('Osoba A');
+    const creating = createLocalProfile('Osoba B');
+    const observed = creating.then(() => 'success', error => error.message as string);
+    expect(await signOutLocalProfile()).toBe(true);
+    expect(getActiveProfile()).toBeNull();
+    expect(await observed).toContain('Sesja zmieniła się');
+    expect((await listSavedLocalProfiles()).map(profile => profile.name)).toEqual(['Osoba A']);
+  });
+
+  it('zamknięcie sesji unieważnia wynik wznowienia i odrzuca nowe aktywacje podczas zamykania', async () => {
+    const saved = await createLocalProfile('Osoba A');
+    const resuming = activateLocalProfile(saved.profile.id);
+    const closing = signOutLocalProfile();
+    expect(await activateLocalProfile(saved.profile.id)).toBeNull();
+    await expect(createLocalProfile('Osoba B')).rejects.toThrow('Sesja jest zamykana');
+    expect(await resuming).toBeNull();
+    expect(await closing).toBe(true);
+    expect(getActiveProfile()).toBeNull();
+    expect((await activateLocalProfile(saved.profile.id))?.profile.id).toBe(saved.profile.id);
+  });
+
+  it('nowsze tworzenie profilu unieważnia starszą migrację i zachowuje własny indeks', async () => {
+    const old = createLocalProfile('Starsza operacja').then(() => 'success', error => error.message as string);
+    const latest = await createLocalProfile('Nowsza operacja');
+    expect(await old).toContain('Sesja zmieniła się');
+    expect(getActiveProfile()?.id).toBe(latest.profile.id);
+    expect((await listSavedLocalProfiles()).map(profile => profile.id)).toEqual([latest.profile.id]);
+  });
+
+  it('zamknięcie profilu usuwa anonimową bibliotekę i historię przed kolejnym użytkownikiem', async () => {
+    const saved = await createLocalProfile('Osoba A');
+    writeJson(StorageKeys.applications + ':anonymous', [{ id: 'starsza-aplikacja', notes: 'Dane osoby A' }]);
+    writeJson(StorageKeys.cvLibrary + ':anonymous', [{ id: 'starsze-cv', title: 'Dane osoby A' }]);
+    expect(await signOutLocalProfile()).toBe(true);
+    expect(storage.readRaw(StorageKeys.applications + ':anonymous')).toBeNull();
+    expect(storage.readRaw(StorageKeys.cvLibrary + ':anonymous')).toBeNull();
+    expect(loadProfileVault(saved.profile.id)?.personalInfo.fullName).toBe('Osoba A');
+    const next = await createLocalProfile('Osoba B');
+    expect(readJson(applicationsKeyFor(next.profile.id), [])).toEqual([]);
+    expect(readJson(StorageKeys.cvLibrary + ':' + next.profile.id, [])).toEqual([]);
+  });
+  it('odmowa czyszczenia anonimowego Vaultu nie potwierdza zamknięcia profilu', async () => {
+    const saved = await createLocalProfile('Osoba A');
+    saveProfileVault('anonymous', createEmptyVault('Pozostałość osoby A'));
+    const originalRemove = localStorage.removeItem.bind(localStorage);
+    localStorage.removeItem = key => {
+      if (key === vaultKeyFor('anonymous')) throw new Error('Syntetyczna odmowa');
+      originalRemove(key);
+    };
+    expect(await signOutLocalProfile()).toBe(false);
+    expect(getActiveProfile()?.id).toBe(saved.profile.id);
+  });
+  it('nie potwierdza zamknięcia profilu przy odmowie usunięcia aktywnego zapisu', async () => {
+    const saved = await createLocalProfile('Profil syntetyczny');
+    const originalRemove = localStorage.removeItem.bind(localStorage);
+    localStorage.removeItem = key => {
+      if (key === StorageKeys.profile) throw new Error('Syntetyczna odmowa usunięcia');
+      originalRemove(key);
+    };
+    expect(await signOutLocalProfile()).toBe(false);
+    expect(getActiveProfile()?.id).toBe(saved.profile.id);
+    expect(loadProfileVault(saved.profile.id)?.personalInfo.fullName).toBe('Profil syntetyczny');
+  });
+  it('czeka na potwierdzenie trwałości przed ukończeniem wznowienia', async () => {
+    const saved = await createLocalProfile('Profil do wznowienia');
+    await signOutLocalProfile();
+    const original = storage.writeJsonDurably;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const spy = vi.spyOn(storage, 'writeJsonDurably').mockImplementation(async (key, value) => {
+      await gate;
+      return original(key, value);
+    });
+    try {
+      let done = false;
+      const pending = activateLocalProfile(saved.profile.id).then(result => { done = true; return result; });
+      await Promise.resolve();
+      expect(done).toBe(false);
+      expect(getActiveProfile()).toBeNull();
+      release();
+      expect((await pending)?.profile.id).toBe(saved.profile.id);
+      expect(getActiveProfile()?.id).toBe(saved.profile.id);
+    } finally { release(); spy.mockRestore(); }
+  });
+  it('nie potwierdza wznowienia, gdy nie można utrwalić aktywnego profilu', async () => {
+    const saved = await createLocalProfile('Profil do wznowienia');
+    await signOutLocalProfile();
+    const originalSet = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = (key, value) => {
+      if (key === StorageKeys.profile) throw new Error('Syntetyczna odmowa zapisu');
+      originalSet(key, value);
+    };
+    expect(await activateLocalProfile(saved.profile.id)).toBeNull();
+    expect(getActiveProfile()).toBeNull();
+    expect(loadProfileVault(saved.profile.id)?.personalInfo.fullName).toBe('Profil do wznowienia');
+  });
+  it.each([StorageKeys.applications + ':anonymous', StorageKeys.cvLibrary + ':anonymous', vaultKeyFor('anonymous')])('nie usuwa nieczytelnego źródła migracji: %s', async key => {
+    localStorage.setItem(key, '{uszkodzony-json');
+    await expect(createLocalProfile('Profil syntetyczny')).rejects.toThrow('Nie można odczytać danych');
+    expect(localStorage.getItem(key)).toBe('{uszkodzony-json');
+    expect(getActiveProfile()).toBeNull();
+  });
+  it('nowy pusty profil można od razu wznowić bez późniejszego autosave', async () => {
+    const { profile } = await createLocalProfile('Profil syntetyczny');
+    expect(loadProfileVault(profile.id)?.personalInfo.fullName).toBe('Profil syntetyczny');
+    expect((await listSavedLocalProfiles()).map(item => item.id)).toContain(profile.id);
+  });
+
+  it('nie usuwa nowszego anonimowego profilu zmienionego podczas migracji', async () => {
+    saveProfileVault(ANONYMOUS_PROFILE_ID, createEmptyVault('Starsza wersja'));
+    const latest = createEmptyVault('Nowsza wersja');
+    const original = storage.writeJsonDurably;
+    let changed = false;
+    const spy = vi.spyOn(storage, 'writeJsonDurably').mockImplementation(async (key, value) => {
+      const saved = await original(key, value);
+      if (!changed && key.startsWith(`${StorageKeys.vault}:local-`)) {
+        changed = true;
+        saveProfileVault(ANONYMOUS_PROFILE_ID, latest);
+      }
+      return saved;
+    });
+    try {
+      await expect(createLocalProfile('Profil syntetyczny')).rejects.toThrow();
+      expect(loadProfileVault(ANONYMOUS_PROFILE_ID)?.personalInfo.fullName).toBe('Nowsza wersja');
+      expect(getActiveProfile()).toBeNull();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('cofa aktywację i własny indeks przy zmianie źródła po ostatnim zapisie', async () => {
+    const previous = (await createLocalProfile('Poprzedni profil')).profile;
+    saveProfileVault(ANONYMOUS_PROFILE_ID, createEmptyVault('Starsza wersja'));
+    const original = storage.writeJsonDurably;
+    let changed = false;
+    const spy = vi.spyOn(storage, 'writeJsonDurably').mockImplementation(async (key, value) => {
+      const saved = await original(key, value);
+      if (!changed && key === StorageKeys.profile) {
+        changed = true;
+        saveProfileVault(ANONYMOUS_PROFILE_ID, createEmptyVault('Nowsza wersja'));
+      }
+      return saved;
+    });
+    try {
+      await expect(createLocalProfile('Profil syntetyczny')).rejects.toThrow('Dane zmieniły się');
+      expect(getActiveProfile()?.id).toBe(previous.id);
+      expect(readJson<Array<{ id: string }>>(StorageKeys.localProfiles, []).map(item => item.id)).toEqual([previous.id]);
+      expect(loadProfileVault(ANONYMOUS_PROFILE_ID)?.personalInfo.fullName).toBe('Nowsza wersja');
+    } finally { spy.mockRestore(); }
+  });
   it('zapisuje profil i odczytuje go po ponownym wejściu', async () => {
     const { profile } = await createLocalProfile('Jan Kowalski', 'jan@example.pl');
 
@@ -54,7 +204,7 @@ describe('Profil lokalny', () => {
     const { profile } = await createLocalProfile('Jan');
     saveProfileVault(profile.id, createEmptyVault('Jan', 'jan@example.pl'));
 
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     expect(getActiveProfile()).toBeNull();
     expect(loadProfileVault(profile.id)).not.toBeNull();
@@ -66,13 +216,13 @@ describe('Profil lokalny', () => {
     savedVault.skillsMatrix.hardSkills = ['Windows 11', 'TCP/IP'];
     saveProfileVault(profile.id, savedVault);
 
-    signOutLocalProfile();
+    await signOutLocalProfile();
     expect(getActiveProfile()).toBeNull();
 
     const savedProfiles = await listSavedLocalProfiles();
     expect(savedProfiles.map((item) => item.id)).toContain(profile.id);
 
-    const resumed = activateLocalProfile(profile.id);
+    const resumed = await activateLocalProfile(profile.id);
     expect(resumed?.profile.id).toBe(profile.id);
     expect(getActiveProfile()?.id).toBe(profile.id);
     expect(resumed?.vault.skillsMatrix.hardSkills).toEqual(['Windows 11', 'TCP/IP']);
@@ -83,26 +233,26 @@ describe('Profil lokalny', () => {
     const firstVault = createEmptyVault('Jan Kowalski');
     firstVault.personalInfo.summary = 'Profil pierwszy';
     saveProfileVault(first.profile.id, firstVault);
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     const second = await createLocalProfile('Jan Kowalski');
     const secondVault = createEmptyVault('Jan Kowalski');
     secondVault.personalInfo.summary = 'Profil drugi';
     saveProfileVault(second.profile.id, secondVault);
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     const savedProfiles = await listSavedLocalProfiles();
     expect(savedProfiles.filter((item) => item.name === 'Jan Kowalski')).toHaveLength(2);
-    expect(activateLocalProfile(first.profile.id)?.vault.personalInfo.summary).toBe('Profil pierwszy');
-    signOutLocalProfile();
-    expect(activateLocalProfile(second.profile.id)?.vault.personalInfo.summary).toBe('Profil drugi');
+    expect((await activateLocalProfile(first.profile.id))?.vault.personalInfo.summary).toBe('Profil pierwszy');
+    await signOutLocalProfile();
+    expect((await activateLocalProfile(second.profile.id))?.vault.personalInfo.summary).toBe('Profil drugi');
   });
 
   it('odkrywa starszy zapisany vault bez indeksu profili', async () => {
     const { profile } = await createLocalProfile('Anna Nowak', 'anna@example.pl');
     saveProfileVault(profile.id, createEmptyVault('Anna Nowak', 'anna@example.pl'));
     localStorage.removeItem(StorageKeys.localProfiles);
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     const savedProfiles = await listSavedLocalProfiles();
     expect(savedProfiles).toContainEqual(expect.objectContaining({
@@ -110,7 +260,7 @@ describe('Profil lokalny', () => {
       name: 'Anna Nowak',
       email: 'anna@example.pl',
     }));
-    expect(activateLocalProfile(profile.id)?.vault.personalInfo.fullName).toBe('Anna Nowak');
+    expect((await activateLocalProfile(profile.id))?.vault.personalInfo.fullName).toBe('Anna Nowak');
   });
 
   it('usunięcie profilu czyści WSZYSTKIE dane aplikacji, nie tylko wyliczone klucze', async () => {
@@ -246,7 +396,7 @@ describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszcz
     saveProfileVault(profile.id, janVault);
 
     // Jan się wylogowuje / zamyka profil
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     // Weryfikacja: profil aktywny usunięty, schowek anonimowy jest pusty
     expect(getActiveProfile()).toBeNull();
@@ -272,7 +422,7 @@ describe('BUG-007: Izolacja profili po wylogowaniu i odporność na zanieczyszcz
     saveProfileVault(janProfile.id, janVault);
 
     // Jan się wylogowuje
-    signOutLocalProfile();
+    await signOutLocalProfile();
 
     // Anna tworzy profil na tym samym urządzeniu
     const { profile: annaProfile, vault: annaVault } = await createLocalProfile('Anna Nowak', 'anna@example.pl');

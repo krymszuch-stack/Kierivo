@@ -30,6 +30,7 @@ export interface GoldOffer {
   company: string;
   seniority: string;
   workMode: 'REMOTE' | 'HYBRID' | 'ON_SITE';
+  workModeFromText: 'REMOTE' | 'HYBRID' | 'ON_SITE' | 'FLEXIBLE' | 'UNKNOWN';
   contract: string[];
   salary: { min: number; max: number; currency: string; period: string; grossNet: string } | null;
   location: string;
@@ -52,6 +53,7 @@ export const GOLD: Record<string, GoldOffer> = {
     company: 'ELEKTROBUDOWA sp. z o.o.',
     seniority: 'MID',
     workMode: 'ON_SITE',
+    workModeFromText: 'ON_SITE',
     contract: ['umowa o pracę', 'pełny etat'],
     salary: null, // brak jakiejkolwiek kwoty w źródle dla tej oferty
     location: 'Katowice, śląskie',
@@ -68,7 +70,8 @@ export const GOLD: Record<string, GoldOffer> = {
     title: 'Senior .NET Developer / Solution Architect',
     company: 'P&P Solutions Sp. z o.o.',
     seniority: 'SENIOR',
-    workMode: 'REMOTE', // pole portalowe "praca zdalna"; treść oferty dopuszcza też hybrydę z Gliwic/Katowic
+    workMode: 'REMOTE',
+    workModeFromText: 'UNKNOWN',
     contract: ['kontrakt B2B', 'pełny etat'],
     salary: { min: 100, max: 120, currency: 'PLN', period: 'godzina', grossNet: 'netto (+VAT)' },
     location: 'Katowice / Gliwice (zdalnie, cała Polska)',
@@ -92,6 +95,7 @@ export const GOLD: Record<string, GoldOffer> = {
     company: 'ORLEN PACZKA sp. z o.o.',
     seniority: 'MID',
     workMode: 'HYBRID',
+    workModeFromText: 'UNKNOWN',
     contract: ['umowa o pracę', 'pełny etat'],
     salary: null, // tylko opis systemu wynagrodzeń, bez kwoty
     location: 'Annopol 17A, Białołęka, Warszawa',
@@ -117,6 +121,7 @@ export const GOLD: Record<string, GoldOffer> = {
     company: 'SOLLEIM GROUP sp. z o.o.',
     seniority: 'pracownik fizyczny', // brak drabinki senior/mid/junior — to nie jest stanowisko IT
     workMode: 'ON_SITE',
+    workModeFromText: 'ON_SITE',
     contract: ['umowa zlecenie', 'pełny etat / część etatu'],
     salary: { min: 32, max: 33, currency: 'PLN', period: 'godzina', grossNet: 'brutto' },
     location: 'Hoża 29/31, Śródmieście, Warszawa',
@@ -136,6 +141,7 @@ export const GOLD: Record<string, GoldOffer> = {
     company: 'UBICOM sp. z o.o.',
     seniority: 'pracownik fizyczny',
     workMode: 'ON_SITE',
+    workModeFromText: 'ON_SITE',
     contract: ['umowa zlecenie', 'pełny etat'],
     salary: { min: 35, max: 45, currency: 'PLN', period: 'godzina', grossNet: 'brutto' },
     location: 'Aleje Jerozolimskie 179, Ochota, Warszawa',
@@ -157,6 +163,7 @@ export const GOLD: Record<string, GoldOffer> = {
     company: 'Level Work',
     seniority: 'pracownik fizyczny',
     workMode: 'ON_SITE',
+    workModeFromText: 'ON_SITE',
     contract: ['umowa o pracę', 'pełny etat'],
     salary: { min: 7800, max: 8800, currency: 'PLN', period: 'miesiąc', grossNet: 'brutto' },
     location: 'Warszawa',

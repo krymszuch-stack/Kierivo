@@ -18,16 +18,15 @@ import {
 const prefs = (overrides: Partial<MobilityPreferences> = {}): MobilityPreferences => ({
   ...DEFAULT_MOBILITY_PREFERENCES,
   salaryAmount: 10_000,
+  oneWayMinutes: 30,
   ...overrides,
 });
 
 describe('przeliczenie wynagrodzenia', () => {
-  it('liczy netto z brutto na UoP w okolicach kwoty z kalkulatorów płacowych', () => {
-    // 10 000 zł brutto to ok. 7,2 tys. na rękę. Sprawdzamy widełki, nie punkt:
-    // test ma pilnować rzędu wielkości, a nie zamrażać stawki podatkowe.
-    const net = estimateNetFromGross(10_000);
-    expect(net).toBeGreaterThan(7_000);
-    expect(net).toBeLessThan(7_500);
+  it('liczy średnią roczną UoP z uwzględnieniem drugiego progu i limitu ZUS', () => {
+    expect(estimateNetFromGross(10_000)).toBe(7_146.89);
+    expect(estimateNetFromGross(20_000)).toBe(12_562.20);
+    expect(estimateNetFromGross(24_000)).toBe(14_628.60);
   });
 
   it('nie zgaduje podatku przy B2B — bierze kwotę podaną przez użytkownika', () => {
@@ -38,9 +37,19 @@ describe('przeliczenie wynagrodzenia', () => {
     expect(estimateNetFromGross(0)).toBe(0);
     expect(estimateNetFromGross(Number.NaN)).toBe(0);
   });
+
+  it('nie przepuszcza nieskończonych i nieznanych kwot umowy', () => {
+    expect(monthlyNetIncome(prefs({ salaryAmount: Number.POSITIVE_INFINITY }))).toBe(0);
+    expect(monthlyNetIncome(prefs({ contract: 'B2B', salaryAmount: Number.NaN }))).toBe(0);
+  });
 });
 
 describe('czas i koszt dojazdu', () => {
+  it('domyślne parametry nie udają znanego czasu ani kosztu dojazdu', () => {
+    expect(DEFAULT_MOBILITY_PREFERENCES.oneWayMinutes).toBe(0);
+    expect(DEFAULT_MOBILITY_PREFERENCES.monthlyCommuteCost).toBe(0);
+  });
+
   it('praca zdalna zeruje dni w biurze mimo ustawionego suwaka', () => {
     expect(effectiveOfficeDays(prefs({ workMode: 'REMOTE', officeDaysPerWeek: 4 }))).toBe(0);
     expect(monthlyCommuteHours(prefs({ workMode: 'REMOTE', officeDaysPerWeek: 4 }))).toBe(0);
@@ -64,15 +73,48 @@ describe('czas i koszt dojazdu', () => {
     expect(result?.commuteCost).toBe(0);
     expect(result?.realHourlyRate).toBeCloseTo(result!.nominalHourlyRate, 10);
   });
+
+  it('zdalny tryb nie zmienia wyniku w NaN przy uszkodzonych, nieużywanych polach dojazdu', () => {
+    const result = calculateFeasibility(prefs({
+      workMode: 'REMOTE',
+      oneWayMinutes: Number.NaN,
+      monthlyCommuteCost: Number.NaN,
+    }));
+
+    expect(result).not.toBeNull();
+    expect(Object.values(result!).filter((value): value is number => typeof value === 'number')
+      .every(Number.isFinite)).toBe(true);
+    expect(result!.commuteHours).toBe(0);
+    expect(result!.commuteCost).toBe(0);
+  });
+
+  it('hybryda bez dni w biurze nie wymaga parametrów nieistniejącego dojazdu', () => {
+    const result = calculateFeasibility(prefs({
+      workMode: 'HYBRID',
+      officeDaysPerWeek: 0,
+      oneWayMinutes: Number.NaN,
+      monthlyCommuteCost: Number.NaN,
+    }));
+
+    expect(result?.commuteHours).toBe(0);
+    expect(result?.commuteCost).toBe(0);
+  });
+
+  it('odrzuca niepoprawne parametry dojazdu przed obliczeniem wyniku', () => {
+    expect(calculateFeasibility(prefs({ workMode: 'ONSITE', oneWayMinutes: Number.NaN }))).toBeNull();
+    expect(calculateFeasibility(prefs({ workMode: 'HYBRID', officeDaysPerWeek: Number.NaN }))).toBeNull();
+  });
 });
 
 describe('realna stawka godzinowa', () => {
   it('nie pokazuje wyliczenia na niepotwierdzonych, domyślnych ustawieniach dojazdu', () => {
-    const preferences = prefs({ salaryAmount: 10_000 });
+    const preferences = prefs({ salaryAmount: 10_000, oneWayMinutes: 0 });
 
     expect(canShowFeasibilityResult(preferences, false)).toBe(false);
-    expect(canShowFeasibilityResult(preferences, true)).toBe(true);
-    expect(canShowFeasibilityResult(prefs({ salaryAmount: 0 }), true)).toBe(false);
+    expect(canShowFeasibilityResult(preferences, true)).toBe(false);
+    expect(canShowFeasibilityResult(prefs({ salaryAmount: 10_000, oneWayMinutes: 30 }), true)).toBe(true);
+    expect(canShowFeasibilityResult(prefs({ salaryAmount: 10_000, workMode: 'REMOTE' }), true)).toBe(true);
+    expect(canShowFeasibilityResult(prefs({ salaryAmount: 0, oneWayMinutes: 30 }), true)).toBe(false);
   });
 
   it('jest niższa od pozornej, gdy trzeba dojeżdżać', () => {

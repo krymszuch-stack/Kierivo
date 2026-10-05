@@ -1,20 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useId, useState, useMemo } from 'react';
 import {
   X,
   Sparkles,
   Search,
   Plus,
-  Zap,
-  BookOpen,
-  Sliders,
-  Layers,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { MasterVault, SkillBridge } from '../../types';
-import { generateSkillBridges, findSkillBridgeForGap } from '../../lib/skillBridgeEngine';
+import { generateSkillBridges } from '../../lib/skillBridgeEngine';
 import { SkillBridgeCard } from './SkillBridgeCard';
 import { Button } from '../ui/Button';
-import { Chip } from '../ui/Chip';
+import { useOptionalAuth } from '../../context/AuthContext';
 
 export interface SkillBridgeMatrixModalProps {
   isOpen: boolean;
@@ -36,13 +32,27 @@ const COMMON_GAPS_SUGGESTIONS = [
   'SAP WMS',
 ];
 
-export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
+export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = (props) => {
+  const auth = useOptionalAuth();
+  // Zamknięcie usuwa lokalny szkic. Inna luka lub profil nie dziedziczy poprzedniej sesji.
+  if (!props.isOpen) return null;
+  const contextKey = JSON.stringify({
+    vault: { ...props.vault, updatedAt: undefined },
+    initialMissingSkill: props.initialMissingSkill,
+    missingSkillsList: props.missingSkillsList,
+    ownerId: auth?.user?.id,
+  });
+  return <SkillBridgeMatrixSession key={contextKey} {...props} />;
+};
+
+const SkillBridgeMatrixSession: React.FC<SkillBridgeMatrixModalProps> = ({
   isOpen,
   onClose,
   vault,
   initialMissingSkill,
   missingSkillsList = [],
 }) => {
+  const skillInputId = useId();
   const [query, setQuery] = useState(initialMissingSkill || '');
   // Reguła 1: start z fabrykowanymi lukami ['Kafka','AWS','Kubernetes'] generował mosty
   // dla luki, której nikt nie wpisał. Pusty stan ma już własny komunikat zachęty.
@@ -93,7 +103,7 @@ export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
                 Most Kompetencyjny
               </h3>
               <p className="text-xs text-muted">
-                Zamienia luki technologiczne w przekonujące odpowiedzi oparte na ekwiwalencji pojęciowej i faktach z MasterVault.
+                Pokazuje powiązane wpisy z profilu i szkic odpowiedzi. Powiązanie nie potwierdza brakującej umiejętności ani formalnych uprawnień.
               </p>
             </div>
           </div>
@@ -101,6 +111,7 @@ export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Zamknij most kompetencyjny"
             className="rounded-xl p-2 text-muted hover:bg-sunken hover:text-ink transition-colors"
           >
             <X className="h-5 w-5" />
@@ -109,14 +120,15 @@ export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
 
         {/* Sekcja wprowadzania luki kompetencyjnej */}
         <div className="rounded-2xl border border-line bg-surface p-4 space-y-3">
-          <span className="font-mono text-xs font-bold text-ink uppercase tracking-wider block">
-            Sprawdź, jak obronić brakującą umiejętność:
-          </span>
+          <label htmlFor={skillInputId} className="font-mono text-xs font-bold text-ink uppercase tracking-wider block">
+            Brakująca umiejętność
+          </label>
 
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted" />
               <input
+                id={skillInputId}
                 type="text"
                 placeholder="Wpisz brakującą technologię (np. Kafka, AWS, GraphQL, Spawanie TIG)..."
                 value={query}
@@ -170,6 +182,7 @@ export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRemoveSkill(skill)}
+                  aria-label={`Usuń umiejętność ${skill}`}
                   className="text-muted hover:text-error"
                 >
                   <X className="h-3 w-3" />
@@ -183,7 +196,9 @@ export const SkillBridgeMatrixModal: React.FC<SkillBridgeMatrixModalProps> = ({
         <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
           {bridges.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line p-8 text-center text-xs text-muted">
-              Wpisz technologię powyżej, aby wygenerować perswazyjny most kompetencyjny.
+              {activeMissingSkills.length > 0
+                ? 'Brak udokumentowanego powiązania dla wybranych umiejętności.'
+                : 'Wpisz umiejętność powyżej, aby sprawdzić powiązane wpisy w profilu.'}
             </div>
           ) : (
             bridges.map((bridge) => (

@@ -8,12 +8,18 @@ import {
   EmergencyPhrase,
   QuestionToAsk,
 } from '../types';
+import {
+  cachedCheatSheetEnrichmentSchema,
+  interviewCheatSheetEnrichmentSchema,
+  type CheatSheetEnrichment,
+} from './interviewCheatSheetEnrichmentSchema';
 import { ParsedJobDescription } from './jdParser';
 import { rankExperienceByRelevance } from './relevanceRanking';
 import { lookupGlossaryDefinition, hasGlossaryDefinition } from '../data/interviewGlossaryDictionary';
 import { api, ApiError } from './apiClient';
 import { StorageKeys, cheatSheetCacheKeyFor, readJson, removeRaw, writeJson } from './storage';
-import { consumeAiLocally, refundAiLocally, getEntitlementsState } from '../store/useEntitlements';
+import { consumeAiLocally, getEntitlementsState } from '../store/useEntitlements';
+import { AI_QUOTA_RESET_TIME } from './aiQuotaPolicy';
 
 /**
  * 0-Token local "skeleton" builder for the Interview Cheat Sheet — mirrors the
@@ -324,11 +330,7 @@ export function buildLocalInterviewCheatSheet(
   };
 }
 
-export interface CheatSheetEnrichment {
-  starTalkingPoints: StarTalkingPoint[];
-  personalizedFraming: string;
-  emergencyPhrases?: EmergencyPhrase[];
-}
+export type { CheatSheetEnrichment } from './interviewCheatSheetEnrichmentSchema';
 
 /** Pure overlay: replaces only the AI-personalized fields, leaves the rest of the local skeleton untouched. */
 export function mergeGeminiCheatSheetEnrichment(
@@ -337,40 +339,45 @@ export function mergeGeminiCheatSheetEnrichment(
 ): InterviewCheatSheet {
   return {
     ...local,
-    starTalkingPoints: enrichment.starTalkingPoints,
+    starTalkingPoints: enrichment.starTalkingPoints.map((point, index): StarTalkingPoint => ({
+      ...point,
+      id: `star-ai-${index}`,
+    })),
     personalizedFraming: enrichment.personalizedFraming,
     emergencyPhrases:
-      enrichment.emergencyPhrases && enrichment.emergencyPhrases.length > 0
-        ? enrichment.emergencyPhrases
+      enrichment.emergencyPhrases.length > 0
+        ? enrichment.emergencyPhrases.map((phrase, index): EmergencyPhrase => ({
+          ...phrase,
+          id: `emergency-ai-${index}`,
+        }))
         : local.emergencyPhrases,
     generationMode: 'GEMINI_ENRICHED',
   };
 }
 
-/** Cheap, non-cryptographic string hash — good enough to key an exact-match cache entry. */
-export function hashCheatSheetInput(
+/** Hash the complete cache input so different offers cannot share one 32-bit collision. */
+export async function hashCheatSheetInput(
   vault: MasterVault,
   jobTitle: string,
   companyName: string,
   jobDescription: string
-): string {
+): Promise<string> {
   const raw = `${jobTitle}|${companyName}|${jobDescription}|${JSON.stringify(vault?.history || [])}|${JSON.stringify(vault?.projects || [])}`;
-  let hash = 0;
-  for (let i = 0; i < raw.length; i++) {
-    hash = (hash * 31 + raw.charCodeAt(i)) | 0;
-  }
-  return `h${hash}`;
-}
-
-interface CachedEnrichmentEntry {
-  hash: string;
-  enrichment: CheatSheetEnrichment;
-  cachedAt: string;
+  const bytes = new TextEncoder().encode(raw);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `sha256-${hex}`;
 }
 
 export function readCachedEnrichment(hash: string): CheatSheetEnrichment | null {
-  const entry = readJson<CachedEnrichmentEntry | null>(cheatSheetCacheKeyFor(hash), null);
-  return entry?.enrichment ?? null;
+  const key = cheatSheetCacheKeyFor(hash);
+  const raw = readJson<unknown>(key, null);
+  const parsed = cachedCheatSheetEnrichmentSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.hash !== hash) {
+    if (raw !== null) removeRaw(key);
+    return null;
+  }
+  return parsed.data.enrichment;
 }
 
 /**
@@ -390,8 +397,14 @@ function pruneCheatSheetCache(): void {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key || !key.startsWith(prefix)) continue;
-      const entry = readJson<CachedEnrichmentEntry | null>(key, null);
-      if (entry) wpis.push({ key, cachedAt: entry.cachedAt ?? '' });
+      const raw = readJson<unknown>(key, null);
+      const entry = cachedCheatSheetEnrichmentSchema.safeParse(raw);
+      const expectedHash = key.slice(prefix.length);
+      if (!entry.success || entry.data.hash !== expectedHash) {
+        if (raw !== null) removeRaw(key);
+        continue;
+      }
+      wpis.push({ key, cachedAt: entry.data.cachedAt });
     }
     return wpis;
   };
@@ -415,15 +428,17 @@ function pruneCheatSheetCache(): void {
 }
 
 export function writeCachedEnrichment(hash: string, enrichment: CheatSheetEnrichment): void {
-  const entry: CachedEnrichmentEntry = { hash, enrichment, cachedAt: new Date().toISOString() };
+  const parsed = interviewCheatSheetEnrichmentSchema.safeParse(enrichment);
+  if (!parsed.success) return;
+  const entry = { hash, enrichment: parsed.data, cachedAt: new Date().toISOString() };
   writeJson(cheatSheetCacheKeyFor(hash), entry);
   pruneCheatSheetCache();
 }
 
 /**
- * Generates the Gemini-personalized part of the cheat sheet (POST /api/generate-cheat-sheet).
+ * Generates the model-personalized part of the cheat sheet (POST /api/generate-cheat-sheet).
  * Checks an exact-match cache entry first so re-opening the same offer+vault
- * combination doesn't burn another Gemini call from the shared per-IP rate limit.
+ * combination doesn't burn another configured-model call from the shared per-IP rate limit.
  */
 export async function generateCheatSheetEnrichmentWithAI(
   targetRole: string,
@@ -437,7 +452,7 @@ export async function generateCheatSheetEnrichmentWithAI(
     throw new Error('Potwierdź wysłanie wybranych danych profilu i oferty do modelu AI.');
   }
 
-  const hash = hashCheatSheetInput(vault, targetRole, companyName, jobDescription);
+  const hash = await hashCheatSheetInput(vault, targetRole, companyName, jobDescription);
   const cached = readCachedEnrichment(hash);
   if (cached) {
     return { enrichment: cached, fromCache: true };
@@ -452,13 +467,13 @@ export async function generateCheatSheetEnrichmentWithAI(
   // limit stoi na zerze, wysyłka skazana na 402 tylko marnowałaby czas.
   if (!consumeAiLocally()) {
     throw new Error(
-      'Dzisiejszy limit darmowych wywołań AI jest wyczerpany. Limit odnowi się automatycznie o północy.'
+      `Dzisiejszy limit darmowych wywołań AI jest wyczerpany. Limit odnowi się automatycznie o ${AI_QUOTA_RESET_TIME}.`
     );
   }
 
-  let data: { enrichment: CheatSheetEnrichment };
+  let data: { enrichment: unknown };
   try {
-    data = await api.post<{ enrichment: CheatSheetEnrichment }>('/api/generate-cheat-sheet', {
+    data = await api.post<{ enrichment: unknown }>('/api/generate-cheat-sheet', {
       vault,
       targetRole,
       companyName,
@@ -468,14 +483,17 @@ export async function generateCheatSheetEnrichmentWithAI(
     });
   } catch (err) {
     // Zwracamy pobrany kredyt w razie błędu sieciowego lub awarii serwera
-    refundAiLocally();
     if (err instanceof ApiError) throw err;
-    throw new Error('Nie udało się wygenerować spersonalizowanej ściągi przez Gemini Flash.', {
+    throw new Error('Nie udało się wygenerować spersonalizowanej ściągi przez skonfigurowanego dostawcę AI.', {
       cause: err,
     });
   }
 
-  const enrichment = data.enrichment;
+  const parsedEnrichment = interviewCheatSheetEnrichmentSchema.safeParse(data.enrichment);
+  if (!parsedEnrichment.success) {
+    throw new Error('Serwer zwrócił niekompletne wzbogacenie ściągi. Lokalny szkielet pozostaje dostępny.');
+  }
+  const enrichment = parsedEnrichment.data;
   writeCachedEnrichment(hash, enrichment);
   return { enrichment, fromCache: false };
 }

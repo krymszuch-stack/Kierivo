@@ -8,7 +8,7 @@ import {
   resolveD09SemanticRelation,
 } from '../d09/ontology';
 import type { D09JobRequirement, D09RequirementMatch } from '../d09/types';
-import { toMonthIndex } from '../temporal';
+import { fromMonthIndex, toMonthIndex } from '../temporal';
 import { halfLifeDecay, scoreD11SkillRecency } from './scorer';
 import type { D11AuditResult, D11DatedSkillEvidence } from './types';
 
@@ -145,6 +145,7 @@ export async function runD11FromVault(input: {
   halfLifeMonths?: number;
   vaultCompletenessConfidence?: number;
 }): Promise<D11AuditResult> {
+  fromMonthIndex(input.referenceMonth);
   const halfLifeMonths = input.halfLifeMonths ?? 48;
   const d09 = await runD09FromVault({
     vault: input.vault,

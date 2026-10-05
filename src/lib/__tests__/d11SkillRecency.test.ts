@@ -72,6 +72,18 @@ function experience(input: {
 }
 
 describe('D11 Competency Recency & Half-Life Decay', () => {
+  it('odrzuca ulamek miesiaca referencyjnego zamiast wyliczac czesc miesiaca swiezosci', async () => {
+    const vault = vaultWithHistory([
+      experience({ id: 'past', startDate: '2025-01', endDate: '2026-08', text: 'React' }),
+    ]);
+
+    await expect(runD11FromVault({
+      vault,
+      jobDescription: jdReact,
+      referenceMonth: referenceMonth + 0.5,
+      vaultCompletenessConfidence: 1,
+    })).rejects.toThrow(/MonthIndex musi by/);
+  });
   it('JOB_FIT agreguje kanoniczny identyfikator D09, a nie nazwę legacy', () => {
     const jobFit = DEFAULT_AUDIT_CORE_CONFIG.domainPolicies.find((policy) => policy.domainId === 'JOB_FIT');
     expect(jobFit?.moduleWeights.MOD_JOB_ALIGNMENT).toBe(1);

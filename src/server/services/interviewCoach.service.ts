@@ -1,7 +1,14 @@
 import type { InterviewCoachProfileContext } from '../../lib/interviewCoachContext';
-import { pseudonymize } from '../pseudonymize';
+import { preparePromptForModel, pseudonymize } from '../pseudonymize';
 import { generateWithUsage, truncateForModel, parseModelJson } from '../geminiClient';
 import { loadConfig } from '../config';
+import { normalizeStarAnswerEvaluation, type StarAnswerEvaluation } from '../../lib/starEvaluation';
+import {
+  parseGeneratedInterviewQuestions,
+  parseInterviewQuestionsInput,
+  parseStarEvaluationInput,
+  type GeneratedInterviewQuestion,
+} from '../../lib/interviewCoachInput';
 
 export interface GenerateQuestionsOptions {
   profileContext?: InterviewCoachProfileContext;
@@ -10,13 +17,7 @@ export interface GenerateQuestionsOptions {
   jobDescription?: string;
 }
 
-export interface InterviewQuestionItem {
-  id: string;
-  category: 'behavioral' | 'situational' | 'competency';
-  question: string;
-  recruiterIntent: string;
-  suggestedStarTips: string;
-}
+export type InterviewQuestionItem = GeneratedInterviewQuestion;
 
 export interface EvaluateStarAnswerOptions {
   question: string;
@@ -24,24 +25,7 @@ export interface EvaluateStarAnswerOptions {
   targetRole?: string;
 }
 
-export interface StarComponentFeedback {
-  score: number; // 1-10
-  feedback: string;
-}
-
-export interface StarAnswerEvaluation {
-  overallScore: number; // 1-10
-  verdict: 'EXCELLENT' | 'SOLID' | 'NEEDS_REFINEMENT';
-  starBreakdown: {
-    situation: StarComponentFeedback;
-    task: StarComponentFeedback;
-    action: StarComponentFeedback;
-    result: StarComponentFeedback;
-  };
-  strengths: string[];
-  improvements: string[];
-  exemplaryResponse: string;
-}
+export type { StarAnswerEvaluation } from '../../lib/starEvaluation';
 
 /**
  * Generuje pytania rekrutacyjne (behawioralne, sytuacyjne, kompetencyjne)
@@ -50,7 +34,7 @@ export interface StarAnswerEvaluation {
 export async function generateInterviewQuestionsWithAi(
   options: GenerateQuestionsOptions
 ): Promise<{ questions: InterviewQuestionItem[]; usage?: any }> {
-  const { profileContext, targetRole, targetCompany, jobDescription } = options;
+  const { profileContext, targetRole, targetCompany, jobDescription } = parseInterviewQuestionsInput(options);
 
   let sanitizedHistory: string[] = [];
   let sanitizedSkills: string[] = [];
@@ -115,11 +99,12 @@ ${jdContext}`;
     : config.OLLAMA_MODEL;
 
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+  const safePrompt = preparePromptForModel(fullPrompt);
 
   const response = await generateWithUsage(
     {
       model: modelToUse,
-      contents: fullPrompt,
+      contents: safePrompt.text,
       config: {
         responseMimeType: 'application/json',
         maxOutputTokens: 4096,
@@ -128,13 +113,14 @@ ${jdContext}`;
     'interviewCoach:generateQuestions'
   );
 
-  const parsed = parseModelJson<{ questions: InterviewQuestionItem[] }>(
+  const parsed = parseModelJson<unknown>(
     response.text,
     'interviewCoach:generateQuestions'
   );
+  const questions = parseGeneratedInterviewQuestions(parsed);
 
   return {
-    questions: parsed.questions || [],
+    questions,
     usage: response.usageMetadata,
   };
 }
@@ -145,11 +131,10 @@ ${jdContext}`;
 export async function evaluateStarAnswerWithAi(
   options: EvaluateStarAnswerOptions
 ): Promise<{ evaluation: StarAnswerEvaluation; usage?: any }> {
-  const { question, answer, targetRole } = options;
-
-  if (!answer || answer.trim().length === 0) {
+  if (typeof options.answer !== 'string' || !options.answer.trim()) {
     throw new Error('Brak treści odpowiedzi do analizy.');
   }
+  const { question, answer, targetRole } = parseStarEvaluationInput(options);
 
   const role = targetRole?.trim() || 'Nie podano stanowiska';
 
@@ -173,7 +158,7 @@ Wymogi punktacji:
 ZWRÓĆ WYŁĄCZNIE CZYSTY JSON:
 {
   "overallScore": 8,
-  "verdict": "SOLID",
+  "verdict": "EXCELLENT",
   "starBreakdown": {
     "situation": { "score": 8, "feedback": "..." },
     "task": { "score": 7, "feedback": "..." },
@@ -199,11 +184,12 @@ Kontekst kandydata: brak. Oceniaj wyłącznie treść podanej odpowiedzi.`;
     : config.OLLAMA_MODEL;
 
   const fullPrompt = `${systemPrompt}\n\n${userPrompt}`;
+  const safePrompt = preparePromptForModel(fullPrompt);
 
   const response = await generateWithUsage(
     {
       model: modelToUse,
-      contents: fullPrompt,
+      contents: safePrompt.text,
       config: {
         responseMimeType: 'application/json',
         maxOutputTokens: 4096,
@@ -212,13 +198,13 @@ Kontekst kandydata: brak. Oceniaj wyłącznie treść podanej odpowiedzi.`;
     'interviewCoach:evaluateStarAnswer'
   );
 
-  const parsed = parseModelJson<StarAnswerEvaluation>(
+  const parsed = parseModelJson<unknown>(
     response.text,
     'interviewCoach:evaluateStarAnswer'
   );
 
   return {
-    evaluation: parsed,
+    evaluation: normalizeStarAnswerEvaluation(parsed),
     usage: response.usageMetadata,
   };
 }

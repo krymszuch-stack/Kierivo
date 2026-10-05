@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import {
-  Printer,
   Copy,
   Check,
   Sparkles,
   Palette,
   Mail,
+  Globe,
   Phone,
   MapPin,
   Linkedin,
@@ -18,7 +18,6 @@ import {
   LayoutTemplate,
   Lightbulb,
   Download,
-  Settings2,
   FolderArchive,
   BookmarkPlus,
   Tag,
@@ -33,7 +32,6 @@ import {
   CV_TEMPLATE_CATALOG,
   findCvTemplate,
 } from '../../lib/cvTemplateEngine';
-import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
 import { saveCV, PRESET_TAGS } from '../../lib/cvLibraryStorage';
 import { Modal } from '../../components/ui/Modal';
 import { Cv360VerifierModal } from './Cv360VerifierModal';
@@ -43,6 +41,9 @@ import { applyManualCvOverrides, buildCvPlainText } from '../../lib/cvPlainText'
 import { useAuth } from '../../context/AuthContext';
 import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 import { ALL_LICENSES } from '../../data/licenses';
+import { hasCanonicalAtsScore } from '../../lib/canonicalAts';
+import { resolveDocumentSkillGroups } from '../../lib/documentSkillGroups';
+import { getExplicitCvConsentClause } from '../../lib/cvConsentClause';
 
 export interface DocumentRendererProps {
   vault: MasterVault;
@@ -74,6 +75,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   className = '',
 }) => {
   const { user } = useAuth();
+  const explicitConsentClause = getExplicitCvConsentClause(vault);
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeTemplateId, setActiveTemplateId] = useState('cv-minimal');
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0].hex);
@@ -83,7 +85,6 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
   const [showEmptyHints, setShowEmptyHints] = useState(true);
 
    // Silnik Dual-Layer Semantic PDF (mvcv)
-   const [isExportingPdf, setIsExportingPdf] = useState(false);
    const [pdfTheme, setPdfTheme] = useState('parchment');
    const [pdfLayout, setPdfLayout] = useState('sidebar');
    const [pdfTargetPages, setPdfTargetPages] = useState<1 | 2>(1);
@@ -100,6 +101,11 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
   // Lokalna robocza wersja dokumentu z możliwością edycji przed drukiem
   const [docVault, setDocVault] = useState<MasterVault>(() => JSON.parse(JSON.stringify(vault)));
+  const [initialVaultSkills] = useState(() => ({
+    hardSkills: [...(vault.skillsMatrix?.hardSkills ?? [])],
+    toolsAndTech: [...(vault.skillsMatrix?.toolsAndTech ?? [])],
+    softSkills: [...(vault.skillsMatrix?.softSkills ?? [])],
+  }));
   const [manualContentOverrides, setManualContentOverrides] = useState<Partial<{ title: string; summary: string }>>({});
   const effectiveTailoredResume = useMemo(
     () => applyManualCvOverrides(tailoredResume, manualContentOverrides),
@@ -115,10 +121,20 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     typeof docVault.rawText === 'string' && docVault.rawText.trim().length > 0;
   const history = docVault.history || [];
   const education = docVault.education || [];
-  const hardSkills = docVault.skillsMatrix?.hardSkills || [];
+  const projects = docVault.projects || [];
+  const documentSkills = resolveDocumentSkillGroups(
+    initialVaultSkills,
+    {
+      hardSkills: docVault.skillsMatrix?.hardSkills ?? [],
+      toolsAndTech: docVault.skillsMatrix?.toolsAndTech ?? [],
+      softSkills: docVault.skillsMatrix?.softSkills ?? [],
+    },
+    effectiveTailoredResume?.skillsMatched,
+  );
+  const hardSkills = documentSkills.hardSkills;
   const additionalSkillGroups = [
-    { title: 'Narzędzia i technologie', items: docVault.skillsMatrix?.toolsAndTech || [] },
-    { title: 'Umiejętności interpersonalne', items: docVault.skillsMatrix?.softSkills || [] },
+    { title: 'Narzędzia i technologie', items: documentSkills.toolsAndTech },
+    { title: 'Umiejętności interpersonalne', items: documentSkills.softSkills },
   ];
   const certifications = docVault.skillsMatrix?.certifications || [];
   const languages = docVault.profiler?.languages || [];
@@ -143,43 +159,9 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     }
     setTimeout(() => {
       window.print();
-      onExported?.({ exportedCv: buildExportMetadata(), vault: docVault, tailoredResume: effectiveTailoredResume });
+      // `window.print()` nie informuje, czy użytkownik wydrukował dokument,
+      // zapisał PDF czy zamknął okno — samo otwarcie dialogu nie jest eksportem.
     }, 40);
-  };
-
-  const handleExportSemanticPdf = async () => {
-    if (isExportingPdf) return;
-    setIsExportingPdf(true);
-    try {
-      await downloadSemanticPdf({
-        vault: docVault,
-        tailoredResume: effectiveTailoredResume,
-        theme: pdfTheme,
-        layout: pdfLayout,
-        targetPages: pdfTargetPages,
-      });
-      showToast('Pobrano dwuwarstwowy PDF', {
-        message: 'Dokument z warstwą wizualną i drzewem Tagged PDF (ATS) został pomyślnie wygenerowany.',
-        variant: 'success',
-      });
-      onExported?.({
-        exportedCv: {
-          templateId: `semantic-${pdfTheme}`,
-          templateName: `Dual-Layer ${pdfTheme} (${pdfLayout})`,
-          fit: 'ats-friendly',
-          exportedAt: new Date().toISOString(),
-        },
-        vault: docVault,
-        tailoredResume: effectiveTailoredResume,
-      });
-    } catch (err) {
-      showToast('Błąd generowania PDF', {
-        message: err instanceof Error ? err.message : 'Wystąpił nieoczekiwany błąd.',
-        variant: 'error',
-      });
-    } finally {
-      setIsExportingPdf(false);
-    }
   };
 
   const openSaveLibraryModal = () => {
@@ -188,8 +170,8 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
     const defaultTitle = `${docVault.personalInfo?.fullName ? `${docVault.personalInfo.fullName} — ` : ''}${role}${company} (${new Date().toLocaleDateString('pl-PL')})`;
     setSaveLibraryTitle(defaultTitle);
     const initialTags: string[] = [pdfTargetPages === 1 ? '1-stronicowe' : '2-stronicowe'];
-    if (effectiveTailoredResume?.atsScore) {
-      initialTags.push('Zweryfikowane ATS');
+    if (effectiveTailoredResume && hasCanonicalAtsScore(effectiveTailoredResume)) {
+      initialTags.push('Analiza ATS Kierivo');
     }
     setSaveLibraryTags(initialTags);
     setIsSaveLibraryOpen(true);
@@ -479,7 +461,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
             icon={ShieldCheck}
             onClick={() => setIsVerifierOpen(true)}
             className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/10 font-semibold"
-            aria-label="Uruchom audyt CV 360°"
+            aria-label="Otwórz analizę profilu AI"
           >
             Audyt CV 360°
           </Button>
@@ -627,6 +609,12 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
                       <span className="flex min-w-0 items-center gap-1 break-all">
                         <Github className="h-3.5 w-3.5 shrink-0 text-subtle" />
                         {personal.github}
+                      </span>
+                    )}
+                    {personal.website && (
+                      <span className="flex min-w-0 items-center gap-1 break-all">
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-subtle" />
+                        {personal.website}
                       </span>
                     )}
                   </>
@@ -813,6 +801,29 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
               </div>
             )}
 
+            {projects.length > 0 && (
+              <div data-cv-section="projects" className="space-y-2 border-t border-line/60 pt-4">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
+                  Projekty
+                </h2>
+                <ul className="space-y-3 text-xs text-ink/90">
+                  {projects.map((project) => (
+                    <li key={project.id} className="page-break-inside-avoid space-y-1">
+                      {(project.name || project.role) && (
+                        <p className="font-bold">{[project.name, project.role].filter(Boolean).join(' — ')}</p>
+                      )}
+                      {project.description && <p className="leading-relaxed">{project.description}</p>}
+                      {Array.isArray(project.techStack) && project.techStack.length > 0 && (
+                        <p className="text-muted">{project.techStack.join(' · ')}</p>
+                      )}
+                      {project.metrics && <p>{project.metrics}</p>}
+                      {project.link && <p className="break-all text-muted">{project.link}</p>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {licenseLabels.length > 0 && (
               <div data-cv-section="licenses" className="space-y-2 border-t border-line/60 pt-4">
                 <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted font-mono">
@@ -848,14 +859,11 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
               </div>
             )}
 
-            {/* Klauzula RODO / GDPR — wymagana prawnie w procesach rekrutacyjnych */}
-            <div data-cv-section="gdpr-clause" className="mt-8 border-t border-line/40 pt-3">
-              <p className="text-[9px] leading-relaxed text-muted/80 text-justify">
-                {vault.personalInfo?.rodoClause ||
-                  vault.personalInfo?.gdprClause ||
-                  'Wyrażam zgodę na przetwarzanie moich danych osobowych dla potrzeb niezbędnych do realizacji procesu rekrutacji zgodnie z Rozporządzeniem Parlamentu Europejskiego i Rady (UE) 2016/679 (RODO).'}
-              </p>
-            </div>
+            {explicitConsentClause && (
+              <div data-cv-section="gdpr-clause" className="mt-8 border-t border-line/40 pt-3">
+                <p className="text-[9px] leading-relaxed text-muted/80 text-justify">{explicitConsentClause}</p>
+              </div>
+            )}
 
           </div>
         </div>
@@ -1020,7 +1028,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
         </div>
       </Modal>
 
-      {/* Modal Weryfikatora CV AI 360° (Potrójna Pętla) */}
+      {/* Analiza AI danych profilu w kontekście oferty */}
       <Cv360VerifierModal
         isOpen={isVerifierOpen}
         onClose={() => setIsVerifierOpen(false)}
@@ -1047,6 +1055,7 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
           setPdfAvatar(settings.avatar);
         }}
         onPrint={handlePrint}
+        onPdfDownloaded={onExported}
         onAuditOpen={() => setIsVerifierOpen(true)}
       />
     </div>

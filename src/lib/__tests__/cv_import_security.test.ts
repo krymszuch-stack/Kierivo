@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
-import { extractTextFromAnyFile } from '../cvUniversalParser';
+import { DocxArchiveLimitError, extractTextFromAnyFile, InvalidDocxError, UnsupportedLegacyDocFormatError, UnsupportedMasterVaultJsonCvError } from '../cvUniversalParser';
 
 /**
  * Testy ochron importu CV (cvUniversalParser.ts):
@@ -92,6 +92,19 @@ describe('Ochrona 2: walidacja magic bytes', () => {
     );
   });
 
+  it('odrzuca poprawny nagłówek starego Word .doc z informacją o konwersji', async () => {
+    // OLE Compound File signature plików Word 97–2003; format .doc nie jest DOCX/ZIP.
+    const legacyWordHeader = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+    const file = makeFile('cv.doc', legacyWordHeader, 'application/msword');
+
+    const error = await extractTextFromAnyFile(file).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(UnsupportedLegacyDocFormatError);
+    expect(error).toMatchObject({
+      code: 'UNSUPPORTED_LEGACY_DOC_FORMAT',
+      message: expect.stringMatching(/Word 97.?2003.*DOCX|zapisz.*DOCX/i),
+    });
+  });
+
   it('odrzuca plik .pdf z headerem JPEG (FFD8FFE0)', async () => {
     const jpegHeader = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
     const file = makeFile('cv.pdf', jpegHeader, 'application/pdf');
@@ -110,6 +123,21 @@ describe('Ochrona 2: walidacja magic bytes', () => {
     );
   });
 
+  it('odrzuca uszkodzony kontener DOCX zamiast zwracaÄ‡ jego surowe bajty jako tekst CV', async () => {
+    const cvText = new TextEncoder().encode('Jan Kowalski\nDoĹ›wiadczenie zawodowe\nTechnik wsparcia IT');
+    const malformedDocx = new Uint8Array(4 + cvText.length);
+    malformedDocx.set([0x50, 0x4b, 0x03, 0x04]);
+    malformedDocx.set(cvText, 4);
+    const file = makeFile('uszkodzone-cv.docx', malformedDocx);
+
+    const error = await extractTextFromAnyFile(file).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(InvalidDocxError);
+    expect(error).toMatchObject({
+      code: 'INVALID_DOCX',
+      message: expect.stringMatching(/dokumentu DOCX.*uszkodzony/i),
+    });
+  });
+
   it('akceptuje .rtf z poprawnymi magic bytes (7B 5C 72 74)', async () => {
     // RTF header: {\rt
     const rtfContent = new Uint8Array([0x7b, 0x5c, 0x72, 0x74, 0x66, 0x31, 0x20, 0x61, 0x6e]);
@@ -125,12 +153,16 @@ describe('Ochrona 2: walidacja magic bytes', () => {
     expect(result.text).toContain('Dowolna treść');
   });
 
-  it('akceptuje .json z BOM UTF-8', async () => {
-    const jsonContent = new Uint8Array([0xef, 0xbb, 0xbf, 0x7b, 0x22, 0x6e, 0x61, 0x6d, 0x65, 0x22, 0x7d]);
+  it('kieruje JSON profilu do importu MasterVault zamiast analizować go jak tekst CV', async () => {
+    const jsonContent = new TextEncoder().encode('\uFEFF{"personalInfo":{"fullName":"Jan Kowalski"},"history":[]}');
     const file = makeFile('cv.json', jsonContent, 'application/json');
 
-    const result = await extractTextFromAnyFile(file);
-    expect(result.text).toContain('name');
+    const error = await extractTextFromAnyFile(file).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(UnsupportedMasterVaultJsonCvError);
+    expect(error).toMatchObject({
+      code: 'MASTERVAULT_JSON_IS_NOT_CV',
+      message: expect.stringMatching(/kopię profilu MasterVault.*edytorze profilu/i),
+    });
   });
 });
 
@@ -138,6 +170,44 @@ describe('Ochrona 2: walidacja magic bytes', () => {
 // 3. Limit dekompresji DOCX (5 MB)
 // ---------------------------------------------------------------
 describe('Ochrona 3: limit dekompresji DOCX 5 MB', () => {
+  it('odrzuca archiwum z nadmiernym rozmiarem przed ekstrakcją Mammoth', async () => {
+    const validFile = await createDocxFile('Jan Kowalski\nDoświadczenie zawodowe\nTechnik wsparcia IT');
+    const bytes = new Uint8Array(await validFile.arrayBuffer());
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    let endRecordOffset = -1;
+    for (let offset = bytes.length - 22; offset >= 0; offset -= 1) {
+      if (view.getUint32(offset, true) === 0x06054b50) {
+        endRecordOffset = offset;
+        break;
+      }
+    }
+    expect(endRecordOffset).toBeGreaterThanOrEqual(0);
+
+    const directoryOffset = view.getUint32(endRecordOffset + 16, true);
+    const entryCount = view.getUint16(endRecordOffset + 10, true);
+    let cursor = directoryOffset;
+    let patchedDocumentEntry = false;
+    for (let index = 0; index < entryCount; index += 1) {
+      expect(view.getUint32(cursor, true)).toBe(0x02014b50);
+      const nameLength = view.getUint16(cursor + 28, true);
+      const extraLength = view.getUint16(cursor + 30, true);
+      const commentLength = view.getUint16(cursor + 32, true);
+      const name = new TextDecoder().decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+      if (name === 'word/document.xml') {
+        view.setUint32(cursor + 24, 21 * 1024 * 1024, true);
+        patchedDocumentEntry = true;
+        break;
+      }
+      cursor += 46 + nameLength + extraLength + commentLength;
+    }
+    expect(patchedDocumentEntry).toBe(true);
+
+    const file = makeFile('cv-decompression-bomb.docx', bytes);
+    const error = await extractTextFromAnyFile(file).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(DocxArchiveLimitError);
+    expect(error).toMatchObject({ code: 'DOCX_ARCHIVE_LIMIT' });
+  });
+
   it('odrzuca DOCX z tekstem > 5 MB po dekompresji', async () => {
     // Generujemy prawidłowy kontener DOCX/ZIP zawierający [Content_Types].xml, word/document.xml i relacje,
     // którego tekst po dekompresji przekracza 5 MB (ok. 5.2 MB), a sam plik dzięki kompresji zajmuje kilkanaście KB.

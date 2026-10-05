@@ -106,6 +106,14 @@ class TestPipelineAndVerification(unittest.TestCase):
             "education": [],
             "certifications": [],
             "licenses": ["SEP G1 E1 do 1 kV — eksploatacja"],
+            "projects": [{
+                "name": "Projekt migracji stanowisk",
+                "role": "koordynator",
+                "description": "Przeniesienie 24 stanowisk do nowego obrazu systemu.",
+                "techStack": ["Windows 11", "Intune"],
+                "metrics": "24 stanowiska",
+                "link": "https://example.invalid/projekty/migracja-stanowisk",
+            }],
             "clause": "",
         }
         with open(profile_path, "w", encoding="utf-8") as f:
@@ -125,6 +133,12 @@ class TestPipelineAndVerification(unittest.TestCase):
             self.assertIn("TCP/IP", visible)
             self.assertIn("Excel", visible)
             self.assertIn("SEP G1 E1 do 1 kV", visible)
+            self.assertIn("Projekt migracji stanowisk", visible)
+            self.assertIn("koordynator", visible)
+            self.assertIn("Przeniesienie 24 stanowisk do nowego obrazu systemu", visible)
+            self.assertIn("Windows 11 · Intune", visible)
+            self.assertIn("24 stanowiska", visible)
+            self.assertIn("https://example.invalid/projekty/migracja-stanowisk", visible)
             self.assertNotRegex(semantics + visible, r"(?i)zaawansowan|udokumentowane zastosowanie|DDL/DML|optimiz")
             self.assertNotIn("Wyrażam zgodę na przetwarzanie", semantics + visible)
             self.assertFalse(has_invisible_text(pdf))

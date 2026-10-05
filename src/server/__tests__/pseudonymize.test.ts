@@ -6,6 +6,7 @@ import {
   identifyingValues,
   assertNoPii,
   PiiLeakError,
+  preparePromptForModel,
 } from '../pseudonymize';
 import type { MasterVault } from '../../types';
 
@@ -14,17 +15,17 @@ const vault = {
     fullName: "Sean O'Brien",
     email: 'sean.obrien@example.pl',
     phone: '+48 600 700 800',
-    location: 'Kraków',
+    location: 'KrakĂłw',
     photoUrl: 'https://cdn.example.pl/zdjecia/sean.jpg',
     title: 'Backend Developer',
-    summary: 'Programista z 8-letnim stażem.',
+    summary: 'Programista z 8-letnim staĹĽem.',
   },
 } as unknown as Partial<MasterVault>;
 
 describe('Pseudonimizacja na granicy modelu', () => {
-  it('usuwa imię, e-mail, telefon i miasto z tekstu wysyłanego do modelu', () => {
+  it('usuwa imiÄ™, e-mail, telefon i miasto z tekstu wysyĹ‚anego do modelu', () => {
     const input =
-      "Sean O'Brien, Kraków. Kontakt: sean.obrien@example.pl, tel. +48 600 700 800. Programista backendu.";
+      "Sean O'Brien, KrakĂłw. Kontakt: sean.obrien@example.pl, tel. +48 600 700 800. Programista backendu.";
 
     const { text } = pseudonymize(input, identifyingValues(vault));
 
@@ -33,22 +34,22 @@ describe('Pseudonimizacja na granicy modelu', () => {
     expect(text).not.toContain('600 700 800');
     expect(text).toContain('[KANDYDAT]');
     expect(text).toContain('[EMAIL]');
-    // Treść merytoryczna musi przetrwać — inaczej model nie ma z czego korzystać.
+    // TreĹ›Ä‡ merytoryczna musi przetrwaÄ‡ â€” inaczej model nie ma z czego korzystaÄ‡.
     expect(text).toContain('Programista backendu');
   });
 
-  it('przywraca prawdziwe dane w wyniku wracającym do użytkownika', () => {
+  it('przywraca prawdziwe dane w wyniku wracajÄ…cym do uĹĽytkownika', () => {
     const input = "Sean O'Brien, e-mail: sean.obrien@example.pl";
     const { text, map } = pseudonymize(input, identifyingValues(vault));
 
-    // Model zwraca tekst z placeholderami — list zaadresowany do [KANDYDAT]
-    // byłby bezużyteczny.
-    const modelOutput = `Szanowni Państwo, nazywam się ${text.split(',')[0]}.`;
+    // Model zwraca tekst z placeholderami â€” list zaadresowany do [KANDYDAT]
+    // byĹ‚by bezuĹĽyteczny.
+    const modelOutput = `Szanowni PaĹ„stwo, nazywam siÄ™ ${text.split(',')[0]}.`;
 
     expect(rehydrate(modelOutput, map)).toContain("Sean O'Brien");
   });
 
-  it('nie myli dwóch różnych adresów e-mail przy przywracaniu', () => {
+  it('nie myli dwĂłch rĂłĹĽnych adresĂłw e-mail przy przywracaniu', () => {
     const input = 'Kontakt: jan@example.pl oraz rekrutacja@firma.pl';
     const { text, map } = pseudonymize(input);
 
@@ -57,33 +58,38 @@ describe('Pseudonimizacja na granicy modelu', () => {
     expect(rehydrate(text, map)).toBe(input);
   });
 
-  it('usuwa zdjęcie całkowicie, bez placeholdera', () => {
-    // Wizerunek to dane szczególnej kategorii (art. 9 RODO), a do wygenerowania
-    // treści CV nie jest potrzebny w żadnej postaci.
+  it('usuwa zdjÄ™cie caĹ‚kowicie, bez placeholdera', () => {
+    // Wizerunek to dane szczegĂłlnej kategorii (art. 9 RODO), a do wygenerowania
+    // treĹ›ci CV nie jest potrzebny w ĹĽadnej postaci.
     const safe = stripSensitiveFields(vault);
 
     expect(safe.personalInfo).not.toHaveProperty('photoUrl');
     expect(JSON.stringify(safe)).not.toContain('sean.jpg');
-    // Pozostałe pola zostają nietknięte.
+    // PozostaĹ‚e pola zostajÄ… nietkniÄ™te.
     expect(safe.personalInfo?.title).toBe('Backend Developer');
   });
 
-  it('zamienia dłuższe dopasowanie przed krótszym', () => {
-    // Gdyby "Sean" poszło przed "Sean O'Brien", w tekście zostałoby "[KANDYDAT] O'Brien".
-    const { text } = pseudonymize("Sean O'Brien pracował z Seanem", ["Sean O'Brien", 'Sean']);
+  it('zamienia dĹ‚uĹĽsze dopasowanie przed krĂłtszym', () => {
+    // Gdyby "Sean" poszĹ‚o przed "Sean O'Brien", w tekĹ›cie zostaĹ‚oby "[KANDYDAT] O'Brien".
+    const { text } = pseudonymize("Sean O'Brien pracowaĹ‚ z Seanem", ["Sean O'Brien", 'Sean']);
 
     expect(text).not.toContain("O'Brien");
   });
 
-  it('nie wywraca się na pustym wejściu', () => {
+  it('nie wywraca siÄ™ na pustym wejĹ›ciu', () => {
     expect(pseudonymize('').text).toBe('');
     expect(rehydrate('', new Map())).toBe('');
     expect(identifyingValues({} as Partial<MasterVault>)).toEqual([]);
   });
+  it('nie usuwa krotkich dat ani zakresow miesiecznych jako telefonow', () => {
+    const input = 'Doswiadczenie: 2021-03 do 2023-12; oferta 2026-10-02.';
+    expect(pseudonymize(input).text).toBe(input);
+    expect(preparePromptForModel(input).text).toBe(input);
+  });
 });
 
 describe('Bramka assertNoPii', () => {
-  it('przepuszcza ładunek po pseudonimizacji', () => {
+  it('przepuszcza Ĺ‚adunek po pseudonimizacji', () => {
     const { text } = pseudonymize(
       "Sean O'Brien, sean.obrien@example.pl, +48 600 700 800",
       identifyingValues(vault)
@@ -92,7 +98,7 @@ describe('Bramka assertNoPii', () => {
     expect(() => assertNoPii(text)).not.toThrow();
   });
 
-  it('blokuje wysyłkę, gdy w ładunku został adres e-mail', () => {
+  it('blokuje wysyĹ‚kÄ™, gdy w Ĺ‚adunku zostaĹ‚ adres e-mail', () => {
     expect(() => assertNoPii('Kandydat: jan.kowalski@example.pl')).toThrow(PiiLeakError);
   });
 
@@ -101,9 +107,4 @@ describe('Bramka assertNoPii', () => {
     expect(() => assertNoPii('tel. 600 700 800')).toThrow(PiiLeakError);
   });
 
-  it('przepuszcza ścieżkę parsowania CV, która z definicji musi widzieć dane', () => {
-    // parseRawCvToVault ma za zadanie WYDOBYĆ imię, e-mail i telefon z CV —
-    // pseudonimizacja wejścia zniszczyłaby tę funkcję. Wyjątek jest jawny.
-    expect(() => assertNoPii('Jan Kowalski jan@example.pl', { allowPii: true })).not.toThrow();
-  });
 });

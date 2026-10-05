@@ -47,8 +47,8 @@ const JD_THREE = [
 
 const JD_KUBERNETES = ['Wymagania:', '- Kubernetes'].join('\n');
 
-function coverageBand(score: number): CoverageBand {
-  if (score <= 0) return 'NONE';
+function coverageBand(score: number | null): CoverageBand {
+  if (score === null || score <= 0) return 'NONE';
   if (score < 80) return 'PARTIAL';
   return 'HIGH';
 }
@@ -58,8 +58,8 @@ function coverageBand(score: number): CoverageBand {
  * wyłącznie semantykę dowodu na wymagania, więc pasmo wyprowadzamy z coverage.
  * Dzięki temu różne wagi layoutu/experience nie tworzą fałszywego konfliktu.
  */
-function fitBandFromEvidence(hasEvidence: boolean, coverage: number): FitBand {
-  if (!hasEvidence) return 'INSUFFICIENT';
+function fitBandFromEvidence(hasEvidence: boolean, coverage: number | null): FitBand {
+  if (!hasEvidence || coverage === null) return 'INSUFFICIENT';
   if (coverage < 50) return 'LOW';
   if (coverage < 80) return 'MEDIUM';
   return 'HIGH';
@@ -93,8 +93,8 @@ function adaptSimulator(
   const hardMatches = result.layer2Nlp.lemmatizedMatches.filter(
     (match) => match.category === 'HARD_SKILL',
   );
-  const hasEvidence = hardMatches.length > 0;
   const coverage = result.layer2Nlp.hardSkillsCoverage;
+  const hasEvidence = coverage !== null && hardMatches.length > 0;
 
   return {
     contract: {
@@ -275,10 +275,11 @@ function assertExpectation(
   }
 
   if (expected.maxRecencyScore !== undefined) {
+    const recencyScore = simulator.result.layer3Scoring.recencyScore;
     expect(
-      simulator.result.layer3Scoring.recencyScore,
-      `${fixture.id}: recency without dated evidence`,
-    ).toBeLessThanOrEqual(expected.maxRecencyScore);
+      recencyScore === null || recencyScore <= expected.maxRecencyScore,
+      `${fixture.id}: recency is absent without dated evidence or below its limit`,
+    ).toBe(true);
   }
 }
 

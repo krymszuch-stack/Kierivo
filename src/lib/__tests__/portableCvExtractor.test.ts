@@ -7,8 +7,36 @@ import {
   convertResumeDataToParsedCVResult,
   MasterVaultEmbeddedData,
 } from '../portableCvExtractor';
+import { parsePortableCvData } from '../portableCvSchema';
 
 describe('portableCvExtractor Suite (Smart Portable CV Round-Trip)', () => {
+  it('odrzuca załącznik z błędnym typem kolekcji zamiast przekazywać go do konwertera', () => {
+    expect(parsePortableCvData({
+      masterVaultRecord: { resumeData: { name: 'Jan Nowak', skills: 'SEP G1' } },
+    })).toBeNull();
+  });
+
+  it('nie tworzy zastępczej nazwy projektu, gdy załącznik jej nie zawiera', () => {
+    const parsed = convertResumeDataToParsedCVResult({
+      masterVaultRecord: {
+        resumeData: {
+          name: 'Jan Nowak',
+          projects: [{ description: 'Opis bez nazwy' }],
+        },
+      },
+    });
+
+    expect(parsed?.projects).toBeUndefined();
+  });
+
+  it('odrzuca wadliwy rekord przy konwersji nawet jeśli wywołujący ominął ekstraktor', () => {
+    const parsed = convertResumeDataToParsedCVResult({
+      masterVaultRecord: { resumeData: { name: 17 } },
+    } as unknown as MasterVaultEmbeddedData);
+
+    expect(parsed).toBeNull();
+  });
+
   it('bezstratnie odzyskuje profil z realnego pliku PDF z załącznikiem mastervault.json', async () => {
     const samplePdfPath = path.resolve(process.cwd(), 'mastervault-cv/sample/out.pdf');
     if (!fs.existsSync(samplePdfPath)) {

@@ -103,7 +103,11 @@ export function buildPlainTextCanonicalDocument(
   },
 ): CanonicalDocumentRepresentation {
   const normalized = text.normalize('NFKC').replace(/\r\n?/g, '\n').trim();
-  const extractionConfidence = clamp01(options?.extractionConfidence ?? 0.5);
+  const requestedConfidence = options?.extractionConfidence;
+  // Brak pomiaru albo wartość niepoprawna nie może udawać skalibrowanej pewności ekstrakcji.
+  const extractionConfidence = Number.isFinite(requestedConfidence)
+    ? clamp01(requestedConfidence!)
+    : 0;
   return {
     source: options?.source ?? 'EXTERNAL_DOCUMENT',
     fullText: normalized,

@@ -63,6 +63,12 @@ export interface VaultSyncResult {
   shouldUpload: boolean;
 }
 
+function hasSameVaultContent(local: MasterVault, cloud: MasterVault): boolean {
+  // Zapis lokalny i synchronizacja chmurowa mogą nadać różne czasy temu samemu
+  // snapshotowi. Znaczniki czasu nie są treścią CV i nie powinny wymuszać konfliktu.
+  return stableStringify({ ...local, updatedAt: '' }) === stableStringify({ ...cloud, updatedAt: '' });
+}
+
 /**
  * `local` jest wymagany, a nie `MasterVault | null`, bo w tej aplikacji zawsze
  * istnieje: `App.tsx` trzyma go w `useState<MasterVault>` i przy braku danych
@@ -96,7 +102,7 @@ export function resolveVaultOnSignIn(
     return { vault: local, action: 'wyslij-lokalny', shouldUpload: true };
   }
 
-  if (stableStringify(cloud) === stableStringify(local)) {
+  if (hasSameVaultContent(local, cloud!)) {
     return { vault: cloud!, action: 'identyczne', shouldUpload: false };
   }
 

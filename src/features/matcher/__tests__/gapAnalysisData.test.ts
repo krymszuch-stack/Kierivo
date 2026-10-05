@@ -32,4 +32,13 @@ describe('wiersze analizy luk raportu ATS', () => {
     expect(buildGapMetrics(legacy)[0]).toEqual({ label: 'Kompetencje Twarde & Technologie', value: 17 });
     expect(buildGapMetrics(legacy).map(({ label }) => label)).toContain('Dopasowanie Tytułu Stanowiska (Title Density)');
   });
+
+  it('nie zamienia błędnych historycznych procentów w wiarygodnie wyglądające wyniki', () => {
+    const legacy = {
+      layer2Nlp: { hardSkillsCoverage: 150, formalReqsCoverage: -1 },
+      layer3Scoring: { recencyScore: Number.NaN, titleMatchScore: Number.POSITIVE_INFINITY },
+    } as AtsCheckResult;
+
+    expect(buildGapMetrics(legacy).map(({ value }) => value)).toEqual([undefined, undefined, undefined, undefined]);
+  });
 });

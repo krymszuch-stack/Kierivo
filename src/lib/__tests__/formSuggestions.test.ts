@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ownEntriesFor, suggestForField, SuggestionContext } from '../formSuggestions';
+import { getLatestExperienceLocation, ownEntriesFor, suggestForField, SuggestionContext } from '../formSuggestions';
 import { createEmptyVault } from '../sampleVault';
 import { MasterVault, JobApplication, WorkExperience } from '../../types';
 
@@ -54,6 +54,18 @@ describe('źródła własnych wpisów', () => {
 });
 
 describe('podpowiedzi w formularzach', () => {
+  it('podpowiada lokalizację z datowanej najnowszej pracy, nie z pierwszego wpisu', () => {
+    const vault = createEmptyVault();
+    vault.personalInfo.location = 'Profilowa lokalizacja';
+    vault.history = [
+      job({ id: 'old', role: 'Magazynier', location: 'Gdańsk', startDate: '2018-01', endDate: '2020-12' }),
+      job({ id: 'new', role: 'Technik', location: 'Kraków', startDate: '2022-01', endDate: '2024-06' }),
+    ];
+
+    expect(getLatestExperienceLocation(vault)).toBe('Kraków');
+    expect(getLatestExperienceLocation({ ...vault, history: [...vault.history].reverse() })).toBe('Kraków');
+  });
+
   it('własny wcześniejszy wpis stoi przed słownikiem', () => {
     const vault: MasterVault = {
       ...createEmptyVault(),

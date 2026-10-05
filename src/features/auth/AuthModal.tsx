@@ -11,6 +11,7 @@ import { checkPassword, passwordStrength, STRENGTH_LABELS } from '../../lib/pass
 import { checkLeakedPassword } from '../../lib/leakedPassword';
 import { OAUTH_PROVIDERS, type OAuthProviderId, type OAuthProviderMeta } from '../../lib/oauthProviders';
 import { listSavedLocalProfiles, type LocalProfile } from '../../lib/localProfile';
+import { useScopedAsyncOperation } from '../../hooks/useScopedAsyncOperation';
 
 /**
  * Wejście do aplikacji — dwa tryby, oba prawdziwe.
@@ -219,11 +220,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   } = useAuth();
 
   const [widok, setWidok] = useState<Widok>('wybor');
+  const resumeOperation = useScopedAsyncOperation(`${isOpen}:${widok}`);
   const [email, setEmail] = useState('');
   const [haslo, setHaslo] = useState('');
   const [imie, setImie] = useState('');
   const [blad, setBlad] = useState('');
-  const [pracuje, setPracuje] = useState(false);
+  const pracuje = resumeOperation.isBusy;
   // Który dostawca OAuth ma właśnie bieg — anulowanie Google nie może
   // zablokować kliknięcia Microsoft, a formularz e-mailowy nie może startować
   // równolegle z przepływem przekierowania.
@@ -233,6 +235,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
   React.useEffect(() => {
     if (isOpen) {
+      setPracujeDostawca(null);
       setWidok('wybor');
       setBlad('');
       let active = true;
@@ -275,11 +278,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!imie.trim()) return;
-
-      setPracuje(true);
+      const token = resumeOperation.begin();
+      if (!token) return;
       setBlad('');
       try {
         const vault = await signInLocally(imie, email);
+        if (!resumeOperation.isCurrent(token)) return;
         onSuccessVaultLoaded?.(vault);
         showToast('Profil zapisany na tym urządzeniu', {
           message: 'Dane nie opuszczają tej przeglądarki.',
@@ -287,29 +291,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         });
         zamknij();
       } catch (error) {
-        setBlad(error instanceof Error ? error.message : 'Nie udało się zapisać profilu. Spróbuj ponownie.');
+        if (resumeOperation.isCurrent(token)) setBlad(error instanceof Error ? error.message : 'Nie udało się zapisać profilu. Spróbuj ponownie.');
       } finally {
-        setPracuje(false);
+        resumeOperation.finish(token);
       }
     },
-    [imie, email, signInLocally, onSuccessVaultLoaded, zamknij]
+    [imie, email, signInLocally, onSuccessVaultLoaded, zamknij, resumeOperation]
   );
 
   const wznowProfilLokalny = useCallback(
-    (profileId: string) => {
-      const vault = resumeLocalProfile(profileId);
-      if (!vault) {
-        setBlad('Nie udało się otworzyć zapisanego profilu. Odśwież okno i spróbuj ponownie.');
-        return;
+    async (profileId: string) => {
+      if (pracuje) return;
+      const token = resumeOperation.begin();
+      if (!token) return;
+      setBlad('');
+      try {
+        const vault = await resumeLocalProfile(profileId);
+        if (!resumeOperation.isCurrent(token)) return;
+        if (!vault) {
+          setBlad('Nie udało się trwale wznowić profilu. Zachowano zapisane CV; sprawdź możliwość zapisu i spróbuj ponownie.');
+          return;
+        }
+        onSuccessVaultLoaded?.(vault);
+        showToast('Profil lokalny wznowiony', {
+          message: 'CV wczytano z tej przeglądarki.',
+          variant: 'success',
+        });
+        zamknij();
+      } catch {
+        if (resumeOperation.isCurrent(token)) setBlad('Nie udało się wznowić profilu. Zachowano zapisane CV; spróbuj ponownie.');
+      } finally {
+        resumeOperation.finish(token);
       }
-      onSuccessVaultLoaded?.(vault);
-      showToast('Profil lokalny wznowiony', {
-        message: 'CV wczytano z tej przeglądarki.',
-        variant: 'success',
-      });
-      zamknij();
     },
-    [resumeLocalProfile, onSuccessVaultLoaded, zamknij]
+    [resumeLocalProfile, onSuccessVaultLoaded, zamknij, pracuje, resumeOperation]
   );
 
   /* --- konto w chmurze --- */
@@ -317,36 +332,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const zaloguj = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      const token = resumeOperation.begin();
+      if (!token) return;
       setBlad('');
-      setPracuje(true);
-
-      const wynik = await signInCloud(email.trim(), haslo);
-      setPracuje(false);
-
-      if (!wynik.ok) {
-        setBlad(wynik.message);
-        return;
-      }
-
-      showToast('Zalogowano', { message: 'Pobieramy Twoje CV z konta.', variant: 'success' });
-      zamknij();
+      try {
+        const wynik = await signInCloud(email.trim(), haslo);
+        if (!resumeOperation.isCurrent(token)) return;
+        if (!wynik.ok) { setBlad(wynik.message); return; }
+        showToast('Zalogowano', { message: 'Pobieramy Twoje CV z konta.', variant: 'success' });
+        zamknij();
+      } catch {
+        if (resumeOperation.isCurrent(token)) setBlad('Nie potwierdzono logowania. Spróbuj ponownie.');
+      } finally { resumeOperation.finish(token); }
     },
-    [email, haslo, signInCloud, zamknij]
+    [email, haslo, signInCloud, zamknij, resumeOperation]
   );
 
   const zalogujDostawca = useCallback(
     async (providerId: OAuthProviderId) => {
+      const token = resumeOperation.begin();
+      if (!token) return;
       setBlad('');
       clearOAuthNotice();
       setPracujeDostawca(providerId);
-      const wynik = await signInWithProvider(providerId);
-      setPracujeDostawca(null);
-
-      if (!wynik.ok) {
-        setBlad(wynik.message);
+      try {
+        const wynik = await signInWithProvider(providerId);
+        if (resumeOperation.isCurrent(token) && !wynik.ok) setBlad(wynik.message);
+      } catch {
+        if (resumeOperation.isCurrent(token)) setBlad('Nie udało się rozpocząć logowania u dostawcy. Spróbuj ponownie.');
+      } finally {
+        if (resumeOperation.isCurrent(token)) setPracujeDostawca(null);
+        resumeOperation.finish(token);
       }
     },
-    [signInWithProvider, clearOAuthNotice]
+    [signInWithProvider, clearOAuthNotice, resumeOperation]
   );
 
   const zarejestruj = useCallback(
@@ -360,13 +379,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         return;
       }
 
-      setPracuje(true);
-
+      const token = resumeOperation.begin();
+      if (!token) return;
+      try {
       // Hasło z wycieku odrzucamy przed założeniem konta. Przy niedostępnym
       // HIBP przepuszczamy dalej — cudza awaria nie może blokować rejestracji.
       const wyciek = await checkLeakedPassword(haslo);
+      if (!resumeOperation.isCurrent(token)) return;
       if (wyciek.leaked) {
-        setPracuje(false);
         setBlad(
           `To hasło pojawiło się w znanych wyciekach danych (${wyciek.count.toLocaleString('pl-PL')} razy). Wybierz inne — atakujący sprawdzają je w pierwszej kolejności.`
         );
@@ -374,7 +394,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       }
 
       const wynik = await signUpCloud(email.trim(), haslo, imie.trim() || email.split('@')[0]);
-      setPracuje(false);
+      if (!resumeOperation.isCurrent(token)) return;
 
       if (!wynik.ok) {
         setBlad(wynik.message);
@@ -388,24 +408,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
       showToast('Konto założone', { variant: 'success' });
       zamknij();
+      } catch {
+        if (resumeOperation.isCurrent(token)) setBlad('Nie potwierdzono utworzenia konta. Sprawdź stan konta przed ponowieniem.');
+      } finally { resumeOperation.finish(token); }
     },
-    [email, haslo, imie, signUpCloud, zamknij]
+    [email, haslo, imie, signUpCloud, zamknij, resumeOperation]
   );
 
   const resetuj = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      const token = resumeOperation.begin();
+      if (!token) return;
       setBlad('');
-      setPracuje(true);
-
-      await requestPasswordReset(email.trim());
-      setPracuje(false);
-
-      // Ten sam komunikat niezależnie od wyniku: inaczej formularz powiedziałby
-      // obcemu, czy dany adres ma u nas konto.
-      setWidok('potwierdz');
+      try {
+        const wynik = await requestPasswordReset(email.trim());
+        if (!resumeOperation.isCurrent(token)) return;
+        if (!wynik.ok) { setBlad(wynik.message); return; }
+        // Sukces pozostaje neutralny wobec istnienia konta. Błąd wysyłki
+        // nie może być komunikatem, że wiadomość została wysłana.
+        setWidok('potwierdz');
+      } catch {
+        if (resumeOperation.isCurrent(token)) setBlad('Nie potwierdzono wysłania linku. Spróbuj ponownie.');
+      } finally { resumeOperation.finish(token); }
     },
-    [email, requestPasswordReset]
+    [email, requestPasswordReset, resumeOperation]
   );
 
   const sila = passwordStrength(haslo);
@@ -476,7 +503,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 if (provider.id === 'linkedin_oidc') return 'Zaloguj się przez LinkedIn';
                 return `Zaloguj się z ${provider.label}`;
               }}
-              busy={pracujeDostawca}
+              busy={pracuje ? pracujeDostawca : null}
               disabled={pracuje}
               onSelect={zalogujDostawca}
             />
@@ -504,6 +531,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         key={profile.id}
                         type="button"
                         onClick={() => wznowProfilLokalny(profile.id)}
+                        disabled={pracuje || resumeOperation.isBusy}
                         className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm font-semibold text-ink hover:border-brand-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#155EEF]/50"
                       >
                         <span className="truncate">{profile.name}</span>
@@ -570,7 +598,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           {cloudAvailable && (
             <OAuthProviderRow
               textFor={(provider) => `Kontynuuj ${provider.continueWith}`}
-              busy={pracujeDostawca}
+              busy={pracuje ? pracujeDostawca : null}
               disabled={pracuje}
               onSelect={zalogujDostawca}
             />
@@ -619,7 +647,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           {cloudAvailable && (
             <OAuthProviderRow
               textFor={(provider) => `Zarejestruj się ${provider.registerVia}`}
-              busy={pracujeDostawca}
+              busy={pracuje ? pracujeDostawca : null}
               disabled={pracuje}
               onSelect={zalogujDostawca}
             />

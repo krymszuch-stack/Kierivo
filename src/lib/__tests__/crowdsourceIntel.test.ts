@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { buildJobIntel, parseSalaryRange } from '../crowdsourceIntel';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildJobIntel, contributeInterviewQuestion, parseSalaryRange } from '../crowdsourceIntel';
 import type { ParsedJobDescription } from '../jdParser';
+
+const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
+vi.mock('../apiClient', () => ({ api: { post: postMock } }));
+
+beforeEach(() => vi.clearAllMocks());
 
 /**
  * Te testy pilnują jednej rzeczy: co dokładnie wychodzi z przeglądarki do
@@ -60,5 +65,26 @@ describe('buildJobIntel', () => {
       ].sort()
     );
     expect(intel?.salaryRangeMin).toBe(6500);
+  });
+});
+
+describe('contributeInterviewQuestion', () => {
+  it('potwierdza wyłącznie odpowiedź sukcesu i wysyła jawnie dodane pola', async () => {
+    postMock.mockResolvedValueOnce({ success: true });
+
+    await expect(contributeInterviewQuestion(' Firma ', ' Rola ', '  Jak wygląda wdrożenie?  ')).resolves.toBe(true);
+    expect(postMock).toHaveBeenCalledWith('/api/intel/job', {
+      companyName: 'Firma',
+      jobTitle: 'Rola',
+      requiredSkills: [],
+      interviewQuestions: ['Jak wygląda wdrożenie?'],
+    });
+  });
+
+  it('nie raportuje potwierdzenia po błędzie albo dla niepełnych danych', async () => {
+    postMock.mockRejectedValueOnce(new Error('offline'));
+    await expect(contributeInterviewQuestion('Firma', 'Rola', 'Pytanie testowe')).resolves.toBe(false);
+    await expect(contributeInterviewQuestion('F', 'Rola', 'Pytanie testowe')).resolves.toBe(false);
+    expect(postMock).toHaveBeenCalledTimes(1);
   });
 });

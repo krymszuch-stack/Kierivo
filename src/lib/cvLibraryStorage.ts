@@ -9,7 +9,9 @@
  */
 
 import { MasterVault, TailoredResume } from '../types';
-import { StorageKeys, cvLibraryKeyFor, readJson, removeRaw, writeJson, writeJsonDurably } from './storage';
+import { StorageKeys, cvLibraryKeyFor, readJson, readJsonForMigration, removeRaw, writeJson, writeJsonDurably } from './storage';
+import { areSavedCvDocumentsValid, parseSavedCvDocuments } from './savedCvDocumentSchema';
+import { mergeMigrationRecords } from './mergeMigrationRecords';
 
 export interface SavedCVDocument {
   /** Wersja schematu danych encji (liczba całkowita, np. 1). */
@@ -42,27 +44,40 @@ export const PRESET_TAGS = [
   '1-stronicowe',
   '2-stronicowe',
   'Wersja EN',
-  'Zweryfikowane ATS',
+  'Analiza ATS Kierivo',
   'Wysłane',
 ] as const;
 
 export function getSavedCVs(profileId: string): SavedCVDocument[] {
-  return readJson<SavedCVDocument[]>(cvLibraryKeyFor(profileId), []);
+  return parseSavedCvDocuments(
+    readJson<unknown>(cvLibraryKeyFor(profileId), [])
+  ) as SavedCVDocument[];
 }
 
 /** Stare dokumenty pozostają nieprzypisane do czasu świadomego działania. */
 export function getUnassignedLegacyCVs(): SavedCVDocument[] {
-  return readJson<SavedCVDocument[]>(StorageKeys.cvLibrary, []);
+  return parseSavedCvDocuments(readJson<unknown>(StorageKeys.cvLibrary, [])) as SavedCVDocument[];
 }
 
 /** Przenosi starą wspólną bibliotekę dopiero po potwierdzeniu przez użytkownika. */
-export function claimLegacyCVsFor(profileId: string): number {
+export async function claimLegacyCVsFor(profileId: string): Promise<number> {
   if (!profileId) return 0;
-  const legacy = getUnassignedLegacyCVs();
+  const source = readJsonForMigration(StorageKeys.cvLibrary);
+  if (!source.success || source.raw === null) return 0;
+  const rawLegacy = source.value;
+  if (!areSavedCvDocumentsValid(rawLegacy)) return 0;
+  const legacy = parseSavedCvDocuments(rawLegacy) as SavedCVDocument[];
   if (legacy.length === 0) return 0;
-  const current = getSavedCVs(profileId);
-  const currentIds = new Set(current.map((doc) => doc.id));
-  writeJson(cvLibraryKeyFor(profileId), [...current, ...legacy.filter((doc) => !currentIds.has(doc.id))]);
+  const target = readJsonForMigration(cvLibraryKeyFor(profileId));
+  if (!target.success || (target.raw !== null && !areSavedCvDocumentsValid(target.value))) return 0;
+  const current = parseSavedCvDocuments(target.raw === null ? [] : target.value) as SavedCVDocument[];
+  const merged = mergeMigrationRecords(current, legacy);
+  if (!merged) return 0;
+  // Źródło jest jedyną odzyskiwalną kopią, dopóki LS lub transakcja IDB
+  // nie potwierdzi zapisu. Zwykły writeJson może skończyć tylko w pamięci.
+  const persisted = await writeJsonDurably(cvLibraryKeyFor(profileId), merged);
+  const currentSource = readJsonForMigration(StorageKeys.cvLibrary);
+  if (!persisted || !currentSource.success || currentSource.raw !== source.raw) return 0;
   removeRaw(StorageKeys.cvLibrary);
   return legacy.length;
 }
@@ -74,15 +89,25 @@ export async function migrateAnonymousCVLibrary(
   removeSource = true,
 ): Promise<boolean> {
   const key = cvLibraryKeyFor(fromProfileId);
-  const anonymous = readJson<SavedCVDocument[]>(key, []);
+  const source = readJsonForMigration(key);
+  if (!source.success) return false;
+  const rawAnonymous = source.raw === null ? [] : source.value;
+  if (!Array.isArray(rawAnonymous)) return false;
+  // Migracja kopiuje surowe legacy bez selektywnego wycinania pól. Widok nadal
+  // waliduje każdy rekord osobno; źródło usuwamy wyłącznie po trwałym zapisie kopii.
+  const anonymous = rawAnonymous;
   if (anonymous.length === 0) return true;
-  const existing = getSavedCVs(toProfileId);
-  const ids = new Set(existing.map((doc) => doc.id));
+  const target = readJsonForMigration(cvLibraryKeyFor(toProfileId));
+  if (!target.success || (target.raw !== null && !Array.isArray(target.value))) return false;
+  const existing = target.raw === null ? [] : target.value as unknown[];
+  const merged = mergeMigrationRecords(existing, anonymous);
+  if (!merged) return false;
   const saved = await writeJsonDurably(
     cvLibraryKeyFor(toProfileId),
-    [...existing, ...anonymous.filter((doc) => !ids.has(doc.id))],
+    merged,
   );
-  if (!saved) return false;
+  const currentSource = readJsonForMigration(key);
+  if (!saved || !currentSource.success || currentSource.raw !== source.raw) return false;
   if (removeSource) removeRaw(key);
   return true;
 }

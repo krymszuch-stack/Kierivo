@@ -29,6 +29,7 @@ import { MonthYearPicker } from '../../components/ui/MonthYearPicker';
 import type { SuggestFn } from '../../hooks/useFieldSuggestions';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { ALL_LICENSES } from '../../data/licenses';
+import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
 
 export interface SkillsMatrixProps {
   skillsMatrix: SkillsMatrixType;
@@ -124,15 +125,22 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
   const [certIssuer, setCertIssuer] = useState('');
   const [certDate, setCertDate] = useState<string | null>('');
   const [certUrl, setCertUrl] = useState('');
+  const [certUrlError, setCertUrlError] = useState(false);
 
   const handleAddCertification = () => {
     if (!certName.trim()) return;
+    const normalizedCertUrl = certUrl.trim() ? normalizeExternalHttpUrl(certUrl) : undefined;
+    if (certUrl.trim() && !normalizedCertUrl) {
+      setCertUrlError(true);
+      return;
+    }
+    setCertUrlError(false);
     const newCert: Certification = {
       id: `cert-${Date.now()}`,
       name: certName.trim(),
       issuer: certIssuer.trim() || 'Nieokreślony wystawca',
       date: certDate || undefined,
-      url: certUrl.trim() || undefined,
+      url: normalizedCertUrl,
     };
     onUpdateSkillsMatrix({
       ...skillsMatrix,
@@ -650,9 +658,15 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
               label="Link weryfikacyjny (opcjonalnie)"
               icon={ExternalLink}
               value={certUrl}
-              onChange={(e) => setCertUrl(e.target.value)}
+              onChange={(e) => {
+                setCertUrl(e.target.value);
+                setCertUrlError(false);
+              }}
               placeholder="https://..."
             />
+            {certUrlError && (
+              <p role="alert" className="text-xs text-danger">Link musi być poprawnym adresem http:// lub https://.</p>
+            )}
           </div>
 
           <div className="flex justify-end pt-1">
@@ -676,8 +690,9 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
               Brak dodanych certyfikatów imiennych. Wpisz certyfikat powyżej, aby wzmocnić profil pod kryteria formalne.
             </p>
           ) : (
-            (skillsMatrix.certifications || []).map((cert) => (
-              <div
+            (skillsMatrix.certifications || []).map((cert) => {
+              const safeCertUrl = normalizeExternalHttpUrl(cert.url);
+              return <div
                 key={cert.id}
                 className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 shadow-2xs"
               >
@@ -696,9 +711,9 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {cert.url && (
+                  {safeCertUrl && (
                     <a
-                      href={cert.url}
+                      href={safeCertUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-1 text-muted hover:text-brand-fg transition-colors"
@@ -717,8 +732,8 @@ export const SkillsMatrix: React.FC<SkillsMatrixProps> = ({
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
-              </div>
-            ))
+              </div>;
+            })
           )}
         </div>
       </Card>

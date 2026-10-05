@@ -9,6 +9,7 @@ export interface RoleKnowledgeNode {
   areas: { id: string; label: string; description?: string }[];
   actions: Record<string, string[]>;
   objects: Record<string, string[]>;
+  /** Sugestie opisują sposób pracy; mierzalne wyniki pochodzą wyłącznie z danych wpisanych przez użytkownika. */
   outcomes: Record<string, string[]>;
   defaultTech: Record<string, string[]>;
 }

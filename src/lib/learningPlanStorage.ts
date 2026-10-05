@@ -6,32 +6,24 @@
  */
 
 import {
-  KnowledgeMaterial,
-  LearningPlan,
-  LearningPlanItem,
-  DEFAULT_PLAN_STEPS,
+  type KnowledgeMaterial,
+  type LearningPlan,
+  type LearningPlanItem,
 } from '../data/careerKnowledge';
 import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
+import { createLearningPlanDefaults, parseLearningPlan, type LearningPlanRecovery } from './learningPlanSchema';
+
+const recoveryByProfile = new Map<string, LearningPlanRecovery>();
 
 export function createDefaultLearningPlan(goalName = 'Mój następny krok'): LearningPlan {
-  return {
-    goalName,
-    steps: DEFAULT_PLAN_STEPS.map((label, idx) => ({
-      id: `step-${idx + 1}`,
-      label,
-      completed: false,
-    })),
-    items: [],
-    updatedAt: new Date().toISOString(),
-  };
+  return createLearningPlanDefaults(goalName);
 }
 
 export function getLearningPlan(profileId: string): LearningPlan {
-  const existing = readJson<LearningPlan | null>(profileDataKeyFor(StorageKeys.learningPlan, profileId), null);
-  if (!existing || !Array.isArray(existing.steps) || !Array.isArray(existing.items)) {
-    return createDefaultLearningPlan();
-  }
-  return existing;
+  const parsed = parseLearningPlan(readJson<unknown>(profileDataKeyFor(StorageKeys.learningPlan, profileId), null));
+  if (parsed.recovery) recoveryByProfile.set(profileId, parsed.recovery);
+  else recoveryByProfile.delete(profileId);
+  return parsed.plan;
 }
 
 export function saveLearningPlan(profileId: string, plan: LearningPlan): LearningPlan {
@@ -39,7 +31,11 @@ export function saveLearningPlan(profileId: string, plan: LearningPlan): Learnin
     ...plan,
     updatedAt: new Date().toISOString(),
   };
-  writeJson(profileDataKeyFor(StorageKeys.learningPlan, profileId), updated);
+  const recovery = recoveryByProfile.get(profileId);
+  writeJson(profileDataKeyFor(StorageKeys.learningPlan, profileId), {
+    ...updated,
+    ...(recovery ? { __kierivoRecovery: recovery } : {}),
+  });
   return updated;
 }
 

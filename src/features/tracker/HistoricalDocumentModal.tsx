@@ -16,9 +16,12 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { DocumentRenderer } from '../matcher/DocumentRenderer';
 import { CoverLetterView } from '../matcher/CoverLetterView';
-import { AtsSimulatorView } from '../matcher/AtsSimulatorView';
+import { HistoricalAtsReport } from './HistoricalAtsReport';
 import { downloadNativeDocxCv } from '../../lib/docxExporter';
 import { getApplicationSnapshotDisplayInfo } from './applicationDisplay';
+import { getSavedAtsScoreDisplayInfo } from '../../lib/atsScoreEvidence';
+import { getRenderableAtsResultSnapshot } from '../../lib/atsResultSnapshot';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
 
 export interface HistoricalDocumentModalProps {
   application: JobApplication | null;
@@ -34,21 +37,28 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('cv');
+  const now = useAnalysisClock();
 
   if (!application) return null;
 
   const snapshot = application.documentSnapshot;
+  const atsResult = getRenderableAtsResultSnapshot(snapshot?.atsResultSnapshot);
+  const hasMalformedAtsResult = Boolean(snapshot?.atsResultSnapshot) && !atsResult;
   const display = getApplicationSnapshotDisplayInfo(application);
+  const atsScoreDisplay = application.atsScore !== undefined
+    ? getSavedAtsScoreDisplayInfo(application.atsScore, application.atsScoreContext, application.atsScoreProvenance, now)
+    : null;
 
   const tabs = [
     { id: 'cv' as TabId, label: 'Wysłane CV (A4)', icon: Eye },
     ...(snapshot?.coverLetter
       ? [{ id: 'coverLetter' as TabId, label: 'List Motywacyjny', icon: FileText }]
       : []),
-    ...(snapshot?.atsResultSnapshot
+    ...(atsResult
       ? [{ id: 'atsReport' as TabId, label: 'Raport ATS', icon: ShieldCheck }]
       : []),
   ];
+  const visibleTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'cv';
 
   const formattedDate = snapshot?.createdAt
     ? new Date(snapshot.createdAt).toLocaleString('pl-PL', {
@@ -125,10 +135,19 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
             <span className="rounded-lg border border-line bg-sunken px-2.5 py-1 font-mono text-xs font-bold text-ink">
               Status: {application.status}
             </span>
-            {application.atsScore !== undefined && (
-              <span className="rounded-lg border border-brand-500/30 bg-brand-500/10 px-2.5 py-1 font-mono text-xs font-bold text-brand-fg">
-                ATS: {application.atsScore}%
-              </span>
+            {atsScoreDisplay && (
+              <div className="max-w-sm space-y-0.5">
+                <span className={`rounded-lg border px-2.5 py-1 font-mono text-xs font-bold ${
+                  atsScoreDisplay.state === 'full'
+                    ? 'border-brand-500/30 bg-brand-500/10 text-brand-fg'
+                    : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                }`}>
+                  {atsScoreDisplay.label}
+                </span>
+                <p role="note" className="text-[10px] leading-relaxed text-muted">
+                  {atsScoreDisplay.note}
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -136,10 +155,11 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
         {/* Zawartość: Snapshot istnieje */}
         {snapshot ? (
           <div className="space-y-4">
+            {hasMalformedAtsResult && <HistoricalAtsReport snapshot={snapshot.atsResultSnapshot} />}
             {tabs.length > 1 && (
               <Tabs<TabId>
                 items={tabs}
-                active={activeTab}
+                active={visibleTab}
                 onChange={setActiveTab}
                 variant="underline"
               />
@@ -147,28 +167,28 @@ export const HistoricalDocumentModal: React.FC<HistoricalDocumentModalProps> = (
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeTab}
+                key={visibleTab}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.2 }}
               >
-                {activeTab === 'cv' && (
+                {visibleTab === 'cv' && (
                   <DocumentRenderer
                     vault={snapshot.vaultSnapshot}
                     tailoredResume={snapshot.tailoredResume}
                   />
                 )}
 
-                {activeTab === 'coverLetter' && snapshot.coverLetter && (
+                {visibleTab === 'coverLetter' && snapshot.coverLetter && (
                   <CoverLetterView
                     coverLetter={snapshot.coverLetter}
                     isReadOnly={true}
                   />
                 )}
 
-                {activeTab === 'atsReport' && snapshot.atsResultSnapshot && (
-                  <AtsSimulatorView result={snapshot.atsResultSnapshot} />
+                {visibleTab === 'atsReport' && atsResult && (
+                  <HistoricalAtsReport snapshot={snapshot.atsResultSnapshot} />
                 )}
               </motion.div>
             </AnimatePresence>

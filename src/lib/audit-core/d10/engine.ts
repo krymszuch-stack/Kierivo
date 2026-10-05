@@ -21,6 +21,20 @@ export interface RunD10FormalAuditInput {
   adaptiveSnapshot?: AdaptiveCalibrationSnapshot | null;
 }
 
+function resolveSourceCompletenessConfidence(input: RunD10FormalAuditInput): number {
+  if (input.sourceCompletenessConfidence !== undefined) {
+    return Number.isFinite(input.sourceCompletenessConfidence)
+      ? Math.max(0, Math.min(1, input.sourceCompletenessConfidence))
+      : 0;
+  }
+
+  if (input.vault) return 1;
+
+  // Sam tekst nie dowodzi, że dokument źródłowy jest kompletny. Bez confidence
+  // z D08 nie wolno uznać niewymienionej kwalifikacji za jej potwierdzony brak.
+  return 0;
+}
+
 export async function runD10FormalAudit(input: RunD10FormalAuditInput): Promise<D10AuditResult> {
   const extraction = await extractD10Requirements(
     input.jobDescription,
@@ -28,20 +42,19 @@ export async function runD10FormalAudit(input: RunD10FormalAuditInput): Promise<
   );
 
   const hasVault = Boolean(input.vault);
+  const sourceCompletenessConfidence = resolveSourceCompletenessConfidence(input);
   const candidateEvidence = hasVault
     ? await buildD10CandidateEvidenceFromVault(input.vault!)
     : await buildD10CandidateEvidenceFromText(
       input.candidateText ?? '',
-      Math.max(0, Math.min(1, input.sourceCompletenessConfidence ?? 0.75)),
+      sourceCompletenessConfidence,
     );
 
   return scoreD10FormalRequirements({
     extraction,
     candidateEvidence,
     sourceMode: hasVault ? 'VAULT' : 'EXTRACTED_DOCUMENT',
-    sourceCompletenessConfidence: hasVault
-      ? Math.max(0, Math.min(1, input.sourceCompletenessConfidence ?? 1))
-      : Math.max(0, Math.min(1, input.sourceCompletenessConfidence ?? 0.75)),
+    sourceCompletenessConfidence,
     referenceDateIso: input.referenceDateIso,
   });
 }

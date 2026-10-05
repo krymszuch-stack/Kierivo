@@ -8,6 +8,15 @@ import { parseJobDescriptionResponse, parsedJobDescriptionSchema } from '../jdSc
  * component read `undefined` from every field while `tsc` stayed green.
  */
 describe('kontrakt ParsedJobDescription', () => {
+  it('rozpoznaje krótkie nagłówki Required i Requirements', () => {
+    for (const header of ['Required', 'Requirements']) {
+      const parsed = parseJobDescriptionLocal(`${header}\nServiceNow, Incident triage.`);
+      expect(parsed.sourceSections?.required).toContain('ServiceNow, Incident triage.');
+      expect(parsed.toolsAndTech).toContain('ServiceNow');
+      expect(parsed.requiredHardSkills).toContain('Incident triage');
+    }
+  });
+
   const SAMPLE_JD = `
     Senior Frontend Developer
     Firma: Acme Sp. z o.o.
@@ -22,6 +31,21 @@ describe('kontrakt ParsedJobDescription', () => {
 
     expect(result.success).toBe(true);
   }, 15000);
+
+  it('walidacja zachowuje zakres i źródło wszystkich wymagań stażu', () => {
+    const local = parseJobDescriptionLocal('Wymagania\nMinimum 3 lata doświadczenia zawodowego.\nMinimum 5 lat doświadczenia w spawaniu TIG.');
+    const parsed = parseJobDescriptionResponse(local);
+    expect(parsed?.experienceRequirements).toEqual(local.experienceRequirements);
+    expect(parsed?.experienceRequirements).toHaveLength(2);
+    expect(parsed?.experienceRequirements?.[1].scopeText).toBe('w spawaniu TIG');
+  });
+
+  it('walidacja zachowuje dodatni ułamek roku zamiast odrzucać wynik parsera', () => {
+    const local = parseJobDescriptionLocal('Wymagania\nMinimum 1,5 roku doświadczenia zawodowego.');
+    const parsed = parseJobDescriptionResponse(local);
+    expect(parsed?.experienceRequirements?.[0].years).toBe(1.5);
+    expect(parsed?.experienceMinYears).toBe(1.5);
+  });
 
   it('odpowiedź o kształcie Gemini przechodzi walidację i zachowuje pola', () => {
     // Dokładnie te klucze deklaruje responseSchema w src/server/gemini.ts.
@@ -73,6 +97,20 @@ describe('kontrakt ParsedJobDescription', () => {
     expect(parseJobDescriptionResponse(null)).toBeNull();
     expect(parseJobDescriptionResponse('tekst')).toBeNull();
     expect(parseJobDescriptionResponse(undefined)).toBeNull();
+  });
+
+  it('nie gubi kierunku granic stażu podczas walidacji kontraktu', () => {
+    const local = parseJobDescriptionLocal('Requirements\nExperience: at most 5 years.\nMore than 2 years of experience.');
+    const validated = parseJobDescriptionResponse(local);
+    expect(validated?.experienceRequirements).toEqual(local.experienceRequirements);
+    expect(validated?.experienceRequirements?.map(({ comparison }) => comparison)).toEqual(['at_most', 'more_than']);
+    expect(parseJobDescriptionResponse({ ...local, experienceRequirements: [{ ...local.experienceRequirements?.[0], comparison: 'guess' }] })).toBeNull();
+  });
+
+  it('nie zamienia brakującego lub niepoprawnego poziomu stanowiska na MID', () => {
+    const base = { jobTitle: 'Magazynier', companyName: '' };
+    expect(parsedJobDescriptionSchema.parse(base).seniorityLevel).toBe('UNKNOWN');
+    expect(parsedJobDescriptionSchema.parse({ ...base, seniorityLevel: 'UNSURE' }).seniorityLevel).toBe('UNKNOWN');
   });
 
   it('pola, których komponent używa do zbudowania oferty, są obecne po obu ścieżkach', () => {

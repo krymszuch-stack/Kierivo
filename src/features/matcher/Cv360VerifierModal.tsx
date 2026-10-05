@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import { cvVerificationPresentation } from '../../lib/cvVerificationPresentation';
+import { hasNoReportedChronologyAnomalies, recommendationsForOffer } from '../../lib/cvVerificationFindings';
+import React, { useLayoutEffect, useState } from 'react';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -19,8 +21,11 @@ import { useOptionalAuth } from '../../context/AuthContext';
 import { setAuthModalOpenGlobal } from '../../store/useAppStore';
 import { showToast } from '../../store/useToastStore';
 import { LocalProfile } from '../../lib/localProfile';
+import { AI_QUOTA_RESET_TIME } from '../../lib/aiQuotaPolicy';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 import { CvVerificationReport } from '../../server/services/cvVerifier.service';
+import { hasSufficientCvContent, INSUFFICIENT_CV_CONTENT_MESSAGE } from '../../lib/canonicalAts';
+import { createAsyncOperationGuard } from '../../lib/asyncOperationGuard';
 
 export interface Cv360VerifierModalProps {
   isOpen: boolean;
@@ -35,30 +40,59 @@ export interface Cv360VerifierModalProps {
   onRequireLogin?: () => void;
 }
 
-export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
+function buildVerificationRequest({ vault, targetRole, targetCompany, jobDescription }: Pick<Cv360VerifierModalProps, 'vault' | 'targetRole' | 'targetCompany' | 'jobDescription'>) {
+  return { vault, targetRole, targetCompany, jobDescription, consentToAiProcessing: true };
+}
+
+export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = (props) => {
+  const auth = useOptionalAuth();
+  const activeUser = props.currentUser !== undefined ? props.currentUser : auth?.user;
+  const isAuthed = props.currentUser !== undefined ? Boolean(props.currentUser) : Boolean(auth?.isAuthenticated && auth?.user);
+  // Porównujemy pełne dane, bez skrótu podatnego na kolizję. Sam autosave
+  // zmienia datę zapisu, ale nie treść ocenianego dokumentu.
+  const scopeKey = JSON.stringify({
+    ...buildVerificationRequest(props),
+    vault: { ...props.vault, updatedAt: undefined },
+    ownerId: activeUser?.id,
+    isAuthed,
+    mode: auth?.mode,
+    isOpen: props.isOpen,
+  });
+  const session = auth?.session;
+  const [scopeSnapshot, setScopeSnapshot] = useState(() => ({ key: scopeKey, session, revision: 0 }));
+  if (scopeSnapshot.key !== scopeKey || scopeSnapshot.session !== session) {
+    setScopeSnapshot({ key: scopeKey, session, revision: scopeSnapshot.revision + 1 });
+    return null;
+  }
+  if (!props.isOpen) return null;
+  return <Cv360VerificationSession key={scopeSnapshot.revision} {...props} activeUser={activeUser} isAuthed={isAuthed} />;
+};
+
+const Cv360VerificationSession: React.FC<Cv360VerifierModalProps & { activeUser?: LocalProfile | null; isAuthed: boolean }> = ({
   isOpen,
   onClose,
   vault,
   targetRole,
   targetCompany,
   jobDescription,
-  currentUser,
   onRequireLogin,
+  activeUser,
+  isAuthed,
 }) => {
-  const auth = useOptionalAuth();
   const { usage, refresh: refreshEntitlements } = useEntitlements();
   const [loading, setLoading] = useState(false);
   const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
   const [report, setReport] = useState<CvVerificationReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeLoopTab, setActiveLoopTab] = useState<'ats' | 'recruiter' | 'logic'>('ats');
-
-  const activeUser = currentUser !== undefined ? currentUser : auth?.user;
-  const isAuthed = currentUser !== undefined ? Boolean(currentUser) : Boolean(auth?.isAuthenticated && auth?.user);
+  const [consentWithdrawn, setConsentWithdrawn] = useState(false);
+  const [requestGuard] = useState(createAsyncOperationGuard);
+  useLayoutEffect(() => () => requestGuard.invalidate(), [requestGuard]);
 
   const runVerification = async () => {
+    if (requestGuard.isBusy()) return;
     if (!consentToAiProcessing) {
-      setError('Potwierdź wysłanie zanonimizowanych danych profilu i kontekstu oferty do skonfigurowanego dostawcy AI.');
+      setError('Potwierdź wysłanie danych profilu i kontekstu oferty do skonfigurowanego dostawcy AI. Serwer nie gwarantuje pełnej anonimizacji.');
       return;
     }
 
@@ -77,40 +111,47 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
     }
 
     // 2. Weryfikacja kwoty i lokalny decrement (tylko zalogowany użytkownik może zużyć lokalny limit)
+    if (!hasSufficientCvContent(vault)) {
+      setReport(null);
+      setError(INSUFFICIENT_CV_CONTENT_MESSAGE);
+      return;
+    }
+
     if (usage.aiUses <= 0 || !consumeAiLocally()) {
       setError(
-        'Dzienny limit zapytań AI w tej becie został wyczerpany (odnowi się o północy). Możesz skorzystać z lokalnego audytu struktury w zakładce Laboratorium Audytu ATS.'
+        `Dzienny limit zapytań AI w tej becie został wyczerpany (odnowi się o ${AI_QUOTA_RESET_TIME}). Możesz skorzystać z lokalnego audytu struktury w zakładce Laboratorium Audytu ATS.`
       );
       return;
     }
 
     // 3. Rozpoczęcie loadingu i wykonanie zapytania
+    const requestToken = requestGuard.begin();
+    if (!requestToken) return;
     setLoading(true);
+    setReport(null);
+    setActiveLoopTab('ats');
     setError(null);
     try {
-      const data = await api.post<{ report?: CvVerificationReport }>('/api/ai/verify-cv', {
-        vault,
-        targetRole,
-        targetCompany,
-        jobDescription,
-        consentToAiProcessing: true,
-      });
+      const data = await api.post<{ report?: CvVerificationReport }>('/api/ai/verify-cv', buildVerificationRequest({
+        vault, targetRole, targetCompany, jobDescription,
+      }));
 
+      if (!requestGuard.isCurrent(requestToken)) return;
       if (data.report) {
         setReport(data.report);
       }
-      refreshEntitlements();
     } catch (err) {
+      if (!requestGuard.isCurrent(requestToken)) return;
       if (err instanceof ApiError && err.isQuotaExceeded) {
         setError(
-          'Dzienny limit wywołań weryfikatora AI został osiągnięty. Limit odnawia się automatycznie o północy.'
+          `Dzienny limit wywołań weryfikatora AI został osiągnięty. Limit odnawia się automatycznie o ${AI_QUOTA_RESET_TIME}.`
         );
-        refreshEntitlements();
       } else {
         setError(err instanceof Error ? err.message : 'Nie udało się połączyć z modelem weryfikatora.');
       }
     } finally {
-      setLoading(false);
+      if (requestGuard.finish(requestToken)) setLoading(false);
+      void refreshEntitlements();
     }
   };
 
@@ -129,23 +170,50 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-ink">Weryfikator CV AI 360°</h2>
                 <span className="rounded-full bg-indigo-600/10 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
-                  Potrójna Pętla Sprawdzająca
+                  3 obszary analizy AI
                 </span>
                 <ModelQuotaCounter variant="badge" feature="verifier" />
               </div>
               <p className="text-xs text-muted">
-                Niezależny audyt ATS, 6-sekundowe oko rekrutera oraz detekcja luk logicznych i zgodności RODO.
+                {cvVerificationPresentation.summary} {cvVerificationPresentation.boundary}
               </p>
             </div>
           </div>
           <button
             type="button"
+            aria-label="Zamknij weryfikator CV"
             onClick={onClose}
             className="rounded-xl p-2 text-muted hover:bg-sunken hover:text-ink transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        <label className="mx-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-line bg-sunken/40 p-4 text-left text-xs text-muted">
+          <input
+            type="checkbox"
+            checked={consentToAiProcessing}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              if (!checked) {
+                setConsentWithdrawn(Boolean(report || requestGuard.isBusy()));
+                requestGuard.invalidate();
+                setReport(null);
+                setError(null);
+                setLoading(false);
+              } else setConsentWithdrawn(false);
+              setConsentToAiProcessing(checked);
+            }}
+            className="mt-0.5 h-4 w-4 accent-brand-600"
+          />
+          <span>
+            Rozumiem, że profil Vault trafia do serwera Kierivo, a do skonfigurowanego dostawcy AI przekazane zostaną
+            wybrane dane profilu (m.in. doświadczenie, umiejętności, edukacja i uprawnienia) oraz stanowisko, firma i
+            opis oferty. Przed wysłaniem do modelu serwer usuwa część pól identyfikujących i pseudonimizuje wykryte
+            dane, ale nie gwarantuje pełnej anonimizacji. Nie wpisuj informacji, których nie chcesz przekazywać.
+          </span>
+        </label>
+        {consentWithdrawn && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft/20 p-3 text-xs text-ink">Zgoda została wycofana. Wynik tego audytu nie będzie prezentowany. Rozpoczęte przetwarzanie u dostawcy może się zakończyć.</p>}
 
         {/* Stan początkowy: Przed uruchomieniem */}
         {!report && !loading && !error && (
@@ -156,51 +224,36 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
               <div className="rounded-2xl border border-line bg-sunken/40 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-indigo-600 font-semibold text-xs uppercase tracking-wider">
                   <Cpu className="h-4 w-4" />
-                  Pętla 1: Parser ATS
+                  Obszar 1: Wymagania oferty
                 </div>
-                <h4 className="text-sm font-bold text-ink">Brama Maszynowa</h4>
+                <h4 className="text-sm font-bold text-ink">{cvVerificationPresentation.areas[0].title}</h4>
                 <p className="text-xs text-muted">
-                  Symuluje ekstrakcję przez silniki rekrutacyjne, wykrywa brakujące twarde słowa kluczowe i ryzyka formatowania.
+                  {cvVerificationPresentation.areas[0].description}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-line bg-sunken/40 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-amber-600 font-semibold text-xs uppercase tracking-wider">
                   <Eye className="h-4 w-4" />
-                  Pętla 2: Oko Rekrutera
+                  Obszar 2: Czytelność treści
                 </div>
-                <h4 className="text-sm font-bold text-ink">6-Sekundowy Skan</h4>
+                <h4 className="text-sm font-bold text-ink">{cvVerificationPresentation.areas[1].title}</h4>
                 <p className="text-xs text-muted">
-                  Bada siłę nagłówka, obecność mierzalnych metryk biznesowych (% i liczby) oraz bezwzględnie eliminuje lanie wody.
+                  {cvVerificationPresentation.areas[1].description}
                 </p>
               </div>
 
               <div className="rounded-2xl border border-line bg-sunken/40 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-emerald-600 font-semibold text-xs uppercase tracking-wider">
                   <Scale className="h-4 w-4" />
-                  Pętla 3: Spójność i Logika
+                  Obszar 3: Spójność i logika
                 </div>
-                <h4 className="text-sm font-bold text-ink">Audyt Chronologii</h4>
+                <h4 className="text-sm font-bold text-ink">{cvVerificationPresentation.areas[2].title}</h4>
                 <p className="text-xs text-muted">
-                  Weryfikuje nakładanie się dat zatrudnienia, luki w stażu, sprzeczne deklaracje i zgodność z klauzulą RODO.
+                  {cvVerificationPresentation.areas[2].description}
                 </p>
               </div>
             </div>
-
-            <label className="mx-auto flex max-w-2xl items-start gap-3 rounded-2xl border border-line bg-sunken/40 p-4 text-left text-xs text-muted">
-              <input
-                type="checkbox"
-                checked={consentToAiProcessing}
-                onChange={(event) => setConsentToAiProcessing(event.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-indigo-600"
-              />
-              <span>
-                Rozumiem, że profil Vault trafia do serwera Kierivo, a do skonfigurowanego dostawcy AI przekazane zostaną
-                wybrane dane profilu (m.in. doświadczenie, umiejętności, edukacja i uprawnienia) oraz stanowisko, firma i
-                opis oferty. Przed wysłaniem do modelu serwer usuwa część pól identyfikujących i pseudonimizuje wykryte
-                dane, ale nie gwarantuje pełnej anonimizacji. Nie wpisuj informacji, których nie chcesz przekazywać.
-              </span>
-            </label>
 
             <button
               type="button"
@@ -215,7 +268,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
               <Sparkles className="h-4 w-4" />
               {isAuthed && usage.aiUses <= 0
                 ? 'Limit audytu AI wyczerpany na dziś'
-                : 'Uruchom Potrójną Pętlę Audytorską'}
+                : 'Uruchom analizę profilu AI'}
             </button>
           </div>
         )}
@@ -225,9 +278,9 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
           <div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
             <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
             <div>
-              <h3 className="text-sm font-bold text-ink">Audyt AI 360° w toku...</h3>
+              <h3 className="text-sm font-bold text-ink">Analiza profilu AI w toku...</h3>
               <p className="text-xs text-muted max-w-sm mt-1">
-                Model przetwarza profil przez filtry ATS, skan rekruterski i weryfikator spójności chronologicznej.
+                Model przygotowuje jedną opinię o wymaganiach oferty, czytelności treści i spójności deklaracji.
               </p>
             </div>
           </div>
@@ -263,14 +316,18 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                   </span>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                      report.verdict === 'READY_TO_APPLY'
+                      report.verdict === null
+                        ? 'bg-slate-500/10 text-muted'
+                        : report.verdict === 'READY_TO_APPLY'
                         ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
                         : report.verdict === 'MINOR_IMPROVEMENTS'
                         ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
                         : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
                     }`}
                   >
-                    {report.verdict === 'READY_TO_APPLY'
+                    {report.verdict === null
+                      ? 'Pełny wynik wymaga treści oferty'
+                      : report.verdict === 'READY_TO_APPLY'
                       ? 'Gotowe do Aplikowania'
                       : report.verdict === 'MINOR_IMPROVEMENTS'
                       ? 'Wymaga Drobnych Korekt'
@@ -278,14 +335,20 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                   </span>
                 </div>
                 <p className="text-sm font-medium text-ink">{report.summary}</p>
+                <p className="text-xs text-muted">
+                  Oceny AI są subiektywną analizą modelu, nie prawdopodobieństwem zaproszenia na rozmowę.
+                  {!report.hasJobDescription && ' Bez treści oferty nie oceniamy dopasowania ATS.'}
+                </p>
               </div>
 
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <span className="block text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                    {report.overallScore}/100
+                    {report.overallScore === null ? '—' : `${report.overallScore}/100`}
                   </span>
-                  <span className="text-[10px] uppercase font-bold text-muted">Wynik 360°</span>
+                  <span className="text-[10px] uppercase font-bold text-muted">
+                    {report.overallScore === null ? 'Wynik 360° wstrzymany' : 'Wynik 360°'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -302,7 +365,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Cpu className="h-4 w-4" />
-                Pętla 1: ATS (ocena AI: {report.atsLoop.atsScore}/100)
+                Obszar 1: Wymagania oferty ({report.atsLoop.atsScore === null ? 'brak porównania' : `ocena AI: ${report.atsLoop.atsScore}/100`})
               </button>
               <button
                 type="button"
@@ -314,7 +377,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Eye className="h-4 w-4" />
-                Pętla 2: Rekruter (ocena AI: {report.recruiterLoop.recruiterScore}/100)
+                Obszar 2: Czytelność treści (ocena AI: {report.recruiterLoop.recruiterScore}/100)
               </button>
               <button
                 type="button"
@@ -326,7 +389,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                 }`}
               >
                 <Scale className="h-4 w-4" />
-                Pętla 3: Spójność i logika (ocena AI: {report.logicComplianceLoop.consistencyScore}/100)
+                Obszar 3: Spójność i logika (ocena AI: {report.logicComplianceLoop.consistencyScore}/100)
               </button>
             </div>
 
@@ -334,11 +397,13 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
             <div className="space-y-4">
               {activeLoopTab === 'ats' && (
                 <div className="space-y-4">
+                  {report.hasJobDescription ? (
+                    <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="rounded-2xl border border-line bg-surface p-4 space-y-2">
                       <span className="text-xs font-bold text-emerald-600 flex items-center gap-1.5">
                         <CheckCircle2 className="h-4 w-4" />
-                        Rozpoznane słowa kluczowe ATS
+                        Słowa kluczowe wskazane przez AI
                       </span>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         {report.atsLoop.recognizedKeywords.map((kw, i) => (
@@ -362,7 +427,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                             </span>
                           ))
                         ) : (
-                          <span className="text-xs text-muted">Brak krytycznych braków.</span>
+                          <span className="text-xs text-muted">Model nie wskazał brakujących słów kluczowych.</span>
                         )}
                       </div>
                     </div>
@@ -378,6 +443,12 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                         </div>
                       ))}
                     </div>
+                  )}
+                    </>
+                  ) : (
+                    <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200">
+                      Nie podano treści oferty, więc nie pokazujemy dopasowania słów kluczowych. Weryfikator nie otrzymał pliku PDF ani wyrenderowanego CV, dlatego nie ocenia też układu dokumentu.
+                    </p>
                   )}
                 </div>
               )}
@@ -408,7 +479,7 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                             <li key={i}>• {w}</li>
                           ))
                         ) : (
-                          <li className="text-muted">Profil wolny od banałów.</li>
+                          <li className="text-muted">Model nie wskazał ogólników.</li>
                         )}
                       </ul>
                     </div>
@@ -434,10 +505,10 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                         Oś czasu i chronologia
                       </span>
                       <p className="text-xs">
-                        {report.logicComplianceLoop.chronologyValid ? (
-                          <span className="text-emerald-600 font-medium">Daty zatrudnienia i edukacji są spójne.</span>
+                        {hasNoReportedChronologyAnomalies(report.logicComplianceLoop) ? (
+                          <span className="text-emerald-600 font-medium">Według AI daty nie wskazują sprzeczności. Sprawdź je w profilu.</span>
                         ) : (
-                          <span className="text-rose-600 font-medium">Wykryto nieścisłości w chronologii!</span>
+                          <span className="text-rose-600 font-medium">AI wskazało możliwe nieścisłości w chronologii. Sprawdź podane daty.</span>
                         )}
                       </p>
                       {report.logicComplianceLoop.timelineAnomalies.map((a, i) => (
@@ -448,30 +519,41 @@ export const Cv360VerifierModal: React.FC<Cv360VerifierModalProps> = ({
                     <div className="rounded-2xl border border-line bg-surface p-4 space-y-2">
                       <span className="text-xs font-bold text-ink flex items-center gap-1.5">
                         <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                        Zgodność RODO i prywatność
+                        Klauzula i prywatność
                       </span>
                       <p className="text-xs text-emerald-600 font-medium">
-                        {report.logicComplianceLoop.rodoCompliant === null
-                          ? 'Nie sprawdzono klauzuli RODO: ta analiza nie otrzymała jej treści.'
-                          : report.logicComplianceLoop.rodoCompliant ? 'Klauzula zgodna z RODO.' : 'Brak klauzuli RODO!'}
+                        Nie sprawdzono klauzuli RODO: ta analiza nie otrzymała jej treści.
                       </p>
                       {report.logicComplianceLoop.privacyRisks.map((p, i) => (
                         <p key={i} className="text-xs text-amber-600">• {p}</p>
                       ))}
                     </div>
                   </div>
+                  <div className="rounded-2xl border border-line bg-surface p-4 space-y-2">
+                    <h4 className="text-xs font-bold text-ink">Możliwe sprzeczności deklaracji według AI</h4>
+                    {report.logicComplianceLoop.logicalInconsistencies.length > 0 ? (
+                      <ul className="text-xs text-ink space-y-1">
+                        {report.logicComplianceLoop.logicalInconsistencies.map((finding, index) => (
+                          <li key={index}>{finding}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-muted">Model nie wskazał sprzecznych deklaracji.</p>
+                    )}
+                    <p className="text-xs text-muted">Sprawdź te uwagi w swoim profilu i dokumentach. Nie potwierdzają nieprawdziwości deklaracji.</p>
+                  </div>
                 </div>
               )}
             </div>
 
             {/* Rekomendacje działań */}
-            {report.actionableRecommendations.length > 0 && (
+            {recommendationsForOffer(report.actionableRecommendations, report.hasJobDescription).length > 0 && (
               <div className="space-y-3 pt-2">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
-                  Zalecane natychmiastowe poprawki
+                  Sugestie AI do sprawdzenia
                 </h4>
                 <div className="space-y-2">
-                  {report.actionableRecommendations.map((rec, idx) => (
+                  {recommendationsForOffer(report.actionableRecommendations, report.hasJobDescription).map((rec, idx) => (
                     <div
                       key={idx}
                       className="rounded-2xl border border-line bg-surface p-3.5 text-xs space-y-1"

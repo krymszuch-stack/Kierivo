@@ -15,10 +15,12 @@ import {
   removeMaterialFromPlan,
   togglePlanStep,
 } from '../../../lib/learningPlanStorage';
-import { profileDataKeyFor, resetLastGoodCache, StorageKeys } from '../../../lib/storage';
+import { profileDataKeyFor, readJson, resetLastGoodCache, StorageKeys, writeJson } from '../../../lib/storage';
+import { MemoryStorage } from '../../../lib/__tests__/helpers/memoryStorage';
 
 describe('Baza Wiedzy i Poradnik Kariery — rzetelność, struktura i plan nauki', () => {
   beforeEach(() => {
+    (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
     resetLastGoodCache();
     // Reset testowego stanu localStorage
     if (typeof localStorage !== 'undefined') {
@@ -182,6 +184,75 @@ describe('Baza Wiedzy i Poradnik Kariery — rzetelność, struktura i plan nauk
 
       const toggledBack = togglePlanStep('profile-a', firstStepId);
       expect(toggledBack.steps[0].completed).toBe(false);
+    });
+
+    it('odrzuca uszkodzone wiersze przed renderowaniem i zachowuje je po zapisie', () => {
+      const key = profileDataKeyFor(StorageKeys.learningPlan, 'profile-a');
+      const malformedStep = { id: 'bad-step', label: 'Niepoprawny krok', completed: 'tak' };
+      const malformedItem = { id: 'bad-item', materialId: 'bad-material', status: 'nieznany' };
+      writeJson(key, {
+        goalName: 'Plan testowy',
+        steps: [
+          { id: 'step-ok', label: 'Poprawny krok', completed: false },
+          malformedStep,
+        ],
+        items: [
+          {
+            id: 'item-ok', materialId: 'material-ok', materialTitle: 'Materiał poprawny',
+            status: 'in_progress', statusLabel: 'fałszywa etykieta', addedAt: '2026-10-01T10:00:00.000Z',
+          },
+          malformedItem,
+        ],
+        updatedAt: '2026-10-01T10:00:00.000Z',
+        nieznanePole: { zachowaj: true },
+      });
+
+      const plan = getLearningPlan('profile-a');
+      expect(plan.steps).toEqual([{ id: 'step-ok', label: 'Poprawny krok', completed: false }]);
+      expect(plan.items).toHaveLength(1);
+      expect(plan.items[0].statusLabel).toBe('W trakcie');
+
+      togglePlanStep('profile-a', 'step-ok');
+      const stored = readJson<unknown>(key, {});
+      expect(stored).toMatchObject({
+        __kierivoRecovery: {
+          steps: [malformedStep],
+          items: [malformedItem],
+          fields: { nieznanePole: { zachowaj: true } },
+        },
+      });
+      expect(getLearningPlan('profile-a').steps[0].completed).toBe(true);
+    });
+
+    it('przy pustej checkliście przywraca kroki startowe, więc postęp ma skończony procent', () => {
+      const key = profileDataKeyFor(StorageKeys.learningPlan, 'profile-a');
+      writeJson(key, { goalName: 'Pusty plan', steps: [], items: [] });
+
+      const plan = getLearningPlan('profile-a');
+      const percent = Math.round((plan.steps.filter((step) => step.completed).length / plan.steps.length) * 100);
+      expect(plan.steps).toHaveLength(DEFAULT_PLAN_STEPS.length);
+      expect(Number.isFinite(percent)).toBe(true);
+      expect(percent).toBe(0);
+    });
+
+    it('odrzuca powtórzone identyfikatory kroków i materiałów', () => {
+      const key = profileDataKeyFor(StorageKeys.learningPlan, 'profile-a');
+      const item = {
+        id: 'item-a', materialId: 'material-a', materialTitle: 'Materiał',
+        status: 'not_started', statusLabel: 'Nie rozpoczęto', addedAt: '2026-10-01T10:00:00.000Z',
+      };
+      writeJson(key, {
+        goalName: 'Plan duplikatów',
+        steps: [
+          { id: 'step-a', label: 'Pierwszy', completed: false },
+          { id: 'step-a', label: 'Duplikat', completed: true },
+        ],
+        items: [item, { ...item, id: 'item-b' }],
+        updatedAt: '2026-10-01T10:00:00.000Z',
+      });
+
+      expect(getLearningPlan('profile-a').steps).toHaveLength(1);
+      expect(getLearningPlan('profile-a').items).toHaveLength(1);
     });
   });
 });

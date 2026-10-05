@@ -33,6 +33,10 @@ describe('Atomic Quota Reservation & Refund', () => {
     } as any);
   });
 
+  it('komunikat o wyczerpanym limicie wskazuje granicę doby UTC', () => {
+    expect(new QuotaExceededError('ai').message).toContain('00:00 UTC');
+  });
+
   it('reserveAiQuota wywołuje RPC reserve_ai_quota z prawidłowymi parametrami', async () => {
     mockRpc.mockResolvedValueOnce({ data: { allowed: true, current_uses: 1 }, error: null });
 

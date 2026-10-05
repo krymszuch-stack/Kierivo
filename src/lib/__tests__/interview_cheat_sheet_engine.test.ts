@@ -142,6 +142,11 @@ describe('buildRedFlagsChecklist', () => {
     const items = buildRedFlagsChecklist(jd);
     expect(items.filter((i) => i.severity === 'MUST_KNOW').length).toBe(0);
   });
+
+  it('does not infer senior mentoring questions when job seniority is unknown', () => {
+    const items = buildRedFlagsChecklist(makeParsedJD({ seniorityLevel: 'UNKNOWN' }));
+    expect(items.some((item) => item.id === 'redflag-seniority')).toBe(false);
+  });
 });
 
 describe('buildLocalStarSeeds', () => {
@@ -197,7 +202,6 @@ describe('mergeGeminiCheatSheetEnrichment', () => {
     const enrichment = {
       starTalkingPoints: [
         {
-          id: 'ai-1',
           relatedRequirement: 'React',
           situation: 'Sytuacja AI',
           task: 'Zadanie AI',
@@ -206,11 +210,16 @@ describe('mergeGeminiCheatSheetEnrichment', () => {
         },
       ],
       personalizedFraming: 'Framing AI',
+      emergencyPhrases: [{ scenario: 'Pauza', phrasePL: 'Proszę o chwilę.' }],
     };
 
     const merged = mergeGeminiCheatSheetEnrichment(local, enrichment);
 
-    expect(merged.starTalkingPoints).toEqual(enrichment.starTalkingPoints);
+    expect(merged.starTalkingPoints).toEqual([{ ...enrichment.starTalkingPoints[0], id: 'star-ai-0' }]);
+    expect(merged.emergencyPhrases).toEqual([{
+      ...enrichment.emergencyPhrases[0],
+      id: 'emergency-ai-0',
+    }]);
     expect(merged.personalizedFraming).toBe('Framing AI');
     expect(merged.generationMode).toBe('GEMINI_ENRICHED');
     expect(merged.glossary).toEqual(local.glossary);
@@ -227,6 +236,7 @@ describe('mergeGeminiCheatSheetEnrichment', () => {
     const merged = mergeGeminiCheatSheetEnrichment(local, {
       starTalkingPoints: [],
       personalizedFraming: 'x',
+      emergencyPhrases: [],
     });
 
     expect(merged.emergencyPhrases).toEqual(local.emergencyPhrases);

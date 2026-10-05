@@ -101,6 +101,9 @@ export const CoverLetterView: React.FC<CoverLetterViewProps> = ({
             <p className="text-[11px] text-muted">
               Wygenerowany w 100% lokalnie bez zużycia tokenów, ze zróżnicowaną bazą profesjonalnych zwrotów.
             </p>
+            <p className="text-[11px] text-muted">
+              Treść odzwierciedla wpisy w MasterVault; sprawdź, czy odpowiadają Twojemu doświadczeniu.
+            </p>
           </div>
         </div>
 
@@ -145,7 +148,7 @@ export const CoverLetterView: React.FC<CoverLetterViewProps> = ({
         <div className="rounded-2xl border border-line bg-surface p-4 space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-brand-fg">
             <Target className="h-3.5 w-3.5" />
-            <span>1. Haczyk Strategiczny</span>
+            <span>1. Wstęp</span>
           </div>
           <p className="text-[11px] text-muted leading-relaxed line-clamp-3">
             {coverLetter.hook}
@@ -155,7 +158,7 @@ export const CoverLetterView: React.FC<CoverLetterViewProps> = ({
         <div className="rounded-2xl border border-line bg-surface p-4 space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-success-fg">
             <Award className="h-3.5 w-3.5" />
-            <span>2. Twarde Dowody (STAR)</span>
+            <span>2. Wpisy z profilu</span>
           </div>
           <p className="text-[11px] text-muted leading-relaxed line-clamp-3">
             {coverLetter.proofPoints.join(' ')}
@@ -165,7 +168,7 @@ export const CoverLetterView: React.FC<CoverLetterViewProps> = ({
         <div className="rounded-2xl border border-line bg-surface p-4 space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-violet">
             <Sparkles className="h-3.5 w-3.5" />
-            <span>3. Call to Action</span>
+            <span>3. Zakończenie</span>
           </div>
           <p className="text-[11px] text-muted leading-relaxed line-clamp-3">
             {coverLetter.callToAction}

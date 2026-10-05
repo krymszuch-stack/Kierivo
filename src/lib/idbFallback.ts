@@ -13,6 +13,8 @@
  * IndexedDB nigdy nie przecieka do wywołań `readJson`.
  */
 
+import { beginStorageDeletion, isStorageWriteBlocked } from './storageDeletionGuard';
+
 const DB_NAME = 'cvelocity-backup';
 const DB_VERSION = 1;
 const STORE_NAME = 'kv';
@@ -63,12 +65,13 @@ function openDb(): Promise<IDBDatabase | null> {
 
 function withStore<T>(
   mode: IDBTransactionMode,
-  operation: (store: IDBObjectStore) => IDBRequest<T>
+  operation: (store: IDBObjectStore) => IDBRequest<T>,
+  isCurrent: () => boolean = () => true,
 ): Promise<T | null> {
   return openDb().then(
     (db) =>
       new Promise<T | null>((resolve) => {
-        if (!db) {
+        if (!db || !isCurrent()) {
           resolve(null);
           return;
         }
@@ -92,22 +95,34 @@ function withStore<T>(
 
 /** Zapis awaryjny. Zwraca `true`, gdy dane faktycznie dotarły do IndexedDB. */
 export function idbBackupSet(key: string, value: string): Promise<boolean> {
+  if (isStorageWriteBlocked(key)) return Promise.resolve(false);
   bumpKeyVersion(key);
+  const isCurrent = currentWriteGuard(key);
   mirrorCache.set(key, value);
   mirroredKeys.add(key);
   preferredMirrorKeys.add(key);
 
-  return withStore<IDBValidKey>('readwrite', (store) => store.put(value, key)).then(
-    (result) => result !== null,
+  return withStore<IDBValidKey>('readwrite', (store) => store.put(value, key), isCurrent).then(
+    (result) => result !== null && isCurrent(),
   );
 
 }
 
+function currentWriteGuard(key: string): () => boolean {
+  const version = keyVersions.get(key);
+  const generation = clearVersion;
+  // Otwarcie bazy i potwierdzenie transakcji mogą nastąpić po usunięciu danych
+  // albo kolejnym zapisie. Stara operacja nie może wtedy publikować sukcesu.
+  return () => !isStorageWriteBlocked(key) && version === keyVersions.get(key) && generation === clearVersion;
+}
+
 /** Zapis migracyjny: lustro uznajemy za gotowe dopiero po zatwierdzeniu transakcji IDB. */
 export async function idbBackupSetDurably(key: string, value: string): Promise<boolean> {
+  if (isStorageWriteBlocked(key)) return false;
   bumpKeyVersion(key);
-  const persisted = await withStore<IDBValidKey>('readwrite', (store) => store.put(value, key));
-  if (persisted === null) return false;
+  const isCurrent = currentWriteGuard(key);
+  const persisted = await withStore<IDBValidKey>('readwrite', (store) => store.put(value, key), isCurrent);
+  if (persisted === null || !isCurrent()) return false;
   mirrorCache.set(key, value);
   mirroredKeys.add(key);
   preferredMirrorKeys.add(key);
@@ -163,6 +178,36 @@ export async function idbBackupKeys(prefix: string): Promise<string[]> {
 }
 
 /** Usuwa wpis zapasowy (np. przy „usuń moje dane"). */
+export async function idbBackupRemoveDurably(keys: string[]): Promise<boolean> {
+  const release = beginStorageDeletion(keys);
+  try {
+    for (const key of keys) bumpKeyVersion(key);
+    if (typeof indexedDB !== 'undefined') {
+      const db = await openDb();
+      if (!db) return false;
+      const removed = await new Promise<boolean>(resolve => {
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          for (const key of keys) store.delete(key).onerror = () => resolve(false);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch { resolve(false); }
+      });
+      if (!removed) return false;
+    }
+    for (const key of keys) {
+      bumpKeyVersion(key);
+      mirrorCache.delete(key);
+      mirroredKeys.delete(key);
+      preferredMirrorKeys.delete(key);
+    }
+    return true;
+  } finally { release(); }
+}
+
+/** Próba bez oczekiwania; operacje zgłaszające sukces czekają na wariant trwały. */
 export function idbBackupRemove(key: string): void {
   bumpKeyVersion(key);
   mirrorCache.delete(key);
@@ -173,29 +218,32 @@ export function idbBackupRemove(key: string): void {
 
 /** Potwierdza wymazanie kopii przed zgłoszeniem użytkownikowi sukcesu usunięcia danych. */
 export async function idbBackupClearAllDurably(): Promise<boolean> {
-  clearVersion += 1;
-  mirrorCache.clear();
-  mirroredKeys.clear();
-  preferredMirrorKeys.clear();
+  const release = beginStorageDeletion();
+  try {
+    clearVersion += 1;
+    mirrorCache.clear();
+    mirroredKeys.clear();
+    preferredMirrorKeys.clear();
 
-  // Gdy API nie istnieje, aplikacja nie mogła zapisać tu danych. Błąd otwarcia
-  // istniejącej bazy jest inny: nie wolno go uznać za potwierdzone usunięcie.
-  if (typeof indexedDB === 'undefined') return true;
-  const db = await openDb();
-  if (!db) return false;
+    // Gdy API nie istnieje, aplikacja nie mogła zapisać tu danych. Błąd otwarcia
+    // istniejącej bazy jest inny: nie wolno go uznać za potwierdzone usunięcie.
+    if (typeof indexedDB === 'undefined') return true;
+    const db = await openDb();
+    if (!db) return false;
 
-  return new Promise<boolean>((resolve) => {
-    try {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const request = tx.objectStore(STORE_NAME).clear();
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-      tx.onabort = () => resolve(false);
-      request.onerror = () => resolve(false);
-    } catch {
-      resolve(false);
-    }
-  });
+    return await new Promise<boolean>((resolve) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const request = tx.objectStore(STORE_NAME).clear();
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+        request.onerror = () => resolve(false);
+      } catch {
+        resolve(false);
+      }
+    });
+  } finally { release(); }
 }
 
 /** Synchroniczna ścieżka resetu stanu; usunięcie konta czeka na wariant trwały. */

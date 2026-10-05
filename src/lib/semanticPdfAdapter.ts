@@ -324,6 +324,7 @@ export function adaptMasterVaultToSemanticProfile(
     description: p.description,
     techStack: p.techStack,
     metrics: p.metrics,
+    link: p.link,
   }));
 
   return {

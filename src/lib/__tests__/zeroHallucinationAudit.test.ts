@@ -107,7 +107,6 @@ describe('Zero-Hallucination Contract Suite (BUG-001 Verification)', () => {
     const hooks = getPitchHookVariations({
       candidateName: 'Adam Nowak',
       roleTitle: 'Monter',
-      verifiedClaimsCount: 0,
     });
 
     hooks.forEach((hook) => {
@@ -215,6 +214,12 @@ describe('Zero-Hallucination Contract Suite (BUG-001 Verification)', () => {
     bridgeVault.projects = bridgeVault.projects.map((project) => ({
       ...project,
       techStack: project.techStack.filter((skill) => skill !== 'AWS'),
+    }));
+    // Samo usunięcie tagów nie usuwa pozytywnego opisu migracji do AWS.
+    expect(findSkillBridgeForGap('AWS', bridgeVault)).toBeUndefined();
+    bridgeVault.projects = bridgeVault.projects.map((project) => ({
+      ...project,
+      description: 'Migracja 20 mikrousług do infrastruktury projektu.',
     }));
     const bridge = findSkillBridgeForGap('AWS', bridgeVault);
     expect(bridge).toBeDefined();

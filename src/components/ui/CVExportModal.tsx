@@ -1,3 +1,4 @@
+import { cvVerificationPresentation } from '../../lib/cvVerificationPresentation';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -7,6 +8,7 @@ import {
   Square,
   ImageOff,
   Loader2,
+  AlertTriangle,
   Shield,
   Palette,
   Printer,
@@ -17,9 +19,16 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from './Button';
-import { fetchSemanticThemes, downloadSemanticPdf, SemanticThemeItem, SemanticLayoutItem } from '../../lib/semanticPdfExporter';
+import {
+  fetchSemanticThemes,
+  prepareSemanticPdf,
+  savePreparedSemanticPdf,
+  SemanticPdfExportResult,
+  SemanticThemeItem,
+  SemanticLayoutItem,
+} from '../../lib/semanticPdfExporter';
 import { ApiError } from '../../lib/apiClient';
-import { MasterVault, TailoredResume } from '../../types';
+import { MasterVault, TailoredResume, CvExportEvent } from '../../types';
 import { showToast } from '../../store/useToastStore';
 import { AtsValidationPanel } from '../../features/ats/AtsValidationPanel';
 import { useOptionalAuth } from '../../context/AuthContext';
@@ -92,6 +101,8 @@ export interface CVExportModalProps {
     avatar: 'circle' | 'square' | 'none';
   }) => void;
   onPrint?: () => void;
+  /** Wywoływane dopiero po pobraniu pliku PDF, nigdy po samym otwarciu druku. */
+  onPdfDownloaded?: (event: CvExportEvent) => void;
   onAuditOpen?: () => void;
 }
 
@@ -107,6 +118,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
   initialAvatar = 'none',
   onApplyAppearance,
   onPrint,
+  onPdfDownloaded,
   onAuditOpen,
 }) => {
   const auth = useOptionalAuth();
@@ -122,6 +134,8 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
   const [isLoadingThemes, setIsLoadingThemes] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [atsValidation, setAtsValidation] = useState<AtsPdfValidationReport | null>(null);
+  const [contentWarnings, setContentWarnings] = useState<string[]>([]);
+  const [pendingPdf, setPendingPdf] = useState<SemanticPdfExportResult | null>(null);
 
   // Synchronizacja trybu po otwarciu
   useEffect(() => {
@@ -131,6 +145,9 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
       setSelectedLayout(initialLayout);
       setTargetPages(initialTargetPages);
       setSelectedAvatar(initialAvatar);
+      setAtsValidation(null);
+      setContentWarnings([]);
+      setPendingPdf(null);
     }
   }, [isOpen, initialMode, initialTheme, initialLayout, initialTargetPages, initialAvatar]);
 
@@ -181,6 +198,32 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
     onClose();
   };
 
+  const completePdfDownload = (result: SemanticPdfExportResult) => {
+    savePreparedSemanticPdf(result);
+    onPdfDownloaded?.({
+      exportedCv: {
+        templateId: `semantic-${selectedExportFormat}-${selectedTheme}-${selectedLayout}`,
+        templateName: `${selectedExportFormat === 'dual-layer' ? 'PDF ATS / Dual-Layer' : 'PDF standardowy'} — ${selectedTheme} / ${selectedLayout}`,
+        fit: 'ats-friendly',
+        exportedAt: new Date().toISOString(),
+      },
+      vault,
+      tailoredResume,
+    });
+
+    const formatLabel = selectedExportFormat === 'dual-layer' ? 'PDF ATS / Dual-Layer' : 'Standardowy PDF';
+    showToast(`Pobrano dokument: ${formatLabel}`, {
+      message: `Motyw: ${selectedTheme}, Układ: ${selectedLayout}`,
+      variant: 'success',
+    });
+    setPendingPdf(null);
+    if (result.atsValidation) {
+      setAtsValidation(result.atsValidation);
+    } else if (result.contentWarnings.length === 0) {
+      onClose();
+    }
+  };
+
   /**
    * Eksport dokumentu w wybranym formacie lub uruchomienie wydruku.
    */
@@ -200,7 +243,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
     setIsExporting(true);
     setAtsValidation(null);
     try {
-      const result = await downloadSemanticPdf({
+      const result = await prepareSemanticPdf({
         vault,
         tailoredResume,
         theme: selectedTheme,
@@ -209,19 +252,10 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
         avatar: selectedAvatar,
         pdfType: selectedExportFormat,
       });
-
-      const formatLabel = selectedExportFormat === 'dual-layer' ? 'PDF ATS / Dual-Layer' : 'Standardowy PDF';
-      showToast(`Pobrano dokument: ${formatLabel}`, {
-        message: `Motyw: ${selectedTheme}, Układ: ${selectedLayout}`,
-        variant: 'success',
-      });
-
-      // Pokaż wyniki walidacji ATS jeśli dostępne
-      if (result.atsValidation) {
-        setAtsValidation(result.atsValidation);
-      } else {
-        onClose();
-      }
+      setContentWarnings(result.contentWarnings);
+      setAtsValidation(result.atsValidation);
+      if (result.contentWarnings.length > 0) setPendingPdf(result);
+      else completePdfDownload(result);
     } catch (err) {
       const { title, message } = formatPdfExportErrorMessage(err);
       showToast(title, {
@@ -248,7 +282,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
     },
     audit: {
       title: 'Audyt CV 360°',
-      desc: 'Weryfikacja jakości dokumentu pod kątem reguł ATS, metryk STAR i spójności danych.',
+      desc: cvVerificationPresentation.summary,
       icon: ShieldCheck,
     },
   }[currentMode];
@@ -347,14 +381,54 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
             <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
             <span className="ml-2 text-sm text-muted">Ładowanie motywów z silnika...</span>
           </div>
-        ) : atsValidation ? (
+        ) : atsValidation || contentWarnings.length > 0 ? (
           /* Wyniki walidacji ATS po eksporcie */
           <div className="space-y-4">
+            {contentWarnings.length > 0 && (
+              <div role="alert" className="rounded-xl border border-warning/40 bg-warning-soft/30 p-4">
+                <div className="mb-2 flex items-center gap-2 text-warning-fg">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <h4 className="text-sm font-bold">Treść CV została skrócona</h4>
+                </div>
+                <ul className="space-y-1">
+                  {contentWarnings.map((warning) => (
+                    <li key={warning} className="text-xs text-ink">{warning}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-muted">
+                  Pobranie wstrzymano. Wróć do ustawień albo zaakceptuj skrócenie po sprawdzeniu tej listy.
+                </p>
+              </div>
+            )}
+            {pendingPdf && (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setPendingPdf(null);
+                    setContentWarnings([]);
+                    setAtsValidation(null);
+                  }}
+                  aria-label="Anuluj eksport skróconego CV"
+                >
+                  Anuluj eksport
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => completePdfDownload(pendingPdf)}
+                  aria-label="Pobierz CV po potwierdzeniu skrócenia treści"
+                >
+                  Pobierz mimo pominięć
+                </Button>
+              </div>
+            )}
             <div className="flex items-center gap-2 border-b border-line pb-3">
               <Shield className="h-4 w-4 text-brand-600" />
-              <h4 className="text-sm font-bold text-ink">Lokalny test parsowalności — wyniki</h4>
+              <h4 className="text-sm font-bold text-ink">Lokalny przegląd tekstu — wyniki</h4>
             </div>
-            <AtsValidationPanel report={atsValidation} />
+            {atsValidation && <AtsValidationPanel report={atsValidation} />}
             <div className="flex justify-end pt-3 border-t border-line">
               <Button variant="ghost" size="sm" onClick={onClose} aria-label="Zamknij raport walidacji ATS">
                 Zamknij
@@ -642,30 +716,30 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
               <div className="flex items-start gap-3">
                 <ShieldCheck className="h-6 w-6 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-ink">Kompleksowa weryfikacja dokumentu (Potrójna Pętla)</h4>
+                  <h4 className="text-sm font-bold text-ink">Analiza danych profilu z AI</h4>
                   <p className="text-xs text-muted leading-relaxed">
-                    Audyt analizuje zgodność struktury pod kątem parsowania ATS, obecność metryk twardych w osiągnięciach oraz spójność faktów z MasterVault.
+                    {cvVerificationPresentation.summary} {cvVerificationPresentation.boundary}
                   </p>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-xl border border-line bg-surface p-3 text-xs">
                   <div className="font-semibold text-ink flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5 text-brand-fg" /> Zgodność ATS
+                    <Layers className="h-3.5 w-3.5 text-brand-fg" /> {cvVerificationPresentation.areas[0].title}
                   </div>
-                  <p className="mt-1 text-[11px] text-muted">Jednokolumnowy przepływ i czytelne etykiety sekcji.</p>
+                  <p className="mt-1 text-[11px] text-muted">{cvVerificationPresentation.areas[0].description}</p>
                 </div>
                 <div className="rounded-xl border border-line bg-surface p-3 text-xs">
                   <div className="font-semibold text-ink flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-brand-fg" /> Metryki STAR
+                    <Sparkles className="h-3.5 w-3.5 text-brand-fg" /> {cvVerificationPresentation.areas[1].title}
                   </div>
-                  <p className="mt-1 text-[11px] text-muted">Weryfikacja mierzalnych rezultatów w punktach doświadczenia.</p>
+                  <p className="mt-1 text-[11px] text-muted">{cvVerificationPresentation.areas[1].description}</p>
                 </div>
                 <div className="rounded-xl border border-line bg-surface p-3 text-xs">
                   <div className="font-semibold text-ink flex items-center gap-1.5">
-                    <Shield className="h-3.5 w-3.5 text-brand-fg" /> Prawdomówność
+                    <Shield className="h-3.5 w-3.5 text-brand-fg" /> {cvVerificationPresentation.areas[2].title}
                   </div>
-                  <p className="mt-1 text-[11px] text-muted">Brak halucynacji i pełna zgodność z bazą faktów.</p>
+                  <p className="mt-1 text-[11px] text-muted">{cvVerificationPresentation.areas[2].description}</p>
                 </div>
               </div>
             </div>
@@ -688,9 +762,10 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                   onAuditOpen?.();
                 }}
                 className="min-w-[160px]"
-                aria-label="Uruchom audyt CV 360°"
+                disabled={!onAuditOpen}
+                aria-label="Otwórz analizę profilu AI"
               >
-                Uruchom weryfikację
+                Otwórz analizę AI
               </Button>
             </div>
           </div>

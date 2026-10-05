@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   Sparkles,
   Bot,
@@ -24,17 +24,27 @@ import { Button } from '../../components/ui/Button';
 import { useEntitlements, consumeAiLocally } from '../../store/useEntitlements';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
 import { buildInterviewCoachProfileContext } from '../../lib/interviewCoachContext';
+import { AI_QUOTA_RESET_TIME } from '../../lib/aiQuotaPolicy';
 import { DEFAULT_INTERVIEW_QUESTIONS, resolveInterviewTargetRole } from '../../lib/interviewCoachDefaults';
-import {
-  InterviewQuestionItem,
-  StarAnswerEvaluation,
-} from '../../server/services/interviewCoach.service';
+import type { InterviewQuestionItem } from '../../server/services/interviewCoach.service';
+import type { StarAnswerEvaluation } from '../../lib/starEvaluation';
+import { INTERVIEW_COACH_INPUT_LIMITS } from '../../lib/interviewCoachInput';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
+import { showToast } from '../../store/useToastStore';
+import { createAsyncOperationGuard } from '../../lib/asyncOperationGuard';
 
 export interface StarCoachSectionProps {
   vault: MasterVault;
 }
 
 export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => {
+  // Pytania są zależne od tego samego wyciągu, który trafia do API. Nowy
+  // kontekst rozpoczyna ćwiczenie bez szkicu, zgody i oceny starego profilu.
+  const contextKey = JSON.stringify(buildInterviewCoachProfileContext(vault));
+  return <StarCoachSession key={contextKey} vault={vault} />;
+};
+
+const StarCoachSession: React.FC<StarCoachSectionProps> = ({ vault }) => {
   const { usage, refresh: refreshEntitlements } = useEntitlements();
 
   const [targetRole, setTargetRole] = useState(
@@ -53,6 +63,42 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   const [copied, setCopied] = useState(false);
   const [consentToAiProcessing, setConsentToAiProcessing] = useState(false);
   const [confirmedDraftFacts, setConfirmedDraftFacts] = useState(false);
+  const [evaluationInvalidated, setEvaluationInvalidated] = useState(false);
+  const [questionsGenerated, setQuestionsGenerated] = useState(false);
+  const [evaluationGuard] = useState(createAsyncOperationGuard);
+  const [questionsGuard] = useState(createAsyncOperationGuard);
+  const [copyGuard] = useState(createAsyncOperationGuard);
+
+  const invalidateEvaluation = () => {
+    if (evaluation || evaluationGuard.isBusy()) setEvaluationInvalidated(true);
+    evaluationGuard.invalidate();
+    copyGuard.invalidate();
+    setEvaluation(null);
+    setConfirmedDraftFacts(false);
+    setCopied(false);
+    setIsEvaluating(false);
+    setError(null);
+  };
+  const invalidateQuestions = () => {
+    questionsGuard.invalidate();
+    setIsGeneratingQuestions(false);
+    if (questionsGenerated) {
+      // Własne pytania nie pochodzą z modelu; zmiana kryteriów nie usuwa ich.
+      setQuestions(prev => [...prev.filter(question => question.id.startsWith('custom-')), ...DEFAULT_INTERVIEW_QUESTIONS]);
+      setSelectedQuestion(prev => prev.id.startsWith('custom-') ? prev : DEFAULT_INTERVIEW_QUESTIONS[0]);
+      setQuestionsGenerated(false);
+    }
+  };
+  useLayoutEffect(() => () => {
+    questionsGuard.invalidate();
+    evaluationGuard.invalidate();
+    copyGuard.invalidate();
+  }, [questionsGuard, evaluationGuard, copyGuard]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   // Stoper
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -78,15 +124,18 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
   };
 
   const handleGenerateQuestions = async () => {
+    if (questionsGuard.isBusy()) return;
     if (!consentToAiProcessing) {
       setError('Zaznacz zgodę na wysłanie wybranego kontekstu do skonfigurowanego dostawcy AI.');
       return;
     }
     if (usage.aiUses <= 0 || !consumeAiLocally()) {
-      setError('Wykorzystano dzisiejszy limit zapytań AI (odnowi się o północy). Możesz swobodnie trenować na gotowej liście pytań rekrutacyjnych poniżej.');
+      setError(`Wykorzystano dzisiejszy limit zapytań AI (odnowi się o ${AI_QUOTA_RESET_TIME}). Możesz swobodnie trenować na gotowej liście pytań rekrutacyjnych poniżej.`);
       return;
     }
 
+    const requestToken = questionsGuard.begin();
+    if (!requestToken) return;
     setIsGeneratingQuestions(true);
     setError(null);
     try {
@@ -100,24 +149,28 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
         }
       );
 
+      if (!questionsGuard.isCurrent(requestToken)) return;
       if (data.questions && data.questions.length > 0) {
+        invalidateEvaluation();
         setQuestions(data.questions);
+        setQuestionsGenerated(true);
         setSelectedQuestion(data.questions[0]);
       }
-      refreshEntitlements();
     } catch (err) {
+      if (!questionsGuard.isCurrent(requestToken)) return;
       if (err instanceof ApiError && err.isQuotaExceeded) {
-        setError('Limit zapytań AI na dziś wyczerpany. Pula odnowi się o północy. Możesz dalej korzystać z bazy pytań predefiniowanych.');
-        refreshEntitlements();
+      setError(`Limit zapytań AI na dziś wyczerpany. Pula odnowi się o ${AI_QUOTA_RESET_TIME}. Możesz dalej korzystać z bazy pytań predefiniowanych.`);
       } else {
         setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas generowania pytań.');
       }
     } finally {
-      setIsGeneratingQuestions(false);
+      if (questionsGuard.finish(requestToken)) setIsGeneratingQuestions(false);
+      void refreshEntitlements();
     }
   };
 
   const handleEvaluateAnswer = async () => {
+    if (evaluationGuard.isBusy()) return;
     if (!consentToAiProcessing) {
       setError('Zaznacz zgodę na wysłanie odpowiedzi i wybranego kontekstu do skonfigurowanego dostawcy AI.');
       return;
@@ -126,12 +179,20 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
       setError('Wpisz swoją odpowiedź przed uruchomieniem analizy trenera.');
       return;
     }
-
-    if (usage.aiUses <= 0 || !consumeAiLocally()) {
-      setError('Wykorzystano dzisiejszy limit analiz AI (odnowi się o północy). Skorzystaj ze stopera i samodzielnej checklisty STAR.');
+    if (selectedQuestion.question.length > INTERVIEW_COACH_INPUT_LIMITS.question) {
+      setError(`Wybrane pytanie przekracza limit ${INTERVIEW_COACH_INPUT_LIMITS.question} znaków. Wybierz krótsze pytanie.`);
       return;
     }
 
+    if (usage.aiUses <= 0 || !consumeAiLocally()) {
+      setError(`Wykorzystano dzisiejszy limit analiz AI (odnowi się o ${AI_QUOTA_RESET_TIME}). Skorzystaj ze stopera i samodzielnej checklisty STAR.`);
+      return;
+    }
+
+    invalidateEvaluation();
+    const requestToken = evaluationGuard.begin();
+    if (!requestToken) return;
+    setEvaluationInvalidated(false);
     setIsEvaluating(true);
     setError(null);
     try {
@@ -145,28 +206,38 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
         }
       );
 
+      if (!evaluationGuard.isCurrent(requestToken)) return;
       if (data.evaluation) {
         setEvaluation(data.evaluation);
         setConfirmedDraftFacts(false);
       }
-      refreshEntitlements();
     } catch (err) {
+      if (!evaluationGuard.isCurrent(requestToken)) return;
       if (err instanceof ApiError && err.isQuotaExceeded) {
-        setError('Limit analiz AI na dziś wyczerpany. Pula odnowi się o północy.');
-        refreshEntitlements();
+      setError(`Limit analiz AI na dziś wyczerpany. Pula odnowi się o ${AI_QUOTA_RESET_TIME}.`);
       } else {
         setError(err instanceof Error ? err.message : 'Wystąpił błąd podczas oceny odpowiedzi.');
       }
     } finally {
-      setIsEvaluating(false);
+      if (evaluationGuard.finish(requestToken)) setIsEvaluating(false);
+      void refreshEntitlements();
     }
   };
 
-  const handleCopyExemplary = () => {
+  const handleCopyExemplary = async () => {
     if (!confirmedDraftFacts || !evaluation?.exemplaryResponse) return;
-    navigator.clipboard.writeText(evaluation.exemplaryResponse);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const copyToken = copyGuard.begin();
+    if (!copyToken) return;
+    setCopied(false);
+    try {
+      await copyTextAndNotifySuccess(evaluation.exemplaryResponse);
+      if (copyGuard.isCurrent(copyToken)) setCopied(true);
+    } catch {
+      if (!copyGuard.isCurrent(copyToken)) return;
+      showToast('Nie udało się skopiować', { message: 'Zaznacz szkic odpowiedzi i skopiuj go ręcznie.', variant: 'error' });
+    } finally {
+      copyGuard.finish(copyToken);
+    }
   };
 
   const getVerdictBadge = (verdict: StarAnswerEvaluation['verdict']) => {
@@ -246,13 +317,14 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
         <input
           type="checkbox"
           checked={consentToAiProcessing}
-          onChange={(event) => setConsentToAiProcessing(event.target.checked)}
+          onChange={(event) => { if (!event.target.checked) { invalidateQuestions(); invalidateEvaluation(); } setConsentToAiProcessing(event.target.checked); }}
           className="mt-0.5"
         />
         <span>
           Zgadzam się wysłać dane potrzebne do wybranej funkcji: przy generowaniu pytań ograniczony, lokalnie
           pseudonimizowany wyciąg z profilu; przy ocenie treść pytania i mojej odpowiedzi. W trybie chmurowym
-          przetwarza je Azure OpenAI. Odpowiedź nie jest automatycznie anonimizowana — usunę z niej dane osobowe,
+          przetwarza je dostawca AI skonfigurowany dla tej aplikacji (Azure OpenAI albo Ollama, zależnie od środowiska).
+          Odpowiedź nie jest automatycznie anonimizowana — usunę z niej dane osobowe,
           informacje poufne i dane osób trzecich.
         </span>
       </label>
@@ -286,7 +358,8 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
             <input
               type="text"
               value={targetRole}
-              onChange={(e) => setTargetRole(e.target.value)}
+              onChange={(e) => { invalidateQuestions(); invalidateEvaluation(); setTargetRole(e.target.value); }}
+              maxLength={INTERVIEW_COACH_INPUT_LIMITS.role}
               placeholder="np. Senior Product Designer, Java Tech Lead"
               className="w-full rounded-xl border border-line bg-elevated px-3.5 py-2 text-sm text-ink placeholder:text-subtle focus:border-brand-500 focus:outline-none"
             />
@@ -298,7 +371,8 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
             <input
               type="text"
               value={targetCompany}
-              onChange={(e) => setTargetCompany(e.target.value)}
+              onChange={(e) => { invalidateQuestions(); invalidateEvaluation(); setTargetCompany(e.target.value); }}
+              maxLength={INTERVIEW_COACH_INPUT_LIMITS.company}
               placeholder="np. Allegro, Google, Snowflake"
               className="w-full rounded-xl border border-line bg-elevated px-3.5 py-2 text-sm text-ink placeholder:text-subtle focus:border-brand-500 focus:outline-none"
             />
@@ -331,10 +405,12 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
           {questions.map((q) => {
             const isSelected = selectedQuestion.id === q.id;
             return (
-              <div
+              <button
                 key={q.id}
-                onClick={() => setSelectedQuestion(q)}
-                className={`cursor-pointer rounded-2xl border p-4 transition-all duration-150 ${
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => { if (selectedQuestion.id !== q.id) invalidateEvaluation(); setSelectedQuestion(q); }}
+                className={`w-full text-left cursor-pointer rounded-2xl border p-4 transition-all duration-150 ${
                   isSelected
                     ? 'border-brand-500 bg-brand-50/40 dark:bg-brand-950/30 ring-1 ring-brand-500 shadow-xs'
                     : 'border-line bg-elevated/60 hover:border-line-hover hover:bg-elevated'
@@ -365,7 +441,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                     </p>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -381,6 +457,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 type="text"
                 value={customQuestionInput}
                 onChange={(e) => setCustomQuestionInput(e.target.value)}
+                maxLength={INTERVIEW_COACH_INPUT_LIMITS.question}
                 placeholder="Wpisz własne pytanie rekrutacyjne..."
                 className="flex-1 rounded-xl border border-line bg-elevated px-3 py-2 text-xs text-ink focus:border-brand-500 focus:outline-none"
               />
@@ -398,6 +475,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                       suggestedStarTips: 'Opisz faktyczne działania i rezultat. Metryka liczbowa jest opcjonalna.',
                     };
                     setQuestions((prev) => [customQ, ...prev]);
+                    invalidateEvaluation();
                     setSelectedQuestion(customQ);
                     setCustomQuestionInput('');
                   }
@@ -477,7 +555,9 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
           <textarea
             rows={7}
             value={candidateAnswer}
-            onChange={(e) => setCandidateAnswer(e.target.value)}
+            onChange={(e) => { invalidateEvaluation(); setCandidateAnswer(e.target.value); }}
+            maxLength={INTERVIEW_COACH_INPUT_LIMITS.answer}
+            aria-describedby="star-answer-limit"
             placeholder="Wpisz lub podyktuj odpowiedź: sytuacja, Twoje zadanie, faktyczne działania i rzeczywisty skutek. Nie dodawaj danych ani wyników, których nie możesz potwierdzić."
             className="w-full rounded-2xl border border-line bg-elevated p-4 text-sm text-ink placeholder:text-subtle focus:border-brand-500 focus:outline-none leading-relaxed font-sans"
           />
@@ -486,6 +566,9 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
             <div className="flex items-center gap-4">
               <span>
                 Słów: <strong className="text-ink">{wordCount}</strong>
+              </span>
+              <span id="star-answer-limit">
+                Znaki: <strong className="text-ink">{candidateAnswer.length}/{INTERVIEW_COACH_INPUT_LIMITS.answer}</strong>
               </span>
               <span>
                 Szacowany czas mowy: <strong className="text-ink">około {estimatedSpeakingTime} s</strong>
@@ -521,6 +604,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
       </div>
 
       {/* KROK 3: Raport z oceny STAR i wzorcowa odpowiedź */}
+      {evaluationInvalidated && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft/20 p-3 text-xs text-ink">Dane ćwiczenia zmieniły się. Poprzednia ocena została wycofana. Oceń aktualną odpowiedź i ponownie sprawdź fakty szkicu.</p>}
       {evaluation && (
         <div className="rounded-3xl border border-line bg-surface p-6 sm:p-8 space-y-6 shadow-md animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-line pb-6">
@@ -682,7 +766,7 @@ export const StarCoachSection: React.FC<StarCoachSectionProps> = ({ vault }) => 
                 <input
                   type="checkbox"
                   checked={confirmedDraftFacts}
-                  onChange={(event) => setConfirmedDraftFacts(event.target.checked)}
+                  onChange={(event) => { copyGuard.invalidate(); setCopied(false); setConfirmedDraftFacts(event.target.checked); }}
                   className="mt-0.5"
                 />
                 <span>Sprawdziłem, że szkic nie dodaje faktów, liczb ani osiągnięć, których nie podałem.</span>

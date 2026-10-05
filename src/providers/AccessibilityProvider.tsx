@@ -1,23 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { StorageKeys, readJson, writeJson } from '../lib/storage';
+import {
+  DEFAULT_A11Y_SETTINGS,
+  parseAccessibilitySettings,
+  type A11ySettings,
+  type TextScale,
+} from '../lib/accessibilitySettings';
 
-export type TextScale = 'normal' | 'large' | 'huge';
-
-export interface A11ySettings {
-  highContrast: boolean;
-  textScale: TextScale;
-  dyslexicSpacing: boolean;
-  enhancedFocus: boolean;
-  reducedMotion: boolean;
-}
-
-const DEFAULT_A11Y_SETTINGS: A11ySettings = {
-  highContrast: false,
-  textScale: 'normal',
-  dyslexicSpacing: false,
-  enhancedFocus: false,
-  reducedMotion: false,
-};
+export type { A11ySettings, TextScale } from '../lib/accessibilitySettings';
 
 interface AccessibilityContextType {
   settings: A11ySettings;
@@ -48,8 +38,7 @@ const AccessibilityContext = createContext<AccessibilityContextType>(DEFAULT_CON
 export const AccessibilityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [settings, setSettingsState] = useState<A11ySettings>(() => {
     if (typeof window === 'undefined') return DEFAULT_A11Y_SETTINGS;
-    const stored = readJson<A11ySettings | null>(StorageKeys.a11ySettings, null);
-    return stored ? { ...DEFAULT_A11Y_SETTINGS, ...stored } : DEFAULT_A11Y_SETTINGS;
+    return parseAccessibilitySettings(readJson<unknown>(StorageKeys.a11ySettings, null));
   });
 
   const updateSetting = <K extends keyof A11ySettings>(key: K, value: A11ySettings[K]) => {

@@ -9,6 +9,7 @@ import {
   SUGGESTED_TOOLS_AND_TECH,
 } from './autocompleteSuggestions';
 import { getSuggestionsForSubRole, matchSubRoles } from './specializationIndex';
+import { getLatestExperience } from './experienceChronology';
 
 /**
  * Podpowiedzi do pól formularzy — z własnej historii, z katalogu branż
@@ -264,7 +265,7 @@ const DICTIONARIES: Record<SuggestionField, readonly string[]> = {
  * ale nie zapisuje jej bez potwierdzenia.
  */
 export function getLatestExperienceLocation(vault: MasterVault): string {
-  const previousLocation = vault.history?.find((h) => h.location?.trim())?.location;
+  const previousLocation = getLatestExperience(vault.history ?? [])?.location?.trim();
   return previousLocation || vault.personalInfo?.location || vault.profiler?.location?.city || '';
 }
 
@@ -289,10 +290,11 @@ export function getKnownToolsAndSkills(vault: MasterVault): string[] {
  * mają wstępu nawet przypadkiem.
  */
 function catalogEntriesFor(field: SuggestionField, vault: MasterVault): string[] {
+  const latestExperience = getLatestExperience(vault.history ?? []);
   const signal = [
     vault.personalInfo.title,
-    vault.history[0]?.role ?? '',
-    vault.history[0]?.company ?? '',
+    latestExperience?.role ?? '',
+    latestExperience?.company ?? '',
     ...vault.skillsMatrix.hardSkills.slice(0, 5),
   ]
     .filter(Boolean)

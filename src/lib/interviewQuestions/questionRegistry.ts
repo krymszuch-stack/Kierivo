@@ -10,6 +10,7 @@ import {
 } from './types';
 import type { MasterVault } from '../../types';
 import type { ParsedJobDescription } from '../jdParser';
+import { getLatestExperience, inferLatestExperienceRole } from '../experienceChronology';
 
 /**
  * Podstawia tokeny `{{nazwa_tokenu}}` w szablonie pytania.
@@ -86,10 +87,10 @@ export function buildTokenContext(
       context.rola = vault.personalInfo.title;
     }
     if (vault.history && vault.history.length > 0) {
-      const latestJob = vault.history[0];
-      if (!context.firma && latestJob.company) context.firma = latestJob.company;
-      if (!context.rola && latestJob.role) context.rola = latestJob.role;
-      if (latestJob.highlights && latestJob.highlights.length > 0) {
+      const latestJob = getLatestExperience(vault.history);
+      if (!context.rola) context.rola = inferLatestExperienceRole(vault.history);
+      if (!context.firma && latestJob?.company) context.firma = latestJob.company;
+      if (latestJob?.highlights && latestJob.highlights.length > 0) {
         const h = latestJob.highlights[0];
         if (h.metric) context.metryka = h.metric;
         if (h.tool && !context.narzedzie) context.narzedzie = h.tool;

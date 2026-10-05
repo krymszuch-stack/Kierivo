@@ -1,5 +1,5 @@
 import { UxLiveState, UxMilestones, loadMilestones, reconcileMilestones, saveMilestones } from '../lib/uxMilestones';
-import { onAppStorageWiped } from '../lib/storage';
+import { onAppStorageWiped, onProfileStorageCleared } from '../lib/storage';
 
 /**
  * Kamienie milowe trzymane poza Reactem.
@@ -87,4 +87,9 @@ export function markShortcutsHintSeen(profileId: string): void {
 onAppStorageWiped(() => {
   milestonesByProfile.clear();
   listenersByProfile.forEach((listeners) => listeners.forEach((listener) => listener()));
+});
+
+onProfileStorageCleared(profileId => {
+  milestonesByProfile.delete(profileId);
+  notify(profileId);
 });

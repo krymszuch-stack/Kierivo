@@ -25,13 +25,14 @@ import {
   saveDrillAttempt,
   clearDrillHistory,
 } from '../../lib/drillEngine';
+import { formatDrillOverallScore } from '../../lib/drillScorePresentation';
 import { DrillAudioRecorder } from '../../components/drill/DrillAudioRecorder';
 import { DrillScorecardView } from '../../components/drill/DrillScorecardView';
 import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Chip';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { History, Award, Trash2 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useOptionalAuth } from '../../context/AuthContext';
 import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 export interface DrillModeModalProps {
@@ -45,7 +46,7 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
   onClose,
   customQuestions = DEFAULT_DRILL_QUESTIONS,
 }) => {
-  const { user } = useAuth();
+  const user = useOptionalAuth()?.user ?? null;
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [exerciseProfileId, setExerciseProfileId] = useState(profileId);
   const pool = customQuestions.length > 0 ? customQuestions : DEFAULT_DRILL_QUESTIONS;
@@ -261,10 +262,10 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
                         </h4>
                       </div>
                       <Chip
-                        variant={record.scorecard.overallScore >= 75 ? 'success' : 'brand'}
+                        variant="brand"
                         size="sm"
                       >
-                        Wynik: {record.scorecard.overallScore}%
+                        Ocena całościowa: {formatDrillOverallScore(record.scorecard.overallScore, 'percent')}
                       </Chip>
                     </div>
 
@@ -274,11 +275,11 @@ export const DrillModeModal: React.FC<DrillModeModalProps> = ({
 
                     <div className="flex flex-wrap items-center gap-2 pt-1">
                       <span className="font-mono text-[10px] text-muted">
-                        Struktura STAR: {record.scorecard.structure.scorePercent}%
+                        Sygnały STAR: {record.scorecard.structure.detectedElementsCount}/4
                       </span>
                       <span>•</span>
                       <span className="font-mono text-[10px] text-muted">
-                        Sprawczość: {record.scorecard.ownership.ownershipPercent}% Ja
+                        Wzmianki: pierwsza osoba {record.scorecard.ownership.iCount}, grupa {record.scorecard.ownership.weCount}
                       </span>
                       <span>•</span>
                       <span className="font-mono text-[10px] text-muted">

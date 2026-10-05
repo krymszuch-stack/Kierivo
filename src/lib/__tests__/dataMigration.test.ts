@@ -8,6 +8,8 @@ import {
   migrateCVLibrary,
   migrateAllStorageAtStartup,
 } from '../dataMigration';
+import { measureVaultCompleteness } from '../vaultCompleteness';
+import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
 import { StorageKeys, readJson, resetLastGoodCache, writeJson, vaultKeyFor, applicationsKeyFor } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 
@@ -18,6 +20,19 @@ beforeEach(() => {
 
 describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
   describe('migrateApplication', () => {
+    it('nie podnosi starej wersji reguł podczas migracji ani kolejnego odczytu', () => {
+      const raw = {
+        id: 'old-rules', company: 'Firma', position: 'Magazynier', atsScore: 41,
+        atsScoreProvenance: 'canonical-v1',
+        atsScoreContext: { detectedRequirementCount: 4, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
+      };
+      const migrated = migrateApplication(raw);
+      expect(migrated?.atsScoreProvenance).toBe('canonical-v1');
+      expect(migrated?.atsScore).toBe(41);
+      expect(migrated?.atsScoreContext).toEqual(raw.atsScoreContext);
+      expect(migrateApplication(migrated)).toEqual(migrated);
+    });
+
     it('nie uznaje braku statusu za wysłanie i nie dopisuje firmy', () => {
       const migrated = migrateApplication({ id: 'legacy-draft', company: '', position: 'Serwisant HVAC' });
 
@@ -38,6 +53,64 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       });
 
       expect(migrated?.status).toBe('Do wysłania');
+    });
+
+    it('usuwa niebezpieczny schemat z odziedziczonego linku oferty', () => {
+      const malicious = migrateApplication({
+        id: 'legacy-link', company: 'Firma', position: 'Rola', jobUrl: 'javascript:alert(1)',
+      });
+      const valid = migrateApplication({
+        id: 'legacy-safe-link', company: 'Firma', position: 'Rola', jobUrl: ' https://example.com/jobs/1 ',
+      });
+
+      expect(malicious?.jobUrl).toBeUndefined();
+      expect(valid?.jobUrl).toBe('https://example.com/jobs/1');
+    });
+
+    it('zachowuje starszą liczbę, ale nie oznacza jej jako kanonicznej bez dowodu źródła', () => {
+      const migrated = migrateApplication({
+        id: 'legacy-score', company: 'Firma', position: 'Rola', atsScore: 41,
+      });
+
+      expect(migrated?.atsScore).toBe(41);
+      expect(migrated?.atsScoreProvenance).toBeUndefined();
+    });
+
+    it('zachowuje pochodzenie kanoniczne i odrzuca wynik poza zakresem', () => {
+      const canonical = migrateApplication({
+        id: 'canonical-score', company: 'Firma', position: 'Rola', atsScore: 0,
+        atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+        atsScoreContext: { detectedRequirementCount: 1, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
+      });
+      const invalid = migrateApplication({
+        id: 'invalid-score', company: 'Firma', position: 'Rola', atsScore: 101,
+        atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+      });
+
+      expect(canonical?.atsScore).toBe(0);
+      expect(canonical?.atsScoreProvenance).toBe(CANONICAL_ATS_SCORE_PROVENANCE);
+      expect(canonical?.atsScoreContext).toEqual({ detectedRequirementCount: 1, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 });
+
+      const legacyContext = migrateApplication({
+        id: 'legacy-context', company: 'Firma', position: 'Rola', atsScore: 70,
+        atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+        atsScoreContext: { detectedRequirementCount: 5, profileCompleteness: 100, careerEvidenceAvailable: true },
+      });
+      const incompleteVersionFourContext = migrateApplication({
+        id: 'legacy-v4-context', company: 'Firma', position: 'Rola', atsScore: 72,
+        atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+        atsScoreContext: {
+          detectedRequirementCount: 5, profileCompleteness: 100,
+          unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0,
+          scoreContextVersion: 4, careerEvidenceAvailable: true, careerEvidenceVersion: 2,
+        },
+      });
+      expect(legacyContext?.atsScore).toBe(70);
+      expect(legacyContext?.atsScoreContext).toBeUndefined();
+      expect(incompleteVersionFourContext?.atsScore).toBe(72);
+      expect(incompleteVersionFourContext?.atsScoreContext).toBeUndefined();
+      expect(invalid?.atsScore).toBeUndefined();
+      expect(invalid?.atsScoreProvenance).toBeUndefined();
     });
   });
 
@@ -81,6 +154,20 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
   });
 
   describe('migrateVault', () => {
+    it('zachowuje ręcznie wpisaną klauzulę CV podczas migracji Vaultu', () => {
+      const migrated = migrateVault({
+        version: '1.0',
+        personalInfo: {
+          fullName: 'Piotr Monter',
+          rodoClause: 'Moja klauzula zgody.',
+          gdprClause: 'Moja starsza klauzula.',
+        },
+      });
+
+      expect(migrated.personalInfo.rodoClause).toBe('Moja klauzula zgody.');
+      expect(migrated.personalInfo.gdprClause).toBe('Moja starsza klauzula.');
+    });
+
     it('uzupełnia brakujące sekcje (claims, skillsMatrix) i nadaje schemaVersion', () => {
       const partialLegacy = {
         version: '1.0',
@@ -97,6 +184,28 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(Array.isArray(migrated.skillsMatrix.hardSkills)).toBe(true);
       expect(Array.isArray(migrated.skillsMatrix.toolsAndTech)).toBe(true);
       expect(migrated.history.length).toBe(1);
+    });
+
+    it('naprawia brakującą listę punktów STAR bez zmiany treści doświadczenia', () => {
+      const currentButIncomplete = {
+        schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
+        version: '1.0.0',
+        updatedAt: '2026-10-02T08:00:00.000Z',
+        claims: [],
+        personalInfo: { fullName: 'Marek Nowak', email: 'marek@example.invalid', title: '', summary: '' },
+        skillsMatrix: { hardSkills: [], softSkills: [], toolsAndTech: [], certifications: [] },
+        profiler: { flags: [], experienceLevel: 'MID', location: { city: '', radiusKm: 0, willingnessToTravel: false, hybridWork: false, remoteOnly: false }, languages: [] },
+        history: [{ id: 'exp-1', company: 'Firma', role: 'Monter' }],
+        education: [],
+        projects: [],
+      };
+
+      const migrated = migrateVault(currentButIncomplete);
+
+      expect(migrated.history).toHaveLength(1);
+      expect(migrated.history[0]).toMatchObject({ id: 'exp-1', company: 'Firma', role: 'Monter', highlights: [] });
+      expect(() => measureVaultCompleteness(migrated)).not.toThrow();
+      expect(measureVaultCompleteness(migrated).missing).toContain('experience');
     });
 
     it('dla pustego lub niepoprawnego wejścia generuje bezpieczny pusty vault z schemaVersion', () => {

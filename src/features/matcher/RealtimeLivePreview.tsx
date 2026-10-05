@@ -16,8 +16,9 @@ import {
   TailoredResume,
   CoverLetter,
   CvExportEvent,
+  CANONICAL_ATS_SCORE_PROVENANCE,
 } from '../../types';
-import { type CanonicalAtsScore } from '../../lib/canonicalAts';
+import { hasCareerEvidence, type CanonicalAtsScore } from '../../lib/canonicalAts';
 import { createApplicationDocumentSnapshotFromExport } from '../../lib/applicationSnapshot';
 import { DocumentRenderer } from './DocumentRenderer';
 import { CVWordBuilder } from './CVWordBuilder';
@@ -29,8 +30,11 @@ import { Tabs } from '../../components/ui/Tabs';
 import { Button } from '../../components/ui/Button';
 import { requestApplicationConfirmation } from '../../store/usePendingApplication';
 import { isSyntheticJobOffer } from '../../lib/jobMatcherEngine';
+import { getAtsScoreContext } from '../../lib/atsScoreEvidence';
+import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 
 import { MatchOverview11 } from './MatchOverview11';
+import type { KeywordSuggestion } from '../../lib/jdKeywordMapper';
 
 export type SubTabId =
   | 'overview'
@@ -49,6 +53,7 @@ export interface RealtimeLivePreviewProps {
   tailoredResume: TailoredResume;
   coverLetter: CoverLetter;
   onSaveTailoredCV?: () => void;
+  onApplySuggestion?: (suggestion: KeywordSuggestion, apply: boolean) => void;
   className?: string;
 }
 
@@ -60,6 +65,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
   tailoredResume,
   coverLetter,
   onSaveTailoredCV,
+  onApplySuggestion,
   className = '',
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTabId>('overview');
@@ -78,10 +84,16 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
       title: jobOffer.title,
       sourceUrl: jobOffer.url,
       salary: jobOffer.salary,
-      atsScore: canonicalResult?.score ?? atsResult?.overallScore,
-      missingKeywords: canonicalResult?.missingRequirements?.length
+      atsScore: canonicalResult?.state === 'SCORABLE' && canonicalResult.score !== null
+        ? canonicalResult.score
+        : undefined,
+      atsScoreProvenance: canonicalResult?.state === 'SCORABLE' && canonicalResult.score !== null
+        ? CANONICAL_ATS_SCORE_PROVENANCE
+        : undefined,
+      atsScoreContext: getAtsScoreContext(canonicalResult, measureVaultCompleteness(vault).percent, hasCareerEvidence(vault)),
+      missingKeywords: canonicalResult?.state === 'SCORABLE'
         ? canonicalResult.missingRequirements
-        : atsResult?.missingHardSkills,
+        : undefined,
       documentSnapshot: createApplicationDocumentSnapshotFromExport({
         vault,
         tailoredResume,
@@ -147,6 +159,7 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
               atsResult={atsResult}
               canonicalResult={canonicalResult}
               tailoredResume={tailoredResume}
+              onApplySuggestion={onApplySuggestion}
               onGoToCv={() => setActiveSubTab('generator')}
               onSaveApplication={onSaveTailoredCV}
             />
@@ -171,6 +184,8 @@ export const RealtimeLivePreview: React.FC<RealtimeLivePreviewProps> = ({
             <AtsSimulatorView
               result={atsResult}
               canonicalResult={canonicalResult}
+              profileCompleteness={measureVaultCompleteness(vault).percent}
+              careerEvidenceAvailable={hasCareerEvidence(vault)}
             />
           )}
 

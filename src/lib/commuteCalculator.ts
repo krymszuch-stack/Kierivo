@@ -13,6 +13,8 @@
  */
 
 import type { ParsedJobDescription } from './jdParser';
+import { estimateAverageMonthlyUopNet } from './payrollEstimate';
+export { estimateAverageMonthlyUopNet, POLISH_PAYROLL_2026 } from './payrollEstimate';
 
 /** Etat w miesiącu wg Kodeksu pracy w przybliżeniu rocznej średniej. */
 export const NOMINAL_MONTHLY_HOURS = 168;
@@ -51,8 +53,8 @@ export const DEFAULT_MOBILITY_PREFERENCES: MobilityPreferences = {
   contract: 'UOP',
   workMode: 'HYBRID',
   officeDaysPerWeek: 3,
-  oneWayMinutes: 30,
-  monthlyCommuteCost: 300,
+  oneWayMinutes: 0,
+  monthlyCommuteCost: 0,
   vehicleEngineType: 'combustion',
   trafficMode: 'peak',
 };
@@ -66,7 +68,11 @@ export function canShowFeasibilityResult(
   prefs: MobilityPreferences,
   assumptionsConfirmed: boolean
 ): boolean {
-  return assumptionsConfirmed && Number.isFinite(prefs.salaryAmount) && prefs.salaryAmount > 0;
+  const commuteTimeProvided = effectiveOfficeDays(prefs) === 0 ||
+    (Number.isFinite(prefs.oneWayMinutes) && prefs.oneWayMinutes >= 10);
+  return assumptionsConfirmed &&
+    Number.isFinite(prefs.salaryAmount) && prefs.salaryAmount > 0 &&
+    commuteTimeProvided;
 }
 
 import { getGeoDistanceRegistry } from './geoDistance';
@@ -108,32 +114,12 @@ export function autoCalculateCommuteFromCities(
 /* Podatki i składki                                                   */
 /* ------------------------------------------------------------------ */
 
-/** Składki pracownika: emerytalna 9,76% + rentowa 1,5% + chorobowa 2,45%. */
-const ZUS_EMPLOYEE_RATE = 0.0976 + 0.015 + 0.0245;
-const HEALTH_RATE = 0.09;
-const PIT_RATE = 0.12;
-/** Miesięczne koszty uzyskania przychodu — wariant podstawowy. */
-const TAX_DEDUCTIBLE_COSTS = 250;
-/** 1/12 kwoty zmniejszającej podatek (3600 zł rocznie) przy złożonym PIT-2. */
-const MONTHLY_TAX_RELIEF = 300;
-
 /**
- * Netto „na rękę" z kwoty brutto na umowie o pracę.
- *
- * Uproszczenia, których świadomie nie ukrywamy: pierwszy próg skali (12%),
- * podstawowe KUP, złożony PIT-2, brak PPK i brak ulg szczególnych. Dla drugiego
- * progu i dla PPK wynik będzie zawyżony — dlatego interfejs pisze „szacunek".
+ * Średnie miesięczne netto z rocznej umowy UoP w 2026 r.; miesięczne paski
+ * wypłaty mogą się różnić od średniej, zwłaszcza po wejściu w drugi próg.
  */
 export function estimateNetFromGross(gross: number): number {
-  if (!Number.isFinite(gross) || gross <= 0) return 0;
-
-  const zus = gross * ZUS_EMPLOYEE_RATE;
-  const afterZus = gross - zus;
-  const health = afterZus * HEALTH_RATE;
-  const taxBase = Math.max(0, Math.round(afterZus - TAX_DEDUCTIBLE_COSTS));
-  const advance = Math.max(0, Math.round(taxBase * PIT_RATE - MONTHLY_TAX_RELIEF));
-
-  return Math.max(0, afterZus - health - advance);
+  return estimateAverageMonthlyUopNet(gross);
 }
 
 /**
@@ -145,9 +131,9 @@ export function estimateNetFromGross(gross: number): number {
  * faktycznie zostaje mu w kieszeni.
  */
 export function monthlyNetIncome(prefs: MobilityPreferences): number {
-  return prefs.contract === 'UOP'
-    ? estimateNetFromGross(prefs.salaryAmount)
-    : Math.max(0, prefs.salaryAmount);
+  if (!Number.isFinite(prefs.salaryAmount) || prefs.salaryAmount <= 0) return 0;
+  if (prefs.contract === 'UOP') return estimateNetFromGross(prefs.salaryAmount);
+  return prefs.contract === 'B2B' ? prefs.salaryAmount : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -164,6 +150,8 @@ export function effectiveOfficeDays(prefs: MobilityPreferences): number {
 /** Godziny miesięcznie spędzone w drodze — w obie strony. */
 export function monthlyCommuteHours(prefs: MobilityPreferences): number {
   const days = effectiveOfficeDays(prefs);
+  // 0 * NaN daje NaN w JavaScript; zdalna praca nie ma czasu dojazdu.
+  if (days === 0) return 0;
   return (days * (prefs.oneWayMinutes * 2) * WEEKS_PER_MONTH) / 60;
 }
 
@@ -468,10 +456,17 @@ export function calculateFeasibility(
   prefs: MobilityPreferences,
   benefits: DetectedBenefit[] = []
 ): FeasibilityResult | null {
+  if (!['UOP', 'B2B'].includes(prefs.contract)) return null;
+  if (!['REMOTE', 'HYBRID', 'ONSITE'].includes(prefs.workMode)) return null;
+  if (prefs.workMode === 'HYBRID' &&
+      (!Number.isFinite(prefs.officeDaysPerWeek) || prefs.officeDaysPerWeek < 0 || prefs.officeDaysPerWeek > 5)) return null;
+  if (effectiveOfficeDays(prefs) > 0 &&
+      (!Number.isFinite(prefs.oneWayMinutes) || prefs.oneWayMinutes < 10 ||
+       !Number.isFinite(prefs.monthlyCommuteCost) || prefs.monthlyCommuteCost < 0)) return null;
   const netMonthly = monthlyNetIncome(prefs);
   // Bez kwoty nie ma czego liczyć. Zero zamiast `null` byłoby stwierdzeniem,
   // że ta praca jest darmowa — a to nieprawda, tylko brak danych.
-  if (netMonthly <= 0) return null;
+  if (!Number.isFinite(netMonthly) || netMonthly <= 0) return null;
 
   const commuteHours = monthlyCommuteHours(prefs);
   const commuteCost = effectiveCommuteCost(prefs);
@@ -616,50 +611,4 @@ export function buildNegotiationTactics(
   }
 
   return tactics;
-}
-
-export interface OfferComparisonSummary {
-  otherCompanyName: string;
-  otherRole: string;
-  otherRealHourlyRate: number;
-  rateDifferencePln: number;
-  hoursDifference: number;
-  winner: 'CURRENT' | 'OTHER' | 'EQUAL';
-  verdictText: string;
-}
-
-/**
- * Porównuje bieżącą ofertę z inną ofertą pod kątem realnej stawki za godzinę życia.
- */
-export function compareOfferWithAnother(
-  currentResult: FeasibilityResult,
-  otherOffer: { company: string; role: string; salaryNet: number; commuteMinutes: number; officeDays: number; commuteCost: number }
-): OfferComparisonSummary {
-  const otherCommuteHours = (otherOffer.officeDays * (otherOffer.commuteMinutes * 2) * WEEKS_PER_MONTH) / 60;
-  const otherCost = otherOffer.officeDays === 0 ? 0 : Math.max(0, otherOffer.commuteCost);
-  const otherRealRate = Math.max(0, (otherOffer.salaryNet - otherCost) / (NOMINAL_MONTHLY_HOURS + otherCommuteHours));
-
-  const diffRate = Math.round((currentResult.realHourlyRate - otherRealRate) * 100) / 100;
-  const diffHours = Math.round(currentResult.commuteHours - otherCommuteHours);
-
-  let winner: 'CURRENT' | 'OTHER' | 'EQUAL' = 'EQUAL';
-  let verdictText = 'Obie oferty dają zbliżoną realną stawkę za godzinę życia.';
-
-  if (diffRate > 1.5) {
-    winner = 'CURRENT';
-    verdictText = `Bieżąca oferta daje o ${diffRate.toFixed(2)} zł więcej za każdą godzinę Twojego życia niż oferta w ${otherOffer.company}.`;
-  } else if (diffRate < -1.5) {
-    winner = 'OTHER';
-    verdictText = `Oferta w ${otherOffer.company} daje o ${Math.abs(diffRate).toFixed(2)} zł/h więcej na rękę za godzinę życia po odliczeniu transportu.`;
-  }
-
-  return {
-    otherCompanyName: otherOffer.company,
-    otherRole: otherOffer.role,
-    otherRealHourlyRate: otherRealRate,
-    rateDifferencePln: diffRate,
-    hoursDifference: diffHours,
-    winner,
-    verdictText,
-  };
 }

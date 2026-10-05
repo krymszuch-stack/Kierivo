@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalizeExternalHttpUrl } from '../lib/externalHttpUrl';
 
 /**
  * Kontrakty żądań — jedno źródło dla serwera i dla klienta.
@@ -55,7 +56,10 @@ export const applicationInputSchema = z.object({
   appliedAt: z.string().trim().max(40).optional(),
   status: applicationStatusSchema.default('Wysłana'),
   notes: z.string().max(10_000).optional(),
-  jobUrl: z.string().trim().max(2048).optional(),
+  jobUrl: z.string().trim().max(2048).refine(
+    (value) => value === '' || normalizeExternalHttpUrl(value) !== undefined,
+    'Link musi zaczynać się od http:// lub https://.',
+  ).optional(),
 });
 export type ApplicationInput = z.infer<typeof applicationInputSchema>;
 

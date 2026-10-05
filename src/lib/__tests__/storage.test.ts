@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   StorageKeys,
+  profileDataKeyFor,
   vaultKeyFor,
   readRaw,
   writeRaw,
   removeRaw,
   readJson,
+  readJsonForMigration,
   writeJson,
   migrateLegacyKeys,
   onAppStorageWiped,
@@ -13,9 +15,9 @@ import {
   fnv1a,
   SCHEMA_VERSION,
   wipeAppStorage,
+  clearProfileStorageDurably,
 } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
-import { idbBackupRemove, idbBackupSet } from '../idbFallback';
 
 beforeEach(() => {
   (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
@@ -25,6 +27,45 @@ beforeEach(() => {
 });
 
 describe('storage.ts - warstwa schowka przeglądarki', () => {
+  it('czyści cały zakres anonimowy i sessionStorage, zachowując globalne klucze i inny profil', async () => {
+    const previousSession = globalThis.sessionStorage;
+    (globalThis as { sessionStorage?: unknown }).sessionStorage = new MemoryStorage();
+    try {
+      for (const base of Object.values(StorageKeys)) {
+        localStorage.setItem(profileDataKeyFor(base, 'anonymous'), '{"private":true}');
+        sessionStorage.setItem(profileDataKeyFor(base, 'anonymous'), '{"private":true}');
+      }
+      localStorage.setItem(StorageKeys.theme, 'dark');
+      localStorage.setItem(vaultKeyFor('local-other'), '{"other":true}');
+      expect(await clearProfileStorageDurably('anonymous')).toBe(true);
+      for (const base of Object.values(StorageKeys)) {
+        expect(localStorage.getItem(profileDataKeyFor(base, 'anonymous'))).toBeNull();
+        expect(sessionStorage.getItem(profileDataKeyFor(base, 'anonymous'))).toBeNull();
+      }
+      expect(localStorage.getItem(StorageKeys.theme)).toBe('dark');
+      expect(localStorage.getItem(vaultKeyFor('local-other'))).toBe('{"other":true}');
+    } finally {
+      if (previousSession === undefined) delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+      else globalThis.sessionStorage = previousSession;
+    }
+  });
+  it('migracja odrzuca złą sumę kontrolną mimo poprawnej kopii w pamięci', () => {
+    writeJson('migration-crc', { value: 42 });
+    const envelope = JSON.parse(localStorage.getItem('migration-crc')!);
+    envelope.data = envelope.data.replace('42', '43');
+    const broken = JSON.stringify(envelope);
+    localStorage.setItem('migration-crc', broken);
+    expect(readJsonForMigration('migration-crc')).toEqual({ success: false, raw: broken });
+    expect(localStorage.getItem('migration-crc')).toBe(broken);
+  });
+
+  it('migracja rozróżnia brak źródła, surowy JSON i poprawną kopertę', () => {
+    expect(readJsonForMigration('absent')).toEqual({ success: true, raw: null, value: undefined });
+    localStorage.setItem('legacy-migration', '[1]');
+    expect(readJsonForMigration('legacy-migration')).toEqual({ success: true, raw: '[1]', value: [1] });
+    writeJson('envelope-migration', [2]);
+    expect(readJsonForMigration('envelope-migration')).toEqual({ success: true, raw: localStorage.getItem('envelope-migration'), value: [2] });
+  });
   describe('vaultKeyFor', () => {
     it('klucz zawiera identyfikator profilu i wspólny przedrostek', () => {
       const key = vaultKeyFor('user-123');
@@ -35,6 +76,15 @@ describe('storage.ts - warstwa schowka przeglądarki', () => {
   });
 
   describe('readJson', () => {
+    it('klucz ostatniej analizy można rozdzielić pomiędzy profile', () => {
+      const profileA = profileDataKeyFor(StorageKeys.lastJobAnalysis, 'profile-a');
+      const profileB = profileDataKeyFor(StorageKeys.lastJobAnalysis, 'profile-b');
+      writeJson(profileA, { position: 'Support Engineer', company: 'Firma A' });
+
+      expect(readJson(profileA, null)).toEqual({ position: 'Support Engineer', company: 'Firma A' });
+      expect(readJson(profileB, null)).toBeNull();
+    });
+
     it('uszkodzony JSON zwraca wartość zapasową, nie wyjątek', () => {
       localStorage.setItem('invalid-json-key', '{to nie jest json');
       const result = readJson('invalid-json-key', { fallback: true });

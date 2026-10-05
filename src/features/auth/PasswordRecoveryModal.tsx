@@ -8,11 +8,21 @@ import { Alert } from '../../components/ui/Feedback';
 import { checkPassword, passwordStrength, STRENGTH_LABELS } from '../../lib/passwordPolicy';
 import { checkLeakedPassword } from '../../lib/leakedPassword';
 import { showToast } from '../../store/useToastStore';
+import { useScopedAsyncOperation } from '../../hooks/useScopedAsyncOperation';
 
 export const PasswordRecoveryModal: React.FC = () => {
+  const auth = useAuth();
+  // Osobny formularz dla każdego linku usuwa hasło poprzedniego właściciela
+  // i unieważnia operację przy odmontowaniu, zanim nowy formularz ją zastąpi.
+  const scope = `${auth.session?.user.id ?? ''}:${auth.passwordRecoveryRevision}:${auth.passwordRecoveryActive}:${auth.passwordRecoveryError}`;
+  return <PasswordRecoveryForm key={scope} />;
+};
+
+const PasswordRecoveryForm: React.FC = () => {
   const {
     session,
     passwordRecoveryActive,
+    passwordRecoveryRevision,
     passwordRecoveryError,
     updateRecoveredPassword,
     requestPasswordReset,
@@ -24,13 +34,16 @@ export const PasswordRecoveryModal: React.FC = () => {
   const [powtorz, setPowtorz] = useState('');
   const [email, setEmail] = useState('');
   const [blad, setBlad] = useState('');
-  const [pracuje, setPracuje] = useState(false);
   const [wyslanoPonownie, setWyslanoPonownie] = useState(false);
 
   const isOpen = passwordRecoveryActive || passwordRecoveryError !== null;
+  const scope = `${session?.user.id ?? ''}:${passwordRecoveryRevision}:${passwordRecoveryActive}:${passwordRecoveryError}`;
+  const operation = useScopedAsyncOperation(scope);
+  const pracuje = operation.isBusy;
   const sila = passwordStrength(haslo);
 
-  const zamknij = useCallback(() => {
+  const zamknij = useCallback(async () => {
+    if (pracuje) return;
     setHaslo('');
     setPowtorz('');
     setEmail('');
@@ -40,12 +53,18 @@ export const PasswordRecoveryModal: React.FC = () => {
     if (passwordRecoveryActive) {
       // Link recovery tworzy uprzywilejowaną sesję. Jeżeli użytkownik rezygnuje
       // ze zmiany hasła, nie zostawiamy go po cichu jako zalogowanego.
-      void logout();
+      const token = operation.begin();
+      if (!token) return;
+      try {
+        const result = await logout();
+        if (operation.isCurrent(token) && !result.ok) setBlad(result.message);
+      } catch { if (operation.isCurrent(token)) setBlad('Nie udało się zamknąć sesji odzyskiwania. Spróbuj ponownie.'); }
+      finally { operation.finish(token); }
       return;
     }
 
     clearPasswordRecoveryError();
-  }, [passwordRecoveryActive, logout, clearPasswordRecoveryError]);
+  }, [passwordRecoveryActive, logout, clearPasswordRecoveryError, pracuje, operation]);
 
   const ustawNoweHaslo = useCallback(
     async (event: React.FormEvent) => {
@@ -63,10 +82,12 @@ export const PasswordRecoveryModal: React.FC = () => {
         return;
       }
 
-      setPracuje(true);
+      const token = operation.begin();
+      if (!token) return;
+      try {
       const wyciek = await checkLeakedPassword(haslo);
+      if (!operation.isCurrent(token)) return;
       if (wyciek.leaked) {
-        setPracuje(false);
         setBlad(
           `To hasło pojawiło się w znanych wyciekach danych (${wyciek.count.toLocaleString('pl-PL')} razy). Wybierz inne.`
         );
@@ -74,7 +95,7 @@ export const PasswordRecoveryModal: React.FC = () => {
       }
 
       const wynik = await updateRecoveredPassword(haslo);
-      setPracuje(false);
+      if (!operation.isCurrent(token)) return;
 
       if (!wynik.ok) {
         setBlad(wynik.message);
@@ -87,20 +108,24 @@ export const PasswordRecoveryModal: React.FC = () => {
         message: 'Możesz dalej korzystać z konta. Przy następnym logowaniu użyj nowego hasła.',
         variant: 'success',
       });
+      } catch {
+        if (operation.isCurrent(token)) setBlad('Nie potwierdzono zmiany hasła. Sprawdź stan konta przed ponowieniem.');
+      } finally { operation.finish(token); }
     },
-    [haslo, powtorz, session?.user.email, updateRecoveredPassword]
+    [haslo, powtorz, session?.user.email, updateRecoveredPassword, operation]
   );
 
   const wyslijNowyLink = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault();
+      const token = operation.begin();
+      if (!token) return;
       setBlad('');
-      setPracuje(true);
-
+      try {
       // Supabase nie ujawnia tutaj, czy konto istnieje, więc możemy bezpiecznie
       // pokazać błąd transportu/rate limitu, nie tworząc wyszukiwarki kont.
       const wynik = await requestPasswordReset(email.trim());
-      setPracuje(false);
+      if (!operation.isCurrent(token)) return;
 
       if (!wynik.ok) {
         setBlad(wynik.message);
@@ -108,8 +133,11 @@ export const PasswordRecoveryModal: React.FC = () => {
       }
 
       setWyslanoPonownie(true);
+      } catch {
+        if (operation.isCurrent(token)) setBlad('Nie potwierdzono wysłania linku. Spróbuj ponownie.');
+      } finally { operation.finish(token); }
     },
-    [email, requestPasswordReset]
+    [email, requestPasswordReset, operation]
   );
 
   return (

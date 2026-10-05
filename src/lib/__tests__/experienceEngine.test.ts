@@ -50,7 +50,7 @@ describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
     const node = resolveRoleKnowledgeNode('Spawacz TIG 141 Rurociągów');
     expect(node.roleId).toBe('welder_fitter');
     expect(node.areas.map((a) => a.id)).toContain('tig_welding');
-    expect(node.defaultTech.tig_welding).toContain('Osłona Argon 99.99%');
+    expect(node.defaultTech.tig_welding).toContain('Gaz osłonowy Argon');
   });
 
   it('poprawnie rozpoznaje węzeł grafu dla magazyniera i operatora wózka UDT (Reguła 8)', () => {
@@ -72,6 +72,14 @@ describe('Silnik Mikro-Wywiadu Doświadczenia (ExperienceEngine)', () => {
     expect(node.roleId).toBe('finance_accounting');
     expect(node.areas.map((a) => a.id)).toContain('full_accounting');
     expect(node.defaultTech.full_accounting).toContain('Comarch ERP Optima');
+  });
+
+  it('podpowiedzi rezultatów nie zawierają zmyślonych metryk ani gwarancji', () => {
+    const outcomeSuggestions = getAllRoleKnowledgeNodes()
+      .flatMap((node) => Object.values(node.outcomes).flat());
+
+    expect(outcomeSuggestions.length).toBeGreaterThan(0);
+    expect(outcomeSuggestions.join('\n')).not.toMatch(/\d+(?:[.,]\d+)?\s*(?:%|ms|h|zł)|\bzero[-\s]downtime\b|\bgwarant\w*|\bidealn\w*|\bbezawaryjn\w*|\bbezbłędn\w*|\bpełn\w* zgodnoś\w*/i);
   });
 
   it('odmienia czasowniki, ale nie dopisuje niepodanych obiektów ani technologii', () => {

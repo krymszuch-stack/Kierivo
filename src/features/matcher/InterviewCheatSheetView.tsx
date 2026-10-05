@@ -29,6 +29,7 @@ import {
 } from '../../lib/interviewCheatSheetEngine';
 import { STARStoryView } from '../star/STARStoryView';
 import { DrillModeModal } from '../drill/DrillModeModal';
+import { useEntitlements } from '../../store/useEntitlements';
 import { DrillQuestion, DEFAULT_DRILL_QUESTIONS } from '../../lib/drillEngine';
 import { ElevatorPitchModal } from '../pitch/ElevatorPitchModal';
 import { InterviewLoopModal } from '../loop/InterviewLoopModal';
@@ -94,6 +95,8 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
   jobOffer,
   className = '',
 }) => {
+  const { refresh: refreshEntitlements } = useEntitlements();
+
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     questions: true,
     star: true,
@@ -183,6 +186,7 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
       );
     } finally {
       setIsEnriching(false);
+      void refreshEntitlements();
     }
   };
 
@@ -376,7 +380,44 @@ export const InterviewCheatSheetView: React.FC<InterviewCheatSheetViewProps> = (
         {collapsible(
           'star',
           'space-y-3 pt-2',
-          <STARStoryView vault={vault} />
+          <>
+            {cheatSheet.starTalkingPoints.length > 0 && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-3 text-xs text-muted">
+                  {isEnriched
+                    ? 'Sugestie wygenerowane przez AI — sprawdź i popraw każdy punkt przed wykorzystaniem na rozmowie.'
+                    : 'Punkty z danych profilu — rozwiń je wyłącznie zgodnie z własnymi faktami.'}
+                </div>
+                {cheatSheet.starTalkingPoints.map((point) => (
+                  <article
+                    key={point.id}
+                    className="space-y-2 rounded-xl border border-line bg-surface p-3 text-xs"
+                  >
+                    {point.relatedRequirement.trim() && (
+                      <h5 className="font-bold text-brand-fg">Wymóg: {point.relatedRequirement}</h5>
+                    )}
+                    <dl className="grid gap-2 sm:grid-cols-2">
+                      {([
+                        ['Sytuacja', point.situation],
+                        ['Zadanie', point.task],
+                        ['Działanie', point.action],
+                        ['Rezultat', point.result],
+                      ] as const).filter(([, value]) => value.trim()).map(([label, value]) => (
+                        <div key={label} className="rounded-lg bg-sunken/60 p-2">
+                          <dt className="mb-0.5 font-semibold text-muted">{label}</dt>
+                          <dd className="text-ink">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            )}
+            <div className="space-y-2">
+              <h5 className="text-xs font-bold text-muted">Historie zapisane w profilu</h5>
+              <STARStoryView vault={vault} />
+            </div>
+          </>
         )}
       </Card>
 

@@ -11,6 +11,10 @@ import type { D09CandidateEvidence, D09CandidateSource } from './types';
 
 const SCHEMA_VERSION = 'D09.candidate-evidence.v1';
 
+function normalizeExtractionConfidence(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
+
 interface CandidateEvidenceSeed {
   canonicalId: string;
   label: string;
@@ -246,7 +250,7 @@ export async function buildD09CandidateEvidenceFromDocument(
         sourceLabel: `${block.section}: ${block.id}`,
         sourcePath: block.sourcePath,
         evidenceDepth: mappedSource.depth,
-        extractionConfidence: block.extractionConfidence,
+        extractionConfidence: normalizeExtractionConfidence(block.extractionConfidence),
         claimStrength: 1,
         provenance: 'EXPLICIT_DOCUMENT_FACT',
         snippet: block.text,

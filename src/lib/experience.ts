@@ -20,9 +20,9 @@ export interface EmploymentInterval {
   sourceId: string;
 }
 
-function toDecimal(dateStr: string | undefined): number | null {
+function toDecimal(dateStr: string | undefined, now: Date): number | null {
   if (!dateStr) return null;
-  return parseDateToDecimalYear(dateStr);
+  return parseDateToDecimalYear(dateStr, now);
 }
 
 /**
@@ -35,20 +35,22 @@ export function employmentIntervalForJob(job: {
   startDate?: string;
   endDate?: string;
   isCurrent?: boolean;
-}): EmploymentInterval | null {
+}, referenceDate = new Date()): EmploymentInterval | null {
   const startRaw = (job?.startDate ?? '').trim();
   if (!startRaw) return null;
-  const start = toDecimal(startRaw);
+  const start = toDecimal(startRaw, referenceDate);
   if (start === null) return null;
 
-  const now = toDecimal('Obecnie');
+  const now = toDecimal('Obecnie', referenceDate);
   const endRaw = job?.isCurrent ? 'Obecnie' : (job?.endDate ?? '').trim();
-  const end = endRaw ? toDecimal(endRaw) : start;
+  const end = endRaw ? toDecimal(endRaw, referenceDate) : start;
   if (end === null) return null;
 
   if (start > end) return null;
-  // Start w przyszłości (powyżej miesiąca tolerancji) — nie jest stażem.
+  // Przyszły początek lub koniec (powyżej miesiąca tolerancji) nie potwierdza
+  // stażu; zła data końca mogła wcześniej rozciągnąć rolę aż do przyszłego wieku.
   if (now !== null && start > now + 1 / 12) return null;
+  if (now !== null && end > now + 1 / 12) return null;
 
   return { start, end, sourceId: job?.id ?? '' };
 }
@@ -78,12 +80,13 @@ export function unionYears(intervals: EmploymentInterval[]): number {
 
 /** Unia stażu dla całej historii (jedna miara na wpis, nie na punktor). */
 export function unionExperienceYears(
-  history: Array<{ id?: string; startDate?: string; endDate?: string; isCurrent?: boolean }> | undefined | null
+  history: Array<{ id?: string; startDate?: string; endDate?: string; isCurrent?: boolean }> | undefined | null,
+  referenceDate = new Date()
 ): number {
   if (!Array.isArray(history) || history.length === 0) return 0;
   const intervals: EmploymentInterval[] = [];
   for (const job of history) {
-    const iv = employmentIntervalForJob(job ?? {});
+    const iv = employmentIntervalForJob(job ?? {}, referenceDate);
     if (iv) intervals.push(iv);
   }
   return unionYears(intervals);

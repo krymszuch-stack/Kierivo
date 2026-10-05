@@ -242,6 +242,29 @@ describe('magazyn lokalny — agregacja grup i retencja', () => {
     expect(a?.lastSeenAt).toBe('2026-08-25T09:00:00.000Z');
   });
 
+  it('pomija poprawny składniowo, ale niezgodny kształtem JSONL i uszkodzony sidecar statusów', async () => {
+    const valid = { ...validEvent({ fingerprint: 'eeeeeeeeeeeeeeee' }), receivedAt: '2026-08-26T10:00:00.000Z' };
+    await writeFile(sinkFile, `${JSON.stringify(null)}\n${JSON.stringify({ fingerprint: 'bad' })}\n${JSON.stringify(valid)}\n`, 'utf8');
+    await writeFile(sinkFile + '.status.json', 'null', 'utf8');
+
+    const groups = await listLocalErrorGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ fingerprint: 'eeeeeeeeeeeeeeee', status: 'open', occurrences: 1 });
+  });
+
+  it('izoluje błędny wpis statusu sidecara i zachowuje pozostałe poprawne wpisy', async () => {
+    const valid = { ...validEvent({ fingerprint: 'ffffffffffffffff' }), receivedAt: '2026-08-26T10:00:00.000Z' };
+    await writeFile(sinkFile, `${JSON.stringify(valid)}\n`, 'utf8');
+    await writeFile(sinkFile + '.status.json', JSON.stringify({
+      ffffffffffffffff: { status: 'resolved', resolvedAt: '2026-08-25T10:00:00.000Z' },
+      aaaaaaaaaaaaaaaa: { status: 'invented' },
+    }), 'utf8');
+
+    const groups = await listLocalErrorGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0].status).toBe('resolved');
+  });
+
   it('retencja usuwa rozwiązane po oknie i martwe otwarte, a statusy przechodzi w sidecarze', async () => {
     const nowIso = '2026-08-26T12:00:00.000Z';
     const oldResolved = validEvent({ fingerprint: 'cccccccccccccccc', occurredAt: nowIso });

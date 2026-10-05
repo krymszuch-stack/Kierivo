@@ -1,6 +1,7 @@
 import { buildEvidenceId } from '../hash';
 import type { Evidence } from '../contracts';
-import { findD09EntitiesInText } from './ontology';
+import { isNegatedRequirementAt } from '../../jdOptionality';
+import { findD09EntitiesInText, getD09OntologyEntity } from './ontology';
 import type {
   D09JobRequirement,
   D09RequirementExtractionResult,
@@ -48,6 +49,16 @@ function extractionConfidence(line: string, priority: D09RequirementPriority | n
   return 0.60;
 }
 
+function hasPositiveEntityMention(line: string, entityId: string): boolean {
+  const entity = getD09OntologyEntity(entityId);
+  if (!entity) return false;
+  return [entity.label, ...entity.aliases].some((alias) => {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu');
+    return [...line.matchAll(pattern)].some((match) => !isNegatedRequirementAt(line, match.index ?? 0));
+  });
+}
+
 export async function extractD09Requirements(rawJobDescription: string): Promise<D09RequirementExtractionResult> {
   const text = rawJobDescription.normalize('NFKC').replace(/\r\n?/g, '\n').trim();
   if (!text) {
@@ -86,7 +97,7 @@ export async function extractD09Requirements(rawJobDescription: string): Promise
     const requirementLike = REQUIREMENT_LIKE_MARKER.test(line) || Boolean(priority);
     if (requirementLike) requirementLikeLines += 1;
 
-    const entities = findD09EntitiesInText(line);
+    const entities = findD09EntitiesInText(line).filter((entity) => hasPositiveEntityMention(line, entity.id));
     if (entities.length === 0 || !priority) continue;
     parsedRequirementLines += 1;
 

@@ -96,12 +96,81 @@ describe('formuła wyniku ogólnego', () => {
 
     expect(zKarami.formulaBreakdown.knockoutPenalties)
       .toBeGreaterThan(bez.formulaBreakdown.knockoutPenalties);
-    expect(zKarami.overallScore).toBeLessThanOrEqual(bez.overallScore);
+    expect(zKarami.overallScore).not.toBeNull();
+    expect(bez.overallScore).not.toBeNull();
+    expect(zKarami.overallScore!).toBeLessThanOrEqual(bez.overallScore!);
     expect(zKarami.formulaBreakdown.knockoutPenalties).toBeLessThanOrEqual(100);
   });
 });
 
 describe('telemetria językowa', () => {
+  it('nie uznaje tytulu roli za dowod umiejetnosci', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
+    vault.personalInfo.title = 'Python Developer';
+    vault.personalInfo.summary = 'Praca zespolowa i planowanie wydan produktowych.';
+    vault.history = [{
+      id: 'role-python',
+      company: 'Firma',
+      role: 'Python Developer',
+      location: '',
+      startDate: '2020-01',
+      endDate: '2022-01',
+      isCurrent: false,
+      description: 'Wspolpraca z zespolami przy planowaniu wydan.',
+      highlights: [],
+    }];
+
+    const report = buildAtsTelemetryReport({ vault, jobDescription: 'Wymagania: Python.' });
+
+    expect(report.formulaBreakdown.hardSkillsScore).toBe(0);
+    expect(report.linguisticTelemetry.missingCriticalLemmas).toContain('python');
+  });
+
+  it('uwzglednia merytoryczny opis doswiadczenia w pokryciu wymagan', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
+    vault.history = [{
+      id: 'linux-role',
+      company: 'Firma',
+      role: 'Administrator',
+      location: '',
+      startDate: '2020-01',
+      endDate: '2022-01',
+      isCurrent: false,
+      description: 'Administracja serwerami Linux w srodowisku produkcyjnym.',
+      highlights: [],
+    }];
+
+    const report = buildAtsTelemetryReport({ vault, jobDescription: 'Wymagania: Linux.' });
+
+    expect(report.formulaBreakdown.hardSkillsScore).toBe(100);
+    expect(report.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.term)).toContain('linux');
+  });
+
+  it('brak twardych wymagan nie daje 0% pokrycia w telemetrii', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.invalid');
+    vault.personalInfo.summary = 'Technik wsparcia z doswiadczeniem w obsludze uzytkownikow.';
+    vault.profiler.languages = [{ id: 'language-1', language: 'Angielski', level: 'C1', context: '' }];
+    vault.history = [{
+      id: 'formal-only-role',
+      company: 'Acme',
+      role: 'Support Engineer',
+      location: '',
+      startDate: '2020-01-01',
+      endDate: '2024-01-01',
+      isCurrent: false,
+      description: 'Obslugiwalem zgloszenia uzytkownikow i rozwiazywalem problemy systemowe.',
+      highlights: [],
+    }];
+    const report = buildAtsTelemetryReport({
+      vault,
+      jobDescription: 'Wymagania formalne: znajomosc jezyka angielskiego na poziomie C1. Min. 2 lata doswiadczenia zawodowego.',
+    });
+
+    expect(report.formulaBreakdown.hardSkillsScore).toBeNull();
+    expect(report.formulaBreakdown.assessedWeightPercent).toBe(60);
+    expect(report.overallScore).toBeGreaterThan(0);
+  });
+
   it('pokrycie lematów liczy frazy po rdzeniu, nie dosłownie', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
     const matched = report.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.term);
@@ -133,15 +202,45 @@ describe('sprawczość językowa', () => {
     expect(ratio).toBeCloseTo(2 / 3, 5);
   });
 
-  it('pusty dokument daje zero, nie NaN', () => {
-    expect(computeActionVerbRatio('')).toBe(0);
-    expect(computeActionVerbRatio('   \n  ')).toBe(0);
+  it('brak zdań do oceny zwraca brak danych, nie 0%', () => {
+    expect(computeActionVerbRatio('')).toBeNull();
+    expect(computeActionVerbRatio('   \n  ')).toBeNull();
   });
 
   it('składnik sprawczości w raporcie odzwierciedla ratio', () => {
     const report = buildAtsTelemetryReport({ vault: vaultWithContent, jobDescription: JD });
+    const ratio = report.linguisticTelemetry.actionVerbRatio;
+    expect(ratio).not.toBeNull();
     expect(report.formulaBreakdown.actionVerbsScore)
-      .toBe(Math.round(report.linguisticTelemetry.actionVerbRatio * 100));
+      .toBe(Math.round((ratio ?? 0) * 100));
+  });
+
+  it('lista umiejetnosci bez narracji nie jest zerowym wynikiem sprawczosci', () => {
+    const vault = {
+      ...createEmptyVault('Jan Kowalski', 'jan@example.invalid'),
+      personalInfo: {
+        ...createEmptyVault().personalInfo,
+        summary: '',
+      },
+      skillsMatrix: {
+        hardSkills: ['Python', 'Linux', 'AWS', 'Excel', 'Teams', 'Active Directory'],
+        softSkills: [],
+        toolsAndTech: [],
+        certifications: [],
+      } as MasterVault['skillsMatrix'],
+      history: [],
+      projects: [],
+    };
+    const report = buildAtsTelemetryReport({
+      vault,
+      jobDescription: 'Wymagania: Python, Linux, AWS. Zakres: administracja systemami i wsparcie uzytkownikow.',
+    });
+
+    expect(report.formulaBreakdown.hardSkillsScore).toBeGreaterThan(0);
+    expect(report.formulaBreakdown.actionVerbsScore).toBeNull();
+    expect(report.linguisticTelemetry.actionVerbRatio).toBeNull();
+    expect(report.heuristicProfiles.find((profile) => profile.profileId === 'Frazy_Gestosc')!.score)
+      .toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -195,8 +294,8 @@ describe('neutralne profile mierzalnych cech', () => {
     });
 
     const spadek = (systemId: string) =>
-      bazowy.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score -
-      zepsuty.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score;
+      bazowy.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score! -
+      zepsuty.heuristicProfiles.find((profile) => profile.profileId === systemId)!.score!;
 
     expect(spadek('Struktura_Odczyt')).toBeGreaterThanOrEqual(spadek('Frazy_Gestosc'));
     expect(zepsuty.heuristicProfiles.find((profile) => profile.profileId === 'Struktura_Odczyt')!
@@ -218,7 +317,7 @@ describe('neutralne profile mierzalnych cech', () => {
 
     const maxDensity = Math.max(...upychanie.linguisticTelemetry.matchedLemmas.map((lemma) => lemma.densityRatio));
     if (maxDensity > STUFFING_DENSITY_THRESHOLD) {
-      expect(frazyUpychanie.score).toBeLessThan(frazyNormalny.score);
+      expect(frazyUpychanie.score!).toBeLessThan(frazyNormalny.score!);
     }
     expect(maxDensity).toBeGreaterThan(normalny.linguisticTelemetry.matchedLemmas.reduce(
       (max, lemma) => Math.max(max, lemma.densityRatio), 0
@@ -231,5 +330,52 @@ describe('neutralne profile mierzalnych cech', () => {
       expect(profile.score).toBeGreaterThanOrEqual(0);
       expect(profile.score).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+
+describe('brak danych o doswiadczeniu w telemetrii', () => {
+  it('nie pokazuje 0% ani czastkowego wyniku lacznego bez historii', () => {
+    const vault = { ...vaultWithContent, history: [] };
+    const report = buildAtsTelemetryReport({ vault, jobDescription: JD });
+
+    expect(report.formulaBreakdown.experienceScore).toBeNull();
+    expect(report.formulaBreakdown.assessedWeightPercent).toBe(75);
+    expect(report.overallScore).toBeNull();
+  });
+});
+
+describe('profile heurystyczne wymagaja danych dla mierzonej cechy', () => {
+  it('nie zwraca dodatnich ocen profili dla pustego CV i pustej oferty', () => {
+    const report = buildAtsTelemetryReport({ vault: createEmptyVault(), jobDescription: '' });
+
+    expect(report.overallScore).toBeNull();
+    expect(report.heuristicProfiles.map(({ score }) => score)).toEqual([null, null, null]);
+    expect(report.heuristicProfiles.map(({ unavailableReason }) => unavailableReason)).toEqual([
+      'Brak treści profilu kandydata do oceny.',
+      'Brak treści profilu kandydata do oceny.',
+      'Brak treści profilu kandydata do oceny.',
+    ]);
+    expect(report.heuristicProfiles.flatMap(({ criticalRisks, complianceReasons }) => [
+      ...criticalRisks,
+      ...complianceReasons,
+    ])).toEqual([]);
+  });
+
+  it('wstrzymuje tylko pomiar fraz, gdy oferta nie daje jego mianownika', () => {
+    const vault = createEmptyVault();
+    vault.personalInfo.title = 'Technik utrzymania ruchu';
+    vault.personalInfo.summary = 'Prowadzę konserwację i naprawy urządzeń przemysłowych.';
+    const report = buildAtsTelemetryReport({
+      vault,
+      jobDescription: 'Poszukujemy osoby do pracy zmianowej. Aplikuj już dziś.',
+    });
+
+    expect(report.heuristicProfiles[0].score).not.toBeNull();
+    expect(report.heuristicProfiles[1].score).toBeNull();
+    expect(report.heuristicProfiles[1].unavailableReason).toBe(
+      'Oferta nie zawiera rozpoznanych wymagań do pomiaru fraz.'
+    );
+    expect(report.heuristicProfiles[2].score).not.toBeNull();
   });
 });

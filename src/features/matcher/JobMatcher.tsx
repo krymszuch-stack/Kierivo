@@ -9,7 +9,6 @@ import {
   Code2,
   CheckCircle2,
   ArrowRight,
-  ShieldCheck,
   Layers,
   Clock,
 } from 'lucide-react';
@@ -19,15 +18,15 @@ import {
   CoverLetter,
   AtsCheckResult,
   JobOffer,
-  ApplicationDocumentSnapshot,
+  CANONICAL_ATS_SCORE_PROVENANCE,
 } from '../../types';
 import type { FetchJdUrlResponse } from '../../types/api';
 import { ApiError, api } from '../../lib/apiClient';
 import type { ParsedJobDescription } from '../../lib/jdParser';
 import { parseJobDescriptionResponse } from '../../lib/jdSchema';
 import { parseJobDescriptionLocal } from '../../lib/jdParser';
+import { AI_QUOTA_RESET_TIME } from '../../lib/aiQuotaPolicy';
 import { createApplicationDocumentSnapshot } from '../../lib/applicationSnapshot';
-import { isVaultEmpty } from '../../lib/vaultCompleteness';
 import { Tabs } from '../../components/ui/Tabs';
 import { QuickOnboardingFlow } from '../onboarding/QuickOnboardingFlow';
 import { JDInputModes } from './JDInputModes';
@@ -35,7 +34,7 @@ import { JobFeasibilityAdvisor } from './JobFeasibilityAdvisor';
 import type { MobilityPreferences } from '../../lib/commuteCalculator';
 import { RealtimeLivePreview } from './RealtimeLivePreview';
 import { DocumentRenderer } from './DocumentRenderer';
-import type { CanonicalAtsScore } from '../../lib/canonicalAts';
+import { hasCareerEvidence, type CanonicalAtsScore } from '../../lib/canonicalAts';
 import {
   calculateJobMatch,
   buildJobOfferFromScraped,
@@ -43,7 +42,7 @@ import {
   SYNTHETIC_JOB_OFFER_PORTAL,
 } from '../../lib/jobMatcherEngine';
 import { triggerConfetti } from '../../lib/confetti';
-import { consumeAiLocally } from '../../store/useEntitlements';
+import { consumeAiLocally, useEntitlements } from '../../store/useEntitlements';
 import { contributeJobIntel } from '../../lib/crowdsourceIntel';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -52,9 +51,18 @@ import { Modal } from '../../components/ui/Modal';
 import { useApplications } from '../../store/useApplications';
 import { JobApplication } from '../../types';
 import { showToast } from '../../store/useToastStore';
+import { cvCopyNotice } from '../../lib/cvCopyNotice';
 import type { AdvisorContext } from '../advisor/advisorContext';
 import { ModelQuotaCounter } from '../../components/ui/ModelQuotaCounter';
-import { StorageKeys, writeJson, LastJobAnalysisSummary } from '../../lib/storage';
+import { applyKeywordSuggestionToResume } from '../../lib/jdKeywordMapper';
+import { StorageKeys, profileDataKeyFor, writeJson, LastJobAnalysisSummary } from '../../lib/storage';
+import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
+import { useAuth } from '../../context/AuthContext';
+import { getAtsScoreContext, getAtsScoreDisplayInfo } from '../../lib/atsScoreEvidence';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
+import { getCalculationTimeFreshness } from '../../lib/analysisPeriod';
+import { AnalysisTimeNotice } from '../../components/ui/AnalysisTimeNotice';
+import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 
 interface JobPreset {
   id: string;
@@ -138,7 +146,7 @@ Wymagania:
 
 export interface JobMatcherProps {
   vault: MasterVault;
-  onUpdateVault?: (updated: MasterVault) => void;
+  onUpdateVault?: (updated: MasterVault) => MasterVault | void;
   onAdvisorContext?: (context: AdvisorContext) => void;
   className?: string;
 }
@@ -149,6 +157,8 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   onAdvisorContext,
   className = '',
 }) => {
+  const { refresh: refreshEntitlements } = useEntitlements();
+
   // ATS Matching State
   const [selectedJob, setSelectedJob] = useState<JobOffer | null>(null);
   const [isAtsModalOpen, setIsAtsModalOpen] = useState(false);
@@ -156,6 +166,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   const [coverLetter, setCoverLetter] = useState<CoverLetter | null>(null);
   const [atsResult, setAtsResult] = useState<AtsCheckResult | null>(null);
   const [canonicalResult, setCanonicalResult] = useState<CanonicalAtsScore | null>(null);
+  const now = useAnalysisClock();
   const [isFetchingUrl, setIsFetchingUrl] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [parsedJd, setParsedJd] = useState<ParsedJobDescription | null>(null);
@@ -163,11 +174,18 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   // Błąd dopasowania musiałby widzieć modal — wcześniej catch tylko logował,
   // a modal czekał na wyniki w nieskończoność.
   const [matchError, setMatchError] = useState<string | null>(null);
+  const [quickOfferText, setQuickOfferText] = useState('');
+  const [quickOfferError, setQuickOfferError] = useState<string | null>(null);
 
-  // Tryb dopasowania: domyślnie uproszczony onboarding dla nowego użytkownika
-  const [matcherMode, setMatcherMode] = useState<'quick' | 'advanced'>(() => {
-    return isVaultEmpty(vault) ? 'quick' : 'advanced';
-  });
+  // Nowa osoba zaczyna od prostego przepływu; narzędzia zaawansowane są dostępne na żądanie.
+  const [matcherMode, setMatcherMode] = useState<'quick' | 'advanced'>('quick');
+  const hasReusableResume = Boolean(
+    vault.personalInfo?.summary?.trim() ||
+    vault.history?.some((experience) => experience.description?.trim() || experience.highlights?.some((highlight) => highlight.text?.trim())) ||
+    vault.skillsMatrix?.hardSkills?.length ||
+    vault.skillsMatrix?.toolsAndTech?.length ||
+    vault.skillsMatrix?.softSkills?.length
+  );
 
   // Preferencje dojazdu żyją w vaulcie, a nie w stanie widoku: kalkulator ma
   // pamiętać, jak daleko użytkownik mieszka, przy każdej kolejnej ofercie.
@@ -177,6 +195,8 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
   const [isTailoring, setIsTailoring] = useState(false);
 
   const { saveApplication } = useApplications();
+  const { user } = useAuth();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
 
   const handleMatchJob = async (job: JobOffer, sourceVault: MasterVault = vault) => {
     setSelectedJob(job);
@@ -196,19 +216,31 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       onAdvisorContext?.(matchResult.advisorContext);
 
       // Zapis ostatniej analizy do pamięci (dla HomeView 11/10)
-      const matched = matchResult.canonicalResult?.matchedRequirements ?? matchResult.atsResult.matchedKeywords;
-      const missing = matchResult.canonicalResult?.missingRequirements ?? matchResult.atsResult.missingHardSkills;
+      const matched = matchResult.canonicalResult?.matchedRequirements ?? [];
+      const missing = matchResult.canonicalResult?.missingRequirements ?? [];
+      const atsScoreContext = getAtsScoreContext(
+        matchResult.canonicalResult,
+        measureVaultCompleteness(sourceVault).percent,
+        hasCareerEvidence(sourceVault)
+      );
       const lastSummary: LastJobAnalysisSummary = {
-        position: job.title || 'Stanowisko',
-        company: job.company || 'Firma',
-        score: matchResult.canonicalResult ? matchResult.canonicalResult.score : matchResult.atsResult.overallScore,
+        position: job.title?.trim() || 'Oferta bez podanego stanowiska',
+        company: job.company?.trim() || '',
+        ...(matchResult.canonicalResult?.state === 'SCORABLE' && matchResult.canonicalResult.score !== null
+          ? { score: matchResult.canonicalResult.score }
+          : {}),
         strengths: matched,
         gaps: missing,
         analyzedAt: new Date().toISOString(),
+        calculatedAt: matchResult.canonicalResult?.calculatedAt,
+        calculationMonth: matchResult.canonicalResult?.calculationMonth,
+        profileUpdatedAt: sourceVault.updatedAt,
+        atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
         requirementsCount: matched.length + missing.length,
         matchedCount: matched.length,
+        ...(atsScoreContext ? { atsScoreContext } : {}),
       };
-      writeJson(StorageKeys.lastJobAnalysis, lastSummary);
+      writeJson(profileDataKeyFor(StorageKeys.lastJobAnalysis, profileId), lastSummary);
 
       if (matchResult.shouldCelebrate) {
         triggerConfetti({ count: 90, durationMs: 3000 });
@@ -246,7 +278,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     const aiAvailable = consumeAiLocally();
     if (!aiAvailable) {
       showToast('Limit analiz AI wyczerpany', {
-        message: 'Dzienny przydział wywołań AI został wyczerpany (odnowi się o północy). Ogłoszenie zostało przeanalizowane lokalnym silnikiem regułowym.',
+        message: `Dzienny przydział wywołań AI został wyczerpany (odnowi się o ${AI_QUOTA_RESET_TIME}). Ogłoszenie zostało przeanalizowane lokalnym silnikiem regułowym.`,
         variant: 'info',
       });
       return parseJobDescriptionLocal(rawJdText);
@@ -264,7 +296,7 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
     } catch (err) {
       if (err instanceof ApiError && err.isQuotaExceeded) {
         showToast('Limit analiz AI wyczerpany', {
-          message: 'Dzienny limit wywołań modeli AI został wyczerpany (odnowi się o północy). Przełączono na wbudowany silnik regułowy.',
+          message: `Dzienny limit wywołań modeli AI został wyczerpany (odnowi się o ${AI_QUOTA_RESET_TIME}). Przełączono na wbudowany silnik regułowy.`,
           variant: 'info',
         });
       } else {
@@ -274,6 +306,8 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         });
       }
       return parseJobDescriptionLocal(rawJdText);
+    } finally {
+      void refreshEntitlements();
     }
   };
 
@@ -326,8 +360,10 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
           </span>
           <p className="text-xs text-muted">
             {matcherMode === 'quick'
-              ? 'Wklej CV i ogłoszenie, aby zobaczyć ocenę dopasowania Kierivo i 3 główne problemy.'
-              : 'Pełny zestaw narzędzi: 7 modułów dopasowania, presety branżowe i kalkulator dojazdów.'}
+              ? (hasReusableResume
+                ? 'Twoje zapisane doświadczenie jest gotowe. Dodaj ofertę, a sprawdzimy dowody, braki i rzeczy do podkreślenia.'
+                : 'Wklej CV i ofertę, aby zobaczyć dopasowanie Kierivo oraz najważniejsze braki.')
+              : 'Dodatkowe sposoby analizy, przygotowania dokumentów i dojazdu.'}
           </p>
         </div>
 
@@ -342,12 +378,62 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         />
       </div>
 
-      {matcherMode === 'quick' ? (
+      {matcherMode === 'quick' && hasReusableResume ? (
+        <Card variant="elevated" className="space-y-5 p-5 sm:p-7">
+          <div className="space-y-1">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-brand-fg">CV z Twojego profilu</span>
+            <h2 className="text-xl font-bold tracking-tight text-ink sm:text-2xl">Sprawdź ofertę</h2>
+            <p className="text-sm text-muted">
+              Użyjemy zapisanego profilu ({vault.history?.length ?? 0} stanowisk). Treść pozostanie na tym urządzeniu.
+            </p>
+          </div>
+          <label htmlFor="saved-profile-job-description" className="block text-xs font-bold text-ink">Treść ogłoszenia o pracę</label>
+          <textarea
+            id="saved-profile-job-description"
+            rows={10}
+            value={quickOfferText}
+            onChange={(event) => {
+              setQuickOfferText(event.target.value);
+              if (quickOfferError) setQuickOfferError(null);
+            }}
+            placeholder="Wklej treść oferty pracy (wymagania, opis stanowiska, obowiązki)…"
+            className="w-full rounded-xl border border-line bg-surface px-3 py-2 font-mono text-xs leading-relaxed text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+            aria-invalid={Boolean(quickOfferError)}
+            aria-describedby={quickOfferError ? 'saved-profile-job-error' : undefined}
+          />
+          {quickOfferError && <p id="saved-profile-job-error" role="alert" className="text-sm text-danger-fg">{quickOfferError}</p>}
+          <div className="flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[11px] text-muted">Dopasowanie liczymy z danych profilu i tej oferty. Nie wysyłamy CV do dostawcy AI.</p>
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              icon={ArrowRight}
+              iconPosition="right"
+              disabled={isTailoring}
+              onClick={() => {
+                if (!quickOfferText.trim()) {
+                  setQuickOfferError('Wklej treść ogłoszenia, aby rozpocząć analizę.');
+                  return;
+                }
+                setQuickOfferError(null);
+                handleMatchManual({ description: quickOfferText.trim() });
+              }}
+              className="w-full font-bold px-7 sm:w-auto"
+            >
+              {isTailoring ? 'Analizuję ofertę…' : 'Sprawdź ofertę'}
+            </Button>
+          </div>
+        </Card>
+      ) : matcherMode === 'quick' ? (
         <QuickOnboardingFlow
           onShowDetails={(newVault, jobOffer) => {
-            onUpdateVault?.(newVault);
+            // Analiza i rodzic muszą pracować na tym samym snapshotcie. Rodzic
+            // nadaje rewizję przy zapisie; użycie surowego `newVault` poniżej
+            // oznaczyłoby świeżo wyliczony wynik jako nieaktualny już na Starcie.
+            const savedVault = onUpdateVault?.(newVault);
             setMatcherMode('advanced');
-            handleMatchJob(jobOffer, newVault);
+            handleMatchJob(jobOffer, savedVault ?? newVault);
           }}
           onSwitchToAdvanced={() => setMatcherMode('advanced')}
         />
@@ -570,6 +656,8 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                   </Button>
                 </div>
               </div>
+            ) : canonicalResult && getCalculationTimeFreshness(canonicalResult, now) !== 'current' ? (
+              <AnalysisTimeNotice score={canonicalResult.score} onRefresh={() => handleMatchJob(selectedJob)} />
             ) : atsResult && tailoredResume && coverLetter ? (
               <RealtimeLivePreview
                 vault={vault}
@@ -577,8 +665,18 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                 atsResult={atsResult}
                 canonicalResult={canonicalResult ?? undefined}
                 tailoredResume={tailoredResume}
+                onApplySuggestion={(suggestion, apply) => {
+                  setTailoredResume((current) => current
+                    ? applyKeywordSuggestionToResume(current, suggestion, apply)
+                    : current);
+                }}
                 coverLetter={coverLetter}
                 onSaveTailoredCV={() => {
+                  const atsScoreContext = getAtsScoreContext(
+                    canonicalResult ?? undefined,
+                    measureVaultCompleteness(vault).percent,
+                    hasCareerEvidence(vault)
+                  );
                   const snapshot = createApplicationDocumentSnapshot({
                     vault,
                     tailoredResume,
@@ -598,7 +696,13 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                     // zmienić etap po faktycznym złożeniu aplikacji.
                     status: 'Do wysłania',
                     jobUrl: selectedJob.url,
-                    atsScore: canonicalResult ? canonicalResult.score : atsResult.overallScore,
+                    ...(canonicalResult?.state === 'SCORABLE' && canonicalResult.score !== null
+                      ? {
+                          atsScore: canonicalResult.score,
+                          atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+                          atsScoreContext,
+                        }
+                      : {}),
                     missingKeywords: canonicalResult?.missingRequirements?.length
                       ? canonicalResult.missingRequirements
                       : atsResult.missingHardSkills,
@@ -606,8 +710,13 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
                   };
 
                   saveApplication(application);
+                  const scoreLabel = canonicalResult?.state === 'SCORABLE' && canonicalResult.score !== null
+                    ? getAtsScoreDisplayInfo(canonicalResult.score, atsScoreContext).label
+                    : null;
                   showToast('Dodano do moich aplikacji', {
-                    message: `${selectedJob.title} — zapisano jako „Do wysłania”. To nie oznacza wysłania aplikacji. Dopasowanie: ${canonicalResult ? canonicalResult.score : atsResult.overallScore}%.`,
+                    message: canonicalResult?.state === 'SCORABLE' && canonicalResult.score !== null
+                      ? `${selectedJob.title} — zapisano jako „Do wysłania”. To nie oznacza wysłania aplikacji. ${scoreLabel}.`
+                      : `${selectedJob.title} — zapisano jako „Do wysłania”. Nie zapisano wyniku dopasowania, bo brakuje podstaw do oceny.`,
                   });
                   setIsAtsModalOpen(false);
                 }}
@@ -658,10 +767,12 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         >
           <DocumentRenderer
             vault={vault}
-            onExported={() => {
-              showToast('Eksport CV', {
-                message: 'Bazowe CV zostało przekazane do druku / eksportu PDF.',
-                variant: 'info',
+            onExported={(event) => {
+              const notice = cvCopyNotice(event);
+              if (!notice) return;
+              showToast(notice.title, {
+                message: notice.message,
+                variant: 'success',
               });
             }}
           />

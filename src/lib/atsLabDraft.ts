@@ -1,13 +1,10 @@
 import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
-
-export interface AtsLabDraft {
-  jd?: string;
-  role?: string;
-}
+import { parseAtsLabDraft, type AtsLabDraft } from './atsLabDraftSchema';
+export type { AtsLabDraft } from './atsLabDraftSchema';
 
 /** Szkic oferty i stanowiska nie może przechodzić między profilami. */
 export function loadAtsLabDraft(profileId: string): AtsLabDraft {
-  return readJson<AtsLabDraft>(profileDataKeyFor(StorageKeys.draftAtsLab, profileId), {});
+  return parseAtsLabDraft(readJson<unknown>(profileDataKeyFor(StorageKeys.draftAtsLab, profileId), {}));
 }
 
 export function saveAtsLabDraft(profileId: string, draft: AtsLabDraft): void {

@@ -1,37 +1,24 @@
 import { WorkExperience } from '../../types';
 import { ConsistencyAlert } from './types';
-import { formatMonthYear, parseMonthYear } from '../dateUtils';
+import { formatMonthYear, parseDateToYearMonth } from '../dateUtils';
 
 /**
  * Zwraca znormalizowany rok i miesiąc z ciągu daty (np. '2022-05', '2022.05', '05.2022', '2022', 'Obecnie').
  */
 export function parseYearMonthToNumbers(dateStr: string | undefined | null): { year: number; month: number } | null {
-  if (!dateStr || typeof dateStr !== 'string') return null;
+  return parseDateToYearMonth(dateStr);
+}
 
-  const trimmed = dateStr.trim().toLowerCase();
-  if (['obecnie', 'present', 'current', 'teraz', 'now'].includes(trimmed)) {
-    const now = new Date();
-    return { year: now.getFullYear(), month: now.getMonth() + 1 };
-  }
-
-  // Używamy zunifikowanego parseMonthYear (zgodnie z Regułą 3: jedno źródło prawdy)
-  const normalized = parseMonthYear(dateStr);
-  if (normalized) {
-    const parts = normalized.split('-');
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10);
-    if (!isNaN(year) && !isNaN(month)) {
-      return { year, month };
-    }
-  }
-
-  const parsed = Date.parse(dateStr);
-  if (!isNaN(parsed)) {
-    const d = new Date(parsed);
-    return { year: d.getFullYear(), month: d.getMonth() + 1 };
-  }
-
-  return null;
+function experiencePeriod(exp: WorkExperience): { start: { year: number; month: number }; end: { year: number; month: number } } | null {
+  const start = parseYearMonthToNumbers(exp.startDate);
+  const hasExplicitEnd = Boolean(exp.endDate?.trim());
+  const end = exp.isCurrent
+    ? parseYearMonthToNumbers('obecnie')
+    : hasExplicitEnd
+      ? parseYearMonthToNumbers(exp.endDate)
+      : start;
+  if (!start || !end || end.year * 12 + end.month < start.year * 12 + start.month) return null;
+  return { start, end };
 }
 
 /**
@@ -99,20 +86,10 @@ export function detectCareerGaps(history: WorkExperience[]): ConsistencyAlert[] 
   // Filtrujemy i sortujemy pozycje rosnąco według daty rozpoczęcia
   const validExperiences = history
     .map((exp) => {
-      const start = parseYearMonthToNumbers(exp.startDate);
-      const end = exp.isCurrent
-        ? parseYearMonthToNumbers('obecnie')
-        : parseYearMonthToNumbers(exp.endDate) || start;
-
-      return {
-        experience: exp,
-        start,
-        end,
-      };
+      const period = experiencePeriod(exp);
+      return period ? { experience: exp, ...period } : null;
     })
-    .filter((item): item is { experience: WorkExperience; start: { year: number; month: number }; end: { year: number; month: number } } =>
-      item.start !== null && item.end !== null
-    )
+    .filter((item): item is { experience: WorkExperience; start: { year: number; month: number }; end: { year: number; month: number } } => item !== null)
     .sort((a, b) => {
       const diffYear = a.start.year - b.start.year;
       return diffYear !== 0 ? diffYear : a.start.month - b.start.month;
@@ -183,15 +160,11 @@ export function detectOverlappingExperiences(history: WorkExperience[]): Consist
 
   const validExperiences = history
     .map((exp) => {
-      const start = parseYearMonthToNumbers(exp.startDate);
-      const end = exp.isCurrent
-        ? parseYearMonthToNumbers('obecnie')
-        : parseYearMonthToNumbers(exp.endDate) || start;
-
+      const period = experiencePeriod(exp);
       return {
         exp,
-        startMonths: start ? start.year * 12 + start.month : null,
-        endMonths: end ? end.year * 12 + end.month : null,
+        startMonths: period ? period.start.year * 12 + period.start.month : null,
+        endMonths: period ? period.end.year * 12 + period.end.month : null,
       };
     })
     .filter((item): item is { exp: WorkExperience; startMonths: number; endMonths: number } =>

@@ -58,6 +58,13 @@ describe('skillEvidence — kanoniczny matcher dowodów', () => {
     expect(hasPositiveSkillEvidence('Oferta wymaga prawa jazdy kat. B.', 'prawo jazdy')).toBe(false);
   });
 
+  it('polskie parafrazy wsparcia i triage respektują brak doświadczenia', () => {
+    expect(hasPositiveSkillEvidence('Brak doświadczenia w obsłudze użytkowników i klientów.', 'customer-facing technical support')).toBe(false);
+    expect(hasPositiveSkillEvidence('Brak doświadczenia w kategoryzowaniu, ustalaniu priorytetu i przekazywaniu incydentów.', 'incident triage')).toBe(false);
+    expect(hasPositiveSkillEvidence('Mam doświadczenie w obsłudze użytkowników i klientów.', 'customer-facing technical support')).toBe(true);
+    expect(hasPositiveSkillEvidence('Kategoryzuję incydenty, ustalam priorytet i przekazuję je dalej.', 'incident triage')).toBe(true);
+  });
+
   it('aliasy jawne działają, dorobione nie', () => {
     expect(hasPositiveSkillEvidence('Pracuję w JS na co dzień.', 'javascript')).toBe(true);
     expect(hasPositiveSkillEvidence('Postgres i PSQL w produkcji.', 'postgresql')).toBe(true);

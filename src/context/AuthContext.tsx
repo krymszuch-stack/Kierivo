@@ -13,20 +13,22 @@ import {
   getActiveProfile,
   createLocalProfile,
   activateLocalProfile,
+  invalidateLocalProfileActivation,
+  isLocalProfileActivationCurrent,
   signOutLocalProfile,
   deleteLocalProfile,
   loadProfileVault,
   saveProfileVault,
-  ANONYMOUS_PROFILE_ID,
 } from '../lib/localProfile';
 import { MasterVault } from '../types';
 import { getSupabaseBrowserClient } from '../lib/supabaseClient';
 import { authErrorMessage } from '../lib/authErrors';
+import { createAuthSessionBootstrapGuard } from '../lib/authSessionBootstrap';
 import { oauthRedirectError, passwordRecoveryRedirectError, stripAuthErrorParams } from '../lib/authRecovery';
 import { oauthProviderById, type OAuthProviderId } from '../lib/oauthProviders';
 import { getAuthRedirectUrl } from '../lib/authRedirect';
 import { resetEntitlementsToUnauthenticated } from '../store/useEntitlements';
-import { beginPrivacyWipe, isPrivacyWipeInProgress, removeRaw, vaultKeyFor } from '../lib/storage';
+import { beginPrivacyWipe, isPrivacyWipeInProgress, removeRaw, removeRawDurably, vaultKeyFor } from '../lib/storage';
 import { showToast } from '../store/useToastStore';
 import { setAccessTokenProvider } from '../lib/apiClient';
 import {
@@ -58,6 +60,7 @@ interface AuthContextType {
   vaultSyncStatus: VaultSyncStatus;
   /** Supabase ustanowił sesję z prawidłowego linku PASSWORD_RECOVERY. */
   passwordRecoveryActive: boolean;
+  passwordRecoveryRevision: number;
   /** Polski komunikat dla wygasłego lub nieprawidłowego linku recovery. */
   passwordRecoveryError: string | null;
   /**
@@ -69,7 +72,7 @@ interface AuthContextType {
   clearOAuthNotice: () => void;
 
   signInLocally: (name: string, email?: string) => Promise<MasterVault>;
-  resumeLocalProfile: (profileId: string) => MasterVault | null;
+  resumeLocalProfile: (profileId: string) => Promise<MasterVault | null>;
   signUpCloud: (email: string, password: string, displayName: string) => Promise<AuthActionResult>;
   signInCloud: (email: string, password: string) => Promise<AuthActionResult>;
   /** Logowanie przez dostawcę z rejestru `oauthProviders` (Google, Microsoft, LinkedIn). */
@@ -79,7 +82,7 @@ interface AuthContextType {
   clearPasswordRecoveryError: () => void;
   resendConfirmation: (email: string) => Promise<AuthActionResult>;
 
-  logout: () => Promise<void>;
+  logout: () => Promise<AuthActionResult>;
   deleteAccount: () => Promise<AuthActionResult>;
   saveUserVault: (vault: MasterVault) => void;
   saveCurrentVault: (vault: MasterVault) => void;
@@ -133,12 +136,28 @@ export const AuthProvider: React.FC<{
   });
   const [vaultSyncStatus, setVaultSyncStatus] = useState<VaultSyncStatus>('local');
   const [passwordRecoveryActive, setPasswordRecoveryActive] = useState(false);
+  const [passwordRecoveryRevision, setPasswordRecoveryRevision] = useState(0);
   const [passwordRecoveryError, setPasswordRecoveryError] = useState<string | null>(null);
   const [oauthNotice, setOauthNotice] = useState<string | null>(null);
   const cloudOwnerRef = useRef<string | null>(null);
+  const authTransitionGuard = useRef(createAuthSessionBootstrapGuard());
+  const passwordRecoveryGuard = useRef(createAuthSessionBootstrapGuard());
+  const passwordRecoveryOwner = useRef<string | null>(null);
+  const invalidatePasswordRecovery = useCallback(() => {
+    passwordRecoveryGuard.current.noteAuthEvent();
+    passwordRecoveryOwner.current = null;
+    setPasswordRecoveryActive(false);
+    setPasswordRecoveryError(null);
+  }, []);
 
   const supabase = getSupabaseBrowserClient();
   const cloudAvailable = supabase !== null;
+
+  useEffect(() => () => {
+    invalidateLocalProfileActivation();
+    authTransitionGuard.current.noteAuthEvent();
+    passwordRecoveryGuard.current.noteAuthEvent();
+  }, []);
 
   useEffect(() => {
     if (supabase) {
@@ -155,6 +174,7 @@ export const AuthProvider: React.FC<{
     if (!supabase) return;
 
     let active = true;
+    const bootstrapGuard = createAuthSessionBootstrapGuard();
 
     // Gdy jednorazowy link już wygasł, Supabase nie ustanowi sesji i nie wyśle
     // PASSWORD_RECOVERY. Błąd wraca wtedy w URL — przechwytujemy wyłącznie
@@ -176,10 +196,19 @@ export const AuthProvider: React.FC<{
       window.history.replaceState(null, '', stripAuthErrorParams(window.location.href));
     }
 
+    const bootstrapRevision = bootstrapGuard.begin();
+    const transitionRevision = authTransitionGuard.current.begin();
     supabase.auth.getSession().then(({ data }) => {
-      if (!active || !data.session) return;
+      if (!active || !bootstrapGuard.canApply(bootstrapRevision) ||
+          !authTransitionGuard.current.canApply(transitionRevision) || !data.session) return;
+      authTransitionGuard.current.noteAuthEvent();
+      invalidateLocalProfileActivation();
       const profile = profileFromSession(data.session);
-      if (cloudOwnerRef.current !== profile.id) setUserVault(null);
+      if (cloudOwnerRef.current !== profile.id) {
+        invalidatePasswordRecovery();
+        setUserVault(null);
+        resetEntitlementsToUnauthenticated();
+      }
       cloudOwnerRef.current = profile.id;
       suspendCloudVaultFlush(profile.id);
       setSession(data.session);
@@ -190,10 +219,17 @@ export const AuthProvider: React.FC<{
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!active) return;
+      bootstrapGuard.noteAuthEvent();
 
       if (nextSession) {
+        authTransitionGuard.current.noteAuthEvent();
+        invalidateLocalProfileActivation();
         const profile = profileFromSession(nextSession);
-        if (cloudOwnerRef.current !== profile.id) setUserVault(null);
+        if (cloudOwnerRef.current !== profile.id) {
+          invalidatePasswordRecovery();
+          setUserVault(null);
+          resetEntitlementsToUnauthenticated();
+        }
         cloudOwnerRef.current = profile.id;
         // Block before state changes can mount save effects in App.tsx.
         suspendCloudVaultFlush(profile.id);
@@ -203,6 +239,9 @@ export const AuthProvider: React.FC<{
         setVaultSyncStatus(getCloudVaultSyncStatus(profile.id));
 
         if (event === 'PASSWORD_RECOVERY') {
+          passwordRecoveryGuard.current.noteAuthEvent();
+          passwordRecoveryOwner.current = profile.id;
+          setPasswordRecoveryRevision(passwordRecoveryGuard.current.begin());
           setPasswordRecoveryActive(true);
           setPasswordRecoveryError(null);
         }
@@ -217,6 +256,11 @@ export const AuthProvider: React.FC<{
       }
 
       if (event === 'SIGNED_OUT') {
+        // Zdarzenie klienta chmurowego nie zamyka już wybranego profilu lokalnego.
+        // Własne SIGNED_OUT jest częścią logout, więc nie unieważnia jego wyniku.
+        if (cloudOwnerRef.current === null) { setSession(null); return; }
+        invalidateLocalProfileActivation();
+        invalidatePasswordRecovery();
         cloudOwnerRef.current = null;
         resetEntitlementsToUnauthenticated();
         setSession(null);
@@ -232,7 +276,7 @@ export const AuthProvider: React.FC<{
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, invalidatePasswordRecovery]);
 
   /**
    * Stan i retry są związane z ID właściciela. Po przełączeniu profilu listener
@@ -263,7 +307,12 @@ export const AuthProvider: React.FC<{
 
   const signInLocally = useCallback(
     async (name: string, email?: string): Promise<MasterVault> => {
-      const { profile, vault } = await createLocalProfile(name, email);
+      const { profile, vault, activationVersion } = await createLocalProfile(name, email);
+      if (!isLocalProfileActivationCurrent(activationVersion)) throw new Error('Sesja zmieniła się. Nie otwarto profilu; spróbuj ponownie.');
+      authTransitionGuard.current.noteAuthEvent();
+      invalidatePasswordRecovery();
+      cloudOwnerRef.current = null;
+      setSession(null);
       setUser(profile);
       setMode('local');
       setVaultSyncStatus('local');
@@ -271,13 +320,17 @@ export const AuthProvider: React.FC<{
       onVaultLoaded?.(vault);
       return vault;
     },
-    [onVaultLoaded]
+    [onVaultLoaded, invalidatePasswordRecovery]
   );
 
   const resumeLocalProfile = useCallback(
-    (profileId: string): MasterVault | null => {
-      const resumed = activateLocalProfile(profileId);
-      if (!resumed) return null;
+    async (profileId: string): Promise<MasterVault | null> => {
+      const resumed = await activateLocalProfile(profileId);
+      if (!resumed || !isLocalProfileActivationCurrent(resumed.activationVersion)) return null;
+      authTransitionGuard.current.noteAuthEvent();
+      invalidatePasswordRecovery();
+      cloudOwnerRef.current = null;
+      setSession(null);
       setUser(resumed.profile);
       setMode('local');
       setVaultSyncStatus('local');
@@ -285,7 +338,7 @@ export const AuthProvider: React.FC<{
       onVaultLoaded?.(resumed.vault);
       return resumed.vault;
     },
-    [onVaultLoaded]
+    [onVaultLoaded, invalidatePasswordRecovery]
   );
 
   const signUpCloud = useCallback(
@@ -356,18 +409,28 @@ export const AuthProvider: React.FC<{
   const updateRecoveredPassword = useCallback(
     async (password: string): Promise<AuthActionResult> => {
       if (!supabase) return { ok: false, message: CHMURA_NIESKONFIGUROWANA };
-      if (!passwordRecoveryActive) {
+      const ownerId = session?.user.id;
+      const guard = passwordRecoveryGuard.current;
+      if (!passwordRecoveryActive || !ownerId || passwordRecoveryOwner.current !== ownerId || cloudOwnerRef.current !== ownerId) {
         return { ok: false, message: 'Link do zmiany hasła nie jest już aktywny. Poproś o nowy.' };
       }
 
-      const { error } = await supabase.auth.updateUser({ password });
+      const revision = guard.begin();
+      let response;
+      try { response = await supabase.auth.updateUser({ password }); }
+      catch { return { ok: false, message: 'Nie potwierdzono zmiany hasła. Sprawdź stan konta przed ponowieniem.' }; }
+      // USER_UPDATED/odświeżenie tokenu tego samego konta jest poprawne. Nowy
+      // link recovery lub inny właściciel unieważnia odpowiedź starej operacji.
+      if (!guard.canApply(revision) || passwordRecoveryOwner.current !== ownerId || cloudOwnerRef.current !== ownerId) {
+        return { ok: false, message: 'Sesja odzyskiwania zmieniła się. Nie zamknięto nowego formularza; sprawdź stan poprzedniego konta.' };
+      }
+      const { data, error } = response;
       if (error) return { ok: false, message: authErrorMessage(error) };
-
-      setPasswordRecoveryActive(false);
-      setPasswordRecoveryError(null);
+      if (data?.user?.id !== ownerId) return { ok: false, message: 'Serwer nie potwierdził zmiany hasła dla tego konta. Spróbuj ponownie.' };
+      invalidatePasswordRecovery();
       return { ok: true, message: '' };
     },
-    [supabase, passwordRecoveryActive]
+    [supabase, passwordRecoveryActive, session?.user.id, invalidatePasswordRecovery]
   );
 
   const clearPasswordRecoveryError = useCallback(() => {
@@ -384,20 +447,34 @@ export const AuthProvider: React.FC<{
     [supabase]
   );
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (): Promise<AuthActionResult> => {
+    invalidateLocalProfileActivation();
+    const guard = authTransitionGuard.current;
+    guard.noteAuthEvent();
+    const revision = guard.begin();
+    const changedSession = (): AuthActionResult => ({ ok: false, message: 'Sesja zmieniła się podczas wylogowania. Nowsza sesja pozostaje bez zmian; sprawdź konto przed ponowieniem.' });
     if (mode === 'cloud' && supabase) {
+      // Sesja chmurowa może przykrywać wcześniej aktywowany profil lokalny.
+      // Zamykamy również jego aktywny zapis, żeby reload nie otworzył go sam.
+      if (!(await signOutLocalProfile())) return { ok: false, message: 'Nie udało się zamknąć lokalnego profilu i usunąć danych anonimowej sesji. Konto pozostaje otwarte; spróbuj ponownie.' };
+      if (!guard.canApply(revision)) return changedSession();
       const outgoingOwner = user?.id;
-      await supabase.auth.signOut();
       // Zwykłą kopię profilu czyścimy na wspólnym komputerze. Oczekująca,
       // niepotwierdzona wersja zostaje wyłącznie w outboxie związanym z ID
       // właściciela i zostanie użyta dopiero po ponownym logowaniu tego konta.
-      if (outgoingOwner) removeRaw(vaultKeyFor(outgoingOwner));
+      if (outgoingOwner && !(await removeRawDurably(vaultKeyFor(outgoingOwner)))) return { ok: false, message: 'Nie udało się potwierdzić usunięcia lokalnej kopii CV. Konto pozostaje otwarte; spróbuj ponownie.' };
+      if (!guard.canApply(revision)) return changedSession();
+      const { error } = await supabase.auth.signOut();
+      if (!guard.canApply(revision)) return changedSession();
+      if (error) return { ok: false, message: authErrorMessage(error) };
     } else {
-      signOutLocalProfile();
+      if (!(await signOutLocalProfile())) return { ok: false, message: 'Nie udało się trwale zamknąć profilu. Profil pozostaje otwarty; spróbuj ponownie.' };
     }
 
-    removeRaw(vaultKeyFor(ANONYMOUS_PROFILE_ID));
+    if (!guard.canApply(revision)) return changedSession();
     resetEntitlementsToUnauthenticated();
+    cloudOwnerRef.current = null;
+    setSession(null);
     setUser(null);
     setMode(null);
     setUserVault(null);
@@ -405,19 +482,46 @@ export const AuthProvider: React.FC<{
     setPasswordRecoveryActive(false);
     setPasswordRecoveryError(null);
     setOauthNotice(null);
+    return { ok: true, message: '' };
   }, [mode, supabase, user]);
 
   const deleteAccount = useCallback(async (): Promise<AuthActionResult> => {
+    invalidateLocalProfileActivation();
+    const guard = authTransitionGuard.current;
+    guard.noteAuthEvent();
+    const revision = guard.begin();
+    const changedSession = (): AuthActionResult => ({ ok: false, message: 'Sesja zmieniła się podczas usuwania konta. Sprawdź aktualne konto i stan usunięcia; operacja nie wyczyści stanu nowszej sesji.' });
     if (mode === 'cloud' && supabase) {
       const ownerId = user?.id;
-      const { error } = await supabase.functions.invoke('usun-konto');
-      if (error) {
-        return { ok: false, message: 'Nie udało się usunąć konta. Spróbuj ponownie za chwilę.' };
+      let response;
+      try {
+        response = await supabase.functions.invoke('usun-konto');
+      } catch {
+        return { ok: false, message: 'Nie potwierdzono usunięcia konta na serwerze. Dane w tej przeglądarce zachowano. Sprawdź stan konta przed ponowieniem operacji.' };
       }
+      const { data, error } = response;
+      if (error) {
+        return { ok: false, message: 'Nie potwierdzono pełnego usunięcia konta. Dane w tej przeglądarce zachowano. Sprawdź stan konta przed ponowieniem operacji.' };
+      }
+      // Brak błędu transportu nie potwierdza usunięcia konta. Wymazywanie
+      // zaczyna się dopiero po jednoznacznej odpowiedzi funkcji usun-konto.
+      if (!data || typeof data !== 'object' || Array.isArray(data) || data.success !== true || data.error != null) {
+        return { ok: false, message: 'Serwer nie potwierdził usunięcia konta. Dane w tej przeglądarce zachowano. Sprawdź stan konta przed ponowieniem operacji.' };
+      }
+      if (!guard.canApply(revision)) return { ok: false, message: 'Usunięcie konta na serwerze zakończono, ale sesja zmieniła się w trakcie operacji. Nie wymazano danych nowszej sesji z przeglądarki.' };
       beginPrivacyWipe();
-      await supabase.auth.signOut();
+      let sessionClosed = false;
+      try {
+        const { error: signOutError } = await supabase.auth.signOut();
+        sessionClosed = !signOutError;
+      } catch {
+        // Usunięcie na serwerze już zaszło. Błąd SDK nie może przerwać
+        // wymazywania lokalnego CV ani zostać opisany jako pełny sukces.
+      }
+      if (!guard.canApply(revision)) return changedSession();
       if (ownerId) removeRaw(cloudVaultOutboxKeyFor(ownerId));
       const localCleared = await deleteLocalProfile();
+      if (!guard.canApply(revision)) return changedSession();
       resetEntitlementsToUnauthenticated();
       setSession(null);
       setUser(null);
@@ -426,12 +530,19 @@ export const AuthProvider: React.FC<{
       setVaultSyncStatus('local');
       setPasswordRecoveryActive(false);
       setPasswordRecoveryError(null);
+      if (!sessionClosed) return {
+        ok: false,
+        message: localCleared
+          ? 'Konto usunięto z serwera i wymazano lokalne CV, ale nie potwierdzono zamknięcia sesji w tej przeglądarce. Usuń dane witryny przed dalszym korzystaniem.'
+          : 'Konto usunięto z serwera, ale nie potwierdzono zamknięcia sesji ani pełnego wymazania danych z tej przeglądarki. Usuń dane witryny przed dalszym korzystaniem.',
+      };
       return localCleared
         ? { ok: true, message: '' }
         : { ok: false, message: 'Konto usunięto z serwera, ale nie udało się potwierdzić wymazania danych z tej przeglądarki.' };
     }
 
     const localCleared = await deleteLocalProfile();
+    if (!guard.canApply(revision)) return changedSession();
     resetEntitlementsToUnauthenticated();
     setUser(null);
     setMode(null);
@@ -502,6 +613,7 @@ export const AuthProvider: React.FC<{
       userVault,
       vaultSyncStatus,
       passwordRecoveryActive,
+      passwordRecoveryRevision,
       passwordRecoveryError,
       oauthNotice,
       clearOAuthNotice,
@@ -527,6 +639,7 @@ export const AuthProvider: React.FC<{
       userVault,
       vaultSyncStatus,
       passwordRecoveryActive,
+      passwordRecoveryRevision,
       passwordRecoveryError,
       oauthNotice,
       clearOAuthNotice,

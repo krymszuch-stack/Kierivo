@@ -26,6 +26,30 @@ vi.mock('../geminiClient', async () => {
           fullText: 'Nazywam się [KANDYDAT].',
           optimizedText: 'Zoptymalizowany punktor dla [KANDYDAT].',
           keywordsMatched: ['React'],
+          starTalkingPoints: [],
+          personalizedFraming: '',
+          emergencyPhrases: [],
+          jobTitle: '',
+          companyName: '',
+          companyDescription: '',
+          seniorityLevel: 'UNKNOWN',
+          requiredHardSkills: [],
+          requiredSoftSkills: [],
+          toolsAndTech: [],
+          languagesRequired: [],
+          coreResponsibilities: [],
+          keyKeywords: [],
+          benefits: [],
+          perksAndPlusy: [],
+          mandatoryRequirements: [],
+          salaryRange: '',
+          workModel: 'UNKNOWN',
+          recruitmentMode: '',
+          recruitmentModeReason: '',
+          cleanBodyText: '',
+          explanation: '',
+          tips: [],
+          actionItems: [],
         }),
         usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
       };
@@ -56,6 +80,46 @@ const vault = {
 
 beforeEach(() => {
   sentPrompts.length = 0;
+});
+
+describe('Calosc promptu przed wyslaniem modelowi', () => {
+  it('redagowanie listu pseudonimizuje tez tytul, role i kontakt z oferty', async () => {
+    const { generateCoverLetterWithFlash } = await import('../gemini');
+    const privateVault = structuredClone(vault) as typeof vault;
+    privateVault.personalInfo!.title = "Sean O'Brien";
+
+    await generateCoverLetterWithFlash(
+      privateVault,
+      "Sean O'Brien",
+      'Firma',
+      'Wymagania: Docker. Kontakt: recruiter@example.invalid, +48 600 700 800.'
+    );
+
+    const payload = sentPrompts.at(-1) ?? '';
+    expect(payload).not.toContain("Sean O'Brien");
+    expect(payload).not.toContain('recruiter@example.invalid');
+    expect(payload).not.toContain('+48 600 700 800');
+    expect(payload).toContain('Wymagania: Docker');
+  }, 15000);
+
+  it('sciaga na rozmowe pseudonimizuje umiejetnosci i kontakt z oferty', async () => {
+    const { generateInterviewCheatSheetEnrichmentWithFlash } = await import('../gemini');
+    const privateVault = structuredClone(vault) as typeof vault;
+    privateVault.skillsMatrix!.hardSkills = ['PHP', "Sean O'Brien"];
+
+    await generateInterviewCheatSheetEnrichmentWithFlash(
+      privateVault,
+      'Backend Developer',
+      'Firma',
+      'Kontakt: recruiter@example.invalid, +48 600 700 800.',
+      ['PHP']
+    );
+
+    const payload = sentPrompts.at(-1) ?? '';
+    expect(payload).not.toContain("Sean O'Brien");
+    expect(payload).not.toContain('recruiter@example.invalid');
+    expect(payload).not.toContain('+48 600 700 800');
+  }, 15000);
 });
 
 describe('Granica AI — co faktycznie wychodzi z serwera', () => {

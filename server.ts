@@ -11,7 +11,6 @@ import { randomUUID } from "node:crypto";
 import helmet from "helmet";
 import { jobsRouter } from "./src/server/routes/jobs.routes";
 import { aiRouter } from "./src/server/routes/ai.routes";
-import { statsRouter } from "./src/server/routes/stats.routes";
 import { meRouter } from "./src/server/routes/me.routes";
 import { vaultRouter } from "./src/server/routes/vault.routes";
 import { applicationsRouter } from "./src/server/routes/applications.routes";
@@ -157,7 +156,6 @@ async function startServer() {
 
   app.use("/api", jobsRouter);
   app.use("/api", aiRouter);
-  app.use("/api", statsRouter);
   app.use("/api", pdfRouter);
   app.use("/api", mobilityRouter);
 

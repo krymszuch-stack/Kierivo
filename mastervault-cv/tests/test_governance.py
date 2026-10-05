@@ -123,6 +123,16 @@ class TestGovernanceApply(unittest.TestCase):
         self.assertEqual(rep.exp_kept, 4)
         self.assertEqual(rep.exp_dropped, 2)
 
+    def test_reports_when_summary_is_truncated_for_page_budget(self):
+        profile = self._create_sample_profile()
+        profile.summary.display = "Syntetyczny opis doświadczenia. " * 40
+
+        resolved, rep = apply(profile, content_width=400, measure=mock_measure, target_pages=2)
+
+        self.assertTrue(rep.summary_truncated)
+        self.assertNotEqual(resolved.summary.display, profile.summary.display)
+        self.assertIn("skrocono", rep.describe())
+
 
 if __name__ == "__main__":
     unittest.main()

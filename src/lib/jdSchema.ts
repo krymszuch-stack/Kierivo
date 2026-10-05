@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ParsedJobDescription } from './jdParser';
+import { EXPERIENCE_COMPARISONS } from './experienceRequirement';
 
 /**
  * Runtime validation for job-description data crossing the network boundary.
@@ -12,7 +13,7 @@ import type { ParsedJobDescription } from './jdParser';
 export const parsedJobDescriptionSchema = z.object({
   jobTitle: z.string(),
   companyName: z.string(),
-  seniorityLevel: z.enum(['ENTRY', 'MID', 'SENIOR', 'LEAD', 'EXECUTIVE']).catch('MID'),
+  seniorityLevel: z.enum(['ENTRY', 'MID', 'SENIOR', 'LEAD', 'EXECUTIVE', 'UNKNOWN']).catch('UNKNOWN'),
   requiredHardSkills: z.array(z.string()).default([]),
   requiredSoftSkills: z.array(z.string()).default([]),
   toolsAndTech: z.array(z.string()).default([]),
@@ -23,7 +24,7 @@ export const parsedJobDescriptionSchema = z.object({
   perksAndPlusy: z.array(z.string()).optional(),
   mandatoryRequirements: z.array(z.string()).optional(),
   salaryRange: z.string().optional(),
-  workModel: z.string().optional(),
+  workModel: z.enum(['REMOTE', 'HYBRID', 'ON_SITE', 'FLEXIBLE', 'UNKNOWN']).catch('UNKNOWN'),
   recruitmentMode: z.enum(['ATS_CORPORATE', 'CRAFT_LOCAL', 'HYBRID']).optional(),
   recruitmentModeReason: z.string().optional(),
   sourceUrl: z.string().optional(),
@@ -37,6 +38,12 @@ export const parsedJobDescriptionSchema = z.object({
     sourceText: z.string(),
   })).optional(),
   experienceMinYears: z.number().nullable().optional(),
+  experienceRequirements: z.array(z.object({
+    years: z.number().nonnegative(),
+    sourceText: z.string(),
+    scopeText: z.string().nullable(),
+    comparison: z.enum(EXPERIENCE_COMPARISONS).optional(),
+  })).optional(),
   structuredLanguages: z.array(z.object({
     language: z.string(),
     level: z.string().optional(),

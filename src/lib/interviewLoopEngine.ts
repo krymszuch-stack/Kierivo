@@ -3,10 +3,10 @@ import {
   PreCallChecklistItem,
   InterviewStage,
   LiveNoteItem,
-  PostCallDebrief,
 } from '../types';
 import { StorageKeys, profileDataKeyFor, readJson, writeJson } from './storage';
-import { getFollowUpEmailOpenings, selectVariantIndex } from './phrasingVariations';
+import { interviewLoopSessionSchema, parseInterviewLoopRecords } from './interviewLoopSchema';
+export { generateFollowUpEmail } from './followUpEmail';
 
 export const DEFAULT_PRE_CALL_CHECKLIST: Omit<PreCallChecklistItem, 'completed'>[] = [
   // Techniczne
@@ -101,7 +101,7 @@ export const STAGE_LABELS: Record<
 export function createInterviewSession(
   companyName: string,
   roleTitle: string,
-  scheduledAt = new Date().toISOString(),
+  scheduledAt?: string,
   jobOfferId?: string,
   jdText?: string,
   tags: string[] = []
@@ -109,8 +109,8 @@ export function createInterviewSession(
   return {
     id: `loop_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     jobOfferId,
-    companyName: companyName.trim() || 'Firma',
-    roleTitle: roleTitle.trim() || 'Stanowisko',
+    companyName: companyName.trim(),
+    roleTitle: roleTitle.trim(),
     jdText,
     scheduledAt,
     status: 'UPCOMING',
@@ -183,57 +183,33 @@ export function addLiveNote(
  * Generuje treść wiadomości e-mail z podziękowaniem po rozmowie (Follow-up Email)
  * z bogatym i zróżnicowanym doborem przywitań i wstępów.
  */
-export function generateFollowUpEmail(
-  session: InterviewLoopSession,
-  candidateName = '',
-  debriefData?: Partial<PostCallDebrief>,
-  variantIndex?: number
-): string {
-  const role = session.roleTitle;
-  const highlightPoint =
-    debriefData?.whatWentWell?.trim() ||
-    session.liveTracker.notes[0]?.text ||
-    'możliwość szczegółowego poznania zakresu roli i planów zespołu';
-
-  const openings = getFollowUpEmailOpenings(role, highlightPoint);
-  const idx = selectVariantIndex(variantIndex ?? session.companyName + role, openings.length);
-  const opening = openings[idx];
-
-  const signLine = candidateName.trim() && candidateName.trim().toLowerCase() !== 'kandydat'
-    ? `\n\nZ poważaniem,\n${candidateName.trim()}`
-    : '\n\nZ poważaniem';
-
-  return (
-    `${opening}\n\n` +
-    `Potwierdzam duże zainteresowanie dołączeniem do Państwa zespołu i z przyjemnością poznam kolejne kroki w procesie rekrutacyjnym.` +
-    signLine
-  );
-}
-
 /**
  * Zapis i odczyt z pamięci lokalnej (StorageKeys.interviewLoops)
  */
 export function loadInterviewSessions(profileId: string): InterviewLoopSession[] {
   const parsed = readJson<unknown>(profileDataKeyFor(StorageKeys.interviewLoops, profileId), []);
-  return Array.isArray(parsed) ? (parsed as InterviewLoopSession[]) : [];
+  return parseInterviewLoopRecords(parsed).sessions;
 }
 
 export function saveInterviewSession(profileId: string, session: InterviewLoopSession): void {
+  if (!interviewLoopSessionSchema.safeParse(session).success) return;
   const key = profileDataKeyFor(StorageKeys.interviewLoops, profileId);
-  const existing = loadInterviewSessions(profileId);
+  const records = parseInterviewLoopRecords(readJson<unknown>(key, []));
+  const existing = records.sessions;
   const idx = existing.findIndex((s) => s.id === session.id);
   const updated =
     idx >= 0
       ? existing.map((s, i) => (i === idx ? session : s))
       : [session, ...existing];
-  writeJson(key, updated);
+  writeJson(key, [...updated, ...records.invalidRecords]);
 }
 
 export function deleteInterviewSession(profileId: string, sessionId: string): void {
   const key = profileDataKeyFor(StorageKeys.interviewLoops, profileId);
-  const existing = loadInterviewSessions(profileId);
+  const records = parseInterviewLoopRecords(readJson<unknown>(key, []));
+  const existing = records.sessions;
   writeJson(
     key,
-    existing.filter((s) => s.id !== sessionId)
+    [...existing.filter((s) => s.id !== sessionId), ...records.invalidRecords]
   );
 }

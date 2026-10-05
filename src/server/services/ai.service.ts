@@ -1,5 +1,4 @@
 import {
-  parseRawCvToVault,
   parseJobDescriptionWithGemini,
   generateCoverLetterWithFlash,
   generateInterviewCheatSheetEnrichmentWithFlash,
@@ -7,29 +6,24 @@ import {
 import { MasterVault } from '../../types';
 
 /**
- * Warstwa serwisowa nad wywołaniami modelu.
+ * Warstwa serwisowa nad wywoĹ‚aniami modelu.
  *
- * Tylko `parseJd` jest dziś wystawione jako trasa HTTP — reszta metod czeka na
- * podpięcie do interfejsu w Fazie 6, już za uwierzytelnieniem i licznikiem kwot.
- * Trzymamy je tutaj, bo implementacje w `gemini.ts` są gotowe i przetestowane;
- * brakuje wyłącznie ekranu, który by ich używał, i kontroli uprawnień.
+ * Tylko `parseJd` jest dziĹ› wystawione jako trasa HTTP â€” reszta metod czeka na
+ * podpiÄ™cie do interfejsu w Fazie 6, juĹĽ za uwierzytelnieniem i licznikiem kwot.
+ * Trzymamy je tutaj, bo implementacje w `gemini.ts` sÄ… gotowe i przetestowane;
+ * brakuje wyĹ‚Ä…cznie ekranu, ktĂłry by ich uĹĽywaĹ‚, i kontroli uprawnieĹ„.
  */
 export class AiService {
-  /** Zamienia surowy tekst CV na strukturę MasterVault. */
-  async parseCv(rawText: string): Promise<Partial<MasterVault>> {
-    return parseRawCvToVault(rawText);
-  }
-
-  /** Zamienia treść ogłoszenia na ustrukturyzowane wymagania. */
+  /** Zamienia treĹ›Ä‡ ogĹ‚oszenia na ustrukturyzowane wymagania. */
   async parseJd(rawJdText: string) {
     return parseJobDescriptionWithGemini(rawJdText);
   }
 
   /**
-   * Generuje spersonalizowaną część ściągi na rozmowę.
+   * Generuje spersonalizowanÄ… czÄ™Ĺ›Ä‡ Ĺ›ciÄ…gi na rozmowÄ™.
    *
-   * Reszta ściągi (słownik, checklista, bank pytań) powstaje lokalnie i za zero
-   * tokenów — tutaj trafia tylko to, co wymaga osadzenia w historii kandydata.
+   * Reszta Ĺ›ciÄ…gi (sĹ‚ownik, checklista, bank pytaĹ„) powstaje lokalnie i za zero
+   * tokenĂłw â€” tutaj trafia tylko to, co wymaga osadzenia w historii kandydata.
    */
   async generateCheatSheetEnrichment(
     targetRole: string,
@@ -47,7 +41,7 @@ export class AiService {
     );
   }
 
-  /** Generuje list motywacyjny na podstawie profilu i treści ogłoszenia. */
+  /** Generuje list motywacyjny na podstawie profilu i treĹ›ci ogĹ‚oszenia. */
   async generateCoverLetter(
     targetRole: string,
     companyName: string,

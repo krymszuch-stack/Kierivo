@@ -106,6 +106,45 @@ describe('D09 — pełny pipeline', () => {
     expect(strong.score!).toBeGreaterThan(weak.score!);
   });
 
+  it('nie przypisuje domyslnej pewnosci surowemu tekstowi bez pomiaru ekstrakcji', () => {
+    const document = buildPlainTextCanonicalDocument('EXPERIENCE\nReact development');
+
+    expect(document.extractionConfidence).toBe(0);
+    expect(document.blocks.every((block) => block.extractionConfidence === 0)).toBe(true);
+  });
+
+  it('zachowuje jawnie zmierzona wysoką pewnosc dla dowodu tekstowego', async () => {
+    const document = buildPlainTextCanonicalDocument('EXPERIENCE\nReact development', {
+      extractionConfidence: 0.95,
+    });
+    const result = await runD09FromCanonicalDocument({
+      document,
+      jobDescription: 'Wymagania:\n- React',
+    });
+
+    expect(result.alignment.requirementMatches[0]?.status).toBe('CONFIRMED');
+    expect(result.score).not.toBeNull();
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'nie przyjmuje niefinitywnej pewnosci ekstrakcji dokumentu (%s)',
+    async (extractionConfidence) => {
+      const document = buildPlainTextCanonicalDocument('EXPERIENCE\nReact development', {
+        extractionConfidence,
+      });
+      const result = await runD09FromCanonicalDocument({
+        document,
+        jobDescription: 'Wymagania:\n- React',
+      });
+
+      expect(document.extractionConfidence).toBe(0);
+      expect(document.blocks.every((block) => block.extractionConfidence === 0)).toBe(true);
+      expect(result.alignment.requirementMatches[0]?.status).toBe('UNKNOWN');
+      expect(result.score).toBeNull();
+      expect(result.applicability).toBe('INSUFFICIENT_DATA');
+    },
+  );
+
   it('niepewna ekstrakcja dokumentu nie zamienia niewidocznych kompetencji w fałszywe braki', async () => {
     const document = buildPlainTextCanonicalDocument(`
 TEST CANDIDATE
@@ -128,6 +167,18 @@ Example University
     const mustMatches = result.alignment.requirementMatches.filter((match) => match.requirement.priority === 'MUST');
     expect(mustMatches.every((match) => match.status === 'UNKNOWN')).toBe(true);
     expect(result.alignment.uncertainty.width).toBeGreaterThan(30);
+  });
+
+  it('traktuje niefinitywna kompletnosc Vaultu jako niedostepna', async () => {
+    const result = await runD09FromVault({
+      vault: baseVault(),
+      jobDescription: JD,
+      vaultCompletenessConfidence: Number.POSITIVE_INFINITY,
+    });
+
+    expect(result.alignment.requirementMatches.every((match) => match.status === 'UNKNOWN')).toBe(true);
+    expect(result.score).toBeNull();
+    expect(result.applicability).toBe('INSUFFICIENT_DATA');
   });
 
   it('poradnik nie jest zerowym Job Alignment, tylko NON_CV / N/A', async () => {

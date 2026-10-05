@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { formatPdfExportErrorMessage } from '../CVExportModal';
 import { ApiError, api } from '../../../lib/apiClient';
-import { downloadSemanticPdf } from '../../../lib/semanticPdfExporter';
+import { prepareSemanticPdf, savePreparedSemanticPdf } from '../../../lib/semanticPdfExporter';
+import { saveAs } from 'file-saver';
 import { createEmptyVault } from '../../../lib/sampleVault';
 
 vi.mock('file-saver', () => ({
@@ -67,7 +68,7 @@ describe('CVExportModal — obsługa statusów błędów i requestId na frontend
     expect(result.message).toContain('Kod zgłoszenia: req-err-500-crash');
   });
 
-  it('downloadSemanticPdf wywołuje api.post z opcjami i przekazuje ApiError z requestId', async () => {
+  it('prepareSemanticPdf wywołuje api.post z opcjami i przekazuje ApiError z requestId', async () => {
     const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
     const apiPostSpy = vi.spyOn(api, 'post').mockRejectedValueOnce(
       new ApiError(503, {
@@ -78,7 +79,7 @@ describe('CVExportModal — obsługa statusów błędów i requestId na frontend
     );
 
     await expect(
-      downloadSemanticPdf({
+      prepareSemanticPdf({
         vault,
         theme: 'parchment',
         layout: 'sidebar',
@@ -102,7 +103,7 @@ describe('CVExportModal — obsługa statusów błędów i requestId na frontend
       requestId: 'req-std-123',
     });
 
-    await downloadSemanticPdf({
+    await prepareSemanticPdf({
       vault,
       theme: 'classic',
       layout: 'header',
@@ -130,7 +131,7 @@ describe('CVExportModal — obsługa statusów błędów i requestId na frontend
       requestId: 'req-dual-456',
     });
 
-    await downloadSemanticPdf({
+    await prepareSemanticPdf({
       vault,
       theme: 'parchment',
       layout: 'sidebar',
@@ -147,6 +148,24 @@ describe('CVExportModal — obsługa statusów błędów i requestId na frontend
         pdfType: 'dual-layer',
       })
     );
+  });
+
+  it('wstrzymuje zapis przygotowanego PDF do jawnego potwierdzenia pominięć', async () => {
+    const vault = createEmptyVault('Anna Nowak', 'anna@example.com');
+    const validPdfBase64 = Buffer.from('%PDF-1.4 mock content').toString('base64');
+    vi.spyOn(api, 'post').mockResolvedValueOnce({
+      success: true,
+      filename: 'Anna_Nowak_CV.pdf',
+      pdf: validPdfBase64,
+      contentWarnings: ['Silnik pominął część treści z profilu.'],
+    });
+
+    const prepared = await prepareSemanticPdf({ vault, targetPages: 2 });
+    expect(prepared.contentWarnings).toEqual(['Silnik pominął część treści z profilu.']);
+    expect(saveAs).not.toHaveBeenCalled();
+
+    savePreparedSemanticPdf(prepared);
+    expect(saveAs).toHaveBeenCalledWith(prepared.blob, 'Anna_Nowak_CV.pdf');
   });
 });
 
@@ -170,10 +189,10 @@ describe('Hierarchia paska akcji w DocumentRenderer i CVExportModal', () => {
   it('Wygląd CV nie wywołuje eksportu PDF (jest osobną akcją konfiguracji)', () => {
     // W DocumentRenderer przycisk "Wygląd CV" otwiera modal w trybie theme
     expect(documentRendererCode).toContain("setExportModalMode('theme')");
-    // W CVExportModal funkcja handleApplyAppearance wywołuje onApplyAppearance i onClose, nie woła downloadSemanticPdf
+    // Zastosowanie wyglądu nie uruchamia pobrania; eksport ma osobny etap potwierdzenia.
     const applyFnMatch = cvExportModalCode.match(/const handleApplyAppearance = [\s\S]*?};/);
     expect(applyFnMatch).not.toBeNull();
-    expect(applyFnMatch![0]).not.toContain('downloadSemanticPdf');
+    expect(applyFnMatch![0]).not.toContain('prepareSemanticPdf');
     expect(applyFnMatch![0]).not.toContain('api.post');
     expect(applyFnMatch![0]).toContain('onApplyAppearance');
   });
@@ -187,6 +206,26 @@ describe('Hierarchia paska akcji w DocumentRenderer i CVExportModal', () => {
     expect(exportFnMatch![0]).toContain('window.print()');
   });
 
+  it('nie traktuje samego otwarcia okna druku jako potwierdzonego eksportu', () => {
+    const printFnMatch = documentRendererCode.match(/const handlePrint = \(\) => \{[\s\S]*?\n\s*\};/);
+    expect(printFnMatch).not.toBeNull();
+    expect(printFnMatch![0]).toContain('window.print()');
+    expect(printFnMatch![0]).not.toContain('onExported');
+  });
+
+  it('wstrzymuje skrócony eksport do potwierdzenia i raportuje go po zapisie pliku', () => {
+    const exportFnMatch = cvExportModalCode.match(/const handleExecuteExport = async \(\) => \{[\s\S]*?\n\s*\};/);
+    const completeFnMatch = cvExportModalCode.match(/const completePdfDownload = \(result: SemanticPdfExportResult\) => \{[\s\S]*?\n\s*\};/);
+    expect(exportFnMatch).not.toBeNull();
+    expect(completeFnMatch).not.toBeNull();
+    expect(exportFnMatch![0]).toContain('setPendingPdf(result)');
+    expect(completeFnMatch![0].indexOf('savePreparedSemanticPdf(result)')).toBeLessThan(
+      completeFnMatch![0].indexOf('onPdfDownloaded?.')
+    );
+    expect(cvExportModalCode).toContain('Pobierz mimo pominięć');
+    expect(cvExportModalCode).toContain('Anuluj eksport skróconego CV');
+  });
+
   it('każda główna akcja w pasku narzędzi ma unikalne aria-label', () => {
     const toolbarAriaLabels = [
       'Zakończ poprawki w dokumencie',
@@ -194,7 +233,7 @@ describe('Hierarchia paska akcji w DocumentRenderer i CVExportModal', () => {
       'Kopiuj treść dokumentu do schowka',
       'Zapisz kopię w bibliotece CV',
       'Konfiguracja wyglądu CV',
-      'Uruchom audyt CV 360°',
+      'Otwórz analizę profilu AI',
       'Otwórz menu eksportu CV',
     ];
 
@@ -211,7 +250,7 @@ describe('Hierarchia paska akcji w DocumentRenderer i CVExportModal', () => {
       'Pobierz standardowy PDF',
       'Drukuj CV',
       'Zastosuj wygląd CV',
-      'Uruchom audyt CV 360°',
+      'Otwórz analizę profilu AI',
     ];
 
     for (const label of modalAriaLabels) {

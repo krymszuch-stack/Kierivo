@@ -1,4 +1,6 @@
-import { StorageKeys, profileDataKeyFor, readJson, removeRaw, writeJson } from './storage';
+﻿import type { DrillScorecard } from './drillHistory';
+export { loadDrillHistory, saveDrillAttempt, clearDrillHistory } from './drillHistory';
+export type { DrillAttemptRecord, DrillScorecard } from './drillHistory';
 
 export interface DrillQuestion {
   id: string;
@@ -9,47 +11,9 @@ export interface DrillQuestion {
   referenceNotes?: string;
 }
 
-export interface DrillAttemptRecord {
-  id: string;
-  questionId: string;
-  questionText: string;
-  transcript: string;
-  durationSec: number;
-  scorecard: DrillScorecard;
-  recordedAt: string;
-}
-
-export interface DrillScorecard {
-  structure: {
-    hasSituation: boolean;
-    hasTask: boolean;
-    hasAction: boolean;
-    hasResult: boolean;
-    detectedElementsCount: number;
-    scorePercent: number;
-  };
-  metrics: {
-    hasMetrics: boolean;
-    detectedMetrics: string[];
-  };
-  ownership: {
-    iCount: number;
-    weCount: number;
-    ownershipPercent: number;
-    assessment: 'HIGH_OWNERSHIP' | 'BALANCED' | 'DIFFUSED_OWNERSHIP';
-    label: string;
-  };
-  fillerWords?: {
-    totalCount: number;
-    detected: Array<{ word: string; count: number }>;
-    clarityScore: number;
-  };
-  overallScore: number;
-  suggestions: string[];
-}
-
 import { PRERECORDED_INTERVIEW_QUESTIONS } from './interviewQuestions/prerecordedQuestions';
 import { getInjectedQuestions, QuestionTokenContext } from './interviewQuestions';
+import { detectDrillMetrics } from './drillMetricDetection';
 
 export const DEFAULT_DRILL_QUESTIONS: DrillQuestion[] = PRERECORDED_INTERVIEW_QUESTIONS.map((q) => ({
   id: q.id,
@@ -90,9 +54,9 @@ export function getRandomDrillQuestion(
     return DEFAULT_DRILL_QUESTIONS[0];
   }
 
-  const available = pool.length > 1 && excludeId
-    ? pool.filter((q) => q.id !== excludeId)
-    : pool;
+  const alternatives = excludeId ? pool.filter((q) => q.id !== excludeId) : pool;
+  // Wadliwa pula z powtórzonym ID nie może zwrócić undefined i wywrócić modala.
+  const available = alternatives.length > 0 ? alternatives : pool;
 
   const randomIndex = Math.floor(Math.random() * available.length);
   return available[randomIndex];
@@ -114,7 +78,7 @@ export function analyzeDrillResponse(
         hasAction: false,
         hasResult: false,
         detectedElementsCount: 0,
-        scorePercent: 0,
+        scorePercent: null,
       },
       metrics: {
         hasMetrics: false,
@@ -123,11 +87,8 @@ export function analyzeDrillResponse(
       ownership: {
         iCount: 0,
         weCount: 0,
-        ownershipPercent: 50,
-        assessment: 'BALANCED',
-        label: 'Brak danych do analizy sprawczości',
       },
-      overallScore: 0,
+      overallScore: null,
       suggestions: ['Wprowadź lub nagraj odpowiedź, aby otrzymać szczegółową analizę STAR.'],
     };
   }
@@ -140,7 +101,8 @@ export function analyzeDrillResponse(
   const actionKeywords = /\b(?:zrobiłem|zrobiłam|wdrożyłem|wdrożyłam|zaprojektowałem|zaprojektowałam|napisałem|napisałam|zastosowałem|zastosowałam|przeprowadziłem|przeprowadziłam|skonfigurowałem|zbadałem|wykonałem)\b/i;
   const resultKeywords = /\b(?:w rezultacie|efektem|efekt|wynik|wyniku|dzięki temu|udało się|przyniosło|zredukowałem|zwiększyłem|osiągnąłem|zakończyło się|metryka)\b/i;
 
-  const hasSituation = situationKeywords.test(lower) || text.length > 20;
+  // Długość odpowiedzi nie jest dowodem na opis sytuacji; tylko rozpoznany sygnał daje punkt STAR.
+  const hasSituation = situationKeywords.test(lower);
   const hasTask = taskKeywords.test(lower);
   const hasAction = actionKeywords.test(lower);
   const hasResult = resultKeywords.test(lower);
@@ -148,10 +110,8 @@ export function analyzeDrillResponse(
   const detectedElementsCount = [hasSituation, hasTask, hasAction, hasResult].filter(Boolean).length;
   const structureScorePercent = Math.round((detectedElementsCount / 4) * 100);
 
-  // 2. METRYKI LICZBOWE (Liczby, %, k, s, zł, TPS, LCP)
-  const metricRegex = /(?:^|\s|[+<>=~])\d+[%xXkKmM+]?(?:\s*(?:zł|pln|tps|lcp|ms|s|dni|godz|godzin|osób|wypadków|incydentów|proc|procent))?(?:\s|$|[,.:;!])/gi;
-  const rawMetricsMatches = text.match(metricRegex) || [];
-  const detectedMetrics = Array.from(new Set(rawMetricsMatches.map((m) => m.trim()).filter((m) => m.length > 0)));
+  // 2. METRYKI LICZBOWE — sama data, wersja lub liczba bez kontekstu nie wystarcza.
+  const detectedMetrics = detectDrillMetrics(text);
   const hasMetrics = detectedMetrics.length > 0;
 
   // 3. SPRAWCZOŚĆ ("I" vs "We" / "Ja" vs "My")
@@ -163,22 +123,6 @@ export function analyzeDrillResponse(
 
   const iCount = iMatches.length;
   const weCount = weMatches.length;
-  const totalOwnershipTokens = iCount + weCount;
-
-  let ownershipPercent = 50;
-  let assessment: DrillScorecard['ownership']['assessment'] = 'BALANCED';
-  let ownershipLabel = 'Zrównoważone (Balans między zespołem a rolą własną)';
-
-  if (totalOwnershipTokens > 0) {
-    ownershipPercent = Math.round((iCount / totalOwnershipTokens) * 100);
-    if (ownershipPercent >= 65) {
-      assessment = 'HIGH_OWNERSHIP';
-      ownershipLabel = 'Wysoka sprawczość (Wyraźny akcent na własne decyzje i działania)';
-    } else if (ownershipPercent <= 35) {
-      assessment = 'DIFFUSED_OWNERSHIP';
-      ownershipLabel = 'Rozmyta odpowiedzialność (Dominacja formy "My / Zespół")';
-    }
-  }
 
   // 4. DETEKCJA SŁÓW WATY (Filler Words / Natręctwa językowe)
   const fillerPatterns = [
@@ -200,8 +144,6 @@ export function analyzeDrillResponse(
       totalFillerCount += matches.length;
     }
   }
-  const clarityScore = Math.max(20, 100 - totalFillerCount * 15);
-
   // 5. SUGESTIE ULEPSZEŃ
   const suggestions: string[] = [];
 
@@ -214,11 +156,11 @@ export function analyzeDrillResponse(
   }
 
   if (!hasMetrics) {
-    suggestions.push('Wzbogać odpowiedź o twarde metryki liczbowe (np. % przyspieszenia, liczba dni/godzin, oszczędność budżetu, 0 awarii).');
+    suggestions.push('Jeśli masz potwierdzoną miarę rezultatu, dodaj ją do odpowiedzi. Nie zgaduj liczb.');
   }
 
-  if (assessment === 'DIFFUSED_OWNERSHIP') {
-    suggestions.push('Używaj form pierwszej osoby („Zaprojektowałem”, „Zdecydowałem”) — rekruter ocenia Twój bezpośredni wkład, a nie całego zespołu.');
+  if (weCount > iCount && weCount > 0) {
+    suggestions.push('Jeśli pytanie dotyczy Twojego wkładu, rozdziel własne działania od działań zespołu.');
   }
 
   if (!hasTask) {
@@ -226,13 +168,8 @@ export function analyzeDrillResponse(
   }
 
   if (suggestions.length === 0) {
-    suggestions.push('Świetna odpowiedź! Zachowana pełna struktura STAR, twarde liczby i wysoka sprawczość.');
+    suggestions.push('Wykryto sygnały struktury STAR, liczb i własnego działania. Sprawdź, czy pasują do faktów Twojej odpowiedzi.');
   }
-
-  // 6. CAŁKOWITY WYNIK (Wagi: Struktura 40%, Metryki 25%, Sprawczość 20%, Czystość 15%)
-  const metricsScore = hasMetrics ? 100 : 20;
-  const ownershipScore = assessment === 'HIGH_OWNERSHIP' ? 100 : assessment === 'BALANCED' ? 85 : 40;
-  const overallScore = Math.round(structureScorePercent * 0.40 + metricsScore * 0.25 + ownershipScore * 0.20 + clarityScore * 0.15);
 
   return {
     structure: {
@@ -250,39 +187,9 @@ export function analyzeDrillResponse(
     ownership: {
       iCount,
       weCount,
-      ownershipPercent,
-      assessment,
-      label: ownershipLabel,
     },
-    fillerWords: {
-      totalCount: totalFillerCount,
-      detected: detectedFillers,
-      clarityScore,
-    },
-    overallScore,
+    // Wzorce tekstowe są wskazówkami, nie skalibrowaną oceną jakości.
+    overallScore: null,
     suggestions,
   };
-}
-
-/**
- * Odczytuje historię sesji treningowych z localStorage
- */
-export function loadDrillHistory(profileId: string): DrillAttemptRecord[] {
-  return readJson<DrillAttemptRecord[]>(profileDataKeyFor(StorageKeys.drillHistory, profileId), []);
-}
-
-/**
- * Zapisuje próbę odpowiedzi w historii ćwiczeń (max 50 ostatnich prób)
- */
-export function saveDrillAttempt(profileId: string, attempt: DrillAttemptRecord): void {
-  const key = profileDataKeyFor(StorageKeys.drillHistory, profileId);
-  const updated = [attempt, ...loadDrillHistory(profileId).filter((h) => h.id !== attempt.id)].slice(0, 50);
-  writeJson(key, updated);
-}
-
-/**
- * Czyści całą historię sesji treningowych
- */
-export function clearDrillHistory(profileId: string): void {
-  removeRaw(profileDataKeyFor(StorageKeys.drillHistory, profileId));
 }

@@ -304,7 +304,7 @@ describe('MasterVault Relational Data Integrity & Multi-Module Interoperability'
     expect(hudRender.consistencyScore).toBeGreaterThanOrEqual(90);
 
     const pitchRender = renderPitchFromClaims(vault);
-    expect(pitchRender.coreStrengths.length).toBeGreaterThan(0);
+    expect(pitchRender.profileStatements.length).toBeGreaterThan(0);
     expect(pitchRender.elevatorPitchText.length).toBeGreaterThan(30);
 
     const linkedInRender = renderLinkedInFromClaims(vault);

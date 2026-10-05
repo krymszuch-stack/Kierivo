@@ -268,10 +268,10 @@ class Renderer:
 
     def _para(self, col: Column, text: str, *, font: str, size: float, leading: float,
               color: str, struct: str = "P", group: str, actual: str = "",
-              width: float | None = None) -> float:
+              width: float | None = None, break_long_words: bool = False) -> float:
         w = width or col.width
         eff_leading = leading * self.leading_scale
-        lines = wrap_text(text, font, size, w)
+        lines = wrap_text(text, font, size, w, break_long_words=break_long_words)
         h = len(lines) * eff_leading
         self._ensure(col, h)
         self.w.begin(struct, group, actual_text=actual or text,
@@ -394,7 +394,8 @@ class Renderer:
             self._para(col, value, font=self.t.typography.sans, size=8.8,
                        leading=11.2, color=self._side_value_color(),
                        group="sidebar.contact",
-                       actual=f"{label.capitalize()}: {value}")
+                       actual=f"{label.capitalize()}: {value}",
+                       break_long_words=label.casefold() in ("linkedin", "github", "www"))
             col.y -= 4.5
 
     def _sidebar_skills(self, col: Column) -> None:
@@ -636,6 +637,54 @@ class Renderer:
                            color="text_secondary", group="content.edu")
             col.y -= 6 * self.v_scale
 
+    def _projects_block(self, col: Column) -> None:
+        projects = [p for p in self.p.projects if isinstance(p, dict)]
+        if not projects:
+            return
+        entries = []
+        for project in projects:
+            name = str(project.get("name") or "").strip()
+            role = str(project.get("role") or "").strip()
+            description = str(project.get("description") or "").strip()
+            tech_stack = project.get("techStack")
+            if isinstance(tech_stack, list):
+                tech = " · ".join(str(item).strip() for item in tech_stack if str(item).strip())
+            else:
+                tech = str(tech_stack or "").strip()
+            metrics = str(project.get("metrics") or "").strip()
+            link = str(project.get("link") or "").strip()
+            if any((name, role, description, tech, metrics, link)):
+                entries.append((name, role, description, tech, metrics, link))
+        if not entries:
+            return
+
+        self._section_header(col, "Projekty", "content.projects")
+        tp = self.t.typography
+        for name, role, description, tech, metrics, link in entries:
+            heading = " — ".join(value for value in (name, role) if value)
+            if heading:
+                self._para(col, heading, font=tp.sans_semibold, size=9.6,
+                           leading=12.4, color="text_primary",
+                           group="content.projects", actual=heading)
+            if description:
+                self._para(col, description, font=tp.sans, size=8.8,
+                           leading=12.0, color="text_secondary",
+                           group="content.projects", actual=description)
+            if tech:
+                self._para(col, tech, font=tp.sans, size=8.2,
+                           leading=10.8, color="text_secondary",
+                           group="content.projects", actual=tech)
+            if metrics:
+                self._para(col, metrics, font=tp.sans, size=8.8,
+                           leading=11.4, color="text_primary",
+                           group="content.projects", actual=metrics)
+            if link:
+                self._para(col, link, font=tp.sans, size=8.2,
+                           leading=10.8, color="text_secondary",
+                           group="content.projects", actual=link,
+                           break_long_words=True)
+            col.y -= 5 * self.v_scale
+
     def _footer(self) -> None:
         tp = self.t.typography
         fx = self.ly.page_margin
@@ -821,6 +870,7 @@ class Renderer:
             self._sidebar_skills(main)
             self._licenses_block(main)
         self._edu_block(main)
+        self._projects_block(main)
         if self.columns["side"] is None:
             self._certs_block(main)
             self._langs_block(main)

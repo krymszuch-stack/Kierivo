@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useScopedAsyncOperation } from '../../hooks/useScopedAsyncOperation';
 import {
   FolderArchive,
   Download,
@@ -16,9 +17,9 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { showToast } from '../../store/useToastStore';
-import { useAuth } from '../../context/AuthContext';
+import { useOptionalAuth } from '../../context/AuthContext';
 import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
-import { downloadSemanticPdf } from '../../lib/semanticPdfExporter';
+import { prepareSemanticPdf, savePreparedSemanticPdf } from '../../lib/semanticPdfExporter';
 import {
   getSavedCVs,
   getUnassignedLegacyCVs,
@@ -266,8 +267,9 @@ const CVCard: React.FC<{
 /* ─────────────── Main View ─────────────── */
 
 export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
-  const { user } = useAuth();
+  const user = useOptionalAuth()?.user ?? null;
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const claimOperation = useScopedAsyncOperation(profileId);
   const [docState, setDocState] = useState(() => ({ profileId, docs: getSavedCVs(profileId) }));
   // Profil może zmienić się bez odmontowania widoku; nie pokazywać poprzedniej
   // osoby nawet przez jedną klatkę przed odświeżeniem stanu.
@@ -279,11 +281,18 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
 
   const refresh = useCallback(() => setDocState({ profileId, docs: getSavedCVs(profileId) }), [profileId]);
 
-  const handleClaimLegacyCVs = () => {
+  const handleClaimLegacyCVs = async () => {
+    if (claimOperation.isBusy) return;
     if (!window.confirm('Przypisać starszą Bibliotekę CV do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dokumenty jako swoje.')) return;
-    const claimed = claimLegacyCVsFor(profileId);
-    refresh();
-    if (claimed > 0) showToast('Biblioteka została przypisana', { message: `Przeniesiono ${claimed} ${claimed === 1 ? 'dokument' : 'dokumentów'} do bieżącego profilu.` });
+    const token = claimOperation.begin();
+    if (!token) return;
+    try {
+      const claimed = await claimLegacyCVsFor(profileId);
+      if (!claimOperation.isCurrent(token)) return;
+      refresh();
+      if (claimed > 0) showToast('Biblioteka została przypisana', { message: `Przeniesiono ${claimed} ${claimed === 1 ? 'dokument' : 'dokumentów'} do bieżącego profilu.` });
+      else showToast('Nie ukończono przypisania', { message: 'Starsza biblioteka została zachowana. Sprawdź poprawność danych i możliwość ich zapisu, a następnie spróbuj ponownie.', variant: 'error' });
+    } finally { claimOperation.finish(token); }
   };
 
   /* Unique tags across all docs */
@@ -323,7 +332,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
 
   const handleReExport = async (doc: SavedCVDocument) => {
     try {
-      await downloadSemanticPdf({
+      const result = await prepareSemanticPdf({
         vault: doc.vault,
         tailoredResume: doc.tailoredResume,
         theme: doc.theme,
@@ -333,6 +342,11 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
         targetRole: doc.targetRole,
         companyName: doc.companyName,
       });
+      if (result.contentWarnings.length > 0) {
+        const confirmed = window.confirm(`${result.contentWarnings.join('\n\n')}\n\nCzy pobrać PDF mimo pominiętej treści?`);
+        if (!confirmed) return;
+      }
+      savePreparedSemanticPdf(result);
       recordDownload(profileId, doc.id);
       refresh();
       showToast('Pobrano PDF z biblioteki', {
@@ -409,7 +423,7 @@ export const CVLibraryView: React.FC<CVLibraryViewProps> = ({ onNavigate }) => {
               <h3 className="font-semibold text-ink">Wykryto starszą Bibliotekę CV</h3>
               <p className="mt-1 text-sm text-muted">Te dokumenty nie są automatycznie pokazywane w profilu. Przypisz je tylko, jeśli są Twoje.</p>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={handleClaimLegacyCVs}>Przypisz do bieżącego profilu</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={handleClaimLegacyCVs} disabled={claimOperation.isBusy}>{claimOperation.isBusy ? 'Przypisywanie…' : 'Przypisz do bieżącego profilu'}</Button>
           </div>
         </div>
       )}

@@ -11,6 +11,23 @@ import { createEmptyVault } from '../../lib/sampleVault';
  */
 describe('truthFilter — diakrytyki i metryki (F11)', () => {
   it.each([
+    ['Zmiana +20%.', 'Zmiana -20%.'],
+    ['Zmiana 20%.', 'Zmiana −20%.'],
+    ['Obsłużyłem 1 klienta.', 'Obsłużyłem 1 000 klientów.'],
+    ['Obsłużyłem 000 klientów.', 'Obsłużyłem 1 000 klientów.'],
+  ])('nie pozwala zmienić znaku ani wykorzystać fragmentu liczby: %s / %s', (generated, source) => {
+    expect(auditGeneratedMetrics(generated, source).fabricatedMetrics.length).toBeGreaterThan(0);
+  });
+  it.each([
+    ['Obsłużyłem 1 000 klientów.', 'Obsłużyłem 1000 klientów.'],
+    ['Obsłużyłem 1\u00a0000 klientów.', 'Obsłużyłem 1000 klientów.'],
+    ['Obsłużyłem 1\u202f000 klientów.', 'Obsłużyłem 1 000 klientów.'],
+    ['Zmiana −20,5%.', 'Zmiana -20.5 %.'],
+    ['Zmiana +20%.', 'Zmiana 20%.'],
+  ])('zachowuje równoważne liczby mimo formatu: %s / %s', (generated, source) => {
+    expect(auditGeneratedMetrics(generated, source).fabricatedMetrics).toEqual([]);
+  });
+  it.each([
     ['księgowość', 'ksiegowosc'],
     ['KSIĘGOWOŚĆ', 'ksiegowosc'],
     ['pracowałem', 'pracowalem'],

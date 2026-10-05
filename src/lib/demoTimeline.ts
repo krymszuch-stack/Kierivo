@@ -11,6 +11,8 @@
  * policzone, nie zmyślone.
  */
 
+import { getCanonicalScoreBand } from './canonicalAts';
+
 export const DEMO_PHASE_ORDER = [
   'idle',
   'typing-cv',
@@ -109,11 +111,10 @@ export function typedText(text: string, visibleChars: number): string {
   return text.slice(0, Math.min(text.length, visibleChars));
 }
 
-/** Próg tonu wyniku — zgodnie z scoreTone() z QuickAtsCheck (≥75 / ≥50 / niżej). */
+/** Ton korzysta z tych samych progów co wszystkie widoki wyniku Kierivo. */
 export function scoreTone(score: number): DemoScoreTone {
-  if (score >= 75) return 'high';
-  if (score >= 50) return 'mid';
-  return 'low';
+  const band = getCanonicalScoreBand(score);
+  return band === 'moderate' ? 'mid' : band;
 }
 
 /**

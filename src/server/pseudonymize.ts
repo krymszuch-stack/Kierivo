@@ -73,6 +73,12 @@ export function pseudonymize(input: string, extraValues: string[] = []): Pseudon
   for (const { label, regex } of PATTERNS) {
     const seen = new Map<string, string>();
     text = text.replace(regex, (match) => {
+      if (label === 'TELEFON') {
+        // Krotkie daty i identyfikatory nie sa numerami telefonu.
+        const digits = match.replace(/\D/g, '');
+        if (digits.length < 9 || digits.length > 15) return match;
+      }
+
       const existing = seen.get(match);
       if (existing) return existing;
 
@@ -84,6 +90,13 @@ export function pseudonymize(input: string, extraValues: string[] = []): Pseudon
   }
 
   return { text, map };
+}
+
+/** Ostatnia wspolna bramka: pseudonimizuje caly prompt, a potem odrzuca wykryte PII. */
+export function preparePromptForModel(input: string, extraValues: string[] = []): PseudonymizedText {
+  const prepared = pseudonymize(input, extraValues);
+  assertNoPii(prepared.text);
+  return prepared;
 }
 
 /** Podstawia prawdziwe wartości z powrotem — wyłącznie w wyniku dla użytkownika. */
@@ -132,14 +145,8 @@ export class PiiLeakError extends Error {
  * ścieżki dodanej w przyszłości, która ją ominie. Lepiej, żeby taka ścieżka
  * wywróciła się głośno na etapie testów, niż po cichu wysłała czyjeś CV.
  *
- * **Świadomy wyjątek:** `parseRawCvToVault` nie może przez to przejść, bo jego
- * całym zadaniem jest wydobycie imienia, e-maila i telefonu z surowego CV —
- * usunięcie ich z wejścia niszczy funkcję. Ta jedna ścieżka wymaga zgody
- * użytkownika zamiast pseudonimizacji i woła bramkę z `allowPii: true`.
  */
-export function assertNoPii(payload: string, options: { allowPii?: boolean } = {}): void {
-  if (options.allowPii) return;
-
+export function assertNoPii(payload: string): void {
   const checks: Array<{ kind: string; regex: RegExp }> = [
     { kind: 'adres e-mail', regex: /[\w.+-]+@[\w-]+\.[\w.-]+/ },
     { kind: 'numer PESEL', regex: /\b\d{11}\b/ },
@@ -147,6 +154,12 @@ export function assertNoPii(payload: string, options: { allowPii?: boolean } = {
   ];
 
   for (const { kind, regex } of checks) {
+    if (kind === 'numer telefonu') {
+      const validPhone = [...payload.matchAll(new RegExp(regex.source, 'g'))]
+        .some(([match]) => match.replace(/\D/g, '').length >= 9);
+      if (validPhone) throw new PiiLeakError(kind);
+      continue;
+    }
     if (regex.test(payload)) throw new PiiLeakError(kind);
   }
 }

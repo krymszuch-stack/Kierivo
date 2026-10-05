@@ -5,6 +5,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Input, Textarea, Select } from '../../components/ui/Field';
 import { Button } from '../../components/ui/Button';
 import { getApplicationDisplayInfo } from './applicationDisplay';
+import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -29,6 +30,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState<ApplicationStatus>('Do wysłania');
   const [jobUrl, setJobUrl] = useState('');
+  const [jobUrlError, setJobUrlError] = useState(false);
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -55,6 +57,12 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!position.trim() || (!initialData && !company.trim())) return;
+    const normalizedJobUrl = jobUrl.trim() ? normalizeExternalHttpUrl(jobUrl) : undefined;
+    if (jobUrl.trim() && !normalizedJobUrl) {
+      setJobUrlError(true);
+      return;
+    }
+    setJobUrlError(false);
 
     onSave({
       ...(initialData || {}),
@@ -64,7 +72,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       salary: salary.trim() || 'Do negocjacji',
       date,
       status,
-      jobUrl: jobUrl.trim(),
+      jobUrl: normalizedJobUrl ?? '',
       notes: notes.trim(),
     });
     onClose();
@@ -136,10 +144,17 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             icon={Globe}
             type="url"
             value={jobUrl}
-            onChange={(e) => setJobUrl(e.target.value)}
+            onChange={(e) => {
+              setJobUrl(e.target.value);
+              setJobUrlError(false);
+            }}
             placeholder="https://pracuj.pl/... lub https://olx.pl/..."
+            aria-invalid={jobUrlError}
           />
         </div>
+        {jobUrlError && (
+          <p role="alert" className="text-xs text-red-600">Link musi być poprawnym adresem http:// lub https://.</p>
+        )}
 
         <Textarea
           label="Notatki z Procesu Rekrutacyjnego & Ustalenia"

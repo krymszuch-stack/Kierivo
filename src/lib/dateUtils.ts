@@ -94,6 +94,34 @@ export function parseMonthYear(input: string | null | undefined): string | null 
   return null;
 }
 
+/** Parsuje wyłącznie jednoznaczne daty profilu do roku i miesiąca. */
+export function parseDateToYearMonth(input: string | null | undefined, now = new Date()): { year: number; month: number } | null {
+  if (!input || typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  if (['obecnie', 'present', 'current', 'teraz', 'now'].includes(trimmed.toLowerCase())) {
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+
+  const monthYear = parseMonthYear(trimmed);
+  if (monthYear) {
+    const [year, month] = monthYear.split('-').map(Number);
+    return { year, month };
+  }
+
+  // Pełna data jest akceptowana wyłącznie w jednoznacznym ISO i po kontroli
+  // kalendarza; Date.parse potrafi normalizować np. 2020-02-30 do marca.
+  const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!isoDate) return null;
+  const year = Number(isoDate[1]);
+  const month = Number(isoDate[2]);
+  const day = Number(isoDate[3]);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > daysInMonth) return null;
+  return { year, month };
+}
+
 /**
  * Format przyjazny dla oka po polsku: np. '2024-09' -> 'wrzesień 2024'.
  */

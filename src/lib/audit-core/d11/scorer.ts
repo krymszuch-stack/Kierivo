@@ -1,6 +1,7 @@
 import { deriveConfidenceFromEvidence } from '../confidence';
 import type { MissingEvidence, ScoreComponent } from '../contracts';
 import { buildScoreLedger } from '../ledger';
+import { fromMonthIndex } from '../temporal';
 import type {
   D11AuditResult,
   D11RequirementRecency,
@@ -34,6 +35,7 @@ export function halfLifeDecay(ageMonths: number, halfLifeMonths: number): number
 }
 
 export function scoreD11SkillRecency(input: D11ScoringInput): D11AuditResult {
+  fromMonthIndex(input.referenceMonth);
   const halfLifeMonths = input.halfLifeMonths ?? DEFAULT_HALF_LIFE_MONTHS;
   if (!Number.isFinite(halfLifeMonths) || halfLifeMonths <= 0) {
     throw new Error('D11 halfLifeMonths musi być dodatnie.');

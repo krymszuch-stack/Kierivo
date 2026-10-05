@@ -1,5 +1,8 @@
 import { FREE_BETA_ACTIVE } from '../lib/beta';
+import { AI_QUOTA_RESET_TIME, FREE_DAILY_AI_USES, getAiQuotaDayKeyUtc } from '../lib/aiQuotaPolicy';
 import { getSupabase } from './supabase';
+
+export { FREE_DAILY_AI_USES } from '../lib/aiQuotaPolicy';
 
 /**
  * Limity liczone po stronie serwera.
@@ -19,7 +22,6 @@ export type QuotaKind = 'ai' | 'import';
  * (`getEntitlements`). Rozdzielenie tych dwóch wartości sprawiłoby, że
  * interfejs pokazywałby inny limit niż ten, który faktycznie odsyła żądanie.
  */
-export const FREE_DAILY_AI_USES = 25;
 export const PRO_DAILY_AI_USES = 100;
 
 export class QuotaExceededError extends Error {
@@ -30,7 +32,7 @@ export class QuotaExceededError extends Error {
   constructor(kind: QuotaKind) {
     super(
       kind === 'ai'
-        ? 'Wyczerpane dzisiejsze wywołania AI. Limit odnowi się o północy.'
+        ? `Wyczerpane dzisiejsze wywołania AI. Limit odnowi się o ${AI_QUOTA_RESET_TIME}.`
         : 'Wyczerpano darmowe importy pliku w tym miesiącu.'
     );
     this.name = 'QuotaExceededError';
@@ -57,7 +59,7 @@ export interface Entitlements {
 }
 
 const monthKey = () => new Date().toISOString().slice(0, 7);
-const dayKey = () => new Date().toISOString().slice(0, 10);
+const dayKey = () => getAiQuotaDayKeyUtc();
 
 /**
  * Czy konto ma opłacony plan cykliczny.

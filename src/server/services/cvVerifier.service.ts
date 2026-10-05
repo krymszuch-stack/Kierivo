@@ -1,16 +1,18 @@
 import { MasterVault } from '../../types';
-import { stripSensitiveFields, identifyingValues, pseudonymize, assertNoPii } from '../pseudonymize';
+import { stripSensitiveFields, identifyingValues, pseudonymize, preparePromptForModel } from '../pseudonymize';
 import { generateWithUsage, truncateForModel, parseModelJson } from '../geminiClient';
 import { loadConfig } from '../config';
 import { hasMeasurableMetric } from '../../lib/consistencyGuard/timelineAuditor';
+import { hasSufficientCvContent, INSUFFICIENT_CV_CONTENT_MESSAGE } from '../../lib/canonicalAts';
 import { z } from 'zod';
+import { hasNoReportedChronologyAnomalies, recommendationsForOffer } from '../../lib/cvVerificationFindings';
 
 const verificationReportSchema = z.object({
-  overallScore: z.number().finite().min(0).max(100),
-  verdict: z.enum(['READY_TO_APPLY', 'MINOR_IMPROVEMENTS', 'CRITICAL_FIXES_NEEDED']),
+  overallScore: z.number().finite().min(0).max(100).nullable(),
+  verdict: z.enum(['READY_TO_APPLY', 'MINOR_IMPROVEMENTS', 'CRITICAL_FIXES_NEEDED']).nullable(),
   summary: z.string().min(1),
   atsLoop: z.object({
-    atsScore: z.number().finite().min(0).max(100),
+    atsScore: z.number().finite().min(0).max(100).nullable(),
     parsedRole: z.string(),
     recognizedKeywords: z.array(z.string()),
     missingCriticalKeywords: z.array(z.string()),
@@ -50,7 +52,7 @@ export interface VerifyCvOptions {
 }
 
 export interface VerificationAtsLoop {
-  atsScore: number; // 0-100
+  atsScore: number | null; // null bez treści oferty
   parsedRole: string;
   recognizedKeywords: string[];
   missingCriticalKeywords: string[];
@@ -79,8 +81,9 @@ export interface VerificationLogicComplianceLoop {
 }
 
 export interface CvVerificationReport {
-  overallScore: number; // 0-100
-  verdict: 'READY_TO_APPLY' | 'MINOR_IMPROVEMENTS' | 'CRITICAL_FIXES_NEEDED';
+  hasJobDescription: boolean;
+  overallScore: number | null; // null, gdy brakuje wejscia do jednej z trzech petli
+  verdict: 'READY_TO_APPLY' | 'MINOR_IMPROVEMENTS' | 'CRITICAL_FIXES_NEEDED' | null;
   summary: string;
   atsLoop: VerificationAtsLoop;
   recruiterLoop: VerificationRecruiterLoop;
@@ -95,16 +98,23 @@ export interface CvVerificationReport {
 }
 
 /**
- * Weryfikator CV 360° z Potrójną Pętlą Sprawdzającą (Triple-Loop AI Verification Gate).
+ * Jedna odpowiedź AI z opinią o trzech obszarach danych strukturalnych profilu.
  *
- * Pętla 1: ATS Parser Gate (symulacja ekstrakcji słów kluczowych i podatności formatowania).
- * Pętla 2: Recruiter Eye (6-sekundowy skan, siła nagłówka, gęstość metryk liczbowych vs ogólniki).
- * Pętla 3: Logic & Consistency (chronologia i spójność danych profilu).
+ * Obszar 1: porównanie deklaracji z wymaganiami oferty.
+ * Obszar 2: czytelność treści i lokalny licznik punktów z metrykami.
+ * Obszar 3: możliwe sprzeczności w chronologii i deklaracjach.
  */
 export async function verifyCvWithTripleLoop(options: VerifyCvOptions): Promise<CvVerificationReport> {
   const { vault, targetRole = '', targetCompany = '', jobDescription = '' } = options;
 
-  // 1. Ochrona danych osobowych i zgodność z RODO (Zero-Leakage)
+  if (!hasSufficientCvContent(vault)) {
+    throw Object.assign(new Error(INSUFFICIENT_CV_CONTENT_MESSAGE), {
+      status: 422,
+      expose: true,
+    });
+  }
+
+  // Usuwamy część pól identyfikujących i pseudonimizujemy wykryte dane; to nie gwarantuje pełnej anonimizacji.
   const safeVault = stripSensitiveFields(vault);
   const names = identifyingValues(vault);
 
@@ -158,8 +168,8 @@ export async function verifyCvWithTripleLoop(options: VerifyCvOptions): Promise<
     : 'Nie podano treści ogłoszenia. Nie wyciągaj wniosków o dopasowaniu do konkretnej oferty.';
 
   const prompt = `
-Jesteś bezlitosnym, wielopoziomowym audytorem rekrutacyjnym CV pracującym dla nowoczesnych systemów ATS i czołowych agencji headhunterskich w 2026 roku.
-Twoim celem jest przeprowadzenie precyzyjnego audytu POTRÓJNEJ PĘTLI dla poniższego kandydata.
+Analizujesz dane strukturalne profilu kandydata i opcjonalny kontekst oferty.
+Oceny są opinią modelu i wymagają weryfikacji przez użytkownika. Nie potwierdzaj prawdziwości deklaracji ani zgodności prawnej.
 
 DANE KANDYDATA (spseudonimizowane):
 ${JSON.stringify(candidatePayload, null, 2)}
@@ -167,13 +177,13 @@ ${JSON.stringify(candidatePayload, null, 2)}
 KONTEKST OFERTY PRACY:
 ${jdSnippet}
 
-Wykonaj audyt w trzech niezależnych pętlach i zwróć czysty JSON zgodny z poniższym schematem:
+Przygotuj jeden raport w trzech obszarach i zwróć czysty JSON zgodny z poniższym schematem:
 {
-  "overallScore": number (0-100),
-  "verdict": "READY_TO_APPLY" | "MINOR_IMPROVEMENTS" | "CRITICAL_FIXES_NEEDED",
+  "overallScore": number (0-100) lub null bez kompletu petli,
+  "verdict": "READY_TO_APPLY" | "MINOR_IMPROVEMENTS" | "CRITICAL_FIXES_NEEDED" lub null bez oferty,
   "summary": string (syntetyczna ocena 2-3 zdania),
   "atsLoop": {
-    "atsScore": number (0-100),
+    "atsScore": number (0-100) lub null, gdy nie podano treści oferty,
     "parsedRole": string,
     "recognizedKeywords": string[],
     "missingCriticalKeywords": string[],
@@ -207,16 +217,19 @@ Wykonaj audyt w trzech niezależnych pętlach i zwróć czysty JSON zgodny z pon
 
 Kluczowe kryteria oceny:
 1. PĘTLA ATS: Czy słowa kluczowe (hard skills, narzędzia, uprawnienia SEP/UDT/certyfikaty) odpowiadają roli? Czy nie ma ukrytych braków semantycznych?
-2. PĘTLA REKRUTERA: Czy pierwsze 6 sekund przyciąga uwagę? Czy punkty doświadczenia są w formule wyników (Rezultat -> Działanie -> Skala), czy zawierają puste zwroty ("odpowiedzialny za...")?
+2. PĘTLA REKRUTERA: Czy podany nagłówek jest czytelny? Nie zgaduj czasu ani reakcji rekrutera. Czy punkty doświadczenia są w formule wyników (Rezultat -> Działanie -> Skala), czy zawierają puste zwroty ("odpowiedzialny za...")?
 3. PĘTLA LOGIKI I SPÓJNOŚCI: Czy daty zatrudnienia tworzą logiczny ciąg bez sprzecznych nakładek czasowych? Czy poziom deklarowanych kompetencji zgadza się ze stażem pracy?
+Nie otrzymujesz PDF-a ani tekstu wyrenderowanego CV — masz wyłącznie dane strukturalne profilu. Zwróć atsFormatRisks jako pustą tablicę; nie zgaduj układu, parserowalności pliku ani zachowania konkretnego ATS.
+Jeśli nie podano treści oferty, zwróć atsScore=null oraz puste recognizedKeywords i missingCriticalKeywords. Nie oceniaj dopasowania do oferty.
+Bez treści oferty nie zwracaj rekomendacji kategorii ATS. Jeśli wskazujesz timelineAnomalies, ustaw chronologyValid=false. Luki i równoległe zatrudnienie same w sobie nie dowodzą błędu; wyjaśnij wątpliwości jako wymagające sprawdzenia.
 Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
 `.trim();
 
-  // Weryfikacja braku PII przed wysłaniem
-  assertNoPii(prompt);
+  // Końcowa kontrola i pseudonimizacja wykrytych danych przed wysłaniem
+  const safePrompt = preparePromptForModel(prompt, names);
 
   const config = loadConfig();
-  // Używamy gpt-4o dla najwyższej jakości weryfikacji audytorskiej, z fallbackiem na domyślny deployment
+  // Deployment weryfikatora może nadpisać deployment domyślny; nie zmienia to zakresu analizy.
   const modelToUse = config.AI_PROVIDER === 'azure_openai'
     ? (process.env.AZURE_OPENAI_VERIFIER_DEPLOYMENT || config.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o')
     : config.OLLAMA_MODEL;
@@ -224,7 +237,7 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
   const response = await generateWithUsage(
     {
       model: modelToUse,
-      contents: prompt,
+      contents: safePrompt.text,
       config: {
         responseMimeType: 'application/json',
         maxOutputTokens: 4096,
@@ -244,25 +257,35 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
     });
   }
   const parsed = validation.data;
+  if (jobDescription.trim() && (parsed.atsLoop.atsScore === null || parsed.overallScore === null)) {
+    throw Object.assign(new Error('Model zwrócił niekompletną ocenę dopasowania do podanej oferty.'), {
+      status: 502,
+      expose: true,
+    });
+  }
 
   // Zera są prawidłową wartością. Nie używamy `||` ani domyślnych ocen,
   // bo brak wyniku został już odrzucony przez walidator schematu.
-  const normalizedOverall = parsed.overallScore;
+  const normalizedOverall = jobDescription.trim() ? parsed.overallScore : null;
   const normalizedAts = parsed.atsLoop.atsScore;
   const normalizedRecruiter = parsed.recruiterLoop.recruiterScore;
   const normalizedConsistency = parsed.logicComplianceLoop.consistencyScore;
 
   return {
+    hasJobDescription: Boolean(jobDescription.trim()),
     overallScore: normalizedOverall,
     // Jedna reguła progów utrzymuje werdykt zgodny z wynikiem liczbowym.
-    verdict: normalizedOverall >= 85 ? 'READY_TO_APPLY' : normalizedOverall >= 60 ? 'MINOR_IMPROVEMENTS' : 'CRITICAL_FIXES_NEEDED',
+    verdict: normalizedOverall === null
+      ? null
+      : normalizedOverall >= 85 ? 'READY_TO_APPLY' : normalizedOverall >= 60 ? 'MINOR_IMPROVEMENTS' : 'CRITICAL_FIXES_NEEDED',
     summary: parsed.summary,
     atsLoop: {
-      atsScore: normalizedAts,
-      parsedRole: parsed.atsLoop.parsedRole,
-      recognizedKeywords: parsed.atsLoop.recognizedKeywords,
-      missingCriticalKeywords: parsed.atsLoop.missingCriticalKeywords,
-      atsFormatRisks: parsed.atsLoop.atsFormatRisks,
+      atsScore: jobDescription.trim() ? normalizedAts : null,
+      parsedRole: jobDescription.trim() ? parsed.atsLoop.parsedRole : '',
+      recognizedKeywords: jobDescription.trim() ? parsed.atsLoop.recognizedKeywords : [],
+      missingCriticalKeywords: jobDescription.trim() ? parsed.atsLoop.missingCriticalKeywords : [],
+      // Bez pliku lub surowego tekstu dokumentu nie da się ocenić jego formatowania.
+      atsFormatRisks: [],
     },
     recruiterLoop: {
       recruiterScore: normalizedRecruiter,
@@ -273,7 +296,7 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
     },
     logicComplianceLoop: {
       consistencyScore: normalizedConsistency,
-      chronologyValid: parsed.logicComplianceLoop.chronologyValid,
+      chronologyValid: hasNoReportedChronologyAnomalies(parsed.logicComplianceLoop),
       timelineAnomalies: parsed.logicComplianceLoop.timelineAnomalies,
       logicalInconsistencies: parsed.logicComplianceLoop.logicalInconsistencies,
       // MasterVault nie zawiera tekstu klauzuli, więc model nie może ocenić jej
@@ -281,6 +304,6 @@ Odpowiedz WYŁĄCZNIE poprawnym obiektem JSON.
       rodoCompliant: null,
       privacyRisks: parsed.logicComplianceLoop.privacyRisks,
     },
-    actionableRecommendations: parsed.actionableRecommendations,
+    actionableRecommendations: recommendationsForOffer(parsed.actionableRecommendations, Boolean(jobDescription.trim())),
   };
 }

@@ -37,8 +37,8 @@ type WynikSim = ReturnType<typeof simulateAtsCheck>;
 type Konsensus = ReturnType<typeof simulateMultiEngineATS>;
 type Telemetria = ReturnType<typeof buildAtsTelemetryReport>;
 
-function pasmoPokrycia(wynik: number): PasmoPokrycia {
-  if (wynik <= 0) return 'NONE';
+function pasmoPokrycia(wynik: number | null): PasmoPokrycia {
+  if (wynik === null || wynik <= 0) return 'NONE';
   // Próg HIGH celowo nie wymaga 100: brakująca końcówka to zwykle szum
   // ekstrakcji (np. `terraform.` z kropką), nie brak dowodu w profilu.
   if (wynik >= 75) return 'HIGH';
@@ -47,11 +47,13 @@ function pasmoPokrycia(wynik: number): PasmoPokrycia {
 
 function kontraktSim(sim: WynikSim, konsensus: Konsensus): KontraktSemantyczny {
   return {
-    hasEvidence: sim.layer2Nlp.hardSkillsCoverage > 0,
+    hasEvidence: sim.layer2Nlp.hardSkillsCoverage !== null && sim.layer2Nlp.hardSkillsCoverage > 0,
     missingCount: sim.missingHardSkills.length,
     coverageBand: pasmoPokrycia(sim.layer2Nlp.hardSkillsCoverage),
     fitBand:
-      konsensus.consensusGrade === 'EXCELLENT'
+      konsensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE'
+        ? 'INSUFFICIENT'
+        : konsensus.consensusGrade === 'EXCELLENT'
         ? 'HIGH'
         : konsensus.consensusGrade === 'GOOD' || konsensus.careerFitAdvice.isRealisticFit
           ? 'MEDIUM'
@@ -64,12 +66,12 @@ function kontraktSim(sim: WynikSim, konsensus: Konsensus): KontraktSemantyczny {
 function kontraktTel(tel: Telemetria): KontraktSemantyczny {
   const wynik = tel.overallScore;
   return {
-    hasEvidence: tel.formulaBreakdown.hardSkillsScore > 0,
+    hasEvidence: tel.formulaBreakdown.hardSkillsScore !== null && tel.formulaBreakdown.hardSkillsScore > 0,
     missingCount: tel.linguisticTelemetry.missingCriticalLemmas.length,
     coverageBand: pasmoPokrycia(tel.formulaBreakdown.hardSkillsScore),
     // HIGH od 70, nie od 80: wynik telemetrii miesza evidence ze stażem
     // i metrykami, więc profil z pełnym evidence rzadko dobija wyżej.
-    fitBand: wynik >= 70 ? 'HIGH' : wynik >= 55 ? 'MEDIUM' : wynik >= 30 ? 'LOW' : 'INSUFFICIENT',
+    fitBand: wynik === null ? 'INSUFFICIENT' : wynik >= 70 ? 'HIGH' : wynik >= 55 ? 'MEDIUM' : wynik >= 30 ? 'LOW' : 'INSUFFICIENT',
   };
 }
 
@@ -109,6 +111,42 @@ function zHighlightem(id: string, text: string, extra: { action?: string; tool?:
 }
 
 describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () => {
+  it('nie ocenia struktury CV na podstawie samego imienia i danych kontaktowych', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.test');
+    const result = simulateAtsCheck(pustyRezyme(''), vault, '');
+
+    expect(result.overallScore).toBeNull();
+    expect(result.structureScore).toBeNull();
+    expect(result.layer1Structure.layoutScore).toBeNull();
+    expect(result.layer1Structure.headerNormalizationScore).toBeNull();
+  });
+
+  it('liczy strukture, kiedy Vault zawiera tresc CV', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.test');
+    vault.skillsMatrix.hardSkills = ['SEP G1'];
+    const result = simulateAtsCheck(pustyRezyme(''), vault, '');
+
+    expect(result.structureScore).not.toBeNull();
+    expect(result.layer1Structure.layoutScore).not.toBeNull();
+    expect(result.layer1Structure.headerNormalizationScore).not.toBeNull();
+  });
+
+  it('nie pokazuje 100% pokrycia dla certyfikatu, którego aktualności nie da się potwierdzić', () => {
+    const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
+    vault.personalInfo.summary = 'Pracownik techniczny z doświadczeniem w serwisie urządzeń.';
+    vault.profiler.licenses = ['fgas'];
+    const sim = simulateAtsCheck(
+      pustyRezyme('Technik serwisu'),
+      vault,
+      'Wymagania: aktualny certyfikat F-Gaz.',
+    );
+
+    expect(sim.keywordCoverageScore).toBeNull();
+    expect(sim.layer2Nlp.hardSkillsCoverage).toBeNull();
+    expect(sim.layer2Nlp.formalReqsCoverage).toBeNull();
+    expect(sim.missingHardSkills).toEqual([]);
+  });
+
   describe('1. EMPTY — pusty profil', () => {
     it('oba systemy widzą brak dowodów: NONE, braki > 0, INSUFFICIENT', () => {
       const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
@@ -133,8 +171,8 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       const { sim, tel } = licz(vault, JD, TARGET);
 
       expect(sim.layer2Nlp.hardSkillsCoverage).toBe(0);
-      expect(sim.layer3Scoring.recencyScore).toBe(0);
-      expect(tel.formulaBreakdown.experienceScore).toBe(0);
+      expect(sim.layer3Scoring.recencyScore).toBeNull();
+      expect(tel.formulaBreakdown.experienceScore).toBeNull();
     });
 
     it('NAPRAWIONE R5 (ślad na pustym profilu): brak podłogi przy zerowym evidence', () => {
@@ -143,8 +181,11 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
       const { konsensus, tel } = licz(vault, JD, TARGET);
 
-      expect(konsensus.medianScore).toBeLessThan(50);
-      expect(tel.overallScore).toBeLessThan(20);
+      expect(konsensus.assessedEngineCount).toBe(konsensus.engines.filter((engine) => engine.score !== null).length);
+      expect(konsensus.medianScore).toBe(0);
+      expect(konsensus.careerFitAdvice.assessment).toBe('INSUFFICIENT_EVIDENCE');
+      expect(konsensus.consensusGrade).toBe('INSUFFICIENT_DATA');
+      expect(tel.overallScore).toBeNull();
     });
   });
 
@@ -207,6 +248,31 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
     });
   });
 
+  describe('2b. Świeżość umiejętności z datowanych wpisów', () => {
+    it('sortuje historię po datach i odrzuca zanegowane użycie w najnowszej roli', () => {
+      const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
+      vault.skillsMatrix.hardSkills = ['Kubernetes'];
+      const older = {
+        id: 'older', company: 'A', role: 'Administrator', location: '',
+        startDate: '2019-01', endDate: '2021-12', isCurrent: false,
+        highlights: [zHighlightem('old-k8s', 'Wdrażałem klastry Kubernetes.')],
+      };
+      const recent = {
+        id: 'recent', company: 'B', role: 'Inżynier', location: '',
+        startDate: '2022-01', endDate: 'Obecnie', isCurrent: true,
+        highlights: [zHighlightem('recent-k8s', 'Prowadziłem wdrożenia Kubernetes.')],
+      };
+      vault.history = [older, recent];
+
+      const currentUse = simulateAtsCheck(pustyRezyme('Inżynier'), vault, 'Wymaganie: Kubernetes.');
+      expect(currentUse.layer3Scoring.recencyScore).toBe(100);
+
+      recent.highlights = [zHighlightem('recent-no-k8s', 'Nie używałem Kubernetes.')];
+      const olderUse = simulateAtsCheck(pustyRezyme('Inżynier'), vault, 'Wymaganie: Kubernetes.');
+      expect(olderUse.layer3Scoring.recencyScore).toBe(70);
+    });
+  });
+
   describe('3. PARTIAL — w profilu tylko AWS', () => {
     it('oba systemy widzą częściowe dopasowanie: PARTIAL, brakuje Kubernetes i Terraform', () => {
       const vault = createEmptyVault('Ewa Lis', 'ewa@example.com');
@@ -260,7 +326,7 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       expect(telK.coverageBand).toBe('HIGH');
       // Trafienia wyłącznie spoza datowanych ról dostają wagę starego użycia,
       // nie aktualnego — tak ma zostać.
-      expect(sim.layer3Scoring.recencyScore).toBeLessThan(100);
+      expect(sim.layer3Scoring.recencyScore).toBeNull();
     });
 
     it('NAPRAWIONE R4: kropka końcowa nie rozjeżdża werdyktów', () => {
@@ -272,18 +338,20 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       expect(tel.linguisticTelemetry.missingCriticalLemmas).toEqual([]);
     });
 
-    it('NAPRAWIONE R2: pełne evidence bez stażu — oba pasma MEDIUM', () => {
-      // Po naprawie R4 (kropka) oba silniki widzą pełne pokrycie, więc pasma
-      // schodzą się w MEDIUM. Flaga `isRealisticFit` przy NEEDS_WORK i zerowym
-      // stażu zostaje jako znana słabość (osobny temat, nie rozjazd pasm).
+    it('nie ogłasza dopasowania kariery na podstawie samych umiejętności bez historii ani projektów', () => {
+      // Pełne pokrycie słów nie dowodzi praktycznego użycia; brakuje historii i projektów.
       const { konsensus, tel } = licz(profilBezHistorii(), JD, TARGET);
       const sim = simulateAtsCheck(pustyRezyme(TARGET), profilBezHistorii(), JD);
       const simK = kontraktSim(sim, konsensus);
       const telK = kontraktTel(tel);
 
-      expect(konsensus.consensusGrade).toBe('NEEDS_WORK');
-      expect(simK.fitBand).toBe('MEDIUM');
-      expect(telK.fitBand).toBe('MEDIUM');
+      expect(konsensus.consensusGrade).toBe('INSUFFICIENT_DATA');
+      expect(konsensus.careerFitAdvice.assessment).toBe('INSUFFICIENT_EVIDENCE');
+      expect(konsensus.careerFitAdvice.isRealisticFit).toBe(false);
+      expect(konsensus.careerFitAdvice.verdict).not.toContain('jest w zasięgu');
+      expect(konsensus.careerFitAdvice.suggestedAlternativeRoles).toEqual([]);
+      expect(simK.fitBand).toBe('INSUFFICIENT');
+      expect(telK.fitBand).toBe('INSUFFICIENT');
     });
   });
 
@@ -318,7 +386,7 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       const simK = kontraktSim(sim, konsensus);
       const telK = kontraktTel(tel);
 
-      expect(sim.layer3Scoring.titleMatchScore).toBe(45);
+      expect(sim.layer3Scoring.titleMatchScore).toBeNull();
       expect(simK.fitBand).toBe('INSUFFICIENT');
       expect(telK.fitBand).toBe('INSUFFICIENT');
     });
@@ -355,7 +423,7 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       expect(simK.missingCount).toBe(telK.missingCount);
     });
 
-    it('NAPRAWIONE R5: zero pokrycia bez podłogi (mediana < 50, INSUFFICIENT)', () => {
+    it('zero pokrycia nie daje pozytywnego werdyktu przy ograniczonych danych', () => {
       // Po naprawie R1 (świeżość 0 zamiast 80) tytuł 100 sam nie trzyma
       // mediany w LOW — zero dowodów to INSUFFICIENT po obu stronach.
       const vault = createEmptyVault('Ula Rys', 'ula@example.com');
@@ -367,8 +435,11 @@ describe('Kontrakt semantyczny: symulator ATS kontra telemetria śledcza', () =>
       const telK = kontraktTel(tel);
 
       expect(sim.layer2Nlp.hardSkillsCoverage).toBe(0);
-      expect(konsensus.medianScore).toBeLessThan(50);
-      expect(tel.overallScore).toBeLessThan(30);
+      expect(konsensus.assessedEngineCount).toBe(konsensus.engines.filter((engine) => engine.score !== null).length);
+      expect(konsensus.medianScore).toBeLessThan(65);
+      expect(konsensus.careerFitAdvice.assessment).toBe('INSUFFICIENT_EVIDENCE');
+      expect(konsensus.consensusGrade).not.toMatch(/EXCELLENT|GOOD/);
+      expect(tel.overallScore).toBeNull();
       expect(simK.fitBand).toBe('INSUFFICIENT');
       expect(telK.fitBand).toBe('INSUFFICIENT');
     });

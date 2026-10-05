@@ -2,7 +2,7 @@ import { MasterVault } from '../types';
 import { cloudVaultOutboxKeyFor, cloudVaultRevisionKeyFor } from './cloudVaultKeys';
 import { getSupabaseBrowserClient } from './supabaseClient';
 import { readJson } from './storage';
-import { migrateVault } from './dataMigration';
+import { parsePendingVaultEnvelope, parseStoredCloudVault } from './cloudVaultValidation';
 
 /**
  * Vault w chmurze — odczyt i zapis wprost z przeglądarki.
@@ -70,16 +70,18 @@ function client() {
 }
 
 function pendingEnvelopeFor(ownerId: string): PendingVaultEnvelope | null {
-  const pending = readJson<PendingVaultEnvelope | null>(cloudVaultOutboxKeyFor(ownerId), null);
-  return pending?.ownerId === ownerId && pending.vault
-    ? {
-        ...pending,
-        baseUpdatedAt: pending.baseUpdatedAt !== undefined
-          ? pending.baseUpdatedAt
-          : readJson<string | null>(cloudVaultRevisionKeyFor(ownerId), null),
-        vault: migrateVault(pending.vault),
-      }
-    : null;
+  const raw = readJson<unknown>(cloudVaultOutboxKeyFor(ownerId), null);
+  if (raw === null) return null;
+  const pending = parsePendingVaultEnvelope(raw, ownerId);
+  if (!pending) {
+    throw new CloudVaultError('Lokalny zapis CV ma nieprawidłowy format. Dane zachowano; synchronizacja została zatrzymana.');
+  }
+  return {
+    ...pending,
+    baseUpdatedAt: pending.baseUpdatedAt !== undefined
+      ? pending.baseUpdatedAt
+      : readJson<string | null>(cloudVaultRevisionKeyFor(ownerId), null),
+  };
 }
 
 /**
@@ -121,8 +123,11 @@ export async function fetchCloudVault(expectedOwnerId?: string): Promise<CloudVa
     throw new CloudVaultError(`Nie udało się odczytać CV z chmury: ${error.message}`);
   }
 
-  const rawRemote = (data?.data as MasterVault | undefined) ?? null;
-  const remote = rawRemote ? migrateVault(rawRemote) : null;
+  const rawRemote = data?.data ?? null;
+  const remote = rawRemote === null ? null : parseStoredCloudVault(rawRemote);
+  if (rawRemote !== null && !remote) {
+    throw new CloudVaultError('CV zapisane w chmurze ma nieprawidłowy format. Zatrzymałem odczyt, aby nie zastąpić go pustymi danymi.');
+  }
   const remoteUpdatedAt = typeof data?.updated_at === 'string' ? data.updated_at : null;
   if (!pending) {
     return { vault: remote, remoteReadSucceeded: true, remoteUpdatedAt, pendingConflict: false };
@@ -170,7 +175,10 @@ export async function saveCloudVault(
     throw new CloudVaultError('Sesja zmieniła właściciela przed potwierdzeniem zapisu.');
   }
 
-  const normalizedVault = migrateVault(vault);
+  const normalizedVault = parseStoredCloudVault(vault);
+  if (!normalizedVault) {
+    throw new CloudVaultError('Nie zapisano CV: snapshot ma nieprawidłowy format.');
+  }
 
   const updatedAt = new Date().toISOString();
   const payload = {

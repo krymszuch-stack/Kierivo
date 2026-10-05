@@ -8,6 +8,9 @@ describe('Tekst skopiowanego CV', () => {
     const vault: MasterVault = createEmptyVault('Alicja Testowa', 'alicja@example.test');
     vault.personalInfo.title = 'Pracownik biurowy';
     vault.personalInfo.summary = 'Podsumowanie profilu';
+    vault.personalInfo.linkedin = 'https://example.invalid/in/alicja';
+    vault.personalInfo.github = 'https://example.invalid/alicja';
+    vault.personalInfo.website = 'https://example.invalid/portfolio';
     vault.skillsMatrix.hardSkills = ['Excel'];
     vault.skillsMatrix.toolsAndTech = ['Teams'];
     vault.skillsMatrix.softSkills = ['Komunikacja'];
@@ -23,6 +26,11 @@ describe('Tekst skopiowanego CV', () => {
     vault.education = [{
       id: 'edu-1', institution: 'Technikum Testowe', degree: 'Technik',
       fieldOfStudy: 'Informatyka', startDate: '2018', endDate: '2022',
+    }];
+    vault.projects = [{
+      id: 'project-1', name: 'Migracja stacji', role: 'koordynatorka',
+      description: 'Migracja 12 stacji roboczych.', techStack: ['Windows 11'],
+      metrics: '12 stacji', link: 'https://example.invalid/projects/migracja',
     }];
     const tailored: TailoredResume = {
       targetJobTitle: 'Specjalistka IT Support', companyName: 'Pracodawca Testowy',
@@ -44,6 +52,14 @@ describe('Tekst skopiowanego CV', () => {
     expect(text).toContain('SEP G1 E1 do 1 kV — eksploatacja');
     expect(text).toContain('Certyfikat testowy — Jednostka testowa (2024)');
     expect(text).toContain('Polski — Native');
+    expect(text).toContain('https://example.invalid/in/alicja');
+    expect(text).toContain('https://example.invalid/alicja');
+    expect(text).toContain('https://example.invalid/portfolio');
+    expect(text).toContain('Migracja stacji — koordynatorka');
+    expect(text).toContain('Migracja 12 stacji roboczych.');
+    expect(text).toContain('Windows 11');
+    expect(text).toContain('12 stacji');
+    expect(text).toContain('https://example.invalid/projects/migracja');
     expect(text).not.toContain('undefined');
   });
 

@@ -4,6 +4,7 @@ import { MasterVault, ProfilerState } from '../../types';
 import { Tabs } from '../../components/ui/Tabs';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { measureVaultCompleteness, VAULT_SECTIONS } from '../../lib/vaultCompleteness';
+import { CvQuestionsCard } from '../questions/CvQuestionsCard';
 
 /**
  * Sekcja PROFIL — wszystko, co składa się na „kim jestem".
@@ -22,6 +23,7 @@ import { measureVaultCompleteness, VAULT_SECTIONS } from '../../lib/vaultComplet
 type ProfileStep = 'dane' | 'import' | 'preferencje';
 
 export interface ProfileSectionProps {
+  profileId: string;
   vault: MasterVault;
   onChangeVault: (vault: MasterVault) => void;
   /** Otrzymuje kompletny vault po scaleniu importu z diffem — podstawia 1:1. */
@@ -48,6 +50,7 @@ const STEPS = [
 ];
 
 export const ProfileSection: React.FC<ProfileSectionProps> = ({
+  profileId,
   vault,
   onChangeVault,
   onApplyVault,
@@ -116,11 +119,14 @@ export const ProfileSection: React.FC<ProfileSectionProps> = ({
       <Tabs items={STEPS} active={step} onChange={setStep} variant="underline" />
 
       {step === 'dane' &&
-        renderEditor({
-          vault,
-          onChange: onChangeVault,
-          onOpenCvParser: () => setStep('import'),
-        })}
+        <>
+          {renderEditor({
+            vault,
+            onChange: onChangeVault,
+            onOpenCvParser: () => setStep('import'),
+          })}
+          <CvQuestionsCard key={profileId} profileId={profileId} vault={vault} onChange={onChangeVault} />
+        </>}
 
       {step === 'import' && renderParser({ currentVault: vault, onApplyVault: handleApplyAndSwitch })}
 

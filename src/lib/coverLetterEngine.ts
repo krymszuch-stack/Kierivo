@@ -1,5 +1,6 @@
 import { CoverLetter, MasterVault } from '../types';
 import { rankExperienceByRelevance, rankHighlightsByRelevance } from './relevanceRanking';
+import { getLatestExperience } from './experienceChronology';
 import {
   getCoverLetterSalutations,
   getCoverLetterHookVariations,
@@ -10,8 +11,7 @@ import {
 } from './phrasingVariations';
 
 /**
- * Generates a concise, 3-section Anti-Template business cover letter with ZERO AI TOKENS,
- * synthesizing actual loaded/created CV data (MasterVault).
+ * Builds a local letter draft from entries in MasterVault; it does not verify their truth.
  * Supports optional `variantIndex` for rotating openings, proof bridges, and CTAs without repetition.
  */
 export function generateAntiTemplateCoverLetter(
@@ -23,8 +23,7 @@ export function generateAntiTemplateCoverLetter(
 ): CoverLetter {
   const company = companyName || 'Państwa Firmie';
   const role = targetRole || 'oferowanym stanowisku';
-  const name = vault.personalInfo.fullName || 'Kandydat';
-  const currentTitle = vault.personalInfo.title || role;
+  const name = vault.personalInfo.fullName?.trim() || '';
 
   // 0-token relevance signal from the job offer text, reused to prioritize both skills and proof points
   const jdKeywords = (jobDescription || '').toLowerCase().match(/\b[a-zA-Z0-9#+.-]{3,}\b/g) || [];
@@ -43,6 +42,10 @@ export function generateAntiTemplateCoverLetter(
   const topSkillsStr = rankedSkills.slice(0, 5).join(', ');
 
   const seed = variantIndex ?? (name + role + company);
+  const latestExperience = getLatestExperience(vault.history ?? []);
+  const topMetric = latestExperience?.highlights?.find((highlight) =>
+    typeof highlight !== 'string' && typeof highlight.metric === 'string' && highlight.metric.trim()
+  )?.metric;
 
   // 1. Nagłówek grzecznościowy (Salutation)
   const salutations = getCoverLetterSalutations(company);
@@ -55,14 +58,11 @@ export function generateAntiTemplateCoverLetter(
     roleTitle: role,
     companyName: company,
     topSkills: topSkillsStr,
-    topMetric: vault.history?.[0]?.highlights?.[0]?.metric,
+    topMetric,
   });
 
   const hookIdx = selectVariantIndex(typeof seed === 'number' ? seed : seed + '_hook', hookVariations.length);
-  let hook = hookVariations[hookIdx];
-  if (vault.personalInfo.summary && vault.personalInfo.summary.length > 20 && hookIdx === 0 && variantIndex === undefined) {
-    hook = `Zwracam się z propozycją współpracy na stanowisku ${role} w firmie ${company}. Jako ${currentTitle}, ${vault.personalInfo.summary.slice(0, 180).trim()}... Z analizy Państwa ogłoszenia wynika, że poszukują Państwo kandydata gotowego do szybkiego dowożenia wyników i rozwiązywania wyzwań operacyjnych.`;
-  }
+  const hook = hookVariations[hookIdx];
 
   // 3. Proof (Dowód) - Pick real highlights from Master Vault history & projects
   const proofPoints: string[] = [];
@@ -88,7 +88,7 @@ export function generateAntiTemplateCoverLetter(
   if (proofPoints.length < 3 && vault.projects && vault.projects.length > 0) {
     for (const proj of vault.projects) {
       if (proj.name && proj.description) {
-        proofPoints.push(`• Projekt ${proj.name}: ${proj.description} ${proj.metrics ? `(Rezultat: ${proj.metrics})` : ''}`);
+        proofPoints.push(`• Projekt ${proj.name}: ${proj.description} ${proj.metrics ? `(Wartość zapisana w profilu: ${proj.metrics})` : ''}`);
         if (proofPoints.length >= 3) break;
       }
     }
@@ -96,7 +96,7 @@ export function generateAntiTemplateCoverLetter(
 
   // Jeśli brak dowodów z historii i projektów, opieramy się wyłącznie na zadeklarowanych umiejętnościach bez fabrykowania metryk
   if (proofPoints.length === 0 && topSkillsStr) {
-    proofPoints.push(`• Praktyczną wiedzę opieram na znajomości: ${topSkillsStr}.`);
+    proofPoints.push(`• W profilu wymieniono kompetencje: ${topSkillsStr}.`);
   }
 
   // 4. Zdanie wprowadzające do dowodów (Proof Introduction) - tylko gdy mamy punkty dowodowe
@@ -117,7 +117,8 @@ export function generateAntiTemplateCoverLetter(
   const contactInfo = [vault.personalInfo?.phone && `Tel: ${vault.personalInfo.phone}`, vault.personalInfo?.email && `Email: ${vault.personalInfo.email}`].filter(Boolean).join(' | ');
 
   const proofSection = proofPoints.length > 0 ? `\n\n${proofIntro}\n${proofPoints.join('\n')}` : '';
-  const fullText = `${salutation}\n\n${hook}${proofSection}\n\n${callToAction}\n\n${signOff}\n${name}\n${contactInfo}`;
+  const signature = [signOff, name, contactInfo].filter(Boolean).join('\n');
+  const fullText = `${salutation}\n\n${hook}${proofSection}\n\n${callToAction}\n\n${signature}`;
 
   return {
     targetJobTitle: role,

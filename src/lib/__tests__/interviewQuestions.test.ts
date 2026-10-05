@@ -10,6 +10,7 @@ import {
 } from '../interviewQuestions';
 import type { MasterVault } from '../../types';
 import type { ParsedJobDescription } from '../jdParser';
+import { createEmptyVault } from '../sampleVault';
 
 describe('Baza pytań rekrutacyjnych (35 Prerecorded + 25 Token-Injected)', () => {
   it('zawiera dokładnie 35 wzorcowych pytań prerecorded i 25 pytań z tokenami', () => {
@@ -140,5 +141,20 @@ describe('Baza pytań rekrutacyjnych (35 Prerecorded + 25 Token-Injected)', () =
     const q1 = injectedList.find((q) => q.id === 'token_q01');
     expect(q1?.resolvedQuestion).toContain('Starszy Serwisant HVAC');
     expect(q1?.resolvedQuestion).toContain('Uprawnienia F-Gaz');
+  });
+
+  it('pobiera firmę, metrykę i rolę z datowanej najnowszej pracy, nie z pierwszej karty', () => {
+    const vault = createEmptyVault();
+    vault.personalInfo.title = '';
+    vault.history = [
+      { id: 'old', company: 'Starsza firma', role: 'Magazynier', location: '', startDate: '2018-01', endDate: '2020-12', isCurrent: false, highlights: [{ id: 'old-h', text: 'Starszy wynik', action: '', target: '', tool: 'Stare narzędzie', metric: '8 sztuk', keywords: [] }] },
+      { id: 'new', company: 'Nowsza firma', role: 'Technik wsparcia IT', location: '', startDate: '2022-01', endDate: '2024-06', isCurrent: false, highlights: [{ id: 'new-h', text: 'Nowszy wynik', action: '', target: 'stacje robocze', tool: 'Microsoft 365', metric: '120 zgłoszeń', keywords: [] }] },
+    ];
+    const context = buildTokenContext(vault);
+
+    expect(context).toMatchObject({
+      rola: 'Technik wsparcia IT', firma: 'Nowsza firma', metryka: '120 zgłoszeń',
+      narzedzie: 'Microsoft 365', obiekt: 'stacje robocze',
+    });
   });
 });

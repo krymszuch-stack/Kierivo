@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  parseDateToDecimalYear,
   parseDateRangeToYears,
   calculateYearsDifference,
   detectSkillContradictions,
@@ -15,6 +16,14 @@ import { MasterVault } from '../../types';
 import { createEmptyVault } from '../sampleVault';
 
 describe('ConsistencyGuard Engine', () => {
+  it('odrzuca niepoprawne miesiące i dni zamiast obcinać je do zakresu', () => {
+    for (const invalid of ['2020-00', '2020-13', '2020-13-99', '2020-02-30']) {
+      expect(parseDateToDecimalYear(invalid)).toBeNull();
+    }
+    expect(parseDateToDecimalYear('2020-02-29')).toBeCloseTo(2020 + 1.5 / 12, 5);
+    expect(parseDateToDecimalYear('2020-02')).toBeCloseTo(2020 + 1.5 / 12, 5);
+  });
+
   const createMockVault = (): MasterVault => {
     const vault = createEmptyVault('Jan Kowalski', 'jan@example.com');
     vault.personalInfo.title = 'Senior Full-Stack Engineer';
@@ -228,12 +237,12 @@ describe('ConsistencyGuard Engine', () => {
       expect(hudOutput.consistencyScore).toBe(100);
     });
 
-    it('renderPitchFromClaims generuje 30-sekundowy pitch na bazie zweryfikowanych faktów', () => {
+    it('renderPitchFromClaims generuje pitch z jawnie wskazanych wpisów profilu', () => {
       const vault = createMockVault();
       const pitchOutput = renderPitchFromClaims(vault, ['claim_exp_exp_1', 'claim_exp_exp_2']);
 
       expect(pitchOutput.hook).toContain('Jan Kowalski');
-      expect(pitchOutput.coreStrengths).toHaveLength(2);
+      expect(pitchOutput.profileStatements).toHaveLength(2);
       expect(pitchOutput.elevatorPitchText).toContain('Cloud Corp');
       expect(pitchOutput.callToAction).toBeTruthy();
     });
@@ -247,5 +256,70 @@ describe('ConsistencyGuard Engine', () => {
       expect(linkedIn.experience[0].company).toBe('Cloud Corp');
       expect(linkedIn.skills).toContain('TypeScript');
     });
+  });
+});
+
+describe('Daty claimów z profilu', () => {
+  it('nie tworzy dat zatrudnienia ani projektu, gdy profil ich nie zawiera', () => {
+    const vault = createEmptyVault('Jan Testowy', 'jan@example.test');
+    vault.history = [{
+      id: 'exp_missing_dates',
+      company: 'Firma Testowa',
+      role: 'Tester',
+      location: '',
+      startDate: '',
+      endDate: '',
+      isCurrent: false,
+      highlights: [{
+        id: 'highlight_missing_dates',
+        text: 'Obsługa systemu testowego.',
+        action: 'Obsługa',
+        target: 'system',
+        tool: 'System testowy',
+        metric: '',
+        keywords: ['system testowy'],
+      }],
+    }];
+    vault.projects = [{
+      id: 'project_without_dates',
+      name: 'Projekt bez dat',
+      role: 'Autor',
+      description: 'Opis projektu testowego.',
+      techStack: ['TypeScript'],
+    }];
+
+    const claims = extractClaimsFromVault(vault);
+    const experienceClaim = claims.find((claim) => claim.id === 'claim_exp_exp_missing_dates');
+    const projectClaim = claims.find((claim) => claim.id === 'claim_proj_project_without_dates');
+
+    expect(experienceClaim?.dateRange).toBeUndefined();
+    expect(projectClaim?.dateRange).toBeUndefined();
+    expect(renderCvFromClaims(vault).sections.flatMap((section) => section.items)
+      .every((item) => item.dateRangeDisplay === 'Daty niepodane w profilu')).toBe(true);
+    expect(renderLinkedInFromClaims(vault).experience
+      .every((item) => item.dateRange === 'Daty niepodane w profilu')).toBe(true);
+  });
+});
+
+describe('Treść pitcha z claimów profilu', () => {
+  it('nie zamienia liczby claimów ani samych tagów w twierdzenia o biegłości i zweryfikowanym doświadczeniu', () => {
+    const vault = createEmptyVault('Jan Testowy', 'jan@example.test');
+    vault.projects = [{
+      id: 'project-tags-only',
+      name: 'Projekt testowy',
+      role: 'Autor',
+      description: 'Wpis projektowy bez opisu zadań.',
+      techStack: ['TypeScript', 'React'],
+    }];
+
+    const riskyClaims = ['zweryfikowan', 'specjalizuj', 'doświadczenie', 'wdrożen', 'osiągnąłem', 'mierzaln', 'od lat', 'bezwzględn', 'natychmiast'];
+    for (let variantIndex = 0; variantIndex < 6; variantIndex += 1) {
+      const pitch = renderPitchFromClaims(vault, undefined, 'Tester', variantIndex);
+      for (const phrase of riskyClaims) {
+        expect(pitch.elevatorPitchText.toLocaleLowerCase('pl-PL')).not.toContain(phrase);
+      }
+      expect(pitch.profileStatements[0]?.statement).toContain('W profilu');
+      expect(pitch.profileStatements[0]?.statement).toContain('TypeScript');
+    }
   });
 });

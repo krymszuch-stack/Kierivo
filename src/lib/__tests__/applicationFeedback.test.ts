@@ -8,6 +8,7 @@ import {
   noteForFailure,
   PendingApplication,
 } from '../applicationFeedback';
+import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
 
 const pending: PendingApplication = {
   jobId: 'job-1',
@@ -16,6 +17,8 @@ const pending: PendingApplication = {
   sourceUrl: 'https://www.pracuj.pl/praca/monter,oferta,1',
   salary: '7 000 – 9 000 zł',
   atsScore: 87,
+  atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+  atsScoreContext: { detectedRequirementCount: 5, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
 };
 
 describe('guessChannel', () => {
@@ -90,6 +93,8 @@ describe('buildApplicationFromPending', () => {
       date: '2026-08-26',
       jobUrl: pending.sourceUrl,
       atsScore: 87,
+      atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+      atsScoreContext: { detectedRequirementCount: 5, profileCompleteness: 86, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
     });
   });
 
@@ -97,6 +102,20 @@ describe('buildApplicationFromPending', () => {
     const app = buildApplicationFromPending({ ...pending, atsScore: undefined }, 'Do wysłania');
     expect(app.atsScore).toBeUndefined();
     expect(app.status).toBe('Do wysłania');
+  });
+
+  it('nie utrwala błędnego zakresu ani zakresu bez kanonicznego wyniku', () => {
+    const malformed = buildApplicationFromPending({
+      ...pending,
+      atsScoreContext: { detectedRequirementCount: 0, profileCompleteness: 86 },
+    }, 'Do wysłania');
+    const nonCanonical = buildApplicationFromPending({
+      ...pending,
+      atsScoreProvenance: undefined,
+    }, 'Do wysłania');
+
+    expect(malformed.atsScoreContext).toBeUndefined();
+    expect(nonCanonical.atsScoreContext).toBeUndefined();
   });
 
   it('zachowuje wybrany wariant tylko jako metadane eksportu dokumentu', () => {

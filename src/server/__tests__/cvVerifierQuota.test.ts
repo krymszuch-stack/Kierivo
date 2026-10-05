@@ -74,6 +74,7 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
     vi.spyOn(supabaseModule, 'getSupabase').mockImplementation(fakeSupabase);
 
     verifySpy = vi.spyOn(cvVerifierService, 'verifyCvWithTripleLoop').mockResolvedValue({
+      hasJobDescription: true,
       overallScore: 88,
       verdict: 'READY_TO_APPLY',
       summary: 'Profil zweryfikowany pomyślnie.',
@@ -108,6 +109,7 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
   });
 
   const testVault = createEmptyVault('Jan Kowalski', 'spawacz@example.com');
+  testVault.personalInfo.summary = 'Wsparcie IT, diagnozowanie błędów i dokumentowanie rozwiązań.';
 
   it('brak tokenu → HTTP 401 przed rezerwacją kwoty', async () => {
     const app = await startApp();
@@ -147,6 +149,34 @@ describe('Weryfikator CV AI 360° - egzekucja autoryzacji i kwot na backendzie (
       expect(await response.json()).toMatchObject({
         success: false,
         error: expect.stringContaining('potwierdzenie'),
+      });
+      expect(reserveQuotaCalls).toBe(0);
+      expect(verifySpy).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('pusty profil → HTTP 422 przed rezerwacją kwoty i wywołaniem modelu', async () => {
+    const app = await startApp();
+    try {
+      const response = await fetch(app.url('/ai/verify-cv'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${WAZNY_TOKEN}`,
+        },
+        body: JSON.stringify({
+          vault: createEmptyVault('Jan Kowalski', 'spawacz@example.com'),
+          consentToAiProcessing: true,
+        }),
+      });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: expect.stringContaining('wystarczającej treści'),
+        requestId: expect.any(String),
       });
       expect(reserveQuotaCalls).toBe(0);
       expect(verifySpy).not.toHaveBeenCalled();

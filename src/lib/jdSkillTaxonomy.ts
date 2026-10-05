@@ -1,3 +1,5 @@
+import { isNegatedRequirementAt, isPreferredRequirementAt } from './jdOptionality';
+
 /**
  * Generalizowana, kategoryzowana taksonomia umiejętności/narzędzi ekstrahowanych
  * z sekcji "Wymagania" / "Mile widziane" ogłoszeń o pracę.
@@ -166,6 +168,7 @@ const DESKTOP_SUPPORT_SKILLS: SkillDefinition[] = [
   { term: 'Microsoft 365', kind: 'TOOL' },
   { term: 'VPN', kind: 'TOOL' },
   { term: 'ServiceNow', kind: 'TOOL' },
+  { term: 'Customer-facing support', kind: 'HARD', pattern: 'customer[ -]facing(?:\\s+technical)?\\s+support' },
   { term: 'Zendesk', kind: 'TOOL' },
   { term: 'Freshdesk', kind: 'TOOL' },
 ];
@@ -192,6 +195,29 @@ const INDUSTRIAL_AUTOMATION_SKILLS: SkillDefinition[] = [
   {
     term: 'Automatyka przemysłowa', kind: 'HARD',
     pattern: 'automatyk\\p{L}*\\s+przemys\\p{L}*',
+  },
+];
+
+// Instalacje elektryczne: nazwy kanoniczne są zgodne z kompetencjami z CV,
+// a wzorce obejmują odmiany i równoważny opis czynności w ogłoszeniu.
+// W przeciwnym razie „podłączanie rozdzielnic” oraz „pomiary ochronne” były
+// pomijane przez ekstraktor, choć kandydat mógł mieć ich odpowiedniki w profilu.
+const ELECTRICAL_INSTALLATION_SKILLS: SkillDefinition[] = [
+  {
+    term: 'Instalacje elektryczne', kind: 'HARD',
+    pattern: 'instalacj\\p{L}*\\s+elektryczn\\p{L}*',
+  },
+  {
+    term: 'Montaż rozdzielnic elektrycznych', kind: 'HARD',
+    pattern: '(?:monta\\p{L}*|podłącz\\p{L}*)\\s+rozdzielnic\\p{L}*(?:\\s+elektryczn\\p{L}*)?',
+  },
+  {
+    term: 'Pomiary elektryczne ochronne', kind: 'HARD',
+    pattern: 'pomi\\p{L}*\\s+(?:elektryczn\\p{L}*\\s+)?ochronn\\p{L}*',
+  },
+  {
+    term: 'Czytanie projektów elektrycznych', kind: 'HARD',
+    pattern: 'czytan\\p{L}*\\s+projekt\\p{L}*\\s+elektryczn\\p{L}*',
   },
 ];
 
@@ -347,7 +373,10 @@ const SALES_CUSTOMER_SERVICE_SKILLS: SkillDefinition[] = [
 export const SKILL_TAXONOMY: SkillDefinition[] = [
   ...SOFTWARE_SKILLS,
   ...DESKTOP_SUPPORT_SKILLS,
+  { term: 'Incident triage', kind: 'HARD', pattern: 'incident\\s+triage|triage\\s+incydent\\p{L}*' },
+
   ...INDUSTRIAL_AUTOMATION_SKILLS,
+  ...ELECTRICAL_INSTALLATION_SKILLS,
   ...DATA_BI_SKILLS,
   ...MARKETING_SKILLS,
   ...FINANCE_SKILLS,
@@ -446,6 +475,41 @@ export function findSkillDefinitions(source: string): SkillDefinition[] {
     if (!skillRegex(def).test(source)) return false;
     if (def.guard && !def.guard(source)) return false;
     return true;
+  });
+}
+
+/** Wymagane umiejętności muszą mieć przynajmniej jedno dodatnie wystąpienie. */
+export function findPositiveSkillDefinitions(source: string): SkillDefinition[] {
+  return findSkillDefinitions(source).filter((definition) => {
+    const pattern = skillRegex(definition);
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags.replace('g', '')}g`);
+    return [...source.matchAll(globalPattern)].some((match) => !isNegatedRequirementAt(source, match.index ?? 0));
+  });
+}
+
+/** Definicje mające przynajmniej jedno jawnie obowiązkowe wystąpienie. */
+export function findRequiredSkillDefinitions(source: string): SkillDefinition[] {
+  if (!source) return [];
+  return findSkillDefinitions(source).filter((definition) => {
+    const pattern = skillRegex(definition);
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags.replace('g', '')}g`);
+    return [...source.matchAll(globalPattern)].some((match) => {
+      const index = match.index ?? 0;
+      return !isNegatedRequirementAt(source, index) && !isPreferredRequirementAt(source, index);
+    });
+  });
+}
+
+/** Definicje występujące wyłącznie lub także w jawnie opcjonalnym kontekście. */
+export function findPreferredSkillDefinitions(source: string): SkillDefinition[] {
+  if (!source) return [];
+  return findSkillDefinitions(source).filter((definition) => {
+    const pattern = skillRegex(definition);
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags.replace('g', '')}g`);
+    return [...source.matchAll(globalPattern)].some((match) => {
+      const index = match.index ?? 0;
+      return !isNegatedRequirementAt(source, index) && isPreferredRequirementAt(source, index);
+    });
   });
 }
 

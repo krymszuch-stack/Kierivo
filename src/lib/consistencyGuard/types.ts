@@ -1,21 +1,8 @@
-/**
- * Typy danych dla modułu ConsistencyGuard.
- * Gwarantuje jednolite źródło prawdy (Single Source of Truth)
- * pomiędzy MasterVault a rendererami CV, HUD i Pitch.
- */
+/** ConsistencyGuard używa wspólnych typów claimów z modelu MasterVault. */
+import type { Claim as MasterVaultClaim, ClaimDateRange as MasterVaultClaimDateRange } from '../../types';
 
-export interface ClaimDateRange {
-  start: string; // np. "2021-01", "2021-01-15", "2021"
-  end: string;   // np. "2023-06", "Obecnie", "Present"
-}
-
-export interface Claim {
-  id: string;
-  sourceProject: string; // ID lub nazwa projektu / pozycji w MasterVault
-  dateRange: ClaimDateRange | string;
-  metric?: string;
-  tags: string[];
-}
+export type ClaimDateRange = MasterVaultClaimDateRange;
+export type Claim = MasterVaultClaim;
 
 export type ConsistencyAlertType =
   | 'DATE_MISMATCH'
@@ -111,7 +98,7 @@ export interface HudRendererOutput {
   consistencyScore: number; // 0 - 100%
 }
 
-export interface PitchStrengthItem {
+export interface ProfileClaimStatement {
   claimId: string;
   statement: string;
   metric?: string;
@@ -120,7 +107,7 @@ export interface PitchStrengthItem {
 
 export interface PitchRendererOutput {
   hook: string;
-  coreStrengths: PitchStrengthItem[];
+  profileStatements: ProfileClaimStatement[];
   callToAction: string;
   elevatorPitchText: string;
 }

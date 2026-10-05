@@ -64,7 +64,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.docx,.doc,.rtf,.txt,.json"
+        accept=".pdf,.docx,.rtf,.txt"
         onChange={handleInputChange}
         className="hidden"
       />
@@ -111,7 +111,7 @@ export const DropZone: React.FC<DropZoneProps> = ({
             Przeciągnij i upuść plik CV tutaj
           </p>
           <p className="text-xs text-muted max-w-sm">
-            Formaty: <span className="font-mono font-semibold text-ink">PDF, DOCX, RTF, TXT, JSON</span>
+            Formaty: <span className="font-mono font-semibold text-ink">PDF, DOCX, RTF, TXT</span>
           </p>
           <div className="pt-1.5">
             <Button

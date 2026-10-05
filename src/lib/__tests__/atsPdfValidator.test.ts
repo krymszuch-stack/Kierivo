@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  validatePdfForAts,
   validatePdfTextForAts,
 } from '../atsPdfValidator';
 import { createEmptyVault } from '../sampleVault';
@@ -36,6 +37,43 @@ function vaultWith(overrides: Partial<{
 // ---------------------------------------------------------------------------
 
 describe('validatePdfTextForAts', () => {
+  it('nie ocenia bufora PDF jako pustego CV, gdy nie ma ekstrakcji tekstu', async () => {
+    const report = await validatePdfForAts(new Uint8Array([37, 80, 68, 70]).buffer, vaultWith());
+
+    expect(report.vendors).toHaveLength(0);
+    expect(report.taggedPdfPresent).toBeNull();
+    expect(report.invisibleTextDetected).toBeNull();
+    expect(report.generalRecommendations).toContain(
+      'Walidacji nie wykonano: przekazano bufor PDF bez tekstu wyekstrahowanego przez parser PDF.'
+    );
+    expect(report.generalRecommendations.some((recommendation) => recommendation.includes('Dodanie go poprawi'))).toBe(false);
+  });
+
+  it('nie myli braku metadanych ekstrakcji z brakiem /ActualText lub tekstu niewidocznego', async () => {
+    const report = await validatePdfTextForAts(
+      'Jan Kowalski\\njan@example.com\\nUmiejętności\\nJavaScript',
+      vaultWith(),
+      { vendorIds: ['workday'] }
+    );
+    const workday = report.vendors[0];
+
+    expect(report.taggedPdfPresent).toBeNull();
+    expect(report.invisibleTextDetected).toBeNull();
+    expect(workday.issues.some((issue) => issue.id === 'NO_ACTUALTEXT_SIGNAL')).toBe(false);
+  });
+
+  it('waliduje dostarczony tekst ekstrakcji wraz z metadanymi bufora', async () => {
+    const report = await validatePdfForAts(new Uint8Array([37, 80, 68, 70]).buffer, vaultWith(), {
+      extractedText: 'Jan Kowalski\njan@example.com\nUmiejętności\nJavaScript',
+      hasActualText: true,
+      vendorIds: ['workday'],
+    });
+
+    expect(report.vendors).toHaveLength(1);
+    expect(report.taggedPdfPresent).toBe(true);
+    expect(report.vendors[0].extractedFields.name).toBe('Jan Kowalski');
+  });
+
   it('zwraca wyniki dla wszystkich 5 ATS-ów', async () => {
     const vault = vaultWith();
     const text = `
@@ -54,12 +92,11 @@ describe('validatePdfTextForAts', () => {
     const report = await validatePdfTextForAts(text, vault);
 
     expect(report.vendors).toHaveLength(5);
-    expect(report.overallScore).toBeGreaterThanOrEqual(0);
-    expect(report.overallScore).toBeLessThanOrEqual(100);
+    expect(report.vendors.every((vendor) => !Object.hasOwn(vendor, 'parseScore') && !Object.hasOwn(vendor, 'status'))).toBe(true);
     expect(report.validatedAt).toBeTruthy();
   });
 
-  it('wysoki wynik dla kompletnego CV z standardowymi sekcjami', async () => {
+  it('nie zgłasza braków kontaktu i sekcji widocznych w tekście CV', async () => {
     const vault = vaultWith({
       hardSkills: ['JavaScript', 'TypeScript', 'React', 'Node.js', 'PostgreSQL'],
     });
@@ -81,8 +118,9 @@ describe('validatePdfTextForAts', () => {
 
     const report = await validatePdfTextForAts(text, vault);
 
-    expect(report.overallScore).toBeGreaterThanOrEqual(70);
-    expect(report.overallStatus).not.toBe('FAIL');
+    for (const vendor of report.vendors) {
+      expect(vendor.issues.some((issue) => ['MISSING_NAME', 'MISSING_EMAIL', 'MISSING_SECTION_EXPERIENCE'].includes(issue.id))).toBe(false);
+    }
   });
 
   it('profile reguł rozpoznają nagłówki rozstrzelone przez ekstraktor PDF', async () => {
@@ -108,12 +146,22 @@ describe('validatePdfTextForAts', () => {
     }
   });
 
-  it('niski wynik dla pustego tekstu', async () => {
+  it('zgłasza brak wymaganych pól w pustym tekście bez publikowania fikcyjnych liczników', async () => {
     const vault = vaultWith();
     const report = await validatePdfTextForAts('', vault);
 
-    expect(report.overallScore).toBeLessThan(50);
-    expect(report.overallStatus).toBe('FAIL');
+    expect(report.vendors.every((vendor) => vendor.issues.some((issue) => issue.id === 'MISSING_NAME'))).toBe(true);
+    expect(report.vendors[0].extractedFields).not.toHaveProperty('experienceEntries');
+    expect(report.vendors[0].extractedFields).not.toHaveProperty('educationEntries');
+  });
+
+  it('nie zwraca profili, gdy żaden nie został wybrany', async () => {
+    const report = await validatePdfTextForAts('Jan Kowalski', vaultWith(), { vendorIds: [] });
+
+    expect(report.vendors).toHaveLength(0);
+    expect(report.generalRecommendations).toContain(
+      'Nie wybrano rozpoznanego profilu regułowego, więc walidacja nie została wykonana.'
+    );
   });
 
   it('wykrywa brak danych kontaktowych', async () => {
@@ -132,6 +180,47 @@ describe('validatePdfTextForAts', () => {
     expect(workday!.issues.some((i) => i.id === 'MISSING_NAME' || i.id === 'MISSING_EMAIL')).toBe(true);
   });
 
+  it('nie uznaje cudzych danych kontaktowych za dane kandydata z MasterVault', async () => {
+    const vault = vaultWith();
+    const report = await validatePdfTextForAts(`
+      Inna Osoba
+      inna@example.invalid
+      +48 999 888 777
+      Doświadczenie zawodowe
+      Developer — Firma (2020–2024)
+      Umiejętności
+      JavaScript React
+    `, vault);
+
+    for (const vendor of report.vendors) {
+      expect(vendor.extractedFields.name).toBeNull();
+      expect(vendor.extractedFields.email).toBeNull();
+      expect(vendor.extractedFields.phone).toBeNull();
+      expect(vendor.issues.map((issue) => issue.id)).toEqual(expect.arrayContaining([
+        'MISSING_NAME', 'MISSING_EMAIL', 'MISSING_PHONE',
+      ]));
+    }
+  });
+
+  it('znajduje pełne imię i nazwisko po nagłówku przed danymi kontaktowymi', async () => {
+    const report = await validatePdfTextForAts(`
+      Curriculum Vitae
+      Kontakt do rekrutacji: rekrutacja@firma.example
+      Jan Kowalski
+      jan@example.com
+      Doświadczenie zawodowe
+      Developer — Firma (2020–2024)
+      Umiejętności
+      JavaScript React
+    `, vaultWith());
+
+    for (const vendor of report.vendors) {
+      expect(vendor.extractedFields.name).toBe('Jan Kowalski');
+      expect(vendor.extractedFields.email).toBe('jan@example.com');
+      expect(vendor.issues.some((issue) => ['MISSING_NAME', 'MISSING_EMAIL'].includes(issue.id))).toBe(false);
+    }
+  });
+
   it('nie wykrywa niewidzialnego tekstu gdy go nie ma', async () => {
     const vault = vaultWith();
     const report = await validatePdfTextForAts('Tekst testowy', vault, {
@@ -141,17 +230,28 @@ describe('validatePdfTextForAts', () => {
     expect(report.invisibleTextDetected).toBe(false);
   });
 
-  it('zgłasza krytyczny alert przy niewidzialnym tekście', async () => {
+  it('zgłasza wykryty niewidzialny tekst bez przypisywania mu intencji ani skutku', async () => {
     const vault = vaultWith();
     const report = await validatePdfTextForAts('Tekst testowy', vault, {
       hasInvisibleText: true,
     });
 
     expect(report.invisibleTextDetected).toBe(true);
-    expect(report.generalRecommendations.some((r) => r.includes('niewidoczny tekst'))).toBe(true);
+    expect(report.generalRecommendations.some((r) =>
+      r.includes('niewidoczny tekst') && r.includes('nie ustala jego przeznaczenia')
+    )).toBe(true);
   });
 
-  it('Tagged PDF poprawia wynik dla Workday', async () => {
+  it('nie odejmuje punktów za ryzyka formatowania, których nie wykryto w PDF', async () => {
+    const vault = vaultWith();
+    const text = `Jan Kowalski\njan@example.com\n+48 123 456 789\nKontakt\nDoświadczenie\nDeveloper (2020-2024)\nUmiejętności\nJavaScript React`;
+    const report = await validatePdfTextForAts(text, vault, { vendorIds: ['taleo'] });
+    const taleo = report.vendors[0];
+
+    expect(taleo.issues.some((issue) => issue.id.startsWith('FORMAT_PENALTY_'))).toBe(false);
+  });
+
+  it('oznacza wyłącznie obecność sygnału /ActualText, bez przewidywania wpływu na wynik ATS', async () => {
     const vault = vaultWith();
     const text = `
       Jan Kowalski
@@ -168,38 +268,36 @@ describe('validatePdfTextForAts', () => {
     const workdayWith = withTagged.vendors.find((v) => v.vendorId === 'workday')!;
     const workdayWithout = withoutTagged.vendors.find((v) => v.vendorId === 'workday')!;
 
-    // Workday obsługuje /ActualText — z Tagged PDF powinien mieć mniej problemów
-    expect(workdayWith.taggedPdfBeneficial).toBe(true);
-    expect(workdayWith.parseScore).toBeGreaterThanOrEqual(workdayWithout.parseScore);
+    // Kontrolujemy wyłącznie sygnał /ActualText z ekstrakcji, bez wnioskowania o skutku.
+    expect(workdayWith.profileReadsActualText).toBe(true);
+    expect(workdayWith.issues.some((issue) => issue.id === 'NO_ACTUALTEXT_SIGNAL')).toBe(false);
+    expect(workdayWithout.issues.some((issue) => issue.id === 'NO_ACTUALTEXT_SIGNAL')).toBe(true);
   });
 
-  it('Taleo jest najsurowszy przy wielokolumnowym layoutcie', async () => {
+  it('nie wyprowadza obsługi kolumn z tekstu bez danych o układzie PDF', async () => {
     const vault = vaultWith();
-    // Symulacja wielokolumnowego layouttu (wiele linii z podwójną spacją)
-    const text = Array.from({ length: 30 }, (_, i) =>
-      `Linia ${i} z 30    druga kolumna tutaj jest tekst`
-    ).join('\n');
+    const report = await validatePdfTextForAts('Jan Kowalski  jan@example.com  Umiejętności JavaScript', vault);
+    const reportWithCollapsedSpaces = await validatePdfTextForAts('Jan Kowalski jan@example.com Umiejętności JavaScript', vault);
 
-    const report = await validatePdfTextForAts(text, vault);
-    const taleo = report.vendors.find((v) => v.vendorId === 'taleo')!;
-
-    expect(taleo.issues.length).toBeGreaterThan(0);
+    expect(report.vendors.map((vendor) => vendor.extractedFields)).toEqual(
+      reportWithCollapsedSpaces.vendors.map((vendor) => vendor.extractedFields)
+    );
+    expect(report.generalRecommendations).toContain(
+      'Analiza dotyczy wyekstrahowanego tekstu; nie ocenia geometrii kolumn, tabel, nagłówków ani kolejności czytania w układzie PDF.'
+    );
   });
 
-  it('iCIMS jest najbardziej wyrozumiały', async () => {
+  it('zwraca dopasowania do jawnych wzorców profilu bez tworzenia punktacji', async () => {
     const vault = vaultWith();
-    const text = `
-      Jan Kowalski
-      jan@example.com
-      Umiejętności: JavaScript React Node.js
-    `;
+    const text = 'Jan Kowalski\njan@example.com\nUmiejętności\nJavaScript ** React';
 
     const report = await validatePdfTextForAts(text, vault);
     const icims = report.vendors.find((v) => v.vendorId === 'icims')!;
     const taleo = report.vendors.find((v) => v.vendorId === 'taleo')!;
 
-    // iCIMS powinien być bardziej wyrozumiały niż Taleo
-    expect(icims.parseScore).toBeGreaterThanOrEqual(taleo.parseScore);
+    expect(taleo.issues.some((issue) => issue.id === 'UNPARSABLE_ELEMENT')).toBe(true);
+    expect(icims.issues.some((issue) => issue.id === 'UNPARSABLE_ELEMENT')).toBe(false);
+    expect(icims).not.toHaveProperty('parseScore');
   });
 });
 
@@ -221,17 +319,12 @@ describe('ATS Vendor Profiles', () => {
     }
   });
 
-  it('profile mają spójne strictness (1–5)', async () => {
+  it('profile przechowują tylko reguły używane przez lokalny przegląd', async () => {
     const { ALL_ATS_PROFILES } = await import('../atsVendorProfiles');
     for (const profile of ALL_ATS_PROFILES) {
-      expect(profile.strictness).toBeGreaterThanOrEqual(1);
-      expect(profile.strictness).toBeLessThanOrEqual(5);
+      expect(Object.keys(profile).sort()).toEqual(['id', 'keywordMatching', 'name', 'sectionDetection']);
+      expect(Object.keys(profile.keywordMatching)).toEqual(['readsActualText']);
     }
-  });
-
-  it('Workday jest surowszy od iCIMS', async () => {
-    const { WORKDAY_PROFILE, ICIMS_PROFILE } = await import('../atsVendorProfiles');
-    expect(WORKDAY_PROFILE.strictness).toBeLessThan(ICIMS_PROFILE.strictness);
   });
 });
 

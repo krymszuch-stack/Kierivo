@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useEntitlements, FREE_DAILY_AI_USES, FREE_MONTHLY_IMPORTS } from '../store/useEntitlements';
+import { AI_QUOTA_RESET_TIME } from '../lib/aiQuotaPolicy';
 import {
   FREE_BETA_LABEL,
   FREE_BETA_PRICE_PLN,
@@ -26,7 +27,7 @@ const includedInBeta = [
   'Dopasowanie CV do ogłoszenia i wykrywanie luk kompetencyjnych',
   'Hybrydowy silnik PDF (zgodność z filtrami ATS + layout human-first)',
   'Nowość: Weryfikator AI 360° z potrójną pętlą sprawdzającą',
-  'Nowość: Trener Rozmowy STAR z symulacją i oceną odpowiedzi (Azure gpt-4o)',
+  'Nowość: Trener Rozmowy STAR z symulacją i oceną odpowiedzi przez skonfigurowany model AI',
   'Pipeline aplikacji i audyt osi czasu z formułą Google X-Y-Z',
   'Opcjonalna synchronizacja chmurowa tam, gdzie wdrożono bazę danych',
 ];
@@ -46,7 +47,7 @@ export const PricingView: React.FC = () => {
     <div className="mx-auto max-w-6xl space-y-8 p-4 sm:p-6 lg:p-8" data-testid="beta-scope-view">
       <PageHeader
          title="Architektura handlowa i Bezpłatna Beta"
-        description="W tej wersji nie pobieramy opłat, nie sprzedajemy abonamentów ani nie prosimy o kartę. Tester może zrealizować pełny cykl aplikacyjny bezpłatnie w ramach dobowych limitów Azure."
+        description="W tej wersji nie pobieramy opłat, nie sprzedajemy abonamentów ani nie prosimy o kartę. Tester może zrealizować pełny cykl aplikacyjny bezpłatnie w ramach dobowych limitów operacji AI."
         badge={FREE_BETA_LABEL.toUpperCase()}
       />
 
@@ -62,8 +63,8 @@ export const PricingView: React.FC = () => {
               {FREE_BETA_PRICE_PLN} zł
             </div>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              Brak subskrypcji, triala i płatnego odblokowania. Dzięki puli kredytów Azure OpenAI wdrożyliśmy
-              aż <strong>25 darmowych operacji AI na dobę</strong> dla każdego aktywnego testera.
+              Brak subskrypcji, triala i płatnego odblokowania. Serwer ogranicza liczbę wywołań AI do
+              {' '}<strong>25 na użytkownika na dobę</strong>. Dostępność modelu zależy od konfiguracji dostawcy AI.
             </p>
           </div>
 
@@ -164,11 +165,11 @@ export const PricingView: React.FC = () => {
                 <h3 className="text-base font-bold text-ink">Dobowy przydział AI</h3>
               </div>
               <p className="mt-1 text-xs text-muted min-h-[32px]">
-                Zapewniany przez dedykowaną pulę modeli Azure OpenAI.
+                Dostępność zależy od konfiguracji i dostępności dostawcy AI.
               </p>
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="font-mono text-4xl font-black text-ink">25</span>
-                <span className="text-xs text-muted">zapytań / dobę (odnawiane o 00:00)</span>
+                <span className="text-xs text-muted">zapytań / dobę (odnawiane o {AI_QUOTA_RESET_TIME})</span>
               </div>
               <ul className="mt-6 flex-1 space-y-2.5 text-xs text-muted">
                 <li className="flex items-start gap-2">
@@ -189,7 +190,7 @@ export const PricingView: React.FC = () => {
                 </li>
               </ul>
               <div className="mt-6 rounded-xl border border-line bg-elevated py-2 text-center text-xs font-medium text-ink">
-                Odnawiane automatycznie każdej nocy
+                Reset limitu: {AI_QUOTA_RESET_TIME}
               </div>
             </div>
 
@@ -242,7 +243,7 @@ export const PricingView: React.FC = () => {
           <div className="mt-4 space-y-3 text-sm text-muted">
             <p>
               Operacje AI: do <strong className="text-ink">{FREE_DAILY_AI_USES}</strong> zapytań na
-              dobę na użytkownika (Azure OpenAI gpt-4o Poland Central). Aktualnie pozostało dziś:{' '}
+              dobę na użytkownika (limit serwerowy). Aktualnie pozostało dziś:{' '}
               <strong className="text-ink font-mono">{usage.aiUses}</strong>.
             </p>
             <p>

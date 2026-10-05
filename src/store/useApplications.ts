@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApplicationStatus, JobApplication } from '../types';
 import { ANONYMOUS_PROFILE_ID } from '../lib/localProfile';
-import { applicationsKeyFor, onAppStorageWiped, readJson, removeRaw, StorageKeys, writeJson } from '../lib/storage';
+import { applicationsKeyFor, onAppStorageWiped, onProfileStorageCleared, readJson, readJsonForMigration, removeRaw, StorageKeys, writeJson, writeJsonDurably } from '../lib/storage';
 import { useAuth } from '../context/AuthContext';
+import { parseApplications } from '../lib/applicationRecordSchema';
+import { mergeMigrationRecords } from '../lib/mergeMigrationRecords';
 
 /**
  * Aplikacje w Pipeline — jedno źródło prawdy dla całego interfejsu.
@@ -20,10 +22,16 @@ import { useAuth } from '../context/AuthContext';
  * tu tylko okno na utratę danych (reguła 9 w `AGENTS.md`).
  */
 
+const rejectedByKey = new Map<string, unknown[]>();
+
+function loadApplications(key: string): JobApplication[] {
+  const parsed = parseApplications(readJson<unknown>(key, []));
+  rejectedByKey.set(key, parsed.rejected);
+  return parsed.applications;
+}
+
 export function loadApplicationsFor(profileId: string): JobApplication[] {
-  const raw = readJson<JobApplication[]>(applicationsKeyFor(profileId), []);
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((a): a is JobApplication => Boolean(a && typeof a === 'object' && a.id && a.status));
+  return loadApplications(applicationsKeyFor(profileId));
 }
 
 /**
@@ -32,9 +40,7 @@ export function loadApplicationsFor(profileId: string): JobApplication[] {
  * Interfejs pokazuje wyłącznie możliwość świadomego przypisania.
  */
 export function loadUnassignedLegacyApplications(): JobApplication[] {
-  const raw = readJson<JobApplication[]>(StorageKeys.applications, []);
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((a): a is JobApplication => Boolean(a && typeof a === 'object' && a.id && a.status));
+  return loadApplications(StorageKeys.applications);
 }
 
 const cachedApplications = new Map<string, JobApplication[]>();
@@ -66,23 +72,47 @@ function withStatusRules(application: JobApplication): JobApplication {
 }
 
 export function saveApplicationsFor(profileId: string, next: JobApplication[]): void {
-  const applications = (Array.isArray(next) ? next : []).filter(Boolean).map(withStatusRules);
+  const key = applicationsKeyFor(profileId);
+  const parsedNext = parseApplications(next);
+  const applications = parsedNext.applications.map(withStatusRules);
+  const rejected = [
+    ...(rejectedByKey.get(key) ?? parseApplications(readJson<unknown>(key, [])).rejected),
+    ...parsedNext.rejected,
+  ];
+  rejectedByKey.set(key, rejected);
   cachedApplications.set(profileId, applications);
-  writeJson(applicationsKeyFor(profileId), applications);
+  writeJson(key, [...applications, ...rejected]);
   listeners.forEach((notify) => notify());
 }
 
 /** Przypisuje starą, wspólną historię tylko po wyraźnym działaniu użytkownika. */
-export function claimLegacyApplicationsFor(profileId: string): number {
+export async function claimLegacyApplicationsFor(profileId: string): Promise<number> {
   if (!profileId || profileId === ANONYMOUS_PROFILE_ID) return 0;
 
-  const legacy = loadUnassignedLegacyApplications();
-  if (legacy.length === 0) return 0;
+  const source = readJsonForMigration(StorageKeys.applications);
+  if (!source.success || source.raw === null) return 0;
+  const parsedLegacy = parseApplications(source.value);
+  const legacy = parsedLegacy.applications;
+  if (legacy.length === 0 || parsedLegacy.rejected.length > 0) return 0;
 
-  const current = currentApplications(profileId);
-  const currentIds = new Set(current.map((entry) => entry.id));
-  saveApplicationsFor(profileId, [...current, ...legacy.filter((entry) => !currentIds.has(entry.id))]);
+  const key = applicationsKeyFor(profileId);
+  const target = readJsonForMigration(key);
+  if (!target.success) return 0;
+  const parsedTarget = parseApplications(target.raw === null ? [] : target.value);
+  const current = parsedTarget.applications;
+  const merged = mergeMigrationRecords(current, legacy);
+  if (!merged) return 0;
+  const applications = merged.map(withStatusRules);
+  const rejected = parsedTarget.rejected;
+  // Nie usuwaj wspólnej historii po zapisie awaryjnym, który jeszcze nie
+  // zakończył transakcji. Cache celu publikujemy dopiero po utrwaleniu kopii.
+  const persisted = await writeJsonDurably(key, [...applications, ...rejected]);
+  const currentSource = readJsonForMigration(StorageKeys.applications);
+  if (!persisted || !currentSource.success || currentSource.raw !== source.raw) return 0;
+  cachedApplications.set(profileId, applications);
+  rejectedByKey.set(key, rejected);
   removeRaw(StorageKeys.applications);
+  listeners.forEach((notify) => notify());
   return legacy.length;
 }
 
@@ -93,7 +123,14 @@ export function claimLegacyApplicationsFor(profileId: string): number {
 // akcji użytkownika.
 onAppStorageWiped(() => {
   cachedApplications.clear();
+  rejectedByKey.clear();
   listeners.forEach((notify) => notify());
+});
+
+onProfileStorageCleared(profileId => {
+  cachedApplications.delete(profileId);
+  rejectedByKey.delete(applicationsKeyFor(profileId));
+  listeners.forEach(notify => notify());
 });
 
 export function useApplications() {
@@ -118,6 +155,8 @@ export function useApplications() {
   const applications = currentApplications(profileId);
   const hasUnassignedLegacyApplications =
     profileId !== ANONYMOUS_PROFILE_ID && loadUnassignedLegacyApplications().length > 0;
+  const rejectedApplicationsCount = rejectedByKey.get(applicationsKeyFor(profileId))?.length ?? 0;
+  const rejectedLegacyApplicationsCount = rejectedByKey.get(StorageKeys.applications)?.length ?? 0;
 
   /** Dodaje albo nadpisuje wpis o tym samym identyfikatorze. */
   const saveApplication = useCallback((application: JobApplication) => {
@@ -168,6 +207,8 @@ export function useApplications() {
     removeApplication,
     patchApplication,
     setStatus,
+    rejectedApplicationsCount,
+    rejectedLegacyApplicationsCount,
     hasUnassignedLegacyApplications,
     claimLegacyApplications,
   };

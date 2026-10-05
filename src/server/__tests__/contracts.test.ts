@@ -92,6 +92,24 @@ describe('Kontrakt: historia aplikacji', () => {
     expect(applicationInputSchema.safeParse({ company: '  ', position: 'X' }).success).toBe(false);
   });
 
+  it('przyjmuje tylko bezpieczne linki http(s)', () => {
+    expect(applicationInputSchema.safeParse({
+      company: 'Firma', position: 'Stanowisko', jobUrl: 'https://example.com/jobs/1',
+    }).success).toBe(true);
+    expect(applicationInputSchema.safeParse({
+      company: 'Firma', position: 'Stanowisko', jobUrl: 'javascript:alert(1)',
+    }).success).toBe(false);
+  });
+
+  it('przyjmuje tylko bezpieczne linki http(s)', () => {
+    expect(applicationInputSchema.safeParse({
+      company: 'Firma', position: 'Stanowisko', jobUrl: 'https://example.com/jobs/1',
+    }).success).toBe(true);
+    expect(applicationInputSchema.safeParse({
+      company: 'Firma', position: 'Stanowisko', jobUrl: 'javascript:alert(1)',
+    }).success).toBe(false);
+  });
+
   it('dopuszcza aktualizację częściową', () => {
     // PATCH nie wymaga kompletu pól, inaczej zmiana samego statusu zmuszałaby
     // klienta do odesłania całego wiersza.

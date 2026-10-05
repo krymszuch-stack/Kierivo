@@ -35,9 +35,9 @@ export interface NextActionCardProps {
 
 const ICONS: Record<NextActionType, React.ElementType> = {
   pre_call_brief: CalendarClock,
-  send_followup: Mail,
+  prepare_followup: Mail,
   complete_vault: UserPlus,
-  add_first_job: Target,
+  analyze_job: Target,
   improve_ats: FileWarning,
   follow_up_application: Clock,
   daily_challenge: Sparkles,
@@ -51,7 +51,7 @@ const ICONS: Record<NextActionType, React.ElementType> = {
  * praca, którą równie dobrze można wykonać jutro, i podkręcanie jej kolorem
  * na czerwono skończyłoby się tym, że kolor przestaje cokolwiek znaczyć.
  */
-const URGENT: ReadonlySet<NextActionType> = new Set(['pre_call_brief', 'send_followup']);
+const URGENT: ReadonlySet<NextActionType> = new Set(['pre_call_brief', 'prepare_followup']);
 
 /** Generyczne „Przejdź" nie mówiło, dokąd kliknięcie zawiedzie użytkownika. */
 const TAB_LABELS: Partial<Record<NavTabId, string>> = {

@@ -37,9 +37,9 @@ export function errorHandler(
     return;
   }
 
-  // 4xx raised deliberately by our own handlers carry safe, user-facing text.
-  // Anything 5xx is unexpected and gets a generic message.
-  const isSafeClientError = status >= 400 && status < 500 && err.expose === true;
+  // 501 może opisywać znany brak pomiaru (np. nieobsługiwany tryb mobilności),
+  // więc zachowujemy jego jawny, bezpieczny komunikat. Pozostałe 5xx ukrywają szczegóły.
+  const isSafeClientError = (status >= 400 && status < 500 || status === 501) && err.expose === true;
 
   res.status(status).json({
     success: false,

@@ -8,21 +8,34 @@ import { DealbreakerList } from './DealbreakerList';
 import { Card } from '../../components/ui/Card';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { getDisplayedMissingRequirements, getDisplayedRecommendations } from './canonicalRecommendations';
+import { getAtsScoreContext, getAtsScoreDisplayInfo } from '../../lib/atsScoreEvidence';
+import { normalizePercentageEvidence } from '../../lib/percentageEvidence';
 
 export interface AtsSimulatorViewProps {
   result: AtsCheckResult;
   canonicalResult?: CanonicalAtsScore;
+  profileCompleteness?: number;
+  careerEvidenceAvailable?: boolean;
   onAddToVault?: (item: string) => void;
   className?: string;
 }
 
-function clampScore(value: number | undefined): number {
-  return Math.max(0, Math.min(100, Math.round(value ?? 0)));
+function validatedScore(value: number | null | undefined): number | null {
+  return normalizePercentageEvidence(value);
+}
+
+function componentTone(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'text-ink-muted';
+  if (value >= 75) return 'text-success-fg';
+  if (value >= 50) return 'text-brand-fg';
+  return 'text-danger-fg';
 }
 
 export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
   result,
   canonicalResult,
+  profileCompleteness,
+  careerEvidenceAvailable,
   onAddToVault,
   className = '',
 }) => {
@@ -35,28 +48,44 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
   const dimensionScores = [
     {
       name: 'Pokrycie fraz z ogłoszenia',
-      score: clampScore(result.keywordCoverageScore),
+      score: validatedScore(result.keywordCoverageScore),
       desc: 'Dopasowanie wykrytych słów i fraz do treści oferty',
     },
     {
       name: 'Pokrycie umiejętności twardych',
-      score: clampScore(result.layer2Nlp?.hardSkillsCoverage ?? result.keywordCoverageScore),
+      score: validatedScore(result.layer2Nlp?.hardSkillsCoverage),
       desc: 'Obecność wymaganych kompetencji i narzędzi w treści CV',
     },
     {
-      name: 'Struktura dokumentu',
-      score: clampScore(result.structureScore),
-      desc: 'Nagłówki, sekcje i układ możliwy do odczytu maszynowego',
+      name: 'Struktura tekstu CV',
+      score: validatedScore(result.structureScore),
+      desc: 'Heurystyka nagłówków i sygnałów w tekście; nie ocenia wyglądu PDF ani działania konkretnego ATS',
     },
     {
-      name: 'Czytelność formatowania',
-      score: clampScore(result.formattingScore),
-      desc: 'Format dokumentu oceniany przez reguły Kierivo',
+      name: 'Dane kontaktowe i daty',
+      score: null,
+      desc: `Wykryte problemy kontaktowe: ${result.ocrWarnings.length}; nieprawidlowe formaty dat: ${result.badDateFormats.length}. Tekst nie pozwala ocenic ukladu ani formatowania PDF.`,
     },
   ];
   const displayedRecommendations = getDisplayedRecommendations(result.recommendations, canonicalResult);
 
-  const mainScore = canonicalResult ? canonicalResult.score : clampScore(result.overallScore);
+  const mainScore = canonicalResult?.state === 'SCORABLE'
+    ? normalizePercentageEvidence(canonicalResult.score)
+    : null;
+  const canonicalComponents = canonicalResult
+    ? {
+        skills: normalizePercentageEvidence(canonicalResult.components.skills),
+        experience: normalizePercentageEvidence(canonicalResult.components.experience),
+        structure: normalizePercentageEvidence(canonicalResult.components.structure),
+        formal: normalizePercentageEvidence(canonicalResult.components.formal),
+      }
+    : null;
+  const scoreContext = mainScore !== null && profileCompleteness !== undefined && careerEvidenceAvailable !== undefined
+    ? getAtsScoreContext(canonicalResult, profileCompleteness, careerEvidenceAvailable)
+    : undefined;
+  const scoreDisplay = canonicalResult?.state === 'SCORABLE'
+    ? getAtsScoreDisplayInfo(canonicalResult.score, scoreContext)
+    : null;
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -93,8 +122,19 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
             <ScoreRing
               score={mainScore}
               size={150}
-              label={canonicalResult ? 'Szacowany wynik' : 'Wynik dopasowania'}
+              label={mainScore === null ? 'Brak wyniku' : scoreDisplay?.state === 'full' ? 'Wynik Kierivo' : 'Wstępny'}
+              isPreliminary={scoreDisplay?.state === 'limited' || scoreDisplay?.state === 'unknown'}
             />
+
+            {scoreDisplay && scoreDisplay.state !== 'full' && (
+              <div className="w-full rounded-xl border border-amber-500/25 bg-amber-500/10 p-2.5 text-center" role="note">
+                <span className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {scoreDisplay.label}
+                </span>
+                <p className="mt-1 text-[10px] leading-relaxed text-ink-muted">{scoreDisplay.note}</p>
+              </div>
+            )}
 
             {canonicalResult && canonicalResult.state !== 'SCORABLE' && (
               <div className="w-full rounded-xl bg-amber-500/10 border border-amber-500/20 p-2.5 text-center">
@@ -104,6 +144,8 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
                     ? 'Uzupełnij profil zawodowy'
                     : canonicalResult.state === 'INSUFFICIENT_JD'
                     ? 'Zbyt krótka treść ogłoszenia'
+                    : canonicalResult.state === 'UNCONFIRMED_REQUIREMENTS'
+                    ? 'Wymogi wymagają potwierdzenia'
                     : 'Brak wykrytych wymagań'}
                 </span>
                 <p className="text-[10px] text-ink-muted mt-1 leading-relaxed">
@@ -119,7 +161,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
               <p className="font-mono text-[10px] text-subtle leading-tight">
                 {canonicalResult
                   ? 'Wagi bazowe: umiejętności 40%, staż 25%, struktura 20%, formalia 15%. Wymiary bez wykrytych danych są pomijane, a pozostałe wagi normalizowane.'
-                  : (result.layer3Scoring?.formulaBreakdown || 'Wymagania twarde (50%) + Doświadczenie (25%) + Tytuł roli (25%)')}
+                  : (result.layer3Scoring?.formulaBreakdown || 'Wzór nie został zapisany w tej migawce. Wynik główny wymaga kanonicznej oceny.')}
               </p>
             </div>
 
@@ -128,38 +170,47 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
                   <span className="block text-[10px] text-muted">Umiejętności ({Math.round(canonicalResult.effectiveWeights.skills * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.skills === null ? 'text-ink-muted' : canonicalResult.components.skills >= 75 ? 'text-success-fg' : canonicalResult.components.skills >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    componentTone(canonicalComponents?.skills)
                   }`}>
-                    {canonicalResult.components.skills === null ? 'brak danych' : `${canonicalResult.components.skills}%`}
+                    {canonicalComponents?.skills === null || canonicalComponents?.skills === undefined ? 'brak danych' : `${canonicalComponents.skills}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
                   <span className="block text-[10px] text-muted">Staż i świeżość ({Math.round(canonicalResult.effectiveWeights.experience * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.experience === null ? 'text-ink-muted' : canonicalResult.components.experience >= 75 ? 'text-success-fg' : canonicalResult.components.experience >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    componentTone(canonicalComponents?.experience)
                   }`}>
-                    {canonicalResult.components.experience === null ? 'brak danych' : `${canonicalResult.components.experience}%`}
+                    {canonicalComponents?.experience === null || canonicalComponents?.experience === undefined ? 'brak danych' : `${canonicalComponents.experience}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
                   <span className="block text-[10px] text-muted">Struktura ({Math.round(canonicalResult.effectiveWeights.structure * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.structure === null ? 'text-ink-muted' : canonicalResult.components.structure >= 75 ? 'text-success-fg' : canonicalResult.components.structure >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    componentTone(canonicalComponents?.structure)
                   }`}>
-                    {canonicalResult.components.structure === null ? 'brak danych' : `${canonicalResult.components.structure}%`}
+                    {canonicalComponents?.structure === null || canonicalComponents?.structure === undefined ? 'brak danych' : `${canonicalComponents.structure}%`}
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
                   <span className="block text-[10px] text-muted">Formalia ({Math.round(canonicalResult.effectiveWeights.formal * 100)}%)</span>
                   <span className={`font-mono text-xs font-bold ${
-                    canonicalResult.components.formal === null ? 'text-ink-muted' : canonicalResult.components.formal >= 75 ? 'text-success-fg' : canonicalResult.components.formal >= 50 ? 'text-brand-fg' : 'text-danger-fg'
+                    componentTone(canonicalComponents?.formal)
                   }`}>
-                    {canonicalResult.components.formal === null ? 'brak danych' : `${canonicalResult.components.formal}%`}
+                    {canonicalComponents?.formal === null || canonicalComponents?.formal === undefined ? 'brak danych' : `${canonicalComponents.formal}%`}
                   </span>
                 </div>
               </div>
             )}
           </Card>
+
+          {canonicalResult && canonicalResult.penalties.length > 0 && (
+            <Card tone="raised" className="space-y-2">
+              <h4 className="text-xs font-bold text-ink">Uwagi do danych i punktacji</h4>
+              <ul className="list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted">
+                {canonicalResult.penalties.map((note, index) => <li key={`${index}-${note}`}>{note}</li>)}
+              </ul>
+            </Card>
+          )}
 
           <Card tone="raised" className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
@@ -180,9 +231,9 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
                     <span className="block font-mono text-[10px] text-muted">{dimension.desc}</span>
                   </div>
                   <span className={`font-mono text-xs font-bold ${
-                    dimension.score >= 80 ? 'text-success-fg' : dimension.score >= 60 ? 'text-warning-fg' : 'text-danger-fg'
+                    dimension.score === null ? 'text-ink-muted' : dimension.score >= 80 ? 'text-success-fg' : dimension.score >= 60 ? 'text-warning-fg' : 'text-danger-fg'
                   }`}>
-                    {dimension.score}%
+                    {dimension.score === null ? 'brak danych' : `${dimension.score}%`}
                   </span>
                 </div>
               ))}
@@ -195,6 +246,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
 
           <DealbreakerList
             missingItems={getDisplayedMissingRequirements(result.missingHardSkills, canonicalResult)}
+            unconfirmedItems={canonicalResult?.unconfirmedRequirements}
             onAddToVault={onAddToVault}
           />
         </div>

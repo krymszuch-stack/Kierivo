@@ -1,11 +1,15 @@
 import { MasterVault } from '../types';
 import { createEmptyVault } from './sampleVault';
+import { parseMasterVaultImport } from './masterVaultImportSchema';
 import { migrateAnonymousCVLibrary } from './cvLibraryStorage';
 import {
   StorageKeys,
   readJson,
+  readJsonForMigration,
   readRaw,
   removeRaw,
+  removeRawDurably,
+  clearProfileStorageDurably,
   applicationsKeyFor,
   cvLibraryKeyFor,
   listStorageKeys,
@@ -50,6 +54,34 @@ export interface LocalProfile {
  * dwie i `App.tsx` pisał w obie naraz przy każdej zmianie.
  */
 export const ANONYMOUS_PROFILE_ID = 'anonymous';
+const rejectedVaultProfileIds = new Set<string>();
+// Zamknięcie sesji może zakończyć się pomiędzy kolejnymi zapisami migracji.
+// Wynik aktywacji ma wersję również dla publikacji stanu po await w React.
+let activationVersion = 0;
+let closingOperations = 0;
+
+export function invalidateLocalProfileActivation(): void {
+  activationVersion += 1;
+}
+
+export function isLocalProfileActivationCurrent(version: number): boolean {
+  return closingOperations === 0 && version === activationVersion;
+}
+
+interface ActivatedLocalProfile {
+  profile: LocalProfile;
+  vault: MasterVault;
+  activationVersion: number;
+}
+
+export function hasRejectedProfileVault(profileId: string): boolean {
+  return rejectedVaultProfileIds.has(profileId);
+}
+
+/** Wywoływane wyłącznie po świadomym zastąpieniu uszkodzonego Vaultu pełnym importem. */
+export function acceptProfileVaultReplacement(profileId: string): void {
+  rejectedVaultProfileIds.delete(profileId);
+}
 
 export function getActiveProfile(): LocalProfile | null {
   const parsed = readJson<LocalProfile | null>(StorageKeys.profile, null);
@@ -96,13 +128,16 @@ export async function listSavedLocalProfiles(): Promise<LocalProfile[]> {
 }
 
 /** Wznawia jawnie wybrany profil lokalny; samo podanie nazwy nie może wybrać cudzej kopii. */
-export function activateLocalProfile(profileId: string): { profile: LocalProfile; vault: MasterVault } | null {
+export async function activateLocalProfile(profileId: string): Promise<ActivatedLocalProfile | null> {
+  if (closingOperations > 0) return null;
+  const version = ++activationVersion;
   const profile = readSavedProfileIndex().find((candidate) => candidate.id === profileId);
   if (!profile) return null;
   const vault = loadProfileVault(profile.id);
   if (!vault) return null;
-  writeJson(StorageKeys.profile, profile);
-  return { profile, vault };
+  if (!(await writeJsonDurably(StorageKeys.profile, profile))) return null;
+  if (!isLocalProfileActivationCurrent(version)) return null;
+  return { profile, vault, activationVersion: version };
 }
 
 /**
@@ -112,7 +147,9 @@ export function activateLocalProfile(profileId: string): { profile: LocalProfile
 export async function createLocalProfile(
   name: string,
   email?: string
-): Promise<{ profile: LocalProfile; vault: MasterVault }> {
+): Promise<ActivatedLocalProfile> {
+  if (closingOperations > 0) throw new Error('Sesja jest zamykana. Spróbuj ponownie po zakończeniu operacji.');
+  const version = ++activationVersion;
   const trimmedName = name.trim();
   const trimmedEmail = email?.trim();
 
@@ -130,20 +167,34 @@ export async function createLocalProfile(
   const anonymousVaultKey = vaultKeyFor(ANONYMOUS_PROFILE_ID);
   const anonymousApplicationsKey = applicationsKeyFor(ANONYMOUS_PROFILE_ID);
   const anonymousLibraryKey = cvLibraryKeyFor(ANONYMOUS_PROFILE_ID);
-  const anonymousApplications = readRaw(anonymousApplicationsKey);
+  const anonymousApplications = readJsonForMigration(anonymousApplicationsKey);
+  const anonymousVault = readJsonForMigration(anonymousVaultKey);
+  const anonymousLibrary = readJsonForMigration(anonymousLibraryKey);
+  const sourceSnapshots = [anonymousVaultKey, anonymousApplicationsKey, anonymousLibraryKey].map(key => ({ key, raw: readRaw(key) }));
+  const previousProfile = readJson<LocalProfile | null>(StorageKeys.profile, null);
+  const vault = carriedOver ?? createEmptyVault(trimmedName, trimmedEmail);
   const stagedTargetKeys: string[] = [];
+  let profileIndexed = false;
+  const assertSourcesCurrent = () => {
+    if (!isLocalProfileActivationCurrent(version)) throw new Error('session-changed');
+    if (sourceSnapshots.some(({ key, raw }) => readRaw(key) !== raw)) throw new Error('source-changed');
+  };
 
   try {
+    if (!anonymousApplications.success || !anonymousVault.success || !anonymousLibrary.success ||
+        (anonymousLibrary.raw !== null && !Array.isArray(anonymousLibrary.value)) ||
+        (anonymousVault.raw !== null && !carriedOver)) throw new Error('source-unreadable');
     // Nie usuwaj źródeł, dopóki każda kopia nie zostanie potwierdzona przez
     // localStorage albo zatwierdzoną transakcję IndexedDB. Zwykły zapis ma
     // kontrakt „najlepsza próba”; migracja źródłowych CV wymaga potwierdzenia.
-    if (carriedOver) {
-      if (!(await writeJsonDurably(vaultKeyFor(profile.id), carriedOver))) throw new Error('vault');
-      stagedTargetKeys.push(vaultKeyFor(profile.id));
-    }
+    // Także pusty profil musi mieć kopię do wznowienia przed aktywacją;
+    // późniejszy autosave komponentu nie jest częścią tej transakcji.
+    if (!(await writeJsonDurably(vaultKeyFor(profile.id), vault))) throw new Error('vault');
+    stagedTargetKeys.push(vaultKeyFor(profile.id));
+    assertSourcesCurrent();
 
-    if (anonymousApplications !== null) {
-      const applications = readJson(applicationsKeyFor(ANONYMOUS_PROFILE_ID), []);
+    if (anonymousApplications.raw !== null) {
+      const applications = anonymousApplications.value;
       if (!(await writeJsonDurably(applicationsKeyFor(profile.id), applications))) throw new Error('applications');
       stagedTargetKeys.push(applicationsKeyFor(profile.id));
     }
@@ -153,34 +204,72 @@ export async function createLocalProfile(
     if (!libraryCopied) throw new Error('library');
     if (readRaw(anonymousLibraryKey) !== null) stagedTargetKeys.push(libraryTargetKey);
 
+    assertSourcesCurrent();
     if (!(await rememberLocalProfile(profile))) throw new Error('profile-index');
+    profileIndexed = true;
+    assertSourcesCurrent();
     if (!(await writeJsonDurably(StorageKeys.profile, profile))) throw new Error('active-profile');
-  } catch {
-    stagedTargetKeys.forEach(removeRaw);
-    throw new Error('Nie udało się trwale zapisać danych nowego profilu. Dane źródłowe pozostawiono bez zmian; zwolnij miejsce i spróbuj ponownie.');
+    assertSourcesCurrent();
+  } catch (error) {
+    // Nie zostawiaj indeksu wskazującego usunięte kopie. Przy odmowie rollbacku
+    // zachowaj odzyskiwalne cele zamiast tworzyć martwy zapis profilu.
+    let reverted = true;
+    if (getActiveProfile()?.id === profile.id) {
+      if (previousProfile && isLocalProfileActivationCurrent(version)) reverted = await writeJsonDurably(StorageKeys.profile, previousProfile);
+      else reverted = await removeRawDurably(StorageKeys.profile);
+      reverted = reverted && getActiveProfile()?.id !== profile.id;
+    }
+    if (profileIndexed && reverted) {
+      reverted = await writeJsonDurably(StorageKeys.localProfiles, readSavedProfileIndex().filter(item => item.id !== profile.id));
+    }
+    if (reverted) stagedTargetKeys.forEach(removeRaw);
+    throw new Error(error instanceof Error && error.message === 'session-changed'
+      ? 'Sesja zmieniła się podczas tworzenia profilu. Nie otwarto profilu; spróbuj ponownie.'
+      : error instanceof Error && error.message === 'source-changed'
+      ? 'Dane zmieniły się podczas tworzenia profilu. Zachowano dane źródłowe; spróbuj ponownie.'
+      : error instanceof Error && error.message === 'source-unreadable'
+        ? 'Nie można odczytać danych zapisanych przed utworzeniem profilu. Zachowano źródła; przywróć poprawną kopię danych.'
+      : 'Nie udało się trwale zapisać danych nowego profilu. Zachowano dane źródłowe; sprawdź miejsce na urządzeniu i spróbuj ponownie.', { cause: error });
   }
 
   // Wszystkie cele są już trwale zapisane. Teraz można skasować przejściowe
   // źródła bez ryzyka, że odświeżenie odtworzy pusty profil.
   if (carriedOver) removeRaw(anonymousVaultKey);
-  if (anonymousApplications !== null) removeRaw(anonymousApplicationsKey);
+  if (anonymousApplications.raw !== null) removeRaw(anonymousApplicationsKey);
   removeRaw(anonymousLibraryKey);
 
-  const vault = carriedOver ?? createEmptyVault(trimmedName, trimmedEmail);
-  return { profile, vault };
+  return { profile, vault, activationVersion: version };
 }
 
 /** Kończy korzystanie z profilu, ale zostawia zapisane dane na urządzeniu. */
-export function signOutLocalProfile(): void {
-  removeRaw(StorageKeys.profile);
-  removeRaw(vaultKeyFor(ANONYMOUS_PROFILE_ID));
+export async function signOutLocalProfile(): Promise<boolean> {
+  invalidateLocalProfileActivation();
+  closingOperations += 1;
+  try {
+    if (!(await clearProfileStorageDurably(ANONYMOUS_PROFILE_ID))) return false;
+    if (!(await removeRawDurably(StorageKeys.profile))) return false;
+    rejectedVaultProfileIds.delete(ANONYMOUS_PROFILE_ID);
+    return true;
+  } finally { closingOperations -= 1; }
 }
 
 export function loadProfileVault(profileId: string): MasterVault | null {
   // Przez readJson, nie surowy parse: dostaje kopertę z sumą kontrolną,
   // migracje schematu i transakcyjny powrót do ostatniego poprawnego stanu,
   // gdy odczyt wykaże uszkodzenie pliku profilu.
-  return readJson<MasterVault | null>(vaultKeyFor(profileId), null);
+  const key = vaultKeyFor(profileId);
+  const stored = readJson<unknown>(key, null);
+  if (stored === null && readRaw(key) === null) {
+    rejectedVaultProfileIds.delete(profileId);
+    return null;
+  }
+  const vault = parseMasterVaultImport(stored);
+  if (!vault) {
+    rejectedVaultProfileIds.add(profileId);
+    return null;
+  }
+  rejectedVaultProfileIds.delete(profileId);
+  return vault;
 }
 
 /**
@@ -194,7 +283,14 @@ export function loadProfileVault(profileId: string): MasterVault | null {
  * Realna ochrona to konto z danymi po stronie serwera — `BACKEND_MODE=cloud`.
  */
 export function saveProfileVault(profileId: string, vault: MasterVault): void {
-  writeJson(vaultKeyFor(profileId), vault);
+  const key = vaultKeyFor(profileId);
+  if (rejectedVaultProfileIds.has(profileId)) return;
+  const raw = readRaw(key);
+  if (raw !== null && !parseMasterVaultImport(readJson<unknown>(key, null))) {
+    rejectedVaultProfileIds.add(profileId);
+    return;
+  }
+  writeJson(key, vault);
 }
 
 /**
@@ -205,6 +301,12 @@ export function saveProfileVault(profileId: string, vault: MasterVault): void {
  * i przez to zostawiała za sobą m.in. stan subskrypcji — a „usuń moje dane",
  * które czegoś nie usuwa, jest gorsze niż brak takiej funkcji.
  */
-export function deleteLocalProfile(): Promise<boolean> {
-  return wipeAppStorageDurably();
+export async function deleteLocalProfile(): Promise<boolean> {
+  invalidateLocalProfileActivation();
+  closingOperations += 1;
+  try {
+    const deleted = await wipeAppStorageDurably();
+    if (deleted) rejectedVaultProfileIds.clear();
+    return deleted;
+  } finally { closingOperations -= 1; }
 }

@@ -19,6 +19,7 @@ import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { showToast } from '../../store/useToastStore';
 import { starTemplateForExample, starTemplateForVerb } from './starTemplate';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
 
 export interface StarVerb {
   verb: string;
@@ -327,16 +328,19 @@ export const StarHelperModal: React.FC<StarHelperModalProps> = ({
     return matchesIndustry && matchesSearch;
   });
 
-  const handleCopyOrInsert = (text: string) => {
+  const handleCopyOrInsert = async (text: string) => {
     if (onApplySnippet) {
       onApplySnippet(text);
       onClose();
     } else {
-      navigator.clipboard.writeText(text);
-      showToast('Skopiowano do schowka', {
-        message: 'Wklej wzorzec do pola osiągnięcia.',
-        variant: 'success',
-      });
+      try {
+        await copyTextAndNotifySuccess(text, () => showToast('Skopiowano do schowka', {
+          message: 'Wklej wzorzec do pola osiągnięcia.',
+          variant: 'success',
+        }));
+      } catch {
+        showToast('Nie udało się skopiować', { message: 'Zaznacz szablon i skopiuj go ręcznie.', variant: 'error' });
+      }
     }
   };
 

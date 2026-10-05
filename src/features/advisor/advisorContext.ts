@@ -1,7 +1,12 @@
-import type { AtsCheckResult, JobOffer, MasterVault } from '../../types';
+import type { AtsCheckResult, AtsScoreContext, JobOffer, MasterVault } from '../../types';
 import type { CanonicalAtsScore } from '../../lib/canonicalAts';
+import { getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, getUnmetBlockingRequirements, hasCareerEvidence } from '../../lib/canonicalAts';
 import { buildAtsTelemetryReport } from '../../lib/atsScorer';
 import { measureVaultCompleteness, VAULT_SECTIONS } from '../../lib/vaultCompleteness';
+import { getAtsScoreContext } from '../../lib/atsScoreEvidence';
+import { hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
+import type { AdvisorAnalysisMetadata } from '../../lib/advisorAnalysisFreshness';
 
 export type AdvisorSuggestionTarget = 'profil' | 'aplikuj' | 'ats-lab';
 
@@ -12,9 +17,10 @@ export interface AdvisorSuggestion {
   target: AdvisorSuggestionTarget;
 }
 
-export interface AdvisorContext {
+export interface AdvisorContext extends AdvisorAnalysisMetadata {
   offerTitle: string;
-  score: number;
+  score: number | null;
+  scoreEvidence?: AtsScoreContext & { scope: 'limited' | 'sufficient' };
   missingRequirements: string[];
   matchedKeywords: string[];
   structuralWarnings: string[];
@@ -38,6 +44,20 @@ export function buildAdvisorContext(
   canonical: CanonicalAtsScore,
 ): AdvisorContext {
   const completeness = measureVaultCompleteness(vault);
+  const careerEvidenceAvailable = hasCareerEvidence(vault);
+  const rawScoreEvidence = getAtsScoreContext(canonical, completeness.percent, careerEvidenceAvailable);
+  const scoreEvidence = rawScoreEvidence
+    ? {
+      ...rawScoreEvidence,
+      scope: hasLimitedMatchEvidence({
+        profileCompleteness: rawScoreEvidence.profileCompleteness,
+        totalRequirementCount: rawScoreEvidence.detectedRequirementCount,
+        fitEvidenceAvailable: rawScoreEvidence.careerEvidenceAvailable,
+        blockingRequirements: getUnmetBlockingRequirements(canonical),
+        unconfirmedRequirements: canonical.unconfirmedRequirements,
+      }) ? 'limited' as const : 'sufficient' as const,
+    }
+    : undefined;
   // Raport śledczy nie jest drugim „wynikiem ATS”. Używamy go wyłącznie do
   // nazwania mierzalnych problemów technicznych dokumentu, których symulator
   // dopasowania oferty nie opisuje (np. tabele lub kolejność odczytu).
@@ -89,7 +109,7 @@ export function buildAdvisorContext(
       target: 'profil',
     });
   }
-  if (missing.length > 0 || canonical.score < 75) {
+  if (missing.length > 0 || (canonical.score !== null && canonical.score < 75)) {
     suggestions.push({
       id: 'review-match',
       label: 'Wróć do dopasowania',
@@ -99,8 +119,15 @@ export function buildAdvisorContext(
   }
 
   return {
+    profileUpdatedAt: vault.updatedAt,
+    atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+    calculatedAt: canonical.calculatedAt,
+    calculationMonth: canonical.calculationMonth,
     offerTitle: offer.title || 'aktualna oferta',
-    score: canonical.score,
+    // Przekazuj liczbowy wynik tylko przy wystarczającej próbce. Przy ograniczonym
+    // materiale Doradca dostaje przyczynę ograniczenia, nie surową ocenę.
+    score: scoreEvidence?.scope === 'sufficient' ? canonical.score : null,
+    ...(scoreEvidence ? { scoreEvidence } : {}),
     missingRequirements: missing,
     matchedKeywords: unique(ats.matchedKeywords).slice(0, 12),
     structuralWarnings,
@@ -129,11 +156,9 @@ export function buildContextualAdvice(query: string, context: AdvisorContext): s
 
   const facts: string[] = [];
   if (asksForAssessment) {
-    const scoreMessage = context.score < 55
-      ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. To słaby punkt wyjścia do tej konkretnej oferty, nie werdykt o Twojej wartości ani wynik zewnętrznego ATS.`
-      : context.score < 75
-        ? `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. Jest materiał do aplikacji, ale przed wysłaniem warto usunąć najważniejsze luki.`
-        : `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100. Dopasowanie wygląda solidnie, ale nadal sprawdź fakty i szczegóły dokumentu przed wysłaniem.`;
+    const scoreMessage = context.score === null
+      ? `Nie wyliczono oceny dla „${context.offerTitle}”, bo dostępne dane nie wystarczyły. Uzupełnij CV albo treść oferty i uruchom analizę ponownie.`
+      : `W ostatnim dopasowaniu do „${context.offerTitle}” własna analiza Kierivo wyniosła ${context.score}/100 (${CANONICAL_SCORE_BAND_LABELS[getCanonicalScoreBand(context.score)]}). To wynik reguł Kierivo, nie werdykt o Twojej wartości ani wynik zewnętrznego ATS. Sprawdź wskazane luki i treść CV przed wysłaniem.`;
     facts.push(scoreMessage);
   }
 

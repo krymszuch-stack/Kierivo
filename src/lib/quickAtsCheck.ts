@@ -1,8 +1,9 @@
 import { MasterVault, TailoredResume, AtsCheckResult } from '../types';
 import { parseTextToMasterVault, type ParsedCVResult } from './cvUniversalParser';
-import { createEmptyVault } from './sampleVault';
+import { MAX_DOCUMENT_TEXT_CHARS } from './textNormalization';
+import { vaultFromParsedCv } from './cvIngestionEngine';
 import { extractDynamicJdPhrases, simulateAtsCheck } from './atsSimulator';
-import { scoreCanonicalAts, type CanonicalAtsScore } from './canonicalAts';
+import { scoreCanonicalAts, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, type CanonicalAtsScore } from './canonicalAts';
 import { auditKnockouts, type KnockoutReport } from './knockouts';
 import {
   bestSubRoleMatch,
@@ -107,27 +108,6 @@ export class QuickCheckError extends Error {
 export const MIN_CV_CHARS = 120;
 export const MIN_JD_CHARS = 80;
 
-/** Buduje profil z surowego tekstu CV, nie dopisując niczego, czego w nim nie ma. */
-export function vaultFromParsedCv(parsed: ParsedCVResult): MasterVault {
-  const vault = createEmptyVault(parsed.personalInfo.fullName, parsed.personalInfo.email);
-
-  return {
-    ...vault,
-    personalInfo: { ...vault.personalInfo, ...parsed.personalInfo },
-    profiler: { ...vault.profiler, languages: parsed.languages || [] },
-    skillsMatrix: {
-      ...vault.skillsMatrix,
-      hardSkills: parsed.hardSkills,
-      softSkills: parsed.softSkills,
-      toolsAndTech: parsed.toolsAndTech,
-      certifications: parsed.certifications,
-    },
-    history: parsed.history,
-    education: parsed.education,
-    rawText: parsed.rawText,
-  } as MasterVault;
-}
-
 /**
  * Składa „życiorys pod ofertę" wyłącznie z tego, co jest w profilu.
  *
@@ -156,7 +136,7 @@ function tailoredFromVault(vault: MasterVault, jobTitle: string): TailoredResume
       toolsAndTech: vault.skillsMatrix?.toolsAndTech || [],
       softSkills: vault.skillsMatrix?.softSkills || [],
     },
-    atsScore: 0,
+    atsScore: null,
   };
 }
 
@@ -180,6 +160,13 @@ export function runQuickAtsCheck(
   if (cv.length < MIN_CV_CHARS) {
     throw new QuickCheckError(
       'Wklej pełną treść CV — na tak krótkim fragmencie nie da się policzyć rzetelnego wyniku.',
+      'cv'
+    );
+  }
+
+  if (cv.length > MAX_DOCUMENT_TEXT_CHARS) {
+    throw new QuickCheckError(
+      `Treść CV przekracza limit ${MAX_DOCUMENT_TEXT_CHARS.toLocaleString('pl-PL')} znaków. Skróć tekst lub podziel dokument przed analizą.`,
       'cv'
     );
   }
@@ -236,21 +223,26 @@ export interface TopProblem {
 }
 
 /**
- * Wybiera dokładnie 3 najważniejsze, najbardziej krytyczne problemy
- * z wyniku szybkiego sprawdzenia ATS (dla uproszczonego onboardingu).
+ * Wybiera do 3 najważniejszych ustaleń z wyniku szybkiego sprawdzenia
+ * (dla uproszczonego onboardingu). Nie dopisuje ogólnych porad, gdy analiza
+ * nie znalazła tylu ustaleń.
  *
  * Kolejność priorytetów:
  * 1. Niespełnione formalne kryteria dyskwalifikujące (brak SEP, UDT, prawa jazdy itp.) — krytyczne.
  * 2. Brakujące kluczowe umiejętności techniczne z ogłoszenia — ostrzeżenia.
  * 3. Ryzyka formatowania i błędy strukturalne ATS — ostrzeżenia / zalecenia.
- * 4. Uzupełnienie do 3 o praktyczne zalecenia redakcyjne, jeśli profil nie ma braków.
+ * 4. Konkretne zalecenia zwrócone przez analizę, jeśli są dostępne.
  */
 export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] {
   const problems: TopProblem[] = [];
 
   // 1. Niespełnione wymagania formalne (najwyższy priorytet - natychmiastowe odrzucenie)
   if (result.knockouts && Array.isArray(result.knockouts.findings)) {
-    const unsatisfiedKnockouts = result.knockouts.findings.filter((f) => !f.satisfied);
+    // `findings` zawiera też pozycje mile widziane i same wzmianki informacyjne;
+    // ich brak nie może zamienić się w krytyczny brak formalny.
+    const unsatisfiedKnockouts = result.knockouts.findings.filter(
+      (finding) => finding.severity === 'knockout' && finding.status !== 'unknown' && !finding.satisfied,
+    );
     for (const ko of unsatisfiedKnockouts) {
       if (problems.length >= 3) break;
       problems.push({
@@ -258,6 +250,18 @@ export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] 
         title: ko.label,
         description: ko.hint || 'Brak wymaganego uprawnienia lub kryterium formalnego w treści CV.',
         severity: 'critical',
+        category: 'formal',
+      });
+    }
+    for (const finding of result.knockouts.findings.filter(
+      (item) => item.severity === 'knockout' && item.status === 'unknown',
+    )) {
+      if (problems.length >= 3) break;
+      problems.push({
+        id: `ko-unknown-${finding.ruleId}`,
+        title: finding.label,
+        description: finding.hint || 'Brakuje danych, aby ustalić, czy dokument jest aktualny.',
+        severity: 'warning',
         category: 'formal',
       });
     }
@@ -319,38 +323,6 @@ export function extractTopThreeProblems(result: QuickCheckResult): TopProblem[] 
     }
   }
 
-  // 6. Dopełnienie do 3 pozycji praktycznymi poradami, jeśli kandydat ma wysokie dopasowanie
-  const defaultTips: TopProblem[] = [
-    {
-      id: 'tip-metrics',
-      title: 'Wzmocnij osiągnięcia liczbami',
-      description: 'Dodaj mierzalne metryki (np. liczba wykonanych montaży, budżet, oszczędność czasu) w punktach historii.',
-      severity: 'info',
-      category: 'structure',
-    },
-    {
-      id: 'tip-keywords',
-      title: 'Dopasuj nazewnictwo stanowisk',
-      description: 'Upewnij się, że tytuły w Twojej historii odpowiadają branżowym sformułowaniom z ogłoszenia.',
-      severity: 'info',
-      category: 'structure',
-    },
-    {
-      id: 'tip-summary',
-      title: 'Skondensuj podsumowanie zawodowe',
-      description: 'Dostosuj 2-3 zdania na początku CV bezpośrednio pod wymagania tego konkretnego pracodawcy.',
-      severity: 'info',
-      category: 'structure',
-    },
-  ];
-
-  for (const tip of defaultTips) {
-    if (problems.length >= 3) break;
-    if (!problems.some((p) => p.id === tip.id)) {
-      problems.push(tip);
-    }
-  }
-
   return problems.slice(0, 3);
 }
 
@@ -366,26 +338,27 @@ export interface QuickCheckScoreVisualTone {
  * Progi są zgodne ze specyfikacją demoTimeline: >=75 (wysokie), >=50 (umiarkowane), <50 (niskie).
  */
 export function getQuickCheckScoreTone(score: number): QuickCheckScoreVisualTone {
-  if (score >= 75) {
+  const band = getCanonicalScoreBand(score);
+  if (band === 'high') {
     return {
       tone: 'high',
       text: 'text-success-fg',
       ring: 'stroke-success-fg',
-      label: 'Wysokie dopasowanie',
+      label: CANONICAL_SCORE_BAND_LABELS[band],
     };
   }
-  if (score >= 50) {
+  if (band === 'moderate') {
     return {
       tone: 'mid',
       text: 'text-warning-fg',
       ring: 'stroke-warning-fg',
-      label: 'Umiarkowane dopasowanie',
+      label: CANONICAL_SCORE_BAND_LABELS[band],
     };
   }
   return {
     tone: 'low',
     text: 'text-danger-fg',
     ring: 'stroke-danger-fg',
-    label: 'Niskie dopasowanie',
+    label: CANONICAL_SCORE_BAND_LABELS[band],
   };
 }

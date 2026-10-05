@@ -108,21 +108,3 @@ export interface InterviewPrepResponse {
     definition: string;
   }>;
 }
-
-/**
- * Odpowiedź `GET /api/usage/stats` — realne zużycie odczytane z `usageMetadata`
- * odpowiedzi modelu. Poprzedni kształt opisywał „zaoszczędzone tokeny" liczone
- * jako stała 180 razy liczba uruchomień, więc nie mierzył niczego.
- */
-export interface UsageStatsResponse {
-  success: boolean;
-  scope: 'instance-since-start';
-  calls: number;
-  promptTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  estimatedCostUsd: number;
-  hasUnpricedCalls: boolean;
-  since: string;
-  byContext: Record<string, { calls: number; totalTokens: number; estimatedCostUsd: number }>;
-}

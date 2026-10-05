@@ -35,6 +35,7 @@ describe('experience — unia przedziałów (F5)', () => {
       { id: '1', startDate: '', endDate: '2022-01', isCurrent: false },
       { id: '2', startDate: '2023-01', endDate: '2020-01', isCurrent: false },
       { id: '3', startDate: '2099-01', endDate: '2100-01', isCurrent: false },
+      { id: '4', startDate: '2020-01', endDate: '2099-01', isCurrent: false },
     ])).toBe(0);
   });
 

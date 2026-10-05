@@ -209,7 +209,7 @@ describe('Praktyczne czyszczenie wklejek z portali (test_praktyczny1.md)', () =>
       const raw = sections[15]; // Operator suwnicy
       const { job, parsed, preparation } = buildJobOfferFromManual({ description: raw });
 
-      expect(preparation.classification).toBe('noisy');
+      expect(preparation.segments).toHaveLength(1);
       expect(job.title).toMatch(/operator.*suwnicy/i);
       expect(job.company).toBe('EKO ENERGIA Sp. z o.o.');
       expect(job.location).toContain('Kraków');

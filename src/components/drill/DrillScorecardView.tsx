@@ -26,36 +26,40 @@ export const DrillScorecardView: React.FC<DrillScorecardViewProps> = ({
   referenceNotes,
   className = '',
 }) => {
-  const { structure, metrics, ownership, overallScore, suggestions } = scorecard;
+  const { structure, metrics, ownership, suggestions } = scorecard;
+
+  if (structure.scorePercent === null) {
+    return (
+      <div role="status" className={`rounded-2xl border border-dashed border-line bg-surface p-6 text-center ${className}`}>
+        <h4 className="text-sm font-bold text-ink">Brak tekstu odpowiedzi</h4>
+        <p className="mt-1 text-xs text-muted">
+          Bez tekstu nie ma sygnałów do pokazania. Samo nagranie nie jest transkrybowane ani analizowane.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* 1. Podsumowanie Scorecard i Ogólny Wynik */}
+      {/* 1. Wynik całościowy pozostaje nieobliczany; poniżej pokazujemy wykryte sygnały. */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-line bg-surface p-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Award className="h-5 w-5 text-brand-600" />
             <h4 className="text-sm font-extrabold text-ink uppercase tracking-wider font-mono">
-              Karta wyniku — Mock Drill
+              Wskaźniki odpowiedzi — Mock Drill
             </h4>
           </div>
           <p className="text-xs text-muted">
-            Automatyczna ocena struktury STAR, twardych metryk oraz sprawczości językowej.
+            Proste wzorce wskazują słowa i liczby. Nie mierzą jakości ani prawdziwości odpowiedzi.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <span className="font-mono text-2xl font-black text-ink">{overallScore}%</span>
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-muted">
-              Wynik Jakości
-            </span>
-          </div>
-          <div
-            className={`h-10 w-2 rounded-full ${
-              overallScore >= 80 ? 'bg-success' : overallScore >= 50 ? 'bg-brand-500' : 'bg-warning'
-            }`}
-          />
+        <div role="status" className="max-w-xs rounded-xl border border-line bg-sunken px-3 py-2 text-right">
+          <span className="block text-xs font-bold text-ink">Ocena całościowa: nie jest mierzona</span>
+          <span className="block text-[10px] text-muted">
+            Wskaźniki tekstowe nie są skalibrowanym wynikiem jakości.
+          </span>
         </div>
       </div>
 
@@ -146,39 +150,28 @@ export const DrillScorecardView: React.FC<DrillScorecardViewProps> = ({
           </div>
         </div>
 
-        {/* Filar 3: Ownership ("I" vs "We" / "Ja" vs "My") */}
+        {/* Wzmianki językowe nie dowodzą samodzielnego wkładu. */}
         <div className="rounded-xl border border-line bg-surface p-4 space-y-2">
-          <div className="flex items-center justify-between">
+          <div>
             <span className="font-mono text-[10px] font-extrabold uppercase tracking-wider text-muted">
-              3. Sprawczość („Ja” vs „My”)
-            </span>
-            <span className="font-mono text-xs font-bold text-ink">
-              {ownership.ownershipPercent}% „Ja”
+              3. Wzmianki o wkładzie własnym i zespołu
             </span>
           </div>
 
           <div className="space-y-1.5 pt-1">
-            {/* Pasek proporcji */}
-            <div className="flex h-2 w-full overflow-hidden rounded-full bg-sunken">
-              <div
-                style={{ width: `${ownership.ownershipPercent}%` }}
-                className="h-full bg-brand-600 transition-all"
-              />
-            </div>
-
             <div className="flex justify-between text-[10px] font-mono text-muted">
               <span className="flex items-center gap-0.5">
                 <User className="h-3 w-3 text-brand-600" />
-                <span>Formy własne: {ownership.iCount}</span>
+                <span>Formy pierwszej osoby: {ownership.iCount}</span>
               </span>
               <span className="flex items-center gap-0.5">
                 <Users className="h-3 w-3 text-subtle" />
-                <span>Formy grupy: {ownership.weCount}</span>
+                <span>Formy grupowe: {ownership.weCount}</span>
               </span>
             </div>
 
-            <span className="text-[10px] font-semibold text-ink block leading-tight">
-              {ownership.label}
+            <span className="text-[10px] text-muted block leading-tight">
+              To liczba rozpoznanych słów, nie ocena faktycznego wkładu.
             </span>
           </div>
         </div>
