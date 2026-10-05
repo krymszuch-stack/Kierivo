@@ -131,9 +131,13 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
             "soft_accent_coverage_pct": result.soft_accent_coverage_pct,
             "governance": {
                 "summary_lines": gov.summary_lines,
+                "summary_truncated": gov.summary_truncated,
                 "skills_kept": gov.skills_kept,
+                "skills_dropped": gov.skills_dropped,
                 "exp_kept": gov.exp_kept,
+                "exp_dropped": gov.exp_dropped,
                 "bullets_kept": gov.bullets_kept,
+                "bullets_dropped": gov.bullets_dropped,
                 "notes": gov.notes,
             },
             "visible_to_semantic": [

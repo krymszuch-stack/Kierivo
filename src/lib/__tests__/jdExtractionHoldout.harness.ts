@@ -1,6 +1,11 @@
 import { parseJobDescriptionLocal, type ParsedJobDescription } from '../jdParser';
 import { preprocessJobOfferPaste } from '../jobOfferPreprocessor';
 import { HOLDOUT_OFFERS, type HoldoutGold, type HoldoutOffer } from './fixtures/jdExtractionHoldout.fixtures';
+import {
+  compareMeasuredText,
+  finiteMeasuredNumber,
+  isMissingMeasuredValue,
+} from './fieldMeasurement';
 
 const EQUIVALENCE_GROUPS: string[][] = [
   ['c#', 'c sharp', 'csharp'],
@@ -19,20 +24,25 @@ export function normalizeHoldoutTerm(raw: string): string {
 
 export type HoldoutFieldStatus = 'CORRECT' | 'PARTIAL' | 'INCORRECT' | 'NOT_PRESENT_IN_SOURCE';
 
-function empty(value: unknown): boolean {
-  return value === null || value === undefined || value === '' ||
-    (Array.isArray(value) && value.length === 0);
-}
-
 export function holdoutFieldStatus(gold: unknown, parsed: unknown): HoldoutFieldStatus {
-  const goldEmpty = empty(gold);
-  const parsedEmpty = empty(parsed);
+  const goldEmpty = isMissingMeasuredValue(gold);
+  const parsedEmpty = isMissingMeasuredValue(parsed);
   if (goldEmpty) return parsedEmpty ? 'NOT_PRESENT_IN_SOURCE' : 'INCORRECT';
   if (parsedEmpty) return 'INCORRECT';
+
+  const goldNumber = finiteMeasuredNumber(gold);
+  const parsedNumber = finiteMeasuredNumber(parsed);
+  if (goldNumber !== null || parsedNumber !== null) {
+    return goldNumber !== null && goldNumber === parsedNumber ? 'CORRECT' : 'INCORRECT';
+  }
+
+  if (typeof gold === 'string' && typeof parsed === 'string') {
+    return compareMeasuredText(gold, parsed);
+  }
+
   const g = JSON.stringify(gold).toLocaleLowerCase('pl-PL');
   const p = JSON.stringify(parsed).toLocaleLowerCase('pl-PL');
-  if (g === p || p.includes(g) || g.includes(p)) return 'CORRECT';
-  return 'PARTIAL';
+  return g === p ? 'CORRECT' : 'INCORRECT';
 }
 
 export interface HoldoutSkillResult {
@@ -50,7 +60,7 @@ function parsedAllSkills(parsed: ParsedJobDescription): Set<string> {
     ...parsed.requiredHardSkills,
     ...parsed.requiredSoftSkills,
     ...parsed.toolsAndTech,
-  ].map(normalizeHoldoutTerm).filter((skill) => skill.length > 1));
+  ].map(normalizeHoldoutTerm).filter((skill) => skill.length > 1 || skill === 'c'));
 }
 
 function parsedClassification(parsed: ParsedJobDescription): { required: Set<string>; nice: Set<string> } {
@@ -119,11 +129,13 @@ const aggregate = (results: HoldoutOfferResult[]) => ({
 });
 
 function parseOffer(offer: HoldoutOffer): ParsedJobDescription {
-  if (!offer.noisyPortalPaste) return parseJobDescriptionLocal(offer.text, offer.gold.title);
+  // Złote etykiety służą wyłącznie do porównania. Podanie tytułu gold jako
+  // `defaultTitle` pozwalałoby parserowi „odgadnąć” ocenianą wartość.
+  if (!offer.noisyPortalPaste) return parseJobDescriptionLocal(offer.text, '');
   const prepared = preprocessJobOfferPaste(offer.text);
   const segment = prepared.segments.find((candidate) => !candidate.duplicateOfSegmentId);
   if (!segment) throw new Error(`Nie znaleziono segmentu holdoutu ${offer.gold.id}`);
-  return parseJobDescriptionLocal(segment.cleanText, segment.titleCandidate ?? offer.gold.title);
+  return parseJobDescriptionLocal(segment.cleanText, segment.titleCandidate ?? '');
 }
 
 const FIELD_PAIRS = (gold: HoldoutGold, parsed: ParsedJobDescription): Record<string, [unknown, unknown]> => ({

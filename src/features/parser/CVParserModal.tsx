@@ -4,7 +4,7 @@ import { MasterVault } from '../../types';
 import { DropZone } from './DropZone';
 import { DiffView, MergeStrategies } from './DiffView';
 import { applyParsedCVToVault } from '../../lib/vaultImportMerge';
-import { extractTextFromAnyFile, ParsedCVResult } from '../../lib/cvUniversalParser';
+import { extractTextFromAnyFile, InvalidDocxError, ParsedCVResult, UnsupportedLegacyDocFormatError, UnsupportedMasterVaultJsonCvError } from '../../lib/cvUniversalParser';
 import {
   validateRawCvText,
   resolveCvIngestionResult,
@@ -50,6 +50,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
   const handleStartParsing = async () => {
     let textToParse = rawText;
     let portableResult: ParsedCVResult | undefined;
+    let parsedTextResult: ParsedCVResult | undefined;
 
     if (ingestMode === 'file') {
       if (!selectedFile) {
@@ -70,10 +71,27 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
       setParseProgress(20);
       try {
         const extracted = await extractTextFromAnyFile(selectedFile);
+        if (!extracted.portableVault) {
+          const validation = validateRawCvText(extracted.text);
+          if (!validation.valid) {
+            showToast('Nie wykryto treści CV', {
+              message: validation.error || 'Sprawdź odczyt pliku albo wklej treść CV ręcznie.',
+              variant: 'error',
+            });
+            setIsProcessing(false);
+            return;
+          }
+          parsedTextResult = validation.parsedResult;
+        }
         textToParse = extracted.text;
         portableResult = extracted.portableVault;
-      } catch {
-        showToast('Nie udało się odczytać pliku', { message: 'Spróbuj wkleić treść CV ręcznie.', variant: 'error' });
+      } catch (error) {
+        showToast('Nie udało się odczytać pliku', {
+          message: error instanceof InvalidDocxError || error instanceof UnsupportedLegacyDocFormatError || error instanceof UnsupportedMasterVaultJsonCvError
+            ? error.message
+            : 'Spróbuj wkleić treść CV ręcznie.',
+          variant: 'error',
+        });
         setIsProcessing(false);
         return;
       }
@@ -87,12 +105,13 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     } else {
       const validation = validateRawCvText(rawText);
       if (!validation.valid) {
-        showToast('Za mało treści', {
+        showToast('Nie można przeanalizować CV', {
           message: validation.error || 'Wklejony tekst jest zbyt krótki do analizy.',
           variant: 'error',
         });
         return;
       }
+      parsedTextResult = validation.parsedResult;
       setIsProcessing(true);
     }
 
@@ -111,6 +130,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
     const result = resolveCvIngestionResult({
       extractedText: textToParse,
       portableResult,
+      parsedResult: parsedTextResult,
       fileName: selectedFile?.name,
       isFile: ingestMode === 'file',
     });
@@ -184,6 +204,7 @@ export const CVParserModal: React.FC<CVParserModalProps> = ({
             ) : (
               <div className="space-y-2">
                 <Textarea
+                  label="Treść CV"
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
                   placeholder="Wklej tutaj treść swojego dokumentu CV (np. skopiowaną z pliku Word, PDF lub profilu zawodowego)..."

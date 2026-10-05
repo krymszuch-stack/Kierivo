@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useId, useState, useMemo } from 'react';
 import {
   User,
   Mail,
@@ -46,6 +46,7 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
   onOpenCvParser,
   className = '',
 }) => {
+  const summaryId = useId();
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   // Rozbijamy fullName na części, jeśli brak jawnych firstName / lastName
@@ -315,7 +316,7 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
       {/* Summary Section z asystentem beztokenowej generacji */}
       <div className="space-y-1.5 pt-2 border-t border-line/50">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="text-xs font-bold text-ink">
+          <label htmlFor={summaryId} className="text-xs font-bold text-ink">
             Podsumowanie Profilu Zawodowego
           </label>
           <button
@@ -329,6 +330,7 @@ export const PersonalSection: React.FC<PersonalSectionProps> = ({
         </div>
 
         <Textarea
+          id={summaryId}
           rows={4}
           value={data.summary}
           onChange={(e) => handleChange('summary', e.target.value)}

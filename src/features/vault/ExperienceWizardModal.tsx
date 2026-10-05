@@ -524,6 +524,9 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
 
         {step === 3 && (
           <div className="space-y-3.5">
+            <p className="rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs leading-relaxed text-muted">
+              Podpowiedzi branżowe nie pochodzą z Twojego profilu. Wybierz wyłącznie narzędzia, których rzeczywiście używałeś; wymagane uprawnienia potwierdź samodzielnie.
+            </p>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-ink">
                 <Wrench className="h-4 w-4 text-brand-600" />
@@ -579,6 +582,9 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
 
         {step === 4 && (
           <div className="space-y-3.5">
+            <p className="rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs leading-relaxed text-muted">
+              To przykłady sposobu opisania pracy, nie osiągnięcia z Twojego profilu. Wybierz tylko to, co rzeczywiście zrobiłeś; wpisuj liczby wyłącznie na podstawie własnych danych.
+            </p>
             <div className="flex items-center gap-2 text-xs font-bold text-ink">
               <TrendingUp className="h-4 w-4 text-brand-600" />
               <span>5. Jaki był cel, mierzalny efekt lub skala tej pracy?</span>
@@ -603,13 +609,13 @@ export const ExperienceWizardModal: React.FC<ExperienceWizardModalProps> = ({
             <div className="space-y-1.5 pt-2 border-t border-line/50">
               <label className="text-xs font-bold text-ink flex items-center gap-1.5">
                 <Hash className="h-3.5 w-3.5 text-brand-600" />
-                Opcjonalna liczba / skala (np. „ponad 450 przeglądów”, „czas reakcji &lt; 2h”, „99.8% poprawności”):
+                Opcjonalna metryka — wpisz wartość z własnych danych (np. liczbę obsłużonych zadań lub zmierzony czas reakcji):
               </label>
               <input
                 type="text"
                 value={metricInput}
                 onChange={(e) => { setMetricInput(e.target.value); setFactsConfirmed(false); }}
-                placeholder="Pozostaw puste, jeśli nie znasz dokładnej liczby (opis będzie jakościowy)"
+                placeholder="Pozostaw puste, jeśli nie znasz dokładnej wartości (opis pozostanie jakościowy)"
                 className="w-full rounded-xl border border-line bg-sunken px-3.5 py-2 text-xs text-ink placeholder:text-subtle focus:border-brand-500/60 focus:outline-none"
               />
             </div>

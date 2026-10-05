@@ -146,7 +146,7 @@ export interface ClaimDateRange {
 export interface Claim {
   id: string;
   sourceProject: string;
-  dateRange: ClaimDateRange | string;
+  dateRange?: ClaimDateRange | string;
   metric?: string;
   tags: string[];
 }
@@ -201,10 +201,13 @@ export interface LemmatizedMatch {
 }
 
 export interface AtsCheckResult {
-  overallScore: number;
-  keywordCoverageScore: number;
-  structureScore: number;
-  formattingScore: number;
+  /** null oznacza brak rozpoznanych wymagan do policzenia wyniku zbiorczego. */
+  overallScore: number | null;
+  keywordCoverageScore: number | null;
+  /** null: profil nie zawiera tresci CV pozwalajacej ocenic strukture tekstu. */
+  structureScore: number | null;
+  /** null: tekst CV nie pozwala zmierzyc wizualnego formatowania ani ukladu PDF. */
+  formattingScore: number | null;
 
   /**
    * Profil, pod który ułożono zalecenia. Wpływa na ich kolejność, nie na wynik:
@@ -214,18 +217,19 @@ export interface AtsCheckResult {
   
   // Layer 1: Structure & Layout Diagnostics
   layer1Structure: {
-    layoutScore: number;
-    headerNormalizationScore: number;
+    layoutScore: number | null;
+    headerNormalizationScore: number | null;
     detectedSections: string[];
     missingStandardSections: string[];
     unparsableElementsWarnings: string[];
-    isSingleColumnCompliant: boolean;
+    /** null: ekstrakt tekstowy nie zawiera geometrii pozwalajacej ocenic kolumny PDF. */
+    isSingleColumnCompliant: boolean | null;
   };
 
   // Layer 2: NLP & Lemmatized Keyword Matching
   layer2Nlp: {
-    hardSkillsCoverage: number;
-    formalReqsCoverage: number;
+    hardSkillsCoverage: number | null;
+    formalReqsCoverage: number | null;
     softSkillsFilterCount: number;
     extractedJdPhrasesCount: number;
     lemmatizedMatches: LemmatizedMatch[];
@@ -233,9 +237,9 @@ export interface AtsCheckResult {
 
   // Layer 3: Weighted Scoring Algebra
   layer3Scoring: {
-    hardSkillScore: number; // Sh (Weight 3.0x)
-    recencyScore: number;   // Sr (1.0 for current, 0.7 for mid, 0.4 for old)
-    titleMatchScore: number; // St (Job Title Density & Similarity)
+    hardSkillScore: number | null; // null when no hard-skill requirements exist
+    recencyScore: number | null;   // null when no dated skill evidence exists
+    titleMatchScore: number | null; // St (Job Title Density & Similarity)
     formulaBreakdown: string;
   };
 
@@ -268,7 +272,10 @@ export interface TailoredResume {
     toolsAndTech: string[];
     softSkills: string[];
   };
-  atsScore: number;
+  /** null oznacza brak podstaw do oceny; 0 pozostaje rzeczywistym wynikiem. */
+  atsScore: number | null;
+  /** Brak znacznika oznacza, że starsza migawka nie ma potwierdzonej wersji wyniku. */
+  atsScoreProvenance?: AtsScoreProvenance;
   /** Work-experience ids ordered by relevance to this job offer (see lib/relevanceRanking.ts). Falls back to vault order when absent. */
   experienceOrder?: string[];
 }
@@ -433,6 +440,11 @@ export interface PostCallDebrief {
   topicsToClarifyInFollowUp: string;
   salaryTimelineNotes?: string;
   generatedFollowUpEmail: string;
+  /** Wersja szablonu; brak oznacza szkic zapisany przez wcześniejszy generator. */
+  generatedFollowUpEmailVersion?: 1;
+  generatedFollowUpEmailVariantIndex?: 0 | 1 | 2 | 3;
+  /** Zachowany, starszy szkic do ręcznego wglądu — nie jest używany jako nowa treść. */
+  legacyGeneratedFollowUpEmail?: string;
   completedAt?: string;
 }
 
@@ -442,7 +454,7 @@ export interface InterviewLoopSession {
   companyName: string;
   roleTitle: string;
   jdText?: string;
-  scheduledAt: string;
+  scheduledAt?: string;
   status: 'UPCOMING' | 'IN_PROGRESS' | 'COMPLETED';
   tags?: string[];
   selectedStories?: STARStory[];
@@ -596,6 +608,36 @@ export interface CvExportEvent {
  * live z konkretnym wpisem w Pipeline. Osobna encja wymagałaby klucza obcego
  * i synchronizacji, a przy jednej rozmowie na aplikację nie kupowałaby nic.
  */
+// Zmieniamy wersję przy zmianie reguł punktacji lub ekstrakcji wpływającej na wynik.
+// Migracja danych nie jest ponowną analizą i nie może podnosić tego znacznika.
+export const CANONICAL_ATS_SCORE_PROVENANCE = 'canonical-v2' as const;
+export const ATS_SCORE_PROVENANCES = ['canonical-v1', CANONICAL_ATS_SCORE_PROVENANCE] as const;
+export type AtsScoreProvenance = (typeof ATS_SCORE_PROVENANCES)[number];
+
+/** Zakres danych użyty przy zapisie wyniku; bez niego migawka nie może udawać pełnej oceny. */
+export interface AtsCalculationTime {
+  /** Czas obliczenia, nie późniejszego zapisu/eksportu wyniku. */
+  calculatedAt?: string;
+  /** Miesiąc lokalnego kalendarza użyty przez silnik stażu. */
+  calculationMonth?: string;
+}
+
+export interface AtsScoreContext extends AtsCalculationTime {
+  detectedRequirementCount: number;
+  profileCompleteness: number;
+  /** Liczba niewykonanych wymogów formalnych, które mają status knockout. */
+  unmetBlockingRequirementCount?: number;
+  /** Wymogi formalne, których statusu nie dało się ustalić z dostępnych danych. */
+  unconfirmedBlockingRequirementCount?: number;
+  unconfirmedRequirementCount?: number;
+  /** Wersja snapshotu podstaw wyniku; starsze zapisy nie rozróżniają UNKNOWN. */
+  scoreContextVersion?: 5;
+  /** Brak pola w starszej migawce oznacza, że zakres dowodów zawodowych jest nieznany. */
+  /** Wersja semantyki dowodu kariery; stare flagi nie potwierdzaja juz opisu merytorycznego. */
+  careerEvidenceVersion?: 2;
+  careerEvidenceAvailable?: boolean;
+}
+
 export interface JobApplication {
   /** Wersja schematu danych encji (liczba całkowita, np. 1). */
   schemaVersion?: number;
@@ -610,15 +652,20 @@ export interface JobApplication {
   jobUrl?: string;
 
   /**
-   * Wynik ATS zapisany w chwili analizy oferty, 0–100.
+   * Liczba ATS zachowana z chwili analizy oferty, 0–100.
    *
-   * Pole opcjonalne, bo aplikacja dodana ręcznie w Pipeline nigdy nie
-   * przeszła przez symulator i **nie ma** wyniku. Zera nie wpisujemy: zero
-   * znaczyłoby „zmierzono i wyszło fatalnie", a prawda jest taka, że nie
-   * mierzono (reguła 1 w `AGENTS.md`).
+   * Pole opcjonalne, bo aplikacja dodana ręcznie w Pipeline nie ma wyniku.
+   * Samą liczbę traktujemy jako porównywalną z kanonem wyłącznie wtedy, gdy
+   * `atsScoreProvenance` jawnie wskazuje bieżącą wersję reguł; migracja zachowuje
+   * starsze liczby bez takiego potwierdzenia, ale UI i rekomendacje je pomijają.
+   * Zero jest prawidłowym, zmierzonym wynikiem.
    */
   atsScore?: number;
-  /** Braki wskazane przez symulator ATS przy tym wyniku. */
+  /** Wyniki starszego silnika bez tego znacznika nie są porównywalne z kanonem. */
+  atsScoreProvenance?: AtsScoreProvenance;
+  /** Opcjonalne w starszych rekordach; brak oznacza nieznany zakres danych historycznych. */
+  atsScoreContext?: AtsScoreContext;
+  /** Wymagania, których nie potwierdzono przy kanonicznym wyniku. */
   missingKeywords?: string[];
 
   /** Termin rozmowy, ISO 8601 z godziną. Ustawiany, gdy status = „Rozmowa". */

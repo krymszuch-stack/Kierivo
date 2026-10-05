@@ -15,6 +15,7 @@ import {
   Eye,
   ChevronDown,
   Database,
+  AlertCircle,
   Maximize2,
   Sparkles,
   FolderGit2,
@@ -41,8 +42,11 @@ import { CVExportModal } from '../../components/ui/CVExportModal';
 import { showToast } from '../../store/useToastStore';
 import { useFieldSuggestions } from '../../hooks/useFieldSuggestions';
 import { bestSubRoleMatch } from '../../lib/specializationIndex';
+import { getLatestExperience, inferLatestExperienceRole } from '../../lib/experienceChronology';
 import { useAuth } from '../../context/AuthContext';
+import { acceptProfileVaultReplacement, ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 import { validateExperienceStep } from './experienceValidation';
+import { parseMasterVaultImport } from '../../lib/masterVaultImportSchema';
 
 export interface MasterVaultEditorProps {
   vault: MasterVault;
@@ -52,6 +56,7 @@ export interface MasterVaultEditorProps {
 }
 
 type ViewMode = 'stepper' | 'full';
+type EditorNotification = { message: string; kind: 'success' | 'error' };
 
 const VAULT_STEPS: StepItem[] = [
   {
@@ -114,14 +119,15 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDataMenuOpen, setIsDataMenuOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const { mode } = useAuth();
+  const { mode, user } = useAuth();
 
   // Podpowiedzi liczone raz na cały edytor
   const suggest = useFieldSuggestions(vault);
 
   const detectedSubRoleId = useMemo(() => {
     if (vault.profiler?.subRoleId) return vault.profiler.subRoleId;
-    const signal = [vault.personalInfo.title, vault.history[0]?.role, vault.history[0]?.company]
+    const latestExperience = getLatestExperience(vault.history);
+    const signal = [vault.personalInfo.title, inferLatestExperienceRole(vault.history), latestExperience?.company]
       .filter(Boolean)
       .join(' ');
     return signal.trim() ? bestSubRoleMatch(signal)?.subRole.id : undefined;
@@ -144,7 +150,7 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
   const [activeStep, setActiveStep] = useState(0);
   const [experienceErrors, setExperienceErrors] = useState<Record<string, { company?: string; role?: string }>>({});
   const [incompleteEduPrompt, setIncompleteEduPrompt] = useState<Education | null>(null);
-  const [notification, setNotification] = useState<string | null>(null);
+  const [notification, setNotification] = useState<EditorNotification | null>(null);
 
   const handleClearExperienceError = (id: string, field: 'company' | 'role') => {
     setExperienceErrors((prev) => {
@@ -220,8 +226,8 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showNotification = (msg: string) => {
-    setNotification(msg);
+  const showNotification = (msg: string, kind: EditorNotification['kind'] = 'success') => {
+    setNotification({ message: msg, kind });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -247,18 +253,22 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed.personalInfo) {
+        const parsed: unknown = JSON.parse(event.target?.result as string);
+        const importedVault = parseMasterVaultImport(parsed);
+        if (importedVault) {
+          // Tylko jawny import kompletnego pliku może odblokować zapis po wykryciu
+          // uszkodzonego Vaultu; zwykły autosave nie może nadpisać oryginału pustym stanem.
+          acceptProfileVaultReplacement(user?.id ?? ANONYMOUS_PROFILE_ID);
           onChange({
             ...vault,
-            ...parsed,
+            ...importedVault,
           });
           showNotification('Profil MasterVault został pomyślnie zaimportowany z pliku JSON.');
         } else {
-          showToast('Niepoprawny plik', { message: 'To nie jest prawidłowy plik MasterVault JSON.', variant: 'error' });
+          showNotification('Import odrzucony: plik nie zawiera kompletnego, prawidłowego profilu MasterVault.', 'error');
         }
-      } catch (err) {
-        showToast('Błąd odczytu', { message: 'Nie udało się odczytać pliku JSON.', variant: 'error' });
+      } catch {
+        showNotification('Import odrzucony: nie udało się odczytać prawidłowego pliku JSON.', 'error');
       }
     };
     reader.readAsText(file);
@@ -349,10 +359,16 @@ export const MasterVaultEditor: React.FC<MasterVaultEditorProps> = ({
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="flex items-center gap-2 rounded-2xl border border-success/30 bg-success-soft p-4 text-xs font-semibold text-success-fg shadow-xs"
+            className={`flex items-center gap-2 rounded-2xl border p-4 text-xs font-semibold shadow-xs ${
+              notification.kind === 'error'
+                ? 'border-danger/30 bg-danger-soft text-danger-fg'
+                : 'border-success/30 bg-success-soft text-success-fg'
+            }`}
           >
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>{notification}</span>
+            {notification.kind === 'error'
+              ? <AlertCircle className="h-4 w-4 shrink-0" />
+              : <CheckCircle2 className="h-4 w-4 shrink-0" />}
+            <span>{notification.message}</span>
           </motion.div>
         )}
       </AnimatePresence>

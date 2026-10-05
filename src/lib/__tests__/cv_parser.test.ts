@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseTextToMasterVault } from '../cvUniversalParser';
 import { mergeImportedVault } from '../vaultImportMerge';
 import { MasterVault } from '../../types';
+import { DocumentTextLimitError, MAX_DOCUMENT_TEXT_CHARS, normalizeDocumentText } from '../textNormalization';
 
 function createMockVault(fullName = 'Użytkownik Bazowy'): MasterVault {
   return {
@@ -60,6 +61,14 @@ function createMockVault(fullName = 'Użytkownik Bazowy'): MasterVault {
 }
 
 describe('CV Universal Multi-Format Parser Suite', () => {
+  it('odrzuca wejście ponad limit zamiast zwracać pozornie kompletny, ucięty wynik', () => {
+    const longCv = `Anna Kowalska\nUmiejętności: Windows, Microsoft 365\nDoświadczenie zawodowe:\nAcme — Specjalistka wsparcia, 2020-2025\n${'Opis obowiązków. '.repeat(12_000)}\nUmiejętności: AWS`;
+
+    expect(longCv.length).toBeGreaterThan(200_000);
+    expect(() => parseTextToMasterVault(longCv, 'TXT')).toThrow(DocumentTextLimitError);
+    expect(() => normalizeDocumentText('A'.repeat(MAX_DOCUMENT_TEXT_CHARS + 1))).toThrow(DocumentTextLimitError);
+  });
+
   it('powinien wyodrębnić dane z tekstu CV (imię, email, telefon, stanowisko, umiejętności)', () => {
     const rawCvText = `
     Jan Nowak
@@ -82,6 +91,102 @@ describe('CV Universal Multi-Format Parser Suite', () => {
     expect(parsed.hardSkills).toContain('React');
     expect(parsed.toolsAndTech).toContain('Git');
     expect(parsed.history.length).toBeGreaterThan(0);
+  });
+
+  it('nie wciąga kolejnych sekcji do podsumowania i nie zapisuje opisu obowiązków jako firmy', () => {
+    const cv = `
+    Anna Kowalska
+    Stanowisko: Specjalistka wsparcia IT
+    Podsumowanie: Doświadczona specjalistka wsparcia z praktyką w diagnozowaniu problemów sprzętowych i systemowych.
+    Umiejętności: Windows, Microsoft 365, TCP/IP
+    Doświadczenie zawodowe:
+    2020-2025 Specjalistka wsparcia IT, Acme
+    Obsługiwałam zgłoszenia i konfigurowałam stacje robocze.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+
+    expect(parsed.personalInfo.summary).toBe(
+      'Doświadczona specjalistka wsparcia z praktyką w diagnozowaniu problemów sprzętowych i systemowych'
+    );
+    expect(parsed.hardSkills).toEqual(expect.arrayContaining(['Windows', 'Microsoft 365', 'TCP/IP']));
+    expect(parsed.history).toHaveLength(1);
+    expect(parsed.history[0]).toEqual(expect.objectContaining({
+      company: 'Acme',
+      role: 'Specjalistka wsparcia IT',
+      description: 'Obsługiwałam zgłoszenia i konfigurowałam stacje robocze.',
+    }));
+  });
+
+  it('wybiera tytuł z najnowszego stanowiska, gdy CV zapisano chronologicznie od starszego', () => {
+    const cv = `
+    Anna Kowalska
+    Doświadczenie zawodowe:
+    2018–2020 Specjalistka administracji — Firma Alfa Sp. z o.o.
+    - Prowadzenie dokumentacji.
+    2021–2025 Specjalistka wsparcia IT — Firma Beta Sp. z o.o.
+    - Obsługa zgłoszeń i diagnoza problemów użytkowników.
+    Umiejętności: Windows, Microsoft 365, obsługa zgłoszeń
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+
+    expect(parsed.history).toHaveLength(2);
+    expect(parsed.personalInfo.title).toBe('Specjalistka wsparcia IT');
+  });
+
+  it('nie bierze etykiety stanowiska ze starego wpisu pracy za tytuł kandydata', () => {
+    const cv = `
+    Anna Kowalska
+    Doświadczenie zawodowe:
+    Stanowisko: Specjalistka administracji — Firma Alfa Sp. z o.o., 2018–2020
+    - Prowadzenie dokumentacji.
+    Stanowisko: Specjalistka wsparcia IT — Firma Beta Sp. z o.o., 2021–2025
+    - Obsługa zgłoszeń.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+
+    expect(parsed.history).toHaveLength(2);
+    expect(parsed.personalInfo.title).toBe('Specjalistka wsparcia IT');
+  });
+
+  it('nie zgaduje tytułu na podstawie kolejności kilku stanowisk bez dat', () => {
+    const cv = `
+    Anna Kowalska
+    Doświadczenie zawodowe:
+    Specjalistka administracji — Firma Alfa Sp. z o.o.
+    - Prowadzenie dokumentacji.
+    Specjalistka wsparcia IT — Firma Beta Sp. z o.o.
+    - Obsługa zgłoszeń.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+
+    expect(parsed.history).toHaveLength(2);
+    expect(parsed.personalInfo.title).toBe('');
+  });
+
+  it('nie zapisuje zaprzeczonych ani dopiero poznawanych technologii jako umiejętności', () => {
+    const cv = `
+    Alicja Testowa
+    Specjalistka wsparcia operacyjnego
+    Podsumowanie: Nie znam SAP ani AWS, nie mam doświadczenia z Kubernetes. Jestem zainteresowana nauką tych narzędzi.
+    Umiejętności: obsługa klienta, dokumentacja, komunikacja, nie znam SAP ani AWS, w trakcie nauki Kubernetes
+    Doświadczenie zawodowe:
+    2021-2025 Specjalistka obsługi klienta, Acme
+    Obsługiwałam zgłoszenia i dokumentowałam rozwiązania.
+    `;
+
+    const parsed = parseTextToMasterVault(cv, 'TXT');
+    const hardSkills = parsed.hardSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'));
+    const toolsAndTech = parsed.toolsAndTech.map((skill) => skill.toLocaleLowerCase('pl-PL'));
+
+    expect(hardSkills).toEqual(expect.arrayContaining(['obsługa klienta', 'dokumentacja', 'komunikacja']));
+    expect(hardSkills).not.toEqual(expect.arrayContaining(['sap', 'aws', 'kubernetes']));
+    expect(hardSkills).not.toContain('nie znam sap ani aws');
+    expect(hardSkills).not.toContain('w trakcie nauki kubernetes');
+    expect(toolsAndTech).not.toEqual(expect.arrayContaining(['sap', 'aws', 'kubernetes']));
   });
 
   it('nie zniekształca apostrofów w nazwiskach', () => {
@@ -163,6 +268,37 @@ describe('CV Universal Multi-Format Parser Suite', () => {
     expect(parsed.certifications[0].name).toBe('AWS Certified Solutions Architect');
     expect(parsed.certifications[0].date).toBe('2022');
     expect(parsed.softSkills).toEqual(['Komunikacja', 'Praca zespołowa']);
+  });
+  it('zwraca stabilne identyfikatory przy ponownym parsowaniu tego samego CV', () => {
+    const cv = `
+    Adam Lewandowski
+    Title: Senior Fullstack Developer
+    Work Experience:
+    SoftwareHouse Polska | Senior Fullstack Developer
+    01.2021 - present
+    - Architecture of applications in Node.js
+    Skills: React, TypeScript
+    Languages
+    English - C1
+    Projects
+    System CRM Cloud - Lead Architect
+    Education
+    Politechnika Krakowska
+    Engineer in Informatics (2014 - 2018)
+    Certifications:
+    AWS Certificate - Amazon, 2022
+    `;
+
+    const first = parseTextToMasterVault(cv, 'TXT');
+    const second = parseTextToMasterVault(cv, 'TXT');
+
+    expect(first.history).toHaveLength(1);
+    expect(first.history[0].highlights).toHaveLength(1);
+    expect(first.education).toHaveLength(1);
+    expect(first.certifications).toHaveLength(1);
+    expect(first.languages).toHaveLength(1);
+    expect(first.projects).toHaveLength(1);
+    expect(second).toEqual(first);
   });
 });
 

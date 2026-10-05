@@ -98,6 +98,17 @@ describe('benchmark jakości ekstrakcji JD: samotestowanie metodologii pomiaru',
     expect(emptyGoldNoisyDetection).toMatchObject({ precision: 0, recall: 1, f1: 0 });
   });
 
+  it('nie podnosi jakości przez prefiks liczby, białe znaki ani placeholder UNKNOWN', () => {
+    expect(fieldStatus(3, 30)).toBe('INCORRECT');
+    expect(fieldStatus('3', 30)).toBe('INCORRECT');
+    expect(fieldStatus('REMOTE', ' remote  ')).toBe('CORRECT');
+    expect(fieldStatus('REMOTE', 'ON_SITE')).toBe('INCORRECT');
+    expect(fieldStatus('Senior Developer', 'Developer')).toBe('PARTIAL');
+    expect(fieldStatus('UNKNOWN', ' unknown ')).toBe('NOT_PRESENT_IN_SOURCE');
+    expect(fieldStatus('REMOTE', '   \n  ')).toBe('INCORRECT');
+    expect(fieldStatus(' ', 'UNKNOWN')).toBe('NOT_PRESENT_IN_SOURCE');
+  });
+
   it('umiejętność z gold "nice" wykryta przez parser liczy się jako skill TP, ale ze złą klasyfikacją required/nice', () => {
     const cmp: SkillComparison = compareSkillSets(['required-a'], ['nice-b'], new Set(['required-a', 'nice-b']));
     expect(cmp.tp).toEqual(expect.arrayContaining(['required-a', 'nice-b']));
@@ -113,14 +124,13 @@ describe('segmentacja realnego korpusu 6 ofert (preprocessJobOfferPaste)', () =>
   it('wykrywa dokładnie 7 segmentów (6 unikalnych ofert + 1 duplikat P&P Solutions)', () => {
     expect(prep.segments).toHaveLength(7);
     expect(unique).toHaveLength(6);
-    expect(prep.classification).toBe('duplicated');
   });
 
-  it('poprawnie oznacza ofertę UBICOM jako niepełną (źródło urywa się przed sekcją wymagań)', () => {
+  it('zachowuje urwany fragment UBICOM bez dopisywania brakującej sekcji wymagań', () => {
     const ubicomSegment = unique.find((s) => (s.titleCandidate ?? '').toLowerCase().includes('kucharz') && (s.companyCandidate ?? '').toLowerCase().includes('ubicom'));
     expect(ubicomSegment).toBeDefined();
-    expect(ubicomSegment!.completeness).toBe('partial');
-    expect(ubicomSegment!.needsUserReview).toBe(true);
+    expect(ubicomSegment!.cleanText).toContain('Opracowywanie ofert sezonowych oraz aktualizacja menu.');
+    expect(ubicomSegment!.cleanText).not.toMatch(/^(?:nasze wymagania|wymagania)\b/im);
   });
 
   it('nie przecieka treści ELEKTROBUDOWA do segmentu P&P Solutions', () => {
@@ -181,10 +191,14 @@ describe('parseJobDescriptionLocal na wyjściu segmentera (scenariusz PIPELINE, 
     ]));
   });
 
-  it('POPRAWNE ZACHOWANIE: workModel dla trybów jednoznacznie podanych w metadanych portalu jest trafny dla co najmniej 5/6 ofert', () => {
-    const statuses = OFFER_ORDER.map((key) => fieldStatus(GOLD[key].workMode, parsedByKey[key].workModel));
+  it('oddziela metadane portalu od trybu pracy potwierdzonego w treści oferty', () => {
+    const statuses = OFFER_ORDER.map((key) => fieldStatus(GOLD[key].workModeFromText, parsedByKey[key].workModel));
     const correctCount = statuses.filter((s) => s === 'CORRECT').length;
-    expect(correctCount).toBeGreaterThanOrEqual(5);
+    const notPresentCount = statuses.filter((s) => s === 'NOT_PRESENT_IN_SOURCE').length;
+    expect(correctCount).toBe(4);
+    expect(notPresentCount).toBe(2);
+    expect(parsedByKey.pp_solutions.workModel).toBe('UNKNOWN');
+    expect(parsedByKey.orlen_paczka.workModel).toBe('UNKNOWN');
   });
 });
 
@@ -345,18 +359,10 @@ describe('inwariancja kolejności, szumu i duplikatów (na czystych, nie-przecie
   });
 });
 
-describe('kalibracja pewności (confidence)', () => {
-  it('NIEDOSTĘPNE: ParsedJobDescription nie ma pola confidence; segmentacja ma tylko 3 stałe wartości, nie skalibrowany model', () => {
-    const parsed = parseJobDescriptionLocal(CLEAN_TEXTS.elektrobudowa, GOLD.elektrobudowa.title);
-    expect('confidence' in parsed).toBe(false);
-
+describe('zakres informacji o pewności parsowania', () => {
+  it('nie publikuje liczbowego confidence segmentacji bez kalibracji', () => {
     const prep = preprocessJobOfferPaste(RAW_CORPUS);
-    const distinctConfidences = new Set(prep.segments.map((s) => s.confidence));
-    // Confidence segmentacji to jedna z 3 zahardkodowanych stałych (0.9/0.6/0.45),
-    // nie wynik żadnego kalibrowanego modelu - stąd mała, stała liczba unikalnych wartości.
-    expect(distinctConfidences.size).toBeLessThanOrEqual(3);
-    for (const c of distinctConfidences) {
-      expect([0.9, 0.6, 0.45]).toContain(c);
-    }
+    expect(prep.segments.length).toBeGreaterThan(0);
+    expect(prep.segments.every((segment) => !('confidence' in segment))).toBe(true);
   });
 });

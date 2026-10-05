@@ -2,11 +2,12 @@ import type { MasterVault } from '../types';
 import { CloudVaultConflictError, saveCloudVault } from './cloudVault';
 import { cloudVaultOutboxKeyFor, cloudVaultRevisionKeyFor } from './cloudVaultKeys';
 import { readJson, removeRaw, writeJson } from './storage';
+import { parsePendingVaultEnvelope, parseStoredCloudVault } from './cloudVaultValidation';
 
 export { cloudVaultOutboxKeyFor } from './cloudVaultKeys';
 
 /** Stan pokazywany użytkownikowi przy utrwalaniu Master Vaultu. */
-export type VaultSyncStatus = 'local' | 'pending' | 'cloud' | 'conflict';
+export type VaultSyncStatus = 'local' | 'pending' | 'cloud' | 'conflict' | 'unverified';
 
 export interface PendingCloudVaultSave {
   ownerId: string;
@@ -42,6 +43,11 @@ export function resumeCloudVaultFlush(ownerId: string): void {
   flushSuspendedOwners.delete(ownerId);
 }
 
+/** Odczyt nie potwierdził stanu konta; wskaźnik nie może twierdzić, że CV zapisano w chmurze. */
+export function markCloudVaultUnverified(ownerId: string): void {
+  publish(ownerId, 'unverified');
+}
+
 /** Po udanym bootstrapie kolejkuje cały scalony obraz przed odblokowaniem sieci. */
 export async function completeCloudVaultBootstrap(
   ownerId: string,
@@ -50,6 +56,10 @@ export async function completeCloudVaultBootstrap(
   remoteUpdatedAt: string | null,
   sender: CloudVaultSender = saveCloudVault,
 ): Promise<VaultSyncStatus> {
+  if (hasInvalidPendingCloudVault(ownerId)) {
+    publish(ownerId, 'pending');
+    return 'pending';
+  }
   if (getPendingCloudVault(ownerId)?.conflict) {
     publish(ownerId, 'conflict');
     return 'conflict';
@@ -67,26 +77,19 @@ export async function completeCloudVaultBootstrap(
   return flushPendingCloudVault(ownerId, sender);
 }
 
-function isPendingSave(value: unknown, ownerId: string): value is PendingCloudVaultSave {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<PendingCloudVaultSave>;
-  return (
-    candidate.ownerId === ownerId &&
-    typeof candidate.revision === 'number' &&
-    candidate.revision > 0 &&
-    typeof candidate.queuedAt === 'string' &&
-    (candidate.baseUpdatedAt === undefined || candidate.baseUpdatedAt === null || typeof candidate.baseUpdatedAt === 'string') &&
-    Boolean(candidate.vault && typeof candidate.vault === 'object')
-  );
-}
-
 export function getPendingCloudVault(ownerId: string): PendingCloudVaultSave | null {
-  const value = readJson<PendingCloudVaultSave | null>(cloudVaultOutboxKeyFor(ownerId), null);
-  if (!isPendingSave(value, ownerId)) return null;
+  const value = parsePendingVaultEnvelope(readJson<unknown>(cloudVaultOutboxKeyFor(ownerId), null), ownerId);
+  if (!value) return null;
   return {
     ...value,
     baseUpdatedAt: value.baseUpdatedAt ?? readJson<string | null>(cloudVaultRevisionKeyFor(ownerId), null),
   };
+}
+
+/** Invalid pending data remains in storage and must never be mistaken for an empty queue. */
+export function hasInvalidPendingCloudVault(ownerId: string): boolean {
+  const raw = readJson<unknown>(cloudVaultOutboxKeyFor(ownerId), null);
+  return raw !== null && parsePendingVaultEnvelope(raw, ownerId) === null;
 }
 
 function publish(ownerId: string, status: VaultSyncStatus): void {
@@ -95,6 +98,7 @@ function publish(ownerId: string, status: VaultSyncStatus): void {
 }
 
 export function getCloudVaultSyncStatus(ownerId: string): VaultSyncStatus {
+  if (hasInvalidPendingCloudVault(ownerId)) return 'pending';
   const pending = getPendingCloudVault(ownerId);
   if (pending?.conflict) return 'conflict';
   if (pending) return 'pending';
@@ -126,6 +130,11 @@ export function enqueueCloudVaultSave(
   vault: MasterVault,
   options: { resetConflict?: boolean; baseUpdatedAt?: string | null } = {},
 ): PendingCloudVaultSave {
+  if (hasInvalidPendingCloudVault(ownerId)) {
+    throw new Error('Lokalny zapis CV ma nieprawidłowy format i nie został nadpisany.');
+  }
+  const validVault = parseStoredCloudVault(vault);
+  if (!validVault) throw new Error('Nie dodano CV do synchronizacji: snapshot ma nieprawidłowy format.');
   const previous = getPendingCloudVault(ownerId);
   const pending: PendingCloudVaultSave = {
     ownerId,
@@ -135,7 +144,7 @@ export function enqueueCloudVaultSave(
       ? options.baseUpdatedAt
       : previous?.baseUpdatedAt ?? readJson<string | null>(cloudVaultRevisionKeyFor(ownerId), null),
     ...(previous?.conflict && !options.resetConflict ? { conflict: true } : {}),
-    vault,
+    vault: validVault,
   };
 
   writeJson(cloudVaultOutboxKeyFor(ownerId), pending);
@@ -166,6 +175,10 @@ export async function resolvePendingCloudVaultConflict(
   remoteUpdatedAt: string | null,
   sender: CloudVaultSender = saveCloudVault,
 ): Promise<VaultSyncStatus> {
+  if (hasInvalidPendingCloudVault(ownerId)) {
+    publish(ownerId, 'pending');
+    return 'pending';
+  }
   const pending = getPendingCloudVault(ownerId);
   if (!pending?.conflict) {
     throw new Error('Nie ma oczekującego konfliktu CV do rozstrzygnięcia.');
@@ -193,6 +206,10 @@ export function flushPendingCloudVault(
   ownerId: string,
   sender: CloudVaultSender = saveCloudVault
 ): Promise<VaultSyncStatus> {
+  if (hasInvalidPendingCloudVault(ownerId)) {
+    publish(ownerId, 'pending');
+    return Promise.resolve('pending');
+  }
   if (flushSuspendedOwners.has(ownerId)) {
     const status = getCloudVaultSyncStatus(ownerId);
     publish(ownerId, status);

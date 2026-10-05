@@ -9,6 +9,10 @@ import { extractD09Requirements } from './requirementParser';
 import { scoreD09JobAlignment } from './scorer';
 import type { D09AuditResult, D09CandidateEvidence } from './types';
 
+function clampSourceCompleteness(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
+
 export async function runD09FromVault(input: {
   vault: MasterVault;
   jobDescription: string;
@@ -22,7 +26,9 @@ export async function runD09FromVault(input: {
 }): Promise<D09AuditResult> {
   const extraction = await extractD09Requirements(input.jobDescription);
   const vaultEvidence = await buildD09CandidateEvidenceFromVault(input.vault);
-  const completeness = Math.min(1, Math.max(0, input.vaultCompletenessConfidence ?? 0.65));
+  const completeness = input.vaultCompletenessConfidence === undefined
+    ? 0.65
+    : clampSourceCompleteness(input.vaultCompletenessConfidence);
   return scoreD09JobAlignment({
     extraction,
     candidateEvidence: [...vaultEvidence, ...(input.inferredEvidence ?? [])],
@@ -43,12 +49,13 @@ export async function runD09FromCanonicalDocument(input: {
   const extraction = await extractD09Requirements(input.jobDescription);
   const candidateEvidence = await buildD09CandidateEvidenceFromDocument(input.document);
   const documentGate = classifyDocumentForAudit(input.document.fullText);
+  const sourceCompletenessConfidence = clampSourceCompleteness(input.document.extractionConfidence);
 
   return scoreD09JobAlignment({
     extraction,
     candidateEvidence: [...candidateEvidence, ...(input.inferredEvidence ?? [])],
     documentClass: documentGate.documentClass,
-    sourceCompletenessConfidence: input.document.extractionConfidence,
+    sourceCompletenessConfidence,
     sourceMode: 'EXTRACTED_DOCUMENT',
   });
 }

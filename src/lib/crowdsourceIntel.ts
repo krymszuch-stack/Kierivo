@@ -85,16 +85,19 @@ export function contributeInterviewQuestion(
   companyName: string,
   jobTitle: string,
   question: string
-): void {
+): Promise<boolean> {
   const trimmed = question.trim();
-  if (companyName.trim().length < 2 || jobTitle.trim().length < 2 || trimmed.length < 3) return;
+  if (companyName.trim().length < 2 || jobTitle.trim().length < 2 || trimmed.length < 3) {
+    return Promise.resolve(false);
+  }
 
-  void api
+  return api
     .post('/api/intel/job', {
       companyName: companyName.trim(),
       jobTitle: jobTitle.trim(),
       requiredSkills: [],
       interviewQuestions: [trimmed.slice(0, 400)],
     })
-    .catch(() => undefined);
+    .then(() => true)
+    .catch(() => false);
 }

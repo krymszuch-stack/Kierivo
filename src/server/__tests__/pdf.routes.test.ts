@@ -290,7 +290,9 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Sukces (200) i poprawny format odpowiedzi', () => {
-    it('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {
+    // Osobny krok CI ustawia tę flagę po instalacji silnika; pozostałe
+    // workflowy testują kontrakt trasy bez wymagania środowiska Python.
+    it.runIf(process.env.RUN_PDF_INTEGRATION === '1')('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {
       // ATS jest tu odizolowany od testu renderowania. Trasa, adapter oraz
       // proces Python/ReportLab/pikepdf pozostają prawdziwe.
       vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValueOnce(SUCCESS_FIXTURE);
@@ -367,6 +369,8 @@ describe('pdf.routes API Suite (unit)', () => {
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('application/json');
       expect(res.headers.get('x-request-id')).toBe('req-success-200');
+      expect(res.headers.has('x-ats-score')).toBe(false);
+      expect(res.headers.has('x-ats-status')).toBe(false);
 
       const data = await res.json();
       expect(data.success).toBe(true);
@@ -378,6 +382,50 @@ describe('pdf.routes API Suite (unit)', () => {
       const pdfText = Buffer.from(data.pdf, 'base64').toString('ascii');
       expect(pdfText.startsWith('%PDF-')).toBe(true);
       expect(data.atsValidation).toBeDefined();
+      expect(data.atsValidation).not.toHaveProperty('overallScore');
+      expect(data.atsValidation).not.toHaveProperty('overallStatus');
+      expect(data.atsValidation.vendors.every((vendor: Record<string, unknown>) =>
+        !Object.hasOwn(vendor, 'parseScore') && !Object.hasOwn(vendor, 'status')
+      )).toBe(true);
+    });
+
+    it('zwraca i zachowuje w cache ostrzeżenie o treści pominiętej przez limit stron', async () => {
+      vi.spyOn(atsExtractModule, 'runAtsExtract').mockResolvedValue(SUCCESS_FIXTURE);
+      const spawn = vi.spyOn(pythonRunner, 'spawn').mockImplementationOnce(async (_bin, args) => {
+        const outPdfPath = args[args.indexOf('-o') + 1];
+        await fs.writeFile(outPdfPath, Buffer.from('%PDF-1.4\n%%EOF'));
+        await fs.writeFile(outPdfPath.replace(/\.pdf$/, '.semantic.json'), JSON.stringify({
+          governance: {
+            summary_truncated: true,
+            skills_dropped: 2,
+            exp_dropped: 3,
+            bullets_dropped: 4,
+          },
+        }));
+        return { code: 0, stdout: 'OK', stderr: '', durationMs: 25 };
+      });
+      const body = JSON.stringify({ vault: baseVault(), theme: 'parchment', layout: 'sidebar', targetPages: 2 });
+      const request = () => fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+
+      const first = await request();
+      const firstData = await first.json();
+      expect(first.status).toBe(200);
+      expect(firstData.contentWarnings).toEqual([
+        'Silnik dopasował CV do limitu 2 stron i pominął część treści (umiejętności: 2, wpisy doświadczenia: 3, punkty doświadczenia: 4, skrócono podsumowanie zawodowe). Sprawdź pobrany dokument przed wysłaniem.',
+      ]);
+      expect(first.headers.get('x-cv-content-warnings')).toBe(encodeURIComponent(firstData.contentWarnings[0]));
+
+      const cached = await request();
+      const cachedData = await cached.json();
+      expect(cached.headers.get('x-cv-cache')).toBe('HIT');
+      expect(cached.headers.get('x-cv-content-warning-count')).toBe('1');
+      expect(cached.headers.get('x-cv-content-warnings')).toBe(encodeURIComponent(firstData.contentWarnings[0]));
+      expect(cachedData.contentWarnings).toEqual(firstData.contentWarnings);
+      expect(spawn).toHaveBeenCalledTimes(1);
     });
 
     it('nie używa pliku z cache bez wybranego zdjęcia przy eksporcie z avatarem', async () => {

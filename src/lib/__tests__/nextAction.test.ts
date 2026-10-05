@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveNextAction, NEXT_ACTION_PRIORITY } from '../nextAction';
 import { measureVaultCompleteness } from '../vaultCompleteness';
 import { createEmptyVault } from '../sampleVault';
-import { JobApplication, MasterVault } from '../../types';
+import { CANONICAL_ATS_SCORE_PROVENANCE, JobApplication, MasterVault } from '../../types';
 
 /**
  * Testy trzymają się jednej zasady: każda reguła dostaje przypadek, w którym
@@ -131,7 +131,7 @@ describe('Silnik następnego kroku', () => {
   });
 
   describe('reguła 2 — follow-up po rozmowie', () => {
-    it('podpowiada mail, gdy rozmowa się odbyła i nic nie poszło', () => {
+    it('podpowiada przygotowanie follow-upu, gdy rozmowa się odbyła i nie oznaczono wysłania', () => {
       const action = resolveNextAction({
         vault: readyVault(),
         applications: [
@@ -140,7 +140,10 @@ describe('Silnik następnego kroku', () => {
         now: NOW,
       });
 
-      expect(action.actionType).toBe('send_followup');
+      expect(action.actionType).toBe('prepare_followup');
+      expect(action.title).toBe('Przygotuj follow-up po rozmowie');
+      expect(action.description).toContain('Kierivo nie wysyła jej za Ciebie');
+      expect(action.description).toContain('ręcznie oznacz follow-up');
       expect(action.context.company).toBe('Elektrobud');
     });
 
@@ -157,7 +160,7 @@ describe('Silnik następnego kroku', () => {
         now: NOW,
       });
 
-      expect(action.actionType).not.toBe('send_followup');
+      expect(action.actionType).not.toBe('prepare_followup');
     });
 
     it('ustępuje rozmowie, która dopiero się odbędzie', () => {
@@ -201,7 +204,7 @@ describe('Silnik następnego kroku', () => {
     });
   });
 
-  describe('reguła 4 — pierwsza oferta', () => {
+  describe('reguła 4 — brak aplikacji w Pipeline', () => {
     it('prosi o wklejenie oferty, gdy profil gotowy i nie ma aplikacji', () => {
       const action = resolveNextAction({
         vault: readyVault(),
@@ -209,7 +212,9 @@ describe('Silnik następnego kroku', () => {
         now: NOW,
       });
 
-      expect(action.actionType).toBe('add_first_job');
+      expect(action.actionType).toBe('analyze_job');
+      expect(action.title).toBe('Wklej ofertę do analizy');
+      expect(action.title).not.toMatch(/pierwsz/i);
       expect(action.deepLink.tab).toBe('aplikuj');
     });
   });
@@ -219,10 +224,12 @@ describe('Silnik następnego kroku', () => {
       const action = resolveNextAction({
         vault: readyVault(),
         applications: [
-          application({ id: 'lepsza', atsScore: 65, missingKeywords: ['UDT'] }),
+          application({ id: 'lepsza', atsScore: 65, atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE, atsScoreContext: { calculatedAt: '2026-05-01T12:00:00.000Z', calculationMonth: '2026-05', detectedRequirementCount: 4, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 }, missingKeywords: ['UDT'] }),
           application({
             id: 'gorsza',
             atsScore: 41,
+            atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+            atsScoreContext: { calculatedAt: '2026-05-01T12:00:00.000Z', calculationMonth: '2026-05', detectedRequirementCount: 4, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
             missingKeywords: ['SEP G2', 'UDT', 'F-Gaz', 'praca na wysokości'],
           }),
         ],
@@ -241,6 +248,66 @@ describe('Silnik następnego kroku', () => {
         now: NOW,
       });
 
+      expect(action.actionType).not.toBe('improve_ats');
+    });
+
+    it('nie używa starszej liczby bez kanonicznego źródła wyniku', () => {
+      const action = resolveNextAction({
+        vault: readyVault(),
+        applications: [application({ atsScore: 12, missingKeywords: ['Windows'] })],
+        now: NOW,
+      });
+
+      expect(action.actionType).not.toBe('improve_ats');
+    });
+
+    it('nie zaleca poprawiania wyniku o ograniczonej albo nieznanej podstawie', () => {
+      const actions = [
+        application({
+          atsScore: 41,
+          atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+          atsScoreContext: { detectedRequirementCount: 1, profileCompleteness: 100, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
+        }),
+        application({
+          atsScore: 42,
+          atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+          atsScoreContext: { detectedRequirementCount: 4, profileCompleteness: 49, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
+        }),
+        application({
+          atsScore: 43,
+          atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE,
+        }),
+      ];
+
+      for (const record of actions) {
+        const action = resolveNextAction({ vault: readyVault(), applications: [record], now: NOW });
+        expect(action.actionType).not.toBe('improve_ats');
+      }
+    });
+
+    it('nie zaleca poprawy na podstawie liczby obliczonej poprzednimi regułami', () => {
+      const action = resolveNextAction({
+        vault: readyVault(), now: NOW,
+        applications: [application({
+          atsScore: 12, atsScoreProvenance: 'canonical-v1', missingKeywords: ['UDT'],
+          atsScoreContext: { detectedRequirementCount: 4, profileCompleteness: 86, unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0, unconfirmedRequirementCount: 0, scoreContextVersion: 5, careerEvidenceAvailable: true, careerEvidenceVersion: 2 },
+        })],
+      });
+      expect(action.actionType).not.toBe('improve_ats');
+    });
+
+    it('nie zaleca poprawy na podstawie oceny z poprzedniego miesiąca', () => {
+      const context = {
+        detectedRequirementCount: 4, profileCompleteness: 86,
+        unmetBlockingRequirementCount: 0, unconfirmedBlockingRequirementCount: 0,
+        unconfirmedRequirementCount: 0, scoreContextVersion: 5 as const,
+        careerEvidenceAvailable: true, careerEvidenceVersion: 2 as const,
+        calculatedAt: '2026-04-20T10:00:00.000Z', calculationMonth: '2026-04',
+      };
+      const action = resolveNextAction({
+        vault: readyVault(), now: NOW,
+        applications: [application({ atsScore: 12, atsScoreProvenance: CANONICAL_ATS_SCORE_PROVENANCE, atsScoreContext: context, missingKeywords: ['UDT'] })],
+      });
       expect(action.actionType).not.toBe('improve_ats');
     });
 
@@ -343,9 +410,9 @@ describe('Silnik następnego kroku', () => {
   it('trzyma priorytet reguł zapisany w raporcie strategicznym', () => {
     expect(NEXT_ACTION_PRIORITY).toEqual([
       'pre_call_brief',
-      'send_followup',
+      'prepare_followup',
       'complete_vault',
-      'add_first_job',
+      'analyze_job',
       'improve_ats',
       'follow_up_application',
       'daily_challenge',

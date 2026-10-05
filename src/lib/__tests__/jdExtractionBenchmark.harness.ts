@@ -5,6 +5,11 @@
  * jest importowany przez `jdExtractionBenchmark.test.ts`.
  */
 import type { ParsedJobDescription } from '../jdParser';
+import {
+  compareMeasuredText,
+  finiteMeasuredNumber,
+  isMissingMeasuredValue,
+} from './fieldMeasurement';
 
 /**
  * Grupy równoważności semantycznej — WYŁĄCZNIE na potrzeby tego benchmarku.
@@ -91,27 +96,30 @@ export function compareSkillSets(requiredGold: string[], niceGold: string[], det
 
 export type FieldStatus = 'CORRECT' | 'PARTIAL' | 'INCORRECT' | 'NOT_PRESENT_IN_SOURCE';
 
-function isEmptyValue(v: unknown): boolean {
-  return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
-}
-
 /**
- * Ocena pola strukturalnego. Celowo zgruba: parser zwraca w wiekszosci
- * nieustrukturyzowane stringi (np. `salaryRange` jako jeden tekst zamiast
- * osobnych min/max/currency/period/grossNet z gold), wiec "CORRECT" oznacza
- * tu "wartosc parsera zawiera lub jest zgodna z oczekiwana trescia", a nie
- * "identyczny ksztalt danych" - to jest udokumentowane ograniczenie metody
- * pomiaru, nie parsera.
+ * Dokładny wynik wymaga równości znormalizowanych wartości. Powiązane teksty
+ * mogą dostać PARTIAL; liczby nie są porównywane przez zawieranie podciągu.
+ * Puste wartości i placeholder UNKNOWN oznaczają brak treści źródłowej.
  */
 export function fieldStatus(gold: unknown, parsed: unknown): FieldStatus {
-  const goldEmpty = isEmptyValue(gold);
-  const parsedEmpty = isEmptyValue(parsed);
+  const goldEmpty = isMissingMeasuredValue(gold);
+  const parsedEmpty = isMissingMeasuredValue(parsed);
   if (goldEmpty) return parsedEmpty ? 'NOT_PRESENT_IN_SOURCE' : 'INCORRECT';
   if (parsedEmpty) return 'INCORRECT';
+
+  const goldNumber = finiteMeasuredNumber(gold);
+  const parsedNumber = finiteMeasuredNumber(parsed);
+  if (goldNumber !== null || parsedNumber !== null) {
+    return goldNumber !== null && goldNumber === parsedNumber ? 'CORRECT' : 'INCORRECT';
+  }
+
+  if (typeof gold === 'string' && typeof parsed === 'string') {
+    return compareMeasuredText(gold, parsed);
+  }
+
   const g = JSON.stringify(gold).toLowerCase();
   const p = JSON.stringify(parsed).toLowerCase();
-  if (g === p || p.includes(g) || g.includes(p)) return 'CORRECT';
-  return 'PARTIAL';
+  return g === p ? 'CORRECT' : 'INCORRECT';
 }
 
 export function macroF1(f1s: number[]): number {

@@ -29,7 +29,7 @@ export function buildCvPlainText(vault: MasterVault, tailoredResume?: TailoredRe
     .filter((value): value is string => Boolean(value));
   if (header.length) sections.push(header.join('\n'));
 
-  const contact = [personal.email, personal.phone, personal.location, personal.linkedin, personal.github]
+  const contact = [personal.email, personal.phone, personal.location, personal.linkedin, personal.github, personal.website]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
   if (contact.length) sections.push(contact.join(' | '));
@@ -65,6 +65,15 @@ export function buildCvPlainText(vault: MasterVault, tailoredResume?: TailoredRe
     return [degree, entry.institution, dates].filter(Boolean).join('\n');
   }).filter(Boolean);
   if (education.length) sections.push(`EDUKACJA & WYKSZTAŁCENIE:\n${education.join('\n\n')}`);
+
+  const projects = (vault.projects || []).map((project) => [
+    [project.name, project.role].filter(Boolean).join(' — '),
+    project.description?.trim(),
+    Array.isArray(project.techStack) ? project.techStack.filter(Boolean).join(' · ') : '',
+    project.metrics?.trim(),
+    project.link?.trim(),
+  ].filter(Boolean).join('\n')).filter(Boolean);
+  if (projects.length) sections.push(`PROJEKTY:\n${projects.join('\n\n')}`);
 
   const licenses = (vault.profiler?.licenses ?? []).map((id) =>
     ALL_LICENSES.find((license) => license.id === id)?.label || id

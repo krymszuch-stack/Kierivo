@@ -3,6 +3,10 @@ import { StorageKeys, onAppStorageWiped, readJson, writeJson } from '../lib/stor
 import { clientEnv } from '../lib/clientEnv';
 import { ApiError, api } from '../lib/apiClient';
 import { FREE_BETA_ACTIVE } from '../lib/beta';
+import { FREE_DAILY_AI_USES, getAiQuotaDayKeyUtc } from '../lib/aiQuotaPolicy';
+import { createEntitlementRefreshGuard } from '../lib/entitlementRefreshGuard';
+
+export { FREE_DAILY_AI_USES } from '../lib/aiQuotaPolicy';
 
 /**
  * Uprawnienia i pozostałe limity — **wyłącznie na potrzeby interfejsu**.
@@ -29,7 +33,7 @@ export interface Usage {
   /** Pozostałe **dzisiejsze** wywołania AI — dobowa rezerwa to to, co serwer faktycznie egzekwuje. */
   aiUses: number;
   monthKey: string;
-  /** Klucz doby licznika AI; zmiana znaczy „północy za nami, serwer już odliczył od nowa”. */
+  /** Klucz doby licznika AI w UTC; równy dacie `current_date` w domyślnej strefie Supabase. */
   dayKey: string;
 }
 
@@ -44,13 +48,12 @@ export interface EntitlementsState {
 }
 
 const FREE_IMPORTS = 1;
-const FREE_AI_USES = 25;
+const FREE_AI_USES = FREE_DAILY_AI_USES;
 
 export const FREE_MONTHLY_IMPORTS = FREE_IMPORTS;
-export const FREE_DAILY_AI_USES = FREE_AI_USES;
 
 const getMonthKey = () => new Date().toISOString().slice(0, 7);
-const getDayKey = () => new Date().toISOString().slice(0, 10);
+const getDayKey = () => getAiQuotaDayKeyUtc();
 
 export function unauthenticatedState(): EntitlementsState {
   return {
@@ -101,6 +104,7 @@ function loadInitialState(): EntitlementsState {
 
 let globalState: EntitlementsState = loadInitialState();
 const listeners = new Set<() => void>();
+const refreshGuard = createEntitlementRefreshGuard();
 
 function setState(updater: (prev: EntitlementsState) => EntitlementsState): void {
   globalState = updater(globalState);
@@ -113,6 +117,7 @@ function setState(updater: (prev: EntitlementsState) => EntitlementsState): void
  * Usuwa odziedziczone wartości z poprzedniej sesji.
  */
 export function resetEntitlementsToUnauthenticated(): void {
+  refreshGuard.invalidateSession();
   setState(() => unauthenticatedState());
 }
 
@@ -127,6 +132,8 @@ export function setAuthenticatedEntitlements(
   subscription: Subscription = { status: 'free' },
   usage?: Partial<Usage>
 ): void {
+  // Ręczne ustawienie stanu (np. po zmianie konta) unieważnia starszy odczyt `/api/me`.
+  refreshGuard.invalidateSession();
   setState(() => ({
     subscription,
     usage: {
@@ -142,6 +149,7 @@ export function setAuthenticatedEntitlements(
 }
 
 onAppStorageWiped(() => {
+  refreshGuard.invalidateSession();
   globalState = unauthenticatedState();
   listeners.forEach((notify) => notify());
 });
@@ -179,21 +187,6 @@ export function consumeAiLocally(): boolean {
   return consumeLocal('ai');
 }
 
-export function refundAiLocally(): void {
-  const field = 'aiUses';
-  setState((prev) => {
-    if (!prev.usage) return prev;
-    return {
-      ...prev,
-      usage: {
-        ...prev.usage,
-        [field]: Math.min(FREE_DAILY_AI_USES, (prev.usage[field] ?? 0) + 1),
-      },
-    };
-  });
-}
-
-
 export function useEntitlements() {
   const [state, setLocalState] = useState<EntitlementsState>(globalState);
 
@@ -208,9 +201,11 @@ export function useEntitlements() {
 
   const refresh = useCallback(async (): Promise<void> => {
     if (!clientEnv.backendConfigured) return;
+    const token = refreshGuard.begin();
 
     try {
       const me = await api.get<MeResponse>('/api/me');
+      if (!refreshGuard.isCurrent(token)) return;
       if (me && me.subscription) {
         setState(() => ({
           subscription: me.subscription,
@@ -226,6 +221,7 @@ export function useEntitlements() {
         }));
       }
     } catch (err) {
+      if (!refreshGuard.isCurrent(token)) return;
       if (err instanceof ApiError && err.isUnauthorized) {
         resetEntitlementsToUnauthenticated();
         return;

@@ -134,6 +134,46 @@ describe('D10 Formal Requirements', () => {
     expect(result.formal.matches[0].status).toBe('UNKNOWN');
   });
 
+  it('nie uznaje braku zrodla kandydata za dowod braku obowiazkowej kwalifikacji', async () => {
+    const result = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nWymagane uprawnienia SEP E1',
+      referenceDateIso,
+    });
+
+    expect(result.applicability).toBe('INSUFFICIENT_DATA');
+    expect(result.score).toBeNull();
+    expect(result.formal.matches[0].status).toBe('UNKNOWN');
+    expect(result.missingEvidence[0].description).toContain('Nie da się potwierdzić ani wykluczyć');
+  });
+
+  it('nie wyprowadza kompletnosci z niezweryfikowanego fragmentu tekstu kandydata', async () => {
+    const result = await runD10FormalAudit({
+      jobDescription: 'Wymagania:\nWymagane uprawnienia SEP E1',
+      candidateText: 'Doświadczenie: prace serwisowe przy instalacjach.',
+      referenceDateIso,
+    });
+
+    expect(result.applicability).toBe('INSUFFICIENT_DATA');
+    expect(result.score).toBeNull();
+    expect(result.formal.matches[0].status).toBe('UNKNOWN');
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'traktuje niefinitywna kompletnosc zrodla (%s) jako niedostepna',
+    async (sourceCompletenessConfidence) => {
+      const result = await runD10FormalAudit({
+        jobDescription: 'Wymagania:\nWymagane uprawnienia SEP E1',
+        candidateText: 'Doświadczenie: prace serwisowe przy instalacjach.',
+        sourceCompletenessConfidence,
+        referenceDateIso,
+      });
+
+      expect(result.applicability).toBe('INSUFFICIENT_DATA');
+      expect(result.score).toBeNull();
+      expect(result.formal.matches[0].status).toBe('UNKNOWN');
+    },
+  );
+
   it('renormalizes preferred-only requirements without inventing a mandatory group', async () => {
     const result = await runD10FormalAudit({
       jobDescription: 'Mile widziane:\nPMP certification',

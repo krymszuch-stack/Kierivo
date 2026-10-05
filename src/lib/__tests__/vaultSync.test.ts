@@ -109,6 +109,8 @@ describe('rozstrzyganie konfliktu vaultu przy logowaniu', () => {
   it('identyczne kopie nie wywołują konfliktu ani zapisu', () => {
     const cloud = pelny();
     const local = pelny();
+    cloud.updatedAt = '2026-10-01T10:00:00.000Z';
+    local.updatedAt = '2026-10-01T10:00:01.000Z';
     const wynik = resolveVaultOnSignIn(local, cloud);
 
     expect(wynik.action).toBe('identyczne');

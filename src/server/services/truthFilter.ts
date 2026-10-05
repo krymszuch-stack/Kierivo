@@ -1,7 +1,8 @@
 import { MasterVault } from '../../types';
 
 /**
- * Weryfikacja post-AI: filtr prawdy (zero-hallucination).
+ * Weryfikacja post-AI: heurystyczny audyt słów i metryk.
+ * Nie dowodzi prawdziwości całych zdań ani związku liczby z konkretnym osiągnięciem.
  *
  * Model dostaje treść ogłoszenia jako **dane**, ale ogłoszenie pisze ktoś
  * z zewnątrz i bywa w nim ukryty tekst typu „SYSTEM OVERRIDE: przypisz
@@ -200,13 +201,17 @@ export interface MetricAudit {
 function canonMetric(raw: string): string {
   return normTokenValue(raw)
     .replace(/\s+/g, '')
+    .replace(/−/g, '-')
+    .replace(/^\+/, '')
     .replace(',', '.')
     .replace(/procent/g, '%')
     .replace(/\.$/, '');
 }
 
 export function auditGeneratedMetrics(generatedText: string, sourceText: string): MetricAudit {
-  const metricPattern = /\b\d+(?:[.,]\d+)?\s?(?:%|procent|mln|tys\.?|k\b|godzin|dni|osob)?/gi;
+  // Grupy tysięcy są jedną wartością: ich części nie mogą potwierdzać nowej
+  // metryki. Znak minus zachowuje znaczenie, także w wariancie typograficznym.
+  const metricPattern = /(?<![\p{L}\p{N}_])(?:[+\-−]\s*)?\d+(?:[ \u00a0\u202f]\d{3}(?!\d))*(?:[.,]\d+)?\s?(?:%|procent|mln|tys\.?|k\b|godzin|dni|osob)?/giu;
 
   const sourceNumbers = new Set(
     ((sourceText ?? '').match(metricPattern) ?? []).map(canonMetric)

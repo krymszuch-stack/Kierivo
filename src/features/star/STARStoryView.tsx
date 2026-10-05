@@ -13,6 +13,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { MasterVault, STARStory } from '../../types';
+import { getLatestExperience } from '../../lib/experienceChronology';
 import {
   buildStarStoriesFromVault,
   filterStarStoriesByTags,
@@ -118,10 +119,11 @@ export const STARStoryView: React.FC<STARStoryViewProps> = ({
     return filterStarStoriesByTags(stories, activeTags, searchQuery);
   }, [stories, activeTags, searchQuery]);
 
-  // Pierwsza metryka pierwszego wpisu doświadczenia — dokładnie tyle, ile
+  // Metryka jednoznacznie najnowszego wpisu — dokładnie tyle, ile
   // naprawdę jest w danych. Wcześniejszy fallback „Zweryfikowane wdrożenia"
   // udawał twardy wynik użytkownika, którego nie było (reguła 1).
-  const firstMetric = vault.history?.[0]?.highlights?.[0]?.metric;
+  const keyExperience = getLatestExperience(vault.history ?? []);
+  const firstMetric = keyExperience?.highlights?.find((highlight) => highlight.metric.trim())?.metric;
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -191,7 +193,7 @@ export const STARStoryView: React.FC<STARStoryViewProps> = ({
               </span>
             )}
             <span className="text-[10px] font-mono text-subtle">
-              {vault.history?.[0]?.company || 'Doświadczenie'}
+              {keyExperience?.company || 'Doświadczenie'}
             </span>
           </div>
 

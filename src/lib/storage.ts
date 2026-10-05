@@ -1,4 +1,6 @@
-import { idbBackupClearAll, idbBackupClearAllDurably, idbBackupGet, idbBackupGetPreferred, idbBackupKeys, idbBackupRemove, idbBackupSet, idbBackupSetDurably, preloadIdbMirror } from './idbFallback';
+import { idbBackupClearAll, idbBackupClearAllDurably, idbBackupGet, idbBackupGetPreferred, idbBackupKeys, idbBackupRemove, idbBackupRemoveDurably, idbBackupSet, idbBackupSetDurably, preloadIdbMirror } from './idbFallback';
+import type { AtsCalculationTime, AtsScoreContext } from '../types';
+import { beginStorageDeletion, isStorageWriteBlocked } from './storageDeletionGuard';
 
 /**
  * Jedyne miejsce, które wie, co ta aplikacja zapisuje w przeglądarce.
@@ -71,15 +73,22 @@ export const StorageKeys = {
   lastJobAnalysis: `${PREFIX}last-job-analysis`,
 } as const;
 
-export interface LastJobAnalysisSummary {
+export interface LastJobAnalysisSummary extends AtsCalculationTime {
   position: string;
   company: string;
-  score: number;
+  /** Brak liczby oznacza, że oferta/profil nie dały podstaw do oceny. */
+  score?: number;
   strengths: string[];
   gaps: string[];
   analyzedAt: string;
+  /** Rewizja profilu użyta do obliczenia wyniku; brak oznacza starszy, nieweryfikowalny zapis. */
+  profileUpdatedAt?: string;
+  /** Wersja reguł użyta przy analizie; brak nie dowodzi aktualności wyniku. */
+  atsScoreProvenance?: string;
   requirementsCount?: number;
   matchedCount?: number;
+  /** Zakres danych użyty do wyniku; brak oznacza, że starszej oceny nie da się zweryfikować. */
+  atsScoreContext?: AtsScoreContext;
 }
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys];
@@ -92,6 +101,11 @@ export function cvLibraryKeyFor(profileId: string): string {
 /** Klucze z treścią użytkownika muszą być izolowane między lokalnymi kontami. */
 export function profileDataKeyFor(key: StorageKey, profileId: string): string {
   return `${key}:${profileId}`;
+}
+
+/** Kopia ostatniego poprawnego envelope leży wyłącznie w IndexedDB, poza limitem localStorage. */
+function recoveryKeyFor(key: string): string {
+  return `${key}:last-good`;
 }
 
 /** Vault zapisywany pod profilem. */
@@ -184,7 +198,7 @@ export function readSessionJson<T>(key: string, fallback: T): T {
 }
 
 export function writeSessionJson(key: string, value: unknown): void {
-  if (!hasSessionStorage() || privacyWipeInProgress) return;
+  if (!hasSessionStorage() || privacyWipeInProgress || isStorageWriteBlocked(key)) return;
   try {
     sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
@@ -243,7 +257,7 @@ export function readRaw(key: string): string | null {
 }
 
 export function writeRaw(key: string, value: string): void {
-  if (!isBrowser() || privacyWipeInProgress) return;
+  if (!isBrowser() || privacyWipeInProgress || isStorageWriteBlocked(key)) return;
 
   const fallbackToIndexedDb = () => {
     void idbBackupSet(key, value).then((persisted) => {
@@ -280,12 +294,12 @@ export function writeRaw(key: string, value: string): void {
 }
 
 /**
- * Zapis dla migracji, które zaraz usuną jedyną kopię źródłową.
+ * Zapis dla operacji wymagających potwierdzenia trwałości, np. migracji i aktywacji profilu.
  * Zwraca sukces dopiero po synchronicznym zapisie LS albo zatwierdzonej
  * transakcji IDB; zwykły `writeRaw` celowo nie czeka na awaryjny zapis.
  */
 export async function writeRawDurably(key: string, value: string): Promise<boolean> {
-  if (!isBrowser() || privacyWipeInProgress) return false;
+  if (!isBrowser() || privacyWipeInProgress || isStorageWriteBlocked(key)) return false;
 
   if (value.length <= LS_SOFT_LIMIT_CHARS) {
     try {
@@ -311,12 +325,53 @@ export async function writeRawDurably(key: string, value: string): Promise<boole
 export function removeRaw(key: string): void {
   if (!isBrowser()) return;
   idbBackupRemove(key);
+  idbBackupRemove(recoveryKeyFor(key));
   lastGood.delete(key);
   try {
     localStorage.removeItem(key);
+    localStorage.removeItem(recoveryKeyFor(key));
   } catch {
     /* jw. */
   }
+}
+
+/** Zamknięcie profilu nie może pozostawić kopii pozwalającej odzyskać aktywną sesję. */
+export async function removeRawDurably(key: string): Promise<boolean> {
+  return removeKeysDurably([key]);
+}
+
+async function removeKeysDurably(primaryKeys: string[], sessionKeys: string[] = []): Promise<boolean> {
+  if (!isBrowser()) return false;
+  const keys = primaryKeys.flatMap(key => [key, recoveryKeyFor(key)]);
+  const release = beginStorageDeletion([...keys, ...sessionKeys]);
+  try {
+    try {
+      for (const item of keys) localStorage.removeItem(item);
+      if (keys.some(item => localStorage.getItem(item) !== null)) return false;
+      if (hasSessionStorage()) {
+        for (const item of sessionKeys) sessionStorage.removeItem(item);
+        if (sessionKeys.some(item => sessionStorage.getItem(item) !== null)) return false;
+      }
+    } catch { return false; }
+    if (!(await idbBackupRemoveDurably(keys))) return false;
+    for (const key of primaryKeys) lastGood.delete(key);
+    return true;
+  } finally { release(); }
+}
+
+const profileStorageClearedListeners = new Set<(profileId: string) => void>();
+
+export function onProfileStorageCleared(listener: (profileId: string) => void): () => void {
+  profileStorageClearedListeners.add(listener);
+  return () => { profileStorageClearedListeners.delete(listener); };
+}
+
+/** Rejestr obejmuje nowe dane profilu bez kolejnej ręcznej listy czyszczenia. */
+export async function clearProfileStorageDurably(profileId: string): Promise<boolean> {
+  const keys = Object.values(StorageKeys).map(key => profileDataKeyFor(key, profileId));
+  if (!(await removeKeysDurably(keys, keys))) return false;
+  for (const listener of profileStorageClearedListeners) listener(profileId);
+  return true;
 }
 
 /** Wypisuje klucze aplikacji także z awaryjnego IndexedDB; potrzebne do odzyskania dawnych profili. */
@@ -394,10 +449,67 @@ function isEnvelope(value: unknown): value is StorageEnvelope {
   );
 }
 
+function decodeStoredValue(key: string, raw: string): { data: unknown } | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    let data: unknown = parsed;
+    let version = SCHEMA_VERSION;
+    if (isEnvelope(parsed)) {
+      if (fnv1a(parsed.data) !== parsed.crc) return null;
+      version = parsed.cvel;
+      data = JSON.parse(parsed.data);
+    }
+    const migrations = keyMigrations.get(key);
+    if (migrations && version < SCHEMA_VERSION) {
+      for (let currentVersion = version; currentVersion < SCHEMA_VERSION; currentVersion++) {
+        const migrate = migrations.get(currentVersion);
+        if (migrate) data = migrate(data);
+      }
+    }
+    return { data };
+  } catch {
+    return null;
+  }
+}
+
+/** Migracja usuwająca źródło nie może uznać awaryjnego pustego stanu za odczyt. */
+export function readJsonForMigration(key: string):
+  | { success: true; raw: string | null; value: unknown }
+  | { success: false; raw: string } {
+  const raw = readRaw(key);
+  if (raw === null) return { success: true, raw, value: undefined };
+  const decoded = decodeStoredValue(key, raw);
+  return decoded ? { success: true, raw, value: decoded.data } : { success: false, raw };
+}
+
+function createEnvelope(data: unknown): string | null {
+  try {
+    const dataString = JSON.stringify(data);
+    return dataString === undefined
+      ? null
+      : JSON.stringify({ cvel: SCHEMA_VERSION, crc: fnv1a(dataString), data: dataString });
+  } catch {
+    return null;
+  }
+}
+
+function recoverLastGood<T>(key: string, fallback: T): T {
+  const backupRaw = idbBackupGet(recoveryKeyFor(key));
+  const recovered = backupRaw === null ? null : decodeStoredValue(key, backupRaw);
+  if (backupRaw !== null && recovered) {
+    console.warn(`[storage] Odzyskano ${key} z kopii IndexedDB po błędzie odczytu.`);
+    const currentEnvelope = createEnvelope(recovered.data);
+    if (currentEnvelope) writeRaw(key, currentEnvelope);
+    lastGood.set(key, recovered.data);
+    return recovered.data as T;
+  }
+  return (lastGood.get(key) as T | undefined) ?? fallback;
+}
+
 /** Odczyt JSON-a z kopertą, sumą kontrolną, migracjami i awaryjnym ostatnim dobrym stanem. */
 export function readJson<T>(key: string, fallback: T): T {
   const raw = readRaw(key);
-  if (raw === null) return (lastGood.get(key) as T | undefined) ?? fallback;
+  if (raw === null) return recoverLastGood(key, fallback);
 
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -410,7 +522,7 @@ export function readJson<T>(key: string, fallback: T): T {
       // Suma kontrolna liczy się z dokładnym stringiem danych w kopercie.
       if (fnv1a(parsed.data) !== parsed.crc) {
         console.warn(`[storage] Suma kontrolna się nie zgadza dla ${key} — wracam do ostatniego poprawnego stanu.`);
-        return (lastGood.get(key) as T | undefined) ?? fallback;
+        return recoverLastGood(key, fallback);
       }
       data = JSON.parse(parsed.data);
     }
@@ -427,13 +539,13 @@ export function readJson<T>(key: string, fallback: T): T {
     return data as T;
   } catch {
     // Uszkodzony JSON (np. ucięty przy zamknięciu przeglądarki).
-    return (lastGood.get(key) as T | undefined) ?? fallback;
+    return recoverLastGood(key, fallback);
   }
 }
 
 /** Zapis JSON-a w kopercie z sumą kontrolną FNV-1a i aktualną wersją schematu. */
 export function writeJson(key: string, value: unknown): void {
-  if (privacyWipeInProgress) return;
+  if (privacyWipeInProgress || isStorageWriteBlocked(key)) return;
   try {
     const dataString = JSON.stringify(value);
     if (dataString === undefined) return; // Cykl w strukturze — nie ma czego zapisać.
@@ -446,16 +558,21 @@ export function writeJson(key: string, value: unknown): void {
       data: dataString,
     });
 
+    const previousRaw = readRaw(key);
+    const previousValid = previousRaw === null ? null : decodeStoredValue(key, previousRaw);
     writeRaw(key, envelope);
+    // Asynchroniczna kopia w IndexedDB chroni poprzedni poprawny zapis przed
+    // uszkodzeniem po restarcie, bez podwajania danych w localStorage.
+    void idbBackupSetDurably(recoveryKeyFor(key), previousValid && previousRaw !== null ? previousRaw : envelope);
     lastGood.set(key, value);
   } catch {
     // Cykl w strukturze danych — nie ma czego zapisać.
   }
 }
 
-/** Zapis koperty JSON z potwierdzeniem trwałości — wyłącznie dla migracji. */
+/** Zapis koperty JSON z potwierdzeniem trwałości przed publikacją sukcesu operacji. */
 export async function writeJsonDurably(key: string, value: unknown): Promise<boolean> {
-  if (privacyWipeInProgress) return false;
+  if (privacyWipeInProgress || isStorageWriteBlocked(key)) return false;
   try {
     const data = JSON.stringify(value);
     if (data === undefined) return false;

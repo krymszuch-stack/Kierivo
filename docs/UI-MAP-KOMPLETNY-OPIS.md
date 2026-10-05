@@ -290,7 +290,7 @@ backdrop, X, ESC, wybór pozycji, resize ≥lg.
 - `ProfilerSection`: karty poziomu doświadczenia (ENTRY/MID/SENIOR/PIVOT,
   zaznaczenie ringiem brandowym), LicenseGrid (SEP/UDT/F-Gaz…), CommuteMap
   (promień dojazdowy).
-- `CVParserModal` (Modal lg): DropZone `.pdf/.docx/.doc/.rtf/.txt/.json`,
+- `CVParserModal` (Modal lg): DropZone `.pdf/.docx/.rtf/.txt`,
   tryb wklejenia, DiffView scalania z vaultem; baner cyrylicy.
 
 ### 6.3. Aplikuj (`JobMatcher` + dzieci)

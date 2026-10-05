@@ -28,7 +28,7 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     const emptyResult = scoreCanonicalAts(emptyVault, jd);
 
     expect(emptyResult.state).toBe('INSUFFICIENT_CV');
-    expect(emptyResult.score).toBe(0);
+    expect(emptyResult.score).toBeNull();
 
     // Wypełniony profil, ale bez żadnych pasujących umiejętności do specyficznego ogłoszenia
     const filledVault = createEmptyVault('Anna Nowak', 'anna@example.com');
@@ -49,8 +49,10 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     ];
 
     const filledResult = scoreCanonicalAts(filledVault, jd);
-    // Profil jest ocenialny (SCORABLE), nawet jeśli dopasowanie do oferty C++/Rust wynosi 0%
+    // Profil jest ocenialny; brak dopasowania umiejętności jest osobnym 0%, nie brakiem wyniku.
     expect(filledResult.state).toBe('SCORABLE');
+    expect(filledResult.score).not.toBeNull();
+    expect(filledResult.components.skills).toBe(0);
   });
 
   it('weryfikuje kontrakt widoku AtsLabView.tsx w stanie pustym', () => {
@@ -62,7 +64,7 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     expect(source).toContain('ResultScoreRing');
     expect(source).toContain("message={isEmptyProfile");
     expect(source).toContain("'Dodaj treść oferty'");
-    expect(source).toContain("const isScorable = canonical.state === 'SCORABLE'");
+    expect(source).toContain("const scorableScore = canonical.state === 'SCORABLE' ? canonical.score : null");
     expect(source).toContain('{isScorable && <>');
 
     // (2) Cztery kafle w stanie pustym mają neutralny kolor tekstu (text-ink-muted), nie text-amber-500
@@ -74,9 +76,9 @@ describe('Audyt kanoniczny — stan pusty (EmptyStateScoreRing) vs realny wynik 
     expect(source).toContain('Dodaj doświadczenie, umiejętności lub zaimportuj CV');
 
     // (4) Mediana symulatora schowana w stanie pustym
-    expect(source).toContain('isScorable && (');
-    expect(source).toContain('Mediana symulatora:');
-    expect(source).toContain('odniesienie z 3 silników heurystycznych');
+    expect(source).toContain('isScorable && consensus.medianScore !== null && (');
+    expect(source).toContain('Mediana kontrolnych wskaznikow ({consensus.assessedEngineCount} modulow; nie ocena dopasowania):');
+    expect(source).not.toContain('odniesienie z 3 silnikow heurystycznych');
 
     // (5) Widok pokazuje wagi efektywne, pomijając wymiary bez danych.
     expect(source).toContain('canonical.effectiveWeights.skills * 100');

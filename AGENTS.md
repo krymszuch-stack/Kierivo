@@ -1,4 +1,11 @@
-# AGENTS.md — wytyczne pracy nad CVelocity
+# AGENTS.md — wytyczne pracy nad Kierivo
+
+## Linear — zasada właściciela od 05.10.2026 dla każdego agenta
+
+Każdy agent prowadzi zadania i notuje zmiany, wyniki sprawdzeń, PR-y,
+wdrożenia oraz blokery w Linearze. Przed utworzeniem zadania sprawdza istniejące
+issues; status Done ustawia dopiero po potwierdzeniu kryteriów zadania.
+Szczegóły: [docs/agents/linear.md](./docs/agents/linear.md).
 
 Plik dla **każdego** agenta pracującego nad tym repozytorium: Jules (Google),
 Claude Code i dowolnego innego. Opisuje realia projektu, reguły wyprowadzone

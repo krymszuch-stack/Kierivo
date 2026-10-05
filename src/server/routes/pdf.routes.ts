@@ -14,6 +14,7 @@ import os from 'os';
 import { createHash, randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter';
+import { getExplicitCvConsentClause } from '../../lib/cvConsentClause';
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
 import { runAtsExtract } from '../extract/atsExtract';
 import { MasterVault, TailoredResume } from '../../types';
@@ -206,7 +207,31 @@ interface CachedPdfEntry {
   filename: string;
   theme: string;
   layout: string;
+  contentWarnings: string[];
   timestamp: number;
+}
+
+function warningsForPdfContent(governance: unknown, targetPages: number): string[] {
+  if (!governance || typeof governance !== 'object') {
+    return ['Nie udało się odczytać raportu skracania CV. Sprawdź wszystkie sekcje pobranego PDF przed wysłaniem.'];
+  }
+
+  const report = governance as Record<string, unknown>;
+  const dropped: string[] = [];
+  for (const [key, label] of [
+    ['skills_dropped', 'umiejętności'],
+    ['exp_dropped', 'wpisy doświadczenia'],
+    ['bullets_dropped', 'punkty doświadczenia'],
+  ] as const) {
+    const count = report[key];
+    if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
+      dropped.push(`${label}: ${count}`);
+    }
+  }
+  if (report.summary_truncated === true) dropped.push('skrócono podsumowanie zawodowe');
+
+  if (dropped.length === 0) return [];
+  return [`Silnik dopasował CV do limitu ${targetPages} stron i pominął część treści (${dropped.join(', ')}). Sprawdź pobrany dokument przed wysłaniem.`];
 }
 
 const PDF_CACHE_MAX_ENTRIES = 50;
@@ -493,6 +518,8 @@ pdfRouter.post(
         res.setHeader('X-CV-Theme', cached.theme);
         res.setHeader('X-CV-Layout', cached.layout);
         res.setHeader('X-CV-Cache', 'HIT');
+        res.setHeader('X-CV-Content-Warning-Count', String(cached.contentWarnings.length));
+        res.setHeader('X-CV-Content-Warnings', encodeURIComponent(cached.contentWarnings.join('\n')));
 
         if (req.headers.accept === 'application/pdf') {
           res.setHeader('Content-Type', 'application/pdf');
@@ -507,6 +534,7 @@ pdfRouter.post(
           filename: cached.filename,
           pdf: cached.buffer.toString('base64'),
           atsValidation: null,
+          contentWarnings: cached.contentWarnings,
         });
       }
 
@@ -515,6 +543,7 @@ pdfRouter.post(
         summaryOverride,
         targetRole,
         companyName,
+        rodoClause: getExplicitCvConsentClause(vault),
       });
 
       logPdfExportStage({
@@ -747,6 +776,16 @@ pdfRouter.post(
         });
       }
 
+      let contentWarnings: string[];
+      try {
+        const sidecarText = await fs.readFile(path.join(tempDir, 'cv.semantic.json'), 'utf-8');
+        const sidecar = JSON.parse(sidecarText) as { governance?: unknown };
+        contentWarnings = warningsForPdfContent(sidecar.governance, safeTargetPages);
+      } catch {
+        // Bez raportu silnika nie da się potwierdzić, czy selekcja treści coś pominęła.
+        contentWarnings = warningsForPdfContent(null, safeTargetPages);
+      }
+
       // 8. Walidacja ATS: ekstrakcja tekstu z PDF i porównanie z MasterVault
       let atsValidation = null;
       try {
@@ -807,6 +846,7 @@ pdfRouter.post(
         filename,
         theme,
         layout,
+        contentWarnings,
         timestamp: Date.now(),
       });
 
@@ -826,11 +866,13 @@ pdfRouter.post(
       res.setHeader('X-CV-Theme', theme);
       res.setHeader('X-CV-Layout', layout);
       res.setHeader('X-CV-Cache', 'MISS');
+      res.setHeader('X-CV-Content-Warning-Count', String(contentWarnings.length));
+      res.setHeader('X-CV-Content-Warnings', encodeURIComponent(contentWarnings.join('\n')));
 
       if (atsValidation) {
-        res.setHeader('X-ATS-Score', String(atsValidation.overallScore));
-        res.setHeader('X-ATS-Status', atsValidation.overallStatus);
-        res.setHeader('X-ATS-Tagged', String(atsValidation.taggedPdfPresent));
+        if (atsValidation.taggedPdfPresent !== null) {
+          res.setHeader('X-ATS-Tagged', String(atsValidation.taggedPdfPresent));
+        }
       }
 
       // Jeśli klient jawnie oczekuje binarnego pliku PDF
@@ -848,6 +890,7 @@ pdfRouter.post(
         filename,
         pdf: pdfBuffer.toString('base64'),
         atsValidation,
+        contentWarnings,
       });
     } catch (unexpectedErr: unknown) {
       const errMessage = unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr);

@@ -215,6 +215,7 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
 
                   <div className="flex-1">
                     <Textarea
+                      aria-label={`Treść osiągnięcia ${index + 1}`}
                       rows={2}
                       value={hl.text}
                       onChange={(e) => handleUpdateText(hl.id, e.target.value)}

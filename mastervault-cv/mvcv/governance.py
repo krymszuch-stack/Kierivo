@@ -110,6 +110,7 @@ def fit_bullets_to_lines(bullets: list[Bullet], *, max_lines: int, width_pt: flo
 @dataclass
 class GovernanceReport:
     summary_lines: int = 0
+    summary_truncated: bool = False
     skills_kept: int = 0
     skills_dropped: int = 0
     exp_kept: int = 0
@@ -124,7 +125,7 @@ class GovernanceReport:
 
     def describe(self) -> str:
         rows = [
-            f"profil: {self.summary_lines} linii",
+            f"profil: {self.summary_lines} linii" + (" (skrocono)" if self.summary_truncated else ""),
             f"umiejetnosci: {self.skills_kept} (odrzucono {self.skills_dropped})",
             f"doswiadczenia: {self.exp_kept} (odrzucono {self.exp_dropped})",
             f"punkty doswiadczen: {self.bullets_kept} (odrzucono {self.bullets_dropped})",
@@ -176,9 +177,11 @@ def apply(profile: MasterProfile, *, content_width: float, measure,
 
     # --- opis profilu: 3–5 linii
     max_summary = 3 if aggressive_fit else (SUMMARY_LINES[1] if target_pages >= 2 else 4)
-    text, n = truncate_to_lines(out.summary.display, width_pt=content_width,
+    original_summary = out.summary.display
+    text, n = truncate_to_lines(original_summary, width_pt=content_width,
                                 font="Sans", size=9.6, max_lines=max_summary, measure=measure)
     rep.summary_lines = n
+    rep.summary_truncated = text != original_summary
     out.summary = replace(out.summary, display=text)
 
     return out, rep

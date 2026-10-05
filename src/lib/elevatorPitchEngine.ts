@@ -1,4 +1,5 @@
 import { MasterVault, ElevatorPitchOutput } from '../types';
+import { inferLatestExperienceRole } from './experienceChronology';
 
 /**
  * Szacuje czas trwania wypowiedzi przy zadanym tempie mówienia.
@@ -130,11 +131,11 @@ export function generateElevatorPitch(
   variantIndex?: number,
 ): ElevatorPitchOutput {
   const safeVault = vault ?? {};
-  const profileRole = clean(safeVault.personalInfo?.title) || clean(safeVault.history?.[0]?.role);
+  const profileRole = clean(safeVault.personalInfo?.title) || inferLatestExperienceRole(safeVault.history ?? []);
   const targetRole = clean(targetRoleOverride) || profileRole;
   const hasEvidence = hasVaultEvidence(safeVault);
   const statements = hasEvidence
-    ? profileStatements(safeVault, clean(targetRoleOverride))
+    ? profileStatements(safeVault, targetRole)
     : [];
   const offset = statements.length ? Math.abs(Math.trunc(variantIndex ?? 0)) % statements.length : 0;
   const arrangedStatements = statements.length

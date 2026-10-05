@@ -8,8 +8,11 @@ import {
   SYNTHETIC_JOB_OFFER_PORTAL,
 } from '../jobMatcherEngine';
 import { createEmptyVault } from '../sampleVault';
+import { hasLimitedMatchEvidence } from '../matchInterpretation';
+import { measureVaultCompleteness } from '../vaultCompleteness';
 import type { JobOffer, MasterVault } from '../../types';
 import type { FetchJdUrlResponse, ParsedJobDescription } from '../../types/api';
+import { parseJobDescriptionLocal } from '../jdParser';
 
 describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
   function getTestVault(): MasterVault {
@@ -85,10 +88,48 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(result.advisorContext).toBeDefined();
     expect(result.advisorContext.offerTitle).toBe(sampleOffer.title);
     expect(result.advisorContext.score).toBe(result.canonicalResult.score);
+    expect(result.advisorContext.scoreEvidence?.scope).toBe('sufficient');
     expect(result.advisorContext.missingRequirements).toEqual(result.canonicalResult.missingRequirements.slice(0, 8));
 
     // Flaga confetti
-    expect(result.shouldCelebrate).toBe(result.canonicalResult.score >= 90);
+    expect(result.shouldCelebrate).toBe(
+      result.canonicalResult.score !== null && result.canonicalResult.score >= 90 &&
+      !hasLimitedMatchEvidence({
+        profileCompleteness: measureVaultCompleteness(vault).percent,
+        totalRequirementCount: result.canonicalResult.matchedRequirements.length + result.canonicalResult.missingRequirements.length,
+      })
+    );
+  });
+
+  it('nie uruchamia konfetti przy wysokim wyniku opartym na jednym wymaganiu', () => {
+    const result = calculateJobMatch(getTestVault(), {
+      ...sampleOffer,
+      description: 'Wymagania: TypeScript.',
+      requirements: ['TypeScript'],
+      techStack: ['TypeScript'],
+    });
+
+    expect(result.canonicalResult.score).not.toBeNull();
+    expect(result.canonicalResult.matchedRequirements.length + result.canonicalResult.missingRequirements.length).toBe(1);
+    expect(result.shouldCelebrate).toBe(false);
+    expect(result.advisorContext.score).toBeNull();
+    expect(result.advisorContext.scoreEvidence).toMatchObject({ detectedRequirementCount: 1, scope: 'limited' });
+  });
+
+  it('nie uruchamia konfetti i ogranicza zakres Doradcy przy niepotwierdzonym wymogu formalnym', () => {
+    const vault = getTestVault();
+    vault.profiler.licenses = ['fgas'];
+    const result = calculateJobMatch(vault, {
+      ...sampleOffer,
+      description: 'Wymagania: TypeScript, React, Docker. Wymagany aktualny certyfikat F-Gaz.',
+      requirements: ['TypeScript', 'React', 'Docker'],
+    });
+
+    expect(result.canonicalResult.state).toBe('SCORABLE');
+    expect(result.canonicalResult.unconfirmedRequirements.some((item) => item.includes('F-Gaz'))).toBe(true);
+    expect(result.shouldCelebrate).toBe(false);
+    expect(result.advisorContext.score).toBeNull();
+    expect(result.advisorContext.scoreEvidence).toMatchObject({ scope: 'limited', unconfirmedRequirementCount: 1 });
   });
 
   it('nie tworzy podsumowania zawodowego, gdy nie ma go w profilu źródłowym', () => {
@@ -150,6 +191,22 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(job.salary).toBe('20 000 PLN');
     expect(job.requirements).toEqual(['Python']);
     expect(job.portal).toBe('URL');
+
+    const descriptionRaw = 'Technik serwisu\nRequirements\nMiejsce pracy: Warszawa\nWymagania\nSEP G1';
+    const unstructuredJob = buildJobOfferFromScraped({
+      url: 'https://example.com/job/technik-serwisu',
+      fetched: {
+        ...fetchedStructured,
+        title: 'Technik serwisu',
+        company: '',
+        descriptionRaw,
+        location: '',
+        extraction: { tier: 'main-content', structured: false },
+      },
+      parsed: parseJobDescriptionLocal(descriptionRaw),
+    });
+    expect(unstructuredJob.company).toBe('');
+    expect(unstructuredJob.location).toBe('Warszawa');
   });
 
   it('buildJobOfferFromManual - poprawnie normalizuje ręczną ofertę i przetwarza opis', () => {
@@ -169,6 +226,26 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(parsed.jobTitle).toBe('Monter instalacji sanitarnych');
   });
 
+  it('nie przenosi zaprzeczonych kryteriów z wklejonej oferty do wyniku dopasowania', () => {
+    const { job, parsed } = buildJobOfferFromManual({
+      description: `Specjalista terenowy
+Wymagania
+Prawo jazdy kat. B nie jest wymagane.
+Angielski nie jest wymagany.
+Minimum 3 lata doświadczenia nie jest wymagane.
+ServiceNow jest wymagany.`,
+    });
+    const result = calculateJobMatch(getTestVault(), job);
+
+    expect(parsed.mandatoryRequirements).not.toEqual(expect.arrayContaining([
+      expect.stringMatching(/prawo jazdy|angielski|3 lata/i),
+    ]));
+    expect(result.canonicalResult.missingRequirements.map((item) => item.toLocaleLowerCase('pl-PL'))).not.toEqual(expect.arrayContaining([
+      'angielski', 'english', 'prawo jazdy', 'prawo jazdy kat. b', 'min. 3 lata doświadczenia',
+    ]));
+    expect(job.description).toContain('Prawo jazdy kat. B nie jest wymagane.');
+  });
+
   it('zachowuje znacznik syntetycznej oferty, aby próba nie wyglądała jak prawdziwa aplikacja', () => {
     const { job } = buildJobOfferFromManual({
       title: 'Monter testowy',
@@ -180,5 +257,15 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(job.portal).toBe(SYNTHETIC_JOB_OFFER_PORTAL);
     expect(isSyntheticJobOffer(job)).toBe(true);
     expect(isSyntheticJobOffer({ portal: 'Manual' })).toBe(false);
+  });
+
+  it('keeps an unspecified work model distinct from remote=false', () => {
+    const { job, parsed } = buildJobOfferFromManual({
+      title: 'Support Engineer',
+      description: 'Requirements: Linux and ticketing system experience.',
+    });
+
+    expect(parsed.workModel).toBe('UNKNOWN');
+    expect(job.remote).toBeUndefined();
   });
 });

@@ -10,49 +10,45 @@ import React, { useMemo } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
-  Clock,
   FileText,
-  Plus,
-  Sparkles,
   Target,
   AlertCircle,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MasterVault } from '../types';
-import type { NavTabId, NavSectionId } from '../lib/navigation';
-import { measureVaultCompleteness } from '../lib/vaultCompleteness';
-import { StorageKeys, readJson, LastJobAnalysisSummary } from '../lib/storage';
+import type { NavTabId } from '../lib/navigation';
+import { StorageKeys, profileDataKeyFor, readJson } from '../lib/storage';
 import { useApplications } from '../store/useApplications';
+import { useAuth } from '../context/AuthContext';
+import { ANONYMOUS_PROFILE_ID } from '../lib/localProfile';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { getSavedAtsScoreDisplayInfo } from '../lib/atsScoreEvidence';
+import { getAnalysisFreshnessDetails } from '../lib/analysisFreshness';
+import { readLastJobAnalysis } from '../lib/lastJobAnalysis';
+import { InvalidLastJobAnalysisState } from './InvalidLastJobAnalysisState';
+import { useAnalysisClock } from '../hooks/useAnalysisClock';
 
 export type HomeViewProps = {
   /** Główne wezwanie do działania */
   onStart?: () => void;
-  /** Przejście do widoku planów */
-  onViewPricing?: () => void;
   /** Dane profilu użytkownika */
   vault?: MasterVault;
   /** Nawigacja po głównych zakładkach aplikacji */
   onNavigate?: (tab: NavTabId) => void;
-  /** Otwarcie modalnego doradcy */
-  onOpenAdvisor?: (question?: string) => void;
-  /** Powody zablokowania poszczególnych sekcji */
-  lockReasons?: Partial<Record<NavSectionId, string>>;
-  /** Sloty na rekomendacje i pytania */
-  actionSlot?: ReactNode;
-  questionsSlot?: ReactNode;
+  actionSlot: ReactNode;
 };
 
 export function HomeView({
   onStart,
   vault,
   onNavigate,
-  onOpenAdvisor,
   actionSlot,
-  questionsSlot,
 }: HomeViewProps) {
   const { applications } = useApplications();
+  const { user } = useAuth();
+  const now = useAnalysisClock();
+  const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
 
   // 1. Spersonalizowane powitanie i pora dnia
   const currentHour = new Date().getHours();
@@ -61,73 +57,21 @@ export function HomeView({
   const firstName = rawName ? rawName.split(' ')[0] : '';
   const greetingText = firstName ? `${greeting}, ${firstName}.` : `${greeting}.`;
 
-  // 2. Poziom uzupełnienia profilu i zadanie priorytetowe
-  const completeness = useMemo(() => {
-    if (!vault) return { overall: 0, weakest: null, missingCount: 5 };
-    const res = measureVaultCompleteness(vault);
-    return {
-      overall: res.percent,
-      weakest: res.weakest,
-      missingCount: res.missing.length,
-    };
-  }, [vault]);
-
-  // Liczba wywiadów i aktywnych procesów
+  // Liczymy wyłącznie rzeczywiste wpisy aplikacji i etapów rozmowy.
   const interviewsCount = useMemo(() => {
     return applications.filter((a) => a.status === 'Rozmowa').length;
   }, [applications]);
 
-  // 3. Określenie głównego zadania (1 rzecz do zrobienia)
-  const primaryTask = useMemo(() => {
-    if (interviewsCount > 0) {
-      const interviewApp = applications.find((a) => a.status === 'Rozmowa');
-      return {
-        title: `Przygotuj się do rozmowy w ${interviewApp?.company || 'firmie'}`,
-        description: 'Przećwicz odpowiedzi STAR na prawdopodobne pytania rekrutacyjne i techniczne.',
-        target: 'pipeline' as NavTabId,
-        estimatedTime: 'około 6 min',
-        buttonText: 'Przejdź do przygotowania →',
-        progress: null,
-      };
-    }
-
-    if (completeness.overall < 80) {
-      const sectionName = completeness.weakest?.label || 'doświadczenie zawodowe';
-      return {
-        title: `Uzupełnij ${sectionName}`,
-        description: 'Dzięki temu dokładniej ocenimy dopasowanie do ofert i przygotujemy bezbłędne CV.',
-        target: 'profil' as NavTabId,
-        estimatedTime: 'około 4 min',
-        buttonText: 'Kontynuuj profil →',
-        progress: completeness.overall,
-      };
-    }
-
-    if (applications.length === 0) {
-      return {
-        title: 'Wklej pierwsze ogłoszenie o pracę',
-        description: 'Sprawdź dopasowanie do oferty, poznaj mocne strony i odkryj ukryte kompetencje w Twoim profilu.',
-        target: 'aplikuj' as NavTabId,
-        estimatedTime: 'około 2 min',
-        buttonText: 'Sprawdź ofertę →',
-        progress: null,
-      };
-    }
-
-    return {
-      title: 'Zoptymalizuj CV pod nową ofertę',
-      description: 'Dopasuj słowa kluczowe i wygeneruj dopasowany dokument gotowy do wysłania.',
-      target: 'cv' as NavTabId,
-      estimatedTime: 'około 3 min',
-      buttonText: 'Otwórz CV →',
-      progress: null,
-    };
-  }, [interviewsCount, completeness, applications]);
-
   // 4. Ostatnia analiza (zapisana w storage po przeanalizowaniu oferty)
-  const lastAnalysis = useMemo(() => {
-    return readJson<LastJobAnalysisSummary | null>(StorageKeys.lastJobAnalysis, null);
-  }, []);
+  const lastAnalysisRead = useMemo(
+    () => readLastJobAnalysis(readJson<unknown>(profileDataKeyFor(StorageKeys.lastJobAnalysis, profileId), null)),
+    [profileId]
+  );
+  const lastAnalysis = lastAnalysisRead.state === 'valid' ? lastAnalysisRead.value : null;
+  const lastAnalysisScoreInfo = lastAnalysis?.score === undefined
+    ? undefined
+    : getSavedAtsScoreDisplayInfo(lastAnalysis.score, lastAnalysis.atsScoreContext, lastAnalysis.atsScoreProvenance, now);
+  const lastAnalysisFreshness = getAnalysisFreshnessDetails(lastAnalysis, vault?.updatedAt, now);
 
   const handleNavigate = (tab: NavTabId) => {
     if (onNavigate) {
@@ -158,51 +102,7 @@ export function HomeView({
       </div>
 
       {/* -------------------------------------- GŁÓWNA KARTA ZADANIA 11/10 */}
-      <Card tone="raised" className="relative overflow-hidden border-brand-500/30 p-6 sm:p-8 shadow-raised">
-        <div className="space-y-5">
-          <div className="space-y-1.5">
-            <h2 className="text-xl font-bold text-ink sm:text-2xl tracking-tight">
-              {primaryTask.title}
-            </h2>
-            <p className="text-sm leading-relaxed text-muted max-w-xl">
-              {primaryTask.description}
-            </p>
-          </div>
-
-          {primaryTask.progress !== null && (
-            <div className="space-y-2 pt-1 max-w-md">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-muted font-medium">Twój profil</span>
-                <span className="font-bold text-brand-fg">{primaryTask.progress}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-sunken">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-500 to-amber-500 transition-all duration-500"
-                  style={{ width: `${primaryTask.progress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-3 border-t border-line/50">
-            <span className="flex items-center gap-1.5 font-mono text-xs text-muted">
-              <Clock className="h-3.5 w-3.5 text-muted" />
-              {primaryTask.estimatedTime}
-            </span>
-
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              icon={ArrowRight}
-              onClick={() => handleNavigate(primaryTask.target)}
-              className="font-bold shadow-md cursor-pointer"
-            >
-              {primaryTask.buttonText}
-            </Button>
-          </div>
-        </div>
-      </Card>
+      {actionSlot}
 
       {/* -------------------------------------- SZYBKIE AKCJE ALTERNATYWNE */}
       <div className="space-y-3">
@@ -232,18 +132,6 @@ export function HomeView({
             Otwórz CV
           </Button>
 
-          {onOpenAdvisor && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="md"
-              icon={Sparkles}
-              onClick={() => onOpenAdvisor()}
-              className="text-brand-fg hover:bg-brand-500/10 cursor-pointer font-semibold"
-            >
-              Zapytaj Doradcę
-            </Button>
-          )}
         </div>
       </div>
 
@@ -253,37 +141,7 @@ export function HomeView({
           Twoja aktywność
         </h3>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => handleNavigate('aplikuj')}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleNavigate('aplikuj')}
-            className="group cursor-pointer rounded-xl border border-line bg-surface p-4 transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-raised"
-          >
-            <span className="block text-2xl font-bold text-ink group-hover:text-brand-fg">
-              {lastAnalysis ? 1 : 0}
-            </span>
-            <span className="mt-1 block text-xs text-muted font-medium">
-              analiz ofert
-            </span>
-          </div>
-
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => handleNavigate('cv')}
-            onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleNavigate('cv')}
-            className="group cursor-pointer rounded-xl border border-line bg-surface p-4 transition-all duration-150 hover:border-brand-500/40 hover:bg-surface-raised"
-          >
-            <span className="block text-2xl font-bold text-ink group-hover:text-brand-fg">
-              {vault?.personalInfo?.fullName ? 1 : 0}
-            </span>
-            <span className="mt-1 block text-xs text-muted font-medium">
-              CV w profilu
-            </span>
-          </div>
-
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
           <div
             role="button"
             tabIndex={0}
@@ -335,19 +193,31 @@ export function HomeView({
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="font-mono text-2xl font-extrabold text-brand-fg">
-                  {lastAnalysis.score}%
+                <span className={`font-mono text-2xl font-extrabold ${lastAnalysisScoreInfo?.state === 'limited' || lastAnalysisScoreInfo?.state === 'unknown' ? 'text-warning-fg' : 'text-brand-fg'}`}>
+                  {lastAnalysisScoreInfo?.label ?? '—'}
                 </span>
                 <span className="text-xs text-muted font-medium">
-                  dopasowania
+                  {lastAnalysisScoreInfo?.state === 'unknown' ? 'zakres nieznany' : lastAnalysisScoreInfo ? 'ocena Kierivo' : 'brak oceny'}
                 </span>
               </div>
             </div>
 
+            {lastAnalysisScoreInfo && (
+              <p className="-mt-2 text-xs text-muted" role="note">
+                {lastAnalysisScoreInfo.note}
+              </p>
+            )}
+
+            {lastAnalysisFreshness.note && (
+              <p className="-mt-2 text-xs text-warning-fg" role="status">
+                {lastAnalysisFreshness.note}
+              </p>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1.5">
                 <span className="font-bold text-success-fg uppercase tracking-wider text-[11px] block">
-                  Mocne strony
+                  {lastAnalysisFreshness.state === 'current' ? 'Mocne strony' : 'Mocne strony w zapisanej analizie'}
                 </span>
                 <ul className="space-y-1">
                   {lastAnalysis.strengths.slice(0, 3).map((st, idx) => (
@@ -361,7 +231,7 @@ export function HomeView({
 
               <div className="space-y-1.5">
                 <span className="font-bold text-warning-fg uppercase tracking-wider text-[11px] block">
-                  Do uzupełnienia
+                  {lastAnalysisFreshness.state === 'current' ? 'Do uzupełnienia' : 'Braki w zapisanej analizie'}
                 </span>
                 <ul className="space-y-1">
                   {lastAnalysis.gaps.slice(0, 3).map((gap, idx) => (
@@ -387,6 +257,8 @@ export function HomeView({
               </Button>
             </div>
           </Card>
+        ) : lastAnalysisRead.state === 'invalid' ? (
+          <InvalidLastJobAnalysisState />
         ) : (
           <Card tone="flat" className="p-6 text-center space-y-3 border-dashed border-line">
             <Target className="mx-auto h-8 w-8 text-muted" />
@@ -398,27 +270,11 @@ export function HomeView({
                 Wklej ogłoszenie z Pracuj.pl, OLX lub LinkedIn, aby sprawdzić dopasowanie do Twojego profilu i odkryć ukryte kompetencje.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              icon={Plus}
-              onClick={() => handleNavigate('aplikuj')}
-              className="cursor-pointer font-semibold"
-            >
-              Wklej pierwszą ofertę pracy
-            </Button>
           </Card>
         )}
       </div>
 
       {/* Sloty opcjonalne (pytania uzupełniające) */}
-      {(actionSlot || questionsSlot) && (
-        <div className="space-y-4 pt-4 border-t border-line/60">
-          {actionSlot}
-          {questionsSlot}
-        </div>
-      )}
     </div>
   );
 }

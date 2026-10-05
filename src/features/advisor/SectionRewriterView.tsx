@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useId, useLayoutEffect, useState } from 'react';
+import { createAdvisorRequestGuard } from './advisorRequestGuard';
 import {
   Sparkles,
   Check,
@@ -14,6 +15,7 @@ import { showToast } from '../../store/useToastStore';
 import { api } from '../../lib/apiClient';
 import { RuleFocus } from '../../lib/sectionRewriterEngine';
 import { canCopySectionRewrite } from './sectionRewriteReview';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
 
 export interface SectionRewriterViewProps {
   initialRole?: string;
@@ -53,6 +55,9 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   initialRole = '',
   azureAvailable = false,
 }) => {
+  const textId = useId();
+  const textHintId = useId();
+  const ruleLabelId = useId();
   const [inputText, setInputText] = useState('');
   const [roleTitle, setRoleTitle] = useState(initialRole);
   const [ruleFocus, setRuleFocus] = useState<RuleFocus>('star');
@@ -61,6 +66,34 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
   const [copied, setCopied] = useState(false);
   const [azureConsent, setAzureConsent] = useState(false);
   const [factsVerified, setFactsVerified] = useState(false);
+  const [proposalInvalidated, setProposalInvalidated] = useState(false);
+  const [requestGuard] = useState(createAdvisorRequestGuard);
+  const [copyGuard] = useState(createAdvisorRequestGuard);
+  useLayoutEffect(() => () => {
+    requestGuard.invalidate();
+    copyGuard.invalidate();
+  }, [requestGuard, copyGuard]);
+  useLayoutEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 3000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const resetCopy = () => {
+    copyGuard.invalidate();
+    setCopied(false);
+  };
+
+  // Potwierdzenie dotyczy konkretnej propozycji dla konkretnego tekstu i kryteriów.
+  // Zmiana i powrót do starej treści nie przywracają zgody na jej kopiowanie.
+  const invalidateProposal = () => {
+    if (proposal || requestGuard.isBusy()) setProposalInvalidated(true);
+    requestGuard.invalidate();
+    setProposal(null);
+    setFactsVerified(false);
+    resetCopy();
+    setIsLoading(false);
+  };
 
   const handleGenerate = async () => {
     if (!inputText.trim() || inputText.trim().length < 5) {
@@ -68,9 +101,13 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
       return;
     }
     if (!azureAvailable || !azureConsent) return;
+    const requestToken = requestGuard.begin();
+    if (!requestToken) return;
 
     setIsLoading(true);
-    setCopied(false);
+    setProposal(null);
+    setProposalInvalidated(false);
+    resetCopy();
     setFactsVerified(false);
 
     try {
@@ -83,22 +120,24 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
         consentToAzure: true,
       });
 
+      if (!requestGuard.isCurrent(requestToken)) return;
       if (res && res.success) {
         setProposal(res);
       } else {
         showToast(res?.error || 'Nie udało się wygenerować propozycji', { variant: 'error' });
       }
     } catch (err: unknown) {
+      if (!requestGuard.isCurrent(requestToken)) return;
       const msg = err instanceof Error ? err.message : 'Błąd połączenia z silnikiem rewritingu';
       showToast(msg, { variant: 'error' });
     } finally {
-      setIsLoading(false);
+      if (requestGuard.finish(requestToken)) setIsLoading(false);
     }
   };
 
   const handleReject = () => {
     setProposal(null);
-    setCopied(false);
+    resetCopy();
     setFactsVerified(false);
     showToast('Propozycja została odrzucona', {
       message: 'Możesz zmodyfikować kryteria i wygenerować nową wersję.',
@@ -108,24 +147,30 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
 
   const handleCopy = async () => {
     if (!proposal || !canCopySectionRewrite(proposal.proposedText, factsVerified)) return;
+    const copyToken = copyGuard.begin();
+    if (!copyToken) return;
+    setCopied(false);
     try {
-      await navigator.clipboard.writeText(proposal.proposedText);
+      await copyTextAndNotifySuccess(proposal.proposedText);
+      // Clipboard API nie da się odwołać. Zakończenie starego zapisu nie może
+      // nadać nowej propozycji stanu „skopiowano” ani zgłosić jej sukcesu.
+      if (!copyGuard.isCurrent(copyToken)) return;
       setCopied(true);
       showToast('Skopiowano ulepszoną treść do schowka', {
         message: 'Możesz wkleić ten punkt bezpośrednio do swojego CV w Profilu.',
       });
-      setTimeout(() => setCopied(false), 3000);
     } catch {
+      if (!copyGuard.isCurrent(copyToken)) return;
       showToast('Nie udało się skopiować automatycznie', { variant: 'error' });
+    } finally {
+      copyGuard.finish(copyToken);
     }
   };
 
   const handleSelectExample = (ex: { role: string; text: string }) => {
+    invalidateProposal();
     setRoleTitle(ex.role);
     setInputText(ex.text);
-    setProposal(null);
-    setCopied(false);
-    setFactsVerified(false);
   };
 
   return (
@@ -145,7 +190,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
       {/* Formularz wprowadzania punktu */}
       <div className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <label className="text-xs font-bold text-ink">
+          <label htmlFor={textId} className="text-xs font-bold text-ink">
             Treść punktu lub sekcji do ulepszenia:
           </label>
           <div className="flex flex-wrap items-center gap-1">
@@ -164,14 +209,16 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
         </div>
 
         <Textarea
+          id={textId}
+          aria-describedby={textHintId}
           value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
+          onChange={(e) => { invalidateProposal(); setInputText(e.target.value); }}
           placeholder="Wklej pojedynczy punkt ze swojego CV (np. „Byłem odpowiedzialny za montaż instalacji...” lub „Robiłem aplikację w React...”)"
           rows={3}
           maxLength={800}
         />
         <div className="flex justify-between text-[11px] text-muted">
-          <span>Maksymalnie 800 znaków (jeden punktor lub krótki akapit)</span>
+          <span id={textHintId}>Maksymalnie 800 znaków (jeden punktor lub krótki akapit)</span>
           <span>{inputText.length} / 800</span>
         </div>
 
@@ -179,18 +226,19 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
           <Input
             label="Rola / Stanowisko (kontekst)"
             value={roleTitle}
-            onChange={(e) => setRoleTitle(e.target.value)}
+            onChange={(e) => { invalidateProposal(); setRoleTitle(e.target.value); }}
             placeholder="np. Monter, Spawacz, Magazynier, Programista"
           />
 
           <div>
-            <label className="mb-1 block text-xs font-semibold text-ink">
+            <span id={ruleLabelId} className="mb-1 block text-xs font-semibold text-ink">
               Priorytet reguł
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
+            </span>
+            <div role="group" aria-labelledby={ruleLabelId} className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
-                onClick={() => setRuleFocus('star')}
+                aria-pressed={ruleFocus === 'star'}
+                onClick={() => { if (ruleFocus !== 'star') invalidateProposal(); setRuleFocus('star'); }}
                 className={`rounded-xl border px-2.5 py-2 text-xs font-semibold transition-all ${
                   ruleFocus === 'star'
                     ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-xs'
@@ -201,7 +249,8 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setRuleFocus('ats_clarity')}
+                aria-pressed={ruleFocus === 'ats_clarity'}
+                onClick={() => { if (ruleFocus !== 'ats_clarity') invalidateProposal(); setRuleFocus('ats_clarity'); }}
                 className={`rounded-xl border px-2.5 py-2 text-xs font-semibold transition-all ${
                   ruleFocus === 'ats_clarity'
                     ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-xs'
@@ -238,6 +287,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
         </div>
       </div>
 
+      {proposalInvalidated && <p role="status" className="rounded-xl border border-warning/30 bg-warning-soft/30 p-3 text-xs text-ink">Treść lub kryteria zmieniły się. Poprzednia propozycja została wycofana. Wygeneruj nową i sprawdź jej fakty przed kopiowaniem.</p>}
       {/* Podgląd zmian (Diff / Before & After) z możliwością odrzucenia */}
       {proposal && (
         <div className="mt-6 space-y-4 rounded-2xl border border-line bg-elevated p-4 shadow-sm">
@@ -298,7 +348,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
             <input
               type="checkbox"
               checked={factsVerified}
-              onChange={(event) => setFactsVerified(event.target.checked)}
+              onChange={(event) => { resetCopy(); setFactsVerified(event.target.checked); }}
               className="mt-0.5 accent-brand-600"
             />
             <span>Sprawdziłem propozycję. Potwierdzam, że każda liczba, umiejętność i informacja o moim doświadczeniu jest prawdziwa.</span>
@@ -336,7 +386,7 @@ export const SectionRewriterView: React.FC<SectionRewriterViewProps> = ({
                 onClick={handleCopy}
                 disabled={!canCopySectionRewrite(proposal.proposedText, factsVerified)}
               >
-                {copied ? 'Skopiowano!' : 'Zastosuj i skopiuj'}
+                {copied ? 'Skopiowano!' : 'Skopiuj propozycję'}
               </Button>
             </div>
           </div>

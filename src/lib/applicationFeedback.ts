@@ -1,6 +1,8 @@
 import { api } from './apiClient';
-import type { JobApplication, ApplicationDocumentSnapshot } from '../types';
+import { isAtsScoreProvenance } from './atsScoreProvenance';
+import type { JobApplication, ApplicationDocumentSnapshot, AtsScoreContext, AtsScoreProvenance } from '../types';
 import { deepClone, repairSnapshotReferences } from './applicationSnapshot';
+import { isValidAtsScoreContext } from './atsScoreEvidence';
 
 /**
  * Ankieta po eksporcie dokumentu — logika bez DOM-u.
@@ -25,6 +27,8 @@ export interface PendingApplication {
   sourceUrl?: string;
   salary?: string;
   atsScore?: number;
+  atsScoreProvenance?: AtsScoreProvenance;
+  atsScoreContext?: AtsScoreContext;
   missingKeywords?: string[];
   documentSnapshot?: ApplicationDocumentSnapshot;
 }
@@ -195,6 +199,11 @@ export function buildApplicationFromPending(
     // Wynik ATS przepisujemy tylko wtedy, gdy faktycznie był mierzony.
     // `undefined` znaczy „nie mierzono", zero znaczyłoby „zmierzono fatalnie".
     atsScore: pending.atsScore,
+    atsScoreProvenance: pending.atsScoreProvenance,
+    ...(isAtsScoreProvenance(pending.atsScoreProvenance) &&
+      isValidAtsScoreContext(pending.atsScoreContext)
+      ? { atsScoreContext: pending.atsScoreContext }
+      : {}),
     missingKeywords: pending.missingKeywords,
     documentSnapshot: pending.documentSnapshot
       ? repairSnapshotReferences(deepClone(pending.documentSnapshot))

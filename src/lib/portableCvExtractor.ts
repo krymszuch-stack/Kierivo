@@ -11,6 +11,7 @@
 
 import { ParsedCVResult } from './cvUniversalParser';
 import { WorkExperience, Education, Certification, LanguageProficiency, Project } from '../types';
+import { parsePortableCvData } from './portableCvSchema';
 
 export interface MasterVaultEmbeddedData {
   masterVaultRecord?: {
@@ -71,7 +72,14 @@ export interface MasterVaultEmbeddedData {
       }>;
       licenses?: string[];
       clause?: string;
-      projects?: Array<Record<string, unknown>>;
+      projects?: Array<{
+        name?: string;
+        role?: string;
+        description?: string;
+        techStack?: string[];
+        metrics?: string;
+        [key: string]: unknown;
+      }>;
     };
     jsonLd?: Record<string, unknown>;
   };
@@ -153,7 +161,8 @@ export async function extractEmbeddedMasterVault(
       const match = binaryString.match(/\{\s*"masterVaultRecord"\s*:\s*\{[\s\S]*?\}\s*\}\s*\}/);
       if (match) {
         try {
-          return JSON.parse(match[0]);
+          const parsed = parsePortableCvData(JSON.parse(match[0]));
+          if (parsed) return parsed;
         } catch {
           // kontynuacja
         }
@@ -194,7 +203,8 @@ export async function extractEmbeddedMasterVault(
             try {
               const text = await decompressStreamBytes(slice, MAX_CUMULATIVE_DECOMPRESSED_BYTES - cumulativeDecompressed);
               if (text.includes('masterVaultRecord')) {
-                return JSON.parse(text);
+                const parsed = parsePortableCvData(JSON.parse(text));
+                if (parsed) return parsed;
               }
             } catch {
               // spróbuj kolejne
@@ -215,10 +225,11 @@ export async function extractEmbeddedMasterVault(
  * Konwertuje odzyskany rekord resumeData na standardowy format ParsedCVResult w Kierivo.
  */
 export function convertResumeDataToParsedCVResult(
-  data: MasterVaultEmbeddedData
+  input: MasterVaultEmbeddedData
 ): ParsedCVResult | null {
+  const data = parsePortableCvData(input);
   const resume = data?.masterVaultRecord?.resumeData;
-  if (!resume || !resume.name) {
+  if (!resume || !resume.name?.trim()) {
     return null;
   }
 
@@ -305,14 +316,18 @@ export function convertResumeDataToParsedCVResult(
     })
     .filter((l): l is LanguageProficiency => l !== null);
 
-  const projects: Project[] = (resume.projects || []).map((p: any, idx: number) => ({
-    id: `proj-portable-${idx + 1}`,
-    name: p.name || `Projekt ${idx + 1}`,
-    role: p.role || '',
-    description: p.description || '',
-    techStack: Array.isArray(p.techStack) ? p.techStack : [],
-    metrics: p.metrics || '',
-  }));
+  const projects: Project[] = (resume.projects || []).flatMap((project, idx) => {
+    // Nazwa jest jedynym wymaganym identyfikatorem projektu; bez niej nie twórz wpisu zastępczego.
+    if (!project.name?.trim()) return [];
+    return [{
+      id: `proj-portable-${idx + 1}`,
+      name: project.name,
+      role: project.role || '',
+      description: project.description || '',
+      techStack: project.techStack || [],
+      metrics: project.metrics || '',
+    }];
+  });
 
   const summaryText = typeof resume.summary === 'string'
     ? resume.summary

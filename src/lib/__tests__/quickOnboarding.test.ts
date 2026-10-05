@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   runQuickAtsCheck,
   extractTopThreeProblems,
@@ -11,6 +11,13 @@ import { createEmptyVault } from '../sampleVault';
 import { scoreCanonicalAts } from '../canonicalAts';
 import { calculateJobMatch } from '../jobMatcherEngine';
 import type { JobOffer } from '../../types';
+
+// Cały wynik obejmuje także czas obliczenia, więc porównanie wymaga wspólnego zegara.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-02T12:00:00.000Z'));
+});
+afterEach(() => vi.useRealTimers());
 
 describe('Uproszczony onboarding — minimalny happy path (QuickOnboarding)', () => {
   const SAMPLE_CV_PHYSICAL = `
@@ -42,7 +49,7 @@ Wymagania bezwzględne:
 - Prawo jazdy kat. B
 `.trim();
 
-  it('Test 1: extractTopThreeProblems zwraca dokładnie 3 problemy dla wyniku z brakami', () => {
+  it('extractTopThreeProblems zwraca najwyżej 3 rzeczywiste ustalenia dla wyniku z brakami', () => {
     const result = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, SAMPLE_JD_WITH_KNOCKOUT);
     const problems = extractTopThreeProblems(result);
 
@@ -70,6 +77,37 @@ Wymagania bezwzględne:
     expect(criticalProblems[0].category).toBe('formal');
   });
 
+  it('nie przedstawia nieznanej aktualnosci dokumentu jako krytycznego braku', () => {
+    const result = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, SAMPLE_JD_WITH_KNOCKOUT);
+    const finding = {
+      ruleId: 'sep_g1',
+      label: 'Uprawnienia SEP G1 (termin waznosci niepotwierdzony)',
+      severity: 'knockout' as const,
+      status: 'unknown' as const,
+      satisfied: false,
+      matchedVia: null,
+      hint: 'Profil nie przechowuje terminu waznosci dokumentu.',
+    };
+    result.knockouts = {
+      ...result.knockouts,
+      findings: [finding],
+      blocking: [],
+      unconfirmed: [finding],
+      optional: [],
+      unclassified: [],
+      requirementCount: 0,
+      satisfiedCount: 0,
+    };
+
+    const problems = extractTopThreeProblems(result);
+    expect(problems).toContainEqual(expect.objectContaining({
+      id: 'ko-unknown-sep_g1',
+      severity: 'warning',
+      category: 'formal',
+    }));
+    expect(problems.some((problem) => problem.id === 'ko-sep_g1' && problem.severity === 'critical')).toBe(false);
+  });
+
   it('utrzymuje ten sam wynik w trybie szybkim i szczegółowym także dla stanowiska fizycznego', () => {
     const quick = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, SAMPLE_JD_WITH_KNOCKOUT);
     const offer: JobOffer = {
@@ -91,8 +129,8 @@ Wymagania bezwzględne:
     expect(quick.canonicalResult.missingRequirements.join(' ')).toMatch(/f.?gaz/i);
   });
 
-  it('Test 3: extractTopThreeProblems dopełnia dokładnie do 3 pozycji zaleceniami, gdy brak krytycznych błędów', () => {
-    // Sztuczny wynik z idealnym dopasowaniem (0 niespełnionych wymagań, 0 brakujących umiejętności)
+  it('Nie dopisuje ogólnych problemów ani porad, gdy analiza nie zwróciła ustaleń', () => {
+    // Sztuczny wynik bez braków, ostrzeżeń strukturalnych i zaleceń z analizy.
     const mockIdealResult: QuickCheckResult = {
       ats: {
         overallScore: 98,
@@ -150,6 +188,7 @@ Wymagania bezwzględne:
         blocking: [],
         optional: [],
         unclassified: [],
+        unconfirmed: [],
         findings: [
           {
             ruleId: 'b',
@@ -164,9 +203,25 @@ Wymagania bezwzględne:
     };
 
     const problems = extractTopThreeProblems(mockIdealResult);
-    expect(problems).toHaveLength(3);
-    // Wszystkie pozycje to zalecenia optymalizacyjne ('info')
-    expect(problems.every((p) => p.severity === 'info')).toBe(true);
+    expect(problems).toEqual([]);
+  });
+
+  it('Pokazuje zalecenia zwrócone przez analizę, bez dokładania porad niezależnych od CV', () => {
+    const result = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, SAMPLE_JD_WITH_KNOCKOUT);
+    result.missingSkills = [];
+    result.knockouts.findings = result.knockouts.findings.map((finding) => ({ ...finding, satisfied: true, status: 'satisfied' }));
+    result.ats.ocrWarnings = [];
+    result.ats.badDateFormats = [];
+    result.ats.layer1Structure.unparsableElementsWarnings = [];
+    result.ats.recommendations = ['Wynik analizy: sprawdź, czy opis doświadczenia odpowiada wymaganiom oferty.'];
+
+    const problems = extractTopThreeProblems(result);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      severity: 'info',
+      description: 'Wynik analizy: sprawdź, czy opis doświadczenia odpowiada wymaganiom oferty.',
+    });
+    expect(problems.map((problem) => problem.id)).not.toContain('tip-metrics');
   });
 
   it('Test 4: Walidacja długości wejścia — minimalny limit znaków z czytelnym polem błędu', () => {
@@ -206,9 +261,9 @@ Wymagania bezwzględne:
     expect(result.ats.overallScore).toBeGreaterThan(0);
     expect(result.ats.overallScore).toBeLessThanOrEqual(100);
 
-    // Sprawdzenie 3 problemów
+    // Ustalenia są ograniczone do pozycji znalezionych w tej analizie.
     const problems = extractTopThreeProblems(result);
-    expect(problems).toHaveLength(3);
+    expect(problems.length).toBeLessThanOrEqual(3);
   });
 
   it('Nie zgłasza jako brakujących umiejętności obecnych w długiej linii CV ani opcji „mile widziane”', () => {
@@ -249,6 +304,18 @@ Wymagania bezwzględne:
     expect(result.ats.layer2Nlp.hardSkillsCoverage).toBe(100);
     expect(result.missingSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'))).not.toContain('entra id');
     expect(result.ats.missingHardSkills.map((skill) => skill.toLocaleLowerCase('pl-PL'))).not.toContain('entra id');
+  });
+
+  it.each([
+    ['wymaganie mile widziane', 'Mile widziane uprawnienia SEP G3 jako dodatkowy atut kandydata w tej rekrutacji.'],
+    ['wzmiankę informacyjną', 'Informacje dodatkowe dotyczące uprawnień SEP G3 w procesie tej rekrutacji. Szczegóły stanowiska i organizacji pracy omówimy podczas rozmowy kwalifikacyjnej.'],
+  ])('nie pokazuje %s bez dowodu jako krytycznego braku formalnego', (_name, jd) => {
+    const result = runQuickAtsCheck(SAMPLE_CV_PHYSICAL, jd);
+    const finding = result.knockouts.findings.find((item) => item.ruleId === 'sep_g3');
+
+    expect(finding?.satisfied).toBe(false);
+    expect(finding?.severity).toBe(_name === 'wymaganie mile widziane' ? 'preferred' : 'information');
+    expect(extractTopThreeProblems(result).some((problem) => problem.id === 'ko-sep_g3')).toBe(false);
   });
 
   it('odtwarza syntetyczny przypadek IT bez fałszywych braków, podziału TCP/IP ani duplikatu edukacji', () => {

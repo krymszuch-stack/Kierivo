@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseMonthYear,
+  parseDateToYearMonth,
   formatMonthYear,
   isFutureMonthYear,
   validateDateRange,
@@ -11,6 +12,16 @@ import {
 } from '../dateUtils';
 
 describe('dateUtils - obsługa i walidacja dat miesiąc/rok', () => {
+  describe('parseDateToYearMonth', () => {
+    it('akceptuje miesiąc/rok i poprawne ISO, a odrzuca nieistniejące lub niejednoznaczne daty', () => {
+      expect(parseDateToYearMonth('2020-02')).toEqual({ year: 2020, month: 2 });
+      expect(parseDateToYearMonth('29.02.2020')).toBeNull();
+      expect(parseDateToYearMonth('2020-02-29')).toEqual({ year: 2020, month: 2 });
+      expect(parseDateToYearMonth('2020-02-30')).toBeNull();
+      expect(parseDateToYearMonth('03/04/2020')).toBeNull();
+    });
+  });
+
   describe('parseMonthYear', () => {
     it('poprawnie parsuje standardowy format ISO YYYY-MM', () => {
       expect(parseMonthYear('2024-09')).toBe('2024-09');

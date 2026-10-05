@@ -56,8 +56,21 @@ export const Topbar: React.FC<TopbarProps> = ({
 }) => {
   const { logout, user, mode, deleteAccount } = useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isClosingProfile, setIsClosingProfile] = useState(false);
+  const accountActionPending = useRef(false);
   const [isA11yModalOpen, setIsA11yModalOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const openPalette = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        window.dispatchEvent(new Event('cvelocity:open-command-palette'));
+      }
+    };
+    window.addEventListener('keydown', openPalette);
+    return () => window.removeEventListener('keydown', openPalette);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -225,9 +238,18 @@ export const Topbar: React.FC<TopbarProps> = ({
                     <>
                       <button
                         type="button"
-                        onClick={() => {
-                          void logout();
-                          setIsDropdownOpen(false);
+                        disabled={isClosingProfile}
+                        onClick={async () => {
+                          if (accountActionPending.current) return;
+                          accountActionPending.current = true;
+                          setIsClosingProfile(true);
+                          try {
+                            const result = await logout();
+                            if (result.ok) setIsDropdownOpen(false);
+                            else showToast('Nie ukończono wylogowania', { message: result.message, variant: 'error' });
+                          } catch {
+                            showToast('Nie ukończono wylogowania', { message: 'Nie można potwierdzić zamknięcia sesji. Spróbuj ponownie.', variant: 'error' });
+                          } finally { accountActionPending.current = false; setIsClosingProfile(false); }
                         }}
                         className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-ink hover:bg-brand-50 hover:text-brand-fg transition-colors"
                       >
@@ -237,23 +259,37 @@ export const Topbar: React.FC<TopbarProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => {
+                        disabled={isClosingProfile}
+                        onClick={async () => {
+                          if (accountActionPending.current) return;
                           const pytanie =
                             mode === 'cloud'
                               ? 'Usunąć konto i wszystkie dane z serwera? Tej operacji nie da się cofnąć.'
                               : 'Usunąć profil i wszystkie dane z tej przeglądarki? Tej operacji nie da się cofnąć.';
                           if (!window.confirm(pytanie)) return;
 
-                          setIsDropdownOpen(false);
-                          void deleteAccount().then((wynik) => {
+                          accountActionPending.current = true;
+                          setIsClosingProfile(true);
+                          let completed = false;
+                          try {
+                            const wynik = await deleteAccount();
                             showToast(
                               wynik.ok ? 'Dane zostały usunięte' : wynik.message,
                               { variant: wynik.ok ? 'success' : 'error' }
                             );
                             // Nowy profil zaczyna się po czystym starcie. W tej
                             // karcie zapis jest zablokowany od chwili wymazywania.
-                            if (wynik.ok) window.setTimeout(() => window.location.reload(), 1200);
-                          });
+                            if (wynik.ok) {
+                              completed = true;
+                              setIsDropdownOpen(false);
+                              window.setTimeout(() => window.location.reload(), 1200);
+                            }
+                          } catch {
+                            showToast('Nie potwierdzono usunięcia danych', { message: 'Operacja została przerwana. Sprawdź stan konta i danych przed ponowieniem.', variant: 'error' });
+                          } finally {
+                            // Po sukcesie wymazywanie blokuje tę kartę do reloadu.
+                            if (!completed) { accountActionPending.current = false; setIsClosingProfile(false); }
+                          }
                         }}
                         className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-danger-fg hover:bg-danger-soft transition-colors"
                       >

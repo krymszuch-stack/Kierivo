@@ -47,6 +47,22 @@ describe('InterviewCoach Service (Azure OpenAI STAR Coach)', () => {
   });
 
   describe('generateInterviewQuestionsWithAi', () => {
+    it('odrzuca nadmiarowy kontekst przed połączeniem z modelem', async () => {
+      await expect(generateInterviewQuestionsWithAi({
+        targetRole: 'r'.repeat(121),
+      })).rejects.toMatchObject({ status: 400, expose: true });
+      expect(geminiClientModule.generateWithUsage).not.toHaveBeenCalled();
+    });
+
+    it('odrzuca błędny kształt JSON pytań zamiast zwracać dane, które wywrócą widok', async () => {
+      vi.spyOn(geminiClientModule, 'generateWithUsage').mockResolvedValueOnce({
+        text: JSON.stringify({ questions: [{ id: 'q1', category: 'nieznana', question: 123 }] }),
+        usageMetadata: {},
+      });
+
+      await expect(generateInterviewQuestionsWithAi({})).rejects.toMatchObject({ status: 502, expose: true });
+    });
+
     it('nie podstawia fikcyjnego stanowiska ani firmy przy pustym profilu', async () => {
       vi.spyOn(geminiClientModule, 'generateWithUsage').mockResolvedValueOnce({
         text: JSON.stringify({ questions: [] }),
@@ -108,7 +124,69 @@ describe('InterviewCoach Service (Azure OpenAI STAR Coach)', () => {
     });
   });
 
+  it('pseudonimizuje niezaufany kontekst i tresc oferty przed wyslaniem', async () => {
+    vi.spyOn(geminiClientModule, 'generateWithUsage').mockResolvedValueOnce({
+      text: JSON.stringify({ questions: [] }),
+      usageMetadata: {},
+    });
+
+    await generateInterviewQuestionsWithAi({
+      targetRole: 'Technik wsparcia',
+      jobDescription: 'Kontakt: rekrutacja@example.invalid, +48 600 700 800.',
+      profileContext: {
+        hardSkills: ['Kontakt: jan.kowalski@example.invalid'],
+        toolsAndTech: ['600 700 800'],
+        experience: [],
+      },
+    });
+
+    const sentText = String(vi.mocked(geminiClientModule.generateWithUsage).mock.calls[0][0].contents);
+    expect(sentText).not.toContain('rekrutacja@example.invalid');
+    expect(sentText).not.toContain('jan.kowalski@example.invalid');
+    expect(sentText).not.toContain('600 700 800');
+    expect(sentText).toContain('[EMAIL]');
+    expect(sentText).toContain('[TELEFON]');
+  });
+
   describe('evaluateStarAnswerWithAi', () => {
+    it('odrzuca zbyt długie pytanie przed połączeniem z modelem', async () => {
+      await expect(evaluateStarAnswerWithAi({
+        question: 'q'.repeat(1201),
+        answer: 'Odpowiedź',
+      })).rejects.toMatchObject({ status: 400, expose: true });
+      expect(geminiClientModule.generateWithUsage).not.toHaveBeenCalled();
+    });
+
+    it('pseudonimizuje tresc odpowiedzi i pytania podane bezposrednio do API', async () => {
+      vi.spyOn(geminiClientModule, 'generateWithUsage').mockResolvedValueOnce({
+        text: JSON.stringify({
+          overallScore: 6,
+          verdict: 'SOLID',
+          starBreakdown: {
+            situation: { score: 6, feedback: 'Sytuacja.' },
+            task: { score: 6, feedback: 'Zadanie.' },
+            action: { score: 6, feedback: 'Dzialanie.' },
+            result: { score: 6, feedback: 'Rezultat.' },
+          },
+          strengths: ['Konkretna odpowiedz.'],
+          improvements: ['Doprecyzuj zakres.'],
+          exemplaryResponse: 'Opis przykladowy.',
+        }),
+        usageMetadata: {},
+      });
+
+      await evaluateStarAnswerWithAi({
+        question: 'Opisz incydent, kontakt jan.kowalski@example.invalid.',
+        answer: 'Telefon do zespolu: +48 600 700 800. Przywrocilem usluge.',
+      });
+
+      const sentText = String(vi.mocked(geminiClientModule.generateWithUsage).mock.calls[0][0].contents);
+      expect(sentText).not.toContain('jan.kowalski@example.invalid');
+      expect(sentText).not.toContain('+48 600 700 800');
+      expect(sentText).toContain('[EMAIL]');
+      expect(sentText).toContain('[TELEFON]');
+    });
+
     it('ocenia wypowiedź kandydata pod kątem struktury STAR i zwraca punktację z wersją wzorcową', async () => {
       const mockEvaluationResponse = {
         overallScore: 8,
@@ -137,7 +215,7 @@ describe('InterviewCoach Service (Azure OpenAI STAR Coach)', () => {
       });
 
       expect(result.evaluation.overallScore).toBe(8);
-      expect(result.evaluation.verdict).toBe('SOLID');
+      expect(result.evaluation.verdict).toBe('EXCELLENT');
       expect(result.evaluation.starBreakdown.action.score).toBe(9);
       expect(result.evaluation.exemplaryResponse).not.toContain('Enterprise Cloud');
       const sentText = String(vi.mocked(geminiClientModule.generateWithUsage).mock.calls[0][0].contents);

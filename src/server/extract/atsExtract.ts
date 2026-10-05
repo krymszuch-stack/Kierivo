@@ -4,8 +4,8 @@ import path from 'path';
 
 export interface AtsExtractResult {
   rawText: string;
-  hasActualText: boolean;
-  hasInvisibleText: boolean;
+  hasActualText: boolean | null;
+  hasInvisibleText: boolean | null;
 }
 
 const ENGINE_DIR = path.resolve(process.cwd(), 'mastervault-cv');
@@ -69,8 +69,8 @@ export async function runAtsExtract(pdfPath: string): Promise<AtsExtractResult> 
           const parsed = JSON.parse(stdout);
           resolve({
             rawText: parsed.rawText ?? '',
-            hasActualText: Boolean(parsed.hasActualText),
-            hasInvisibleText: Boolean(parsed.hasInvisibleText),
+            hasActualText: typeof parsed.hasActualText === 'boolean' ? parsed.hasActualText : null,
+            hasInvisibleText: typeof parsed.hasInvisibleText === 'boolean' ? parsed.hasInvisibleText : null,
           });
         } catch (e) {
           reject(new Error(`ATS extraction: niepoprawny JSON na stdout: ${stdout.slice(0, 200)}`));

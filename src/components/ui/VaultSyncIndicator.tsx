@@ -6,6 +6,7 @@ const LABELS = {
   pending: 'Oczekuje na chmurę',
   cloud: 'Zapisane w chmurze',
   conflict: 'Konflikt synchronizacji',
+  unverified: 'Niepotwierdzony stan chmury',
 } as const;
 
 /**
@@ -22,7 +23,7 @@ export const VaultSyncIndicator: React.FC = () => {
   return (
     <div
       className={`fixed right-4 top-20 z-20 rounded-lg border bg-elevated/95 px-2.5 py-1.5 text-[10px] font-medium shadow-xs backdrop-blur sm:right-6 ${
-        status === 'conflict' ? 'border-amber-500/50 text-amber-700' : 'border-line text-muted'
+        status === 'conflict' || status === 'unverified' ? 'border-amber-500/50 text-amber-700' : 'border-line text-muted'
       }`}
       role="status"
       aria-live="polite"
@@ -32,6 +33,8 @@ export const VaultSyncIndicator: React.FC = () => {
       data-vault-sync-status={status}
       title={status === 'conflict'
         ? 'Lokalne CV zachowano. Chmura zmieniła się na innym urządzeniu; nie nadpisaliśmy jej automatycznie.'
+        : status === 'unverified'
+          ? 'Nie udało się odczytać stanu konta. Nie potwierdziliśmy, że bieżące CV jest zapisane w chmurze.'
         : undefined}
     >
       {LABELS[status]}

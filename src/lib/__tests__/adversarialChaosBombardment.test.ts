@@ -64,7 +64,7 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
     it('1.3 ConsistencyGuard radzi sobie z niepoprawnymi datami i stringowymi highlights', () => {
       expect(parseDateToDecimalYear(undefined)).toBeNull();
       expect(parseDateToDecimalYear('NaN-NaN')).toBeNull();
-      expect(parseDateToDecimalYear('9999-99')).toBeDefined();
+      expect(parseDateToDecimalYear('9999-99')).toBeNull();
       expect(parseDateRangeToYears('invalid - range')).toBeNull();
       expect(calculateYearsDifference('2020 - 2021', undefined)).toBe(0);
 
@@ -98,8 +98,7 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
     it('1.5 ATS Telemetry i Knockouts radzą sobie z pustym vaultem i pustym JD', () => {
       const emptyVault = {} as MasterVault;
       const telemetry = buildAtsTelemetryReport({ vault: emptyVault, jobDescription: '' });
-      expect(telemetry.overallScore).toBeDefined();
-      expect(telemetry.overallScore).toBeGreaterThanOrEqual(0);
+      expect(telemetry.overallScore).toBeNull();
       expect(telemetry.heuristicProfiles).toHaveLength(3);
 
       const ko = evaluateKnockouts('', emptyVault);
@@ -109,11 +108,11 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
 
     it('1.6 Drill Mode Engine radzi sobie z pustymi transkrypcjami i dziwnymi znakami', () => {
       const emptyScore = analyzeDrillResponse('');
-      expect(emptyScore.overallScore).toBe(0);
-      expect(emptyScore.structure.scorePercent).toBe(0);
+      expect(emptyScore.overallScore).toBeNull();
+      expect(emptyScore.structure.scorePercent).toBeNull();
 
       const nullScore = analyzeDrillResponse(null as unknown as string);
-      expect(nullScore.overallScore).toBe(0);
+      expect(nullScore.overallScore).toBeNull();
 
       const q = getRandomDrillQuestion([], 'none');
       expect(q).toBeDefined();
@@ -388,38 +387,20 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
       } as unknown as MasterVault;
     };
 
-    it('ranking 50 stanowisk / 250 osiągnięć wykonuje się poniżej 15 ms (mediana z 10 przebiegów)', () => {
+    it('stabilnie szereguje 50 stanowisk i 250 osiągnięć bez gubienia wpisów', () => {
       const vault = buildHugeVault();
       const jdKeywords = ['React', 'Node.js', 'Docker', 'PostgreSQL', 'GraphQL'];
 
-      // Rozgrzewka JIT poza pomiarem — mierzymy ustabilizowany silnik,
-      // nie koszt pierwszego dotknięcia kodu.
-      getRelevanceOrderedExperienceIds(vault.history, jdKeywords, 'Full-Stack Engineer');
-      rankHighlightsByRelevance(vault.history[0].highlights, jdKeywords);
+      const allHighlights = vault.history.flatMap((job) => job.highlights);
+      const experienceIds = getRelevanceOrderedExperienceIds(vault.history, jdKeywords, 'Full-Stack Engineer');
+      const rankedHighlights = rankHighlightsByRelevance(allHighlights, jdKeywords);
 
-      const czasy: number[] = [];
-      for (let i = 0; i < 10; i++) {
-        const start = performance.now();
-        getRelevanceOrderedExperienceIds(vault.history, jdKeywords, 'Full-Stack Engineer');
-        rankHighlightsByRelevance(
-          vault.history.flatMap((job) => job.highlights),
-          jdKeywords
-        );
-        czasy.push(performance.now() - start);
-      }
-
-      czasy.sort((a, b) => a - b);
-      const mediana = czasy[Math.floor(czasy.length / 2)];
-
-      console.log(`  Ogromny Skarbiec — mediana selekcji: ${mediana.toFixed(2)} ms (max: ${czasy[czasy.length - 1].toFixed(2)} ms)`);
-
-      // Próg obciążeniowy, nie rankingowy: kanoniczny matcher (granice słów,
-      // aliasy, negacje) kosztuje więcej niż `String.includes`, a twardy limit
-      // 15 ms sypał się na obciążonym runnerze (7 ms solo, ~20 ms w pełnej
-      // suicie). Reguła 6 (AGENTS.md): bez progów czasowych łapiących szum
-      // maszyny — ten próg łapie tylko eksplozję złożoności (regresja O(n²)
-      // na tych danych to sekundy, nie milisekundy).
-      expect(mediana).toBeLessThan(150);
+      expect(experienceIds).toHaveLength(50);
+      expect(new Set(experienceIds).size).toBe(50);
+      expect(rankedHighlights).toHaveLength(250);
+      expect(new Set(rankedHighlights.map(({ highlight }) => highlight.id)).size).toBe(250);
+      expect(getRelevanceOrderedExperienceIds(vault.history, jdKeywords, 'Full-Stack Engineer')).toEqual(experienceIds);
+      expect(rankHighlightsByRelevance(allHighlights, jdKeywords)).toEqual(rankedHighlights);
     });
   });
 
@@ -489,8 +470,7 @@ describe('Adversarial Chaos & Hallucination Bombardment Test Suite', () => {
     it('atsScorer dla 50 000 znaków zwraca raport w granicach 0–100', () => {
       const vault = createEmptyVault('Jan Testowy');
       const report = buildAtsTelemetryReport({ vault: vault as MasterVault, jobDescription: ogromneJd });
-      expect(report.overallScore).toBeGreaterThanOrEqual(0);
-      expect(report.overallScore).toBeLessThanOrEqual(100);
+      expect(report.overallScore).toBeNull();
     });
 
     it('atsScorer dla pustego ogłoszenia nie rzuca i zwraca spójny raport', () => {

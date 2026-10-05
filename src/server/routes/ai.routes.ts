@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { rewriteProposalOutputSchema, validateAiModelOutput } from '../aiModelOutputs';
 import { aiService } from '../services/ai.service';
 import { verifyCvWithTripleLoop } from '../services/cvVerifier.service';
 import {
@@ -9,12 +10,17 @@ import { aiEndpointsLimiter } from '../middleware/rateLimiter';
 import { requireAuth } from '../middleware/requireAuth';
 import { executeAiOperation } from '../quota';
 import { MasterVault } from '../../types';
+import { hasSufficientCvContent, INSUFFICIENT_CV_CONTENT_MESSAGE, isValidAtsScore } from '../../lib/canonicalAts';
 import type { InterviewCoachProfileContext } from '../../lib/interviewCoachContext';
 import { loadConfig } from '../config';
-import { generateWithUsage, getActiveAiModel, getActiveAiProvider } from '../geminiClient';
+import { generateWithUsage, getActiveAiModel, getActiveAiProvider, parseModelJson } from '../geminiClient';
 import { pseudonymize, rehydrate, assertNoPii } from '../pseudonymize';
 import { RuleFocus } from '../../lib/sectionRewriterEngine';
 import { auditGeneratedMetrics } from '../services/truthFilter';
+import { hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { isValidAtsScoreContext } from '../../lib/atsScoreEvidence';
+import { isCurrentAdvisorCalculation, type AdvisorAnalysisMetadata } from '../../lib/advisorAnalysisFreshness';
+import { parseInterviewQuestionsInput, parseStarEvaluationInput } from '../../lib/interviewCoachInput';
 
 export const aiRouter = Router();
 
@@ -185,6 +191,13 @@ aiRouter.post(
         });
       }
 
+      if (!hasSufficientCvContent(vault)) {
+        throw Object.assign(new Error(INSUFFICIENT_CV_CONTENT_MESSAGE), {
+          status: 422,
+          expose: true,
+        });
+      }
+
       const userId = req.user!.id;
       const report = await executeAiOperation(
         userId,
@@ -210,6 +223,7 @@ aiRouter.post(
 const ADVISOR_SYSTEM_PROMPT = `Jesteś życzliwym, precyzyjnym i profesjonalnym Doradcą Kariery oraz ekspertem ds. systemów ATS (Applicant Tracking Systems) w aplikacji Kierivo.
 Twoim celem jest pomoc kandydatowi w przygotowaniu etycznego, skutecznego i czytelnego CV oraz w przygotowaniu do rozmów rekrutacyjnych.
 Kluczowe zasady:
+Jeśli kontekst zawiera scoreEvidence.scope=limited, nazwij wynik wstępnym i wyjaśnij ograniczenie liczbą rozpoznanych wymagań lub kompletnością profilu. Gdy scoreEvidence nie ma albo brakuje wyniku, nie cytuj ani nie odtwarzaj liczby. Wyniku wstępnego nie uogólniaj na całe CV.
 1. Zero wymyślonych danych: przypominaj, by kandydat wpisywał wyłącznie prawdziwe i weryfikowalne fakty, osiągnięcia oraz metryki. Nigdy nie zachęcaj do fabrykowania liczb ani doświadczenia.
 2. Metoda STAR: rekomenduj opisywanie osiągnięć schematem Sytuacja, Zadanie, Działanie, Rezultat (STAR), ale nie wymyślaj miar.
 3. Standardy ATS: wyjaśniaj, że układ jednokolumnowy, czysty tekst bez tabel czy grafik i standardowe nagłówki zwykle ułatwiają odczyt parserom. Kierivo bada zgodność strukturalną dokumentu, ale nie gwarantuje decyzji zewnętrznych systemów ATS.
@@ -222,9 +236,21 @@ aiRouter.post('/advisor/chat', requireAuth, aiEndpointsLimiter, async (
     query?: string;
     consentToAzure?: boolean;
     history?: Array<{ sender: 'user' | 'ai'; text: string }>;
-    context?: {
+    context?: AdvisorAnalysisMetadata & {
       offerTitle?: string;
       score?: number;
+      scoreEvidence?: {
+        calculatedAt?: string;
+        calculationMonth?: string;
+        detectedRequirementCount?: number;
+        profileCompleteness?: number;
+        careerEvidenceAvailable?: boolean;
+        unmetBlockingRequirementCount?: number;
+        unconfirmedBlockingRequirementCount?: number;
+        unconfirmedRequirementCount?: number;
+        scoreContextVersion?: number;
+        careerEvidenceVersion?: number;
+      };
       missingRequirements?: string[];
       /** Kompatybilność ze starszymi klientami Doradcy. */
       missingHardSkills?: string[];
@@ -240,7 +266,9 @@ aiRouter.post('/advisor/chat', requireAuth, aiEndpointsLimiter, async (
     if (getActiveAiProvider() !== 'azure_openai') {
       return res.status(501).json({ success: false, error: 'Doradca wymaga skonfigurowanego dostawcy Azure OpenAI.' });
     }
-    const { query, history, context, consentToAzure } = req.body;
+    const { query, history, context: receivedContext, consentToAzure } = req.body;
+    // Nieaktualność dotyczy również braków i opisów, nie tylko procentu.
+    const context = isCurrentAdvisorCalculation(receivedContext) ? receivedContext : undefined;
     if (consentToAzure !== true) {
       return res.status(400).json({ success: false, error: 'Potwierdź wysłanie wpisanej treści do Azure OpenAI.' });
     }
@@ -256,9 +284,29 @@ aiRouter.post('/advisor/chat', requireAuth, aiEndpointsLimiter, async (
       .filter((item) => Boolean(item && typeof item === 'object' && (item.sender === 'user' || item.sender === 'ai') && typeof item.text === 'string'))
       .map((item) => `${item.sender === 'user' ? 'Użytkownik' : 'Doradca'}: ${item.text.trim().slice(0, 1000)}`)
       .filter((item) => item.length > 12);
+    // API przyjmuje niezaufane metadane z klienta; wspólny walidator pilnuje
+    // wersji, zakresów i relacji liczników tak samo jak historia lokalna.
+    const scoreEvidence = isValidAtsScoreContext(context?.scoreEvidence) &&
+      context.scoreEvidence.calculatedAt === context.calculatedAt &&
+      context.scoreEvidence.calculationMonth === context.calculationMonth
+      ? context.scoreEvidence
+      : undefined;
+    const scoreScope = scoreEvidence
+      ? hasLimitedMatchEvidence({
+        totalRequirementCount: scoreEvidence.detectedRequirementCount,
+        profileCompleteness: scoreEvidence.profileCompleteness,
+        fitEvidenceAvailable: scoreEvidence.careerEvidenceAvailable,
+        blockingRequirements: scoreEvidence.unmetBlockingRequirementCount > 0 ? ['unmet'] : [],
+        unconfirmedRequirementCount: scoreEvidence.unconfirmedRequirementCount,
+      }) ? 'limited' as const : 'sufficient' as const
+      : undefined;
     const safeContext = context && typeof context === 'object' ? {
       offerTitle: typeof context.offerTitle === 'string' ? context.offerTitle.slice(0, 200) : undefined,
-      score: typeof context.score === 'number' && Number.isFinite(context.score) ? context.score : undefined,
+      // Starszy klient bez metadanych zakresu nie przekazuje liczby do Doradcy.
+      score: scoreScope === 'sufficient' && isValidAtsScore(context.score)
+        ? context.score
+        : undefined,
+      scoreEvidence: scoreEvidence && scoreScope ? { ...scoreEvidence, scope: scoreScope } : undefined,
       missingRequirements: Array.isArray(context.missingRequirements)
         ? context.missingRequirements.filter((x) => typeof x === 'string').slice(0, 6).map((x) => x.slice(0, 200))
         : Array.isArray(context.missingHardSkills)
@@ -268,7 +316,7 @@ aiRouter.post('/advisor/chat', requireAuth, aiEndpointsLimiter, async (
       missingProfileSections: Array.isArray(context.missingProfileSections) ? context.missingProfileSections.filter((x) => typeof x === 'string').slice(0, 4).map((x) => x.slice(0, 200)) : [],
       hasLanguages: context.hasLanguages === true,
     } : undefined;
-    const rawPrompt = `${ADVISOR_SYSTEM_PROMPT}\n\nZasady pracy: fakty z kontekstu traktuj jako niezweryfikowane dane od użytkownika. Nie dopisuj doświadczenia, kompetencji ani liczb. Nie przedstawiaj wyniku lokalnego jako szansy zatrudnienia ani wyniku prawdziwego ATS.\n\nKontekst analizy: ${JSON.stringify(safeContext ?? {})}\n\nOstatnia rozmowa:\n${safeHistory.join('\n')}\n\nPytanie użytkownika: ${trimmedQuery}`;
+    const rawPrompt = `${ADVISOR_SYSTEM_PROMPT}\n\nZasady pracy: fakty z kontekstu traktuj jako niezweryfikowane dane od użytkownika. Nie dopisuj doświadczenia, kompetencji ani liczb. Nie przedstawiaj wyniku lokalnego jako szansy zatrudnienia ani wyniku prawdziwego ATS. Historia rozmowy nie potwierdza aktualności analizy. Bez aktualnego kontekstu nie cytuj dawnych wyników ani list braków jako bieżących; poproś o ponowną analizę.\n\nKontekst analizy: ${JSON.stringify(safeContext ?? {})}\n\nOstatnia rozmowa:\n${safeHistory.join('\n')}\n\nPytanie użytkownika: ${trimmedQuery}`;
     const safePrompt = pseudonymize(rawPrompt).text;
     assertNoPii(safePrompt);
 
@@ -346,22 +394,18 @@ aiRouter.post('/advisor/rewrite-section', requireAuth, aiEndpointsLimiter, async
         },
       }, 'trusted-advisor-rewrite', { recordUsage: false });
       if (!generated.text) throw Object.assign(new Error('Azure nie zwróciło propozycji.'), { status: 502 });
-      let parsed: { proposedText?: unknown; explanation?: unknown; appliedRules?: unknown };
-      try {
-        parsed = JSON.parse(generated.text) as typeof parsed;
-      } catch {
-        throw Object.assign(new Error('Azure zwróciło propozycję w nieprawidłowym formacie.'), { status: 502 });
-      }
-      if (typeof parsed.proposedText !== 'string' || !parsed.proposedText.trim() || typeof parsed.explanation !== 'string' || !Array.isArray(parsed.appliedRules)) {
-        throw Object.assign(new Error('Azure zwróciło propozycję w nieprawidłowym formacie.'), { status: 502 });
-      }
+      const parsed = validateAiModelOutput(
+        rewriteProposalOutputSchema,
+        parseModelJson<unknown>(generated.text, 'trusted-advisor-rewrite'),
+        'trusted-advisor-rewrite',
+      );
       const proposedText = rehydrate(parsed.proposedText, anonymized.map);
       const metricAudit = auditGeneratedMetrics(proposedText, originalText);
       if (metricAudit.fabricatedMetrics.length > 0) {
         throw Object.assign(new Error('Azure dodało liczby, których nie było w źródle.'), { status: 502 });
       }
       return {
-        data: { proposedText, explanation: parsed.explanation, appliedRules: parsed.appliedRules.filter((item): item is string => typeof item === 'string').slice(0, 8) },
+        data: { proposedText, explanation: parsed.explanation, appliedRules: parsed.appliedRules.slice(0, 8) },
         usage: generated.usageMetadata ? {
           promptTokens: generated.usageMetadata.promptTokenCount ?? 0,
           completionTokens: generated.usageMetadata.candidatesTokenCount ?? 0,
@@ -419,6 +463,9 @@ aiRouter.post(
         });
         throw error;
       }
+      const boundedInput = parseInterviewQuestionsInput({
+        targetRole, targetCompany, jobDescription, profileContext,
+      });
       const userId = req.user!.id;
 
       const questions = await executeAiOperation(
@@ -426,10 +473,7 @@ aiRouter.post(
         'coach-star-questions',
         async () => {
           const result = await generateInterviewQuestionsWithAi({
-            targetRole,
-            targetCompany,
-            jobDescription,
-            profileContext,
+            ...boundedInput,
           });
           return { data: result.questions, usage: result.usage };
         }
@@ -485,6 +529,7 @@ aiRouter.post(
       if (!answer || typeof answer !== 'string' || !answer.trim()) {
         throw Object.assign(new Error('Brak treści odpowiedzi kandydata.'), { status: 400, expose: true });
       }
+      const boundedInput = parseStarEvaluationInput({ question, answer, targetRole });
 
       const userId = req.user!.id;
 
@@ -493,9 +538,7 @@ aiRouter.post(
         'coach-star-evaluate',
         async () => {
           const result = await evaluateStarAnswerWithAi({
-            question,
-            answer,
-            targetRole,
+            ...boundedInput,
           });
           return { data: result.evaluation, usage: result.usage };
         }

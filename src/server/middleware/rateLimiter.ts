@@ -86,6 +86,13 @@ export const aiEndpointsLimiter = createRateLimiter({
 });
 
 /** Network fetches on behalf of a user are slow and abusable — keep them scarce. */
+/** Oddziela ruch do zewnętrznego API map od ogólnego limitu API aplikacji. */
+export const mobilityEndpointsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  message: 'Zbyt wiele zapytań o dojazd. Spróbuj ponownie za chwilę.',
+});
+
 export const urlFetchLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000,
   maxRequests: 30,

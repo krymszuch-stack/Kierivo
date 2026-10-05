@@ -46,6 +46,7 @@ export interface SemanticPdfApiResponse {
   filename: string;
   pdf: string;
   atsValidation?: AtsPdfValidationReport | null;
+  contentWarnings?: string[];
 }
 
 /**
@@ -75,19 +76,23 @@ export async function fetchSemanticThemes(): Promise<{
 }
 
 export interface SemanticPdfExportResult {
+  /** Wygenerowany plik; zapis następuje dopiero po przejrzeniu ostrzeżeń. */
+  blob: Blob;
   /** Wyniki walidacji ATS (null jeśli walidacja nie była dostępna) */
   atsValidation: AtsPdfValidationReport | null;
   /** Nazwa pliku */
   filename: string;
   /** Identyfikator żądania do logów/diagnostyki */
   requestId?: string;
+  /** Jawne ostrzeżenia o treści pominiętej przez dopasowanie do limitu stron. */
+  contentWarnings: string[];
 }
 
 /**
  * Wywołuje backendowy silnik mvcv przez api.post i pobiera gotowy plik PDF.
  * Po eksporcie zwraca wyniki walidacji ATS oraz requestId.
  */
-export async function downloadSemanticPdf(options: SemanticPdfExportOptions): Promise<SemanticPdfExportResult> {
+export async function prepareSemanticPdf(options: SemanticPdfExportOptions): Promise<SemanticPdfExportResult> {
   const data = await api.post<SemanticPdfApiResponse>('/api/cv/export-pdf', options);
 
   if (!data || !data.pdf) {
@@ -108,12 +113,18 @@ export async function downloadSemanticPdf(options: SemanticPdfExportOptions): Pr
     bytes[i] = binaryStr.charCodeAt(i);
   }
   const blob = new Blob([bytes], { type: 'application/pdf' });
-  saveAs(blob, filename);
 
   return {
+    blob,
     atsValidation: data.atsValidation ?? null,
     filename,
     requestId: data.requestId,
+    contentWarnings: Array.isArray(data.contentWarnings) ? data.contentWarnings : [],
   };
+}
+
+/** Zapisuje przygotowany PDF dopiero po decyzji użytkownika. */
+export function savePreparedSemanticPdf(result: SemanticPdfExportResult): void {
+  saveAs(result.blob, result.filename);
 }
 

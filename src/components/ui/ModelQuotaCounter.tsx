@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { useEntitlements } from '../../store/useEntitlements';
+import { AI_QUOTA_RESET_TIME } from '../../lib/aiQuotaPolicy';
 import { useOptionalAuth } from '../../context/AuthContext';
 import { setAuthModalOpenGlobal } from '../../store/useAppStore';
 import { Tooltip } from './Tooltip';
@@ -223,7 +224,7 @@ export const ModelQuotaCounter: React.FC<ModelQuotaCounterProps> = ({
               <strong>Uwaga:</strong> {feedback.label}.
             </span>
           </div>
-          <span className="font-mono text-[10px] text-muted">odnowienie o 00:00</span>
+          <span className="font-mono text-[10px] text-muted">odnowienie o {AI_QUOTA_RESET_TIME}</span>
         </div>
       );
     }

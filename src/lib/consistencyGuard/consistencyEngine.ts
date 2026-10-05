@@ -10,7 +10,7 @@ import {
   HudMetricItem,
   HudSkillStat,
   PitchRendererOutput,
-  PitchStrengthItem,
+  ProfileClaimStatement,
   SectionConsistencyStatus,
   LinkedInRendererOutput,
   LinkedInExperienceItem,
@@ -21,7 +21,9 @@ import {
   selectVariantIndex,
 } from '../phrasingVariations';
 import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
-import { parseMonthYear } from '../dateUtils';
+import { parseDateToYearMonth } from '../dateUtils';
+import { claimDateRangeFromProfile } from './claimDateRange';
+import { describeProfileClaim } from './pitchStatements';
 
 /**
  * Stała określająca maksymalną dopuszczalną rozbieżność czasu trwania (w latach).
@@ -32,44 +34,9 @@ export const MAX_ALLOWED_YEAR_DIFFERENCE = 0.5;
 /**
  * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
  */
-export function parseDateToDecimalYear(dateStr: string | undefined): number | null {
-  if (!dateStr || typeof dateStr !== 'string') return null;
-
-  const normalized = dateStr.trim().toLowerCase();
-  if (['obecnie', 'present', 'current', 'teraz', 'now'].includes(normalized)) {
-    const now = new Date();
-    return now.getFullYear() + (now.getMonth() + 0.5) / 12;
-  }
-
-  // Używamy zunifikowanego parseMonthYear dla formatów YYYY-MM, MM.YYYY, MM/YYYY, słownych
-  const parsedYm = parseMonthYear(dateStr);
-  if (parsedYm) {
-    const [yStr, mStr] = parsedYm.split('-');
-    const year = parseInt(yStr, 10);
-    const month = parseInt(mStr, 10);
-    if (!isNaN(year) && !isNaN(month)) {
-      const clampedMonth = Math.min(12, Math.max(1, month));
-      return year + (clampedMonth - 0.5) / 12;
-    }
-  }
-
-  // Format YYYY-MM lub YYYY-MM-DD
-  const matchYm = /^(\d{4})(?:[-/.](\d{1,2}))?/.exec(normalized);
-  if (matchYm) {
-    const year = parseInt(matchYm[1], 10);
-    const month = matchYm[2] ? parseInt(matchYm[2], 10) : 1;
-    if (isNaN(year)) return null;
-    const clampedMonth = Math.min(12, Math.max(1, month));
-    return year + (clampedMonth - 0.5) / 12;
-  }
-
-  const parsed = Date.parse(dateStr);
-  if (!isNaN(parsed)) {
-    const d = new Date(parsed);
-    return d.getFullYear() + (d.getMonth() + 0.5) / 12;
-  }
-
-  return null;
+export function parseDateToDecimalYear(dateStr: string | undefined, now = new Date()): number | null {
+  const parsed = parseDateToYearMonth(dateStr, now);
+  return parsed ? parsed.year + (parsed.month - 0.5) / 12 : null;
 }
 
 /**
@@ -168,13 +135,14 @@ export function extractClaimsFromVault(vault: MasterVault): Claim[] {
       if (!claimsMap.has(mainClaimId) && !claimsMap.has(exp.id)) {
         const firstHl = exp.highlights?.[0];
         const firstMetric = typeof firstHl === 'object' ? firstHl?.metric : undefined;
+        const dateRange = claimDateRangeFromProfile(
+          exp.startDate,
+          exp.isCurrent ? 'Obecnie' : exp.endDate,
+        );
         claimsMap.set(mainClaimId, {
           id: mainClaimId,
           sourceProject: exp.company || exp.role,
-          dateRange: {
-            start: exp.startDate || '2020-01',
-            end: exp.isCurrent ? 'Obecnie' : exp.endDate || '2022-01',
-          },
+          ...(dateRange ? { dateRange } : {}),
           metric: firstMetric,
           tags: Array.from(expTags),
         });
@@ -189,14 +157,15 @@ export function extractClaimsFromVault(vault: MasterVault): Claim[] {
             const hlText = typeof hl === 'string' ? hl : (hl?.text || '');
             const hlMetric = (typeof hl === 'object' && hl !== null ? hl.metric : undefined) || (hlText ? hlText.match(/\d+[%kKmM+xX]?/)?.[0] : undefined);
             const hlKeywords = typeof hl === 'object' && hl !== null && Array.isArray(hl.keywords) ? hl.keywords : [];
+            const dateRange = claimDateRangeFromProfile(
+              exp.startDate,
+              exp.isCurrent ? 'Obecnie' : exp.endDate,
+            );
 
             claimsMap.set(hlClaimId, {
               id: hlClaimId,
               sourceProject: `${exp.company} (${exp.role})`,
-              dateRange: {
-                start: exp.startDate || '2020-01',
-                end: exp.isCurrent ? 'Obecnie' : exp.endDate || '2022-01',
-              },
+              ...(dateRange ? { dateRange } : {}),
               metric: hlMetric,
               tags: hlKeywords,
             });
@@ -214,10 +183,6 @@ export function extractClaimsFromVault(vault: MasterVault): Claim[] {
         claimsMap.set(projClaimId, {
           id: projClaimId,
           sourceProject: proj.name,
-          dateRange: {
-            start: '2022-01',
-            end: 'Obecnie',
-          },
           metric: proj.metrics,
           tags: Array.isArray(proj.techStack) ? proj.techStack : [],
         });
@@ -552,8 +517,9 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
     const claim = getClaimById(vault, claimId);
     if (!claim) continue;
 
-    const dateRangeDisplay =
-      typeof claim.dateRange === 'string'
+    const dateRangeDisplay = !claim.dateRange
+      ? 'Daty niepodane w profilu'
+      : typeof claim.dateRange === 'string'
         ? claim.dateRange
         : `${claim.dateRange.start} – ${claim.dateRange.end}`;
 
@@ -623,8 +589,8 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
   // Oś czasu = unia przedziałów zatrudnienia (JEDEN przedział na wpis historii).
   // Wcześniej każdy punktor dokładał pełny czas roli (2 lata × 5 punktorów
   // + claim główny = 12 lat za 2 lata pracy) — F5. Projekty nie mają dat
-  // zatrudnienia (sztywne `2022-01–Obecnie` w generatorze claimów), więc ich
-  // nie liczymy do stażu. (Unia liczona lokalnie, żeby nie zapętlać importów
+  // zatrudnienia (claimy projektów nie zawierają dat), więc ich nie liczymy do
+  // stażu. (Unia liczona lokalnie, żeby nie zapętlać importów
   // z `lib/experience.ts`, który sam korzysta z `parseDateToDecimalYear` stąd.)
   const employmentSpans: Array<{ start: number; end: number }> = [];
   for (const exp of vault.history ?? []) {
@@ -677,8 +643,8 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
 }
 
 /**
- * RENDERER 3: Pitch Renderer (30-Second Elevator Pitch & Talking Points)
- * Pobiera dane z MasterVault przez `claimIds` i tworzy spójną wypowiedź rekrutacyjną opartą na faktach.
+ * RENDERER 3: Szkic wypowiedzi rekrutacyjnej na podstawie wpisów profilu.
+ * Claim identyfikuje źródłowy wpis; sam w sobie nie potwierdza prawdziwości ani poziomu biegłości.
  */
 export function renderPitchFromClaims(
   vault: MasterVault,
@@ -691,36 +657,25 @@ export function renderPitchFromClaims(
       ? claimIds
       : extractClaimsFromVault(vault).map((c) => c.id);
 
-  const coreStrengths: PitchStrengthItem[] = [];
-  const candidateName = vault.personalInfo?.fullName || 'Kandydat';
-  const role = targetRole || vault.personalInfo?.title || 'Specjalista';
+  const profileStatements: ProfileClaimStatement[] = [];
+  const candidateName = vault.personalInfo?.fullName?.trim() || '';
+  const role = targetRole || vault.personalInfo?.title || '';
 
   for (const claimId of effectiveClaimIds) {
     const claim = getClaimById(vault, claimId);
     if (!claim) continue;
 
-    const statement = claim.metric
-      ? `W ${claim.sourceProject} osiągnąłem wymierny rezultat: ${claim.metric}, wykorzystując ${claim.tags.slice(0, 3).join(', ')}.`
-      : `W projekcie ${claim.sourceProject} odpowiadałem za wdrożenia w oparciu o ${claim.tags.slice(0, 3).join(', ')}.`;
-
-    coreStrengths.push({
+    profileStatements.push({
       claimId: claim.id,
-      statement,
+      statement: describeProfileClaim(claim),
       metric: claim.metric,
       tags: claim.tags,
     });
   }
 
-  const topMetric = coreStrengths.find((s) => s.metric)?.metric;
-  const allTags = Array.from(new Set(coreStrengths.flatMap((s) => s.tags)));
-  const topSkills = allTags.slice(0, 3).join(', ');
-
   const hookCtx = {
     candidateName,
     roleTitle: role,
-    topSkills,
-    topMetric,
-    verifiedClaimsCount: coreStrengths.length,
   };
 
   const hookVariations = getPitchHookVariations(hookCtx);
@@ -734,13 +689,13 @@ export function renderPitchFromClaims(
 
   const elevatorPitchText = [
     hook,
-    ...coreStrengths.map((s) => `• ${s.statement}`),
+    ...profileStatements.map((statement) => `• ${statement.statement}`),
     callToAction,
   ].join('\n\n');
 
   return {
     hook,
-    coreStrengths,
+    profileStatements,
     callToAction,
     elevatorPitchText,
   };
@@ -766,9 +721,11 @@ export function renderLinkedInFromClaims(
   const role = vault.personalInfo?.title || 'Specjalista';
 
   const experience: LinkedInExperienceItem[] = claims.map((claim) => {
-    const rangeDisplay = typeof claim.dateRange === 'string'
-      ? claim.dateRange
-      : `${claim.dateRange.start} - ${claim.dateRange.end}`;
+    const rangeDisplay = !claim.dateRange
+      ? 'Daty niepodane w profilu'
+      : typeof claim.dateRange === 'string'
+        ? claim.dateRange
+        : `${claim.dateRange.start} - ${claim.dateRange.end}`;
 
     return {
       claimId: claim.id,

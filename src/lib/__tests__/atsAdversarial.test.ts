@@ -58,6 +58,19 @@ describe('F1: granice słów i intencja dowodu', () => {
     expect(r.missingHardSkills).toContain('java');
   });
 
+  it('nazwa stanowiska nie dowodzi umiejetnosci wymaganej w ofercie', () => {
+    const v = vaultWith({
+      title: 'Python Developer',
+      history: [{ ...hist('1', 'Wspolpraca z zespolami przy planowaniu wydan.'), role: 'Python Developer' }],
+    });
+    const r = simulateAtsCheck(resumeFor(v, 'Python Developer'), v, 'Wymagane: Python.');
+
+    expect(r.matchedKeywords).not.toContain('python');
+    expect(r.missingHardSkills).toContain('python');
+    expect(r.layer2Nlp.hardSkillsCoverage).toBe(0);
+    expect(r.layer3Scoring.recencyScore).toBeNull();
+  });
+
   it('"I do not know Python" nie jest dowodem', () => {
     const v = vaultWith({
       summary: 'I do not know Python. Never worked with AWS.',
@@ -87,8 +100,8 @@ describe('F1: granice słów i intencja dowodu', () => {
       hard: ['Python'], history: [hist('1', 'Python work')],
       summary: 'Job requires AWS Docker. Interested in AWS. Currently learning Docker.',
     });
-    const rb = simulateAtsCheck(resumeFor(base, 'Dev'), base, jd2).overallScore;
-    const rc = simulateAtsCheck(resumeFor(copy, 'Dev'), copy, jd2).overallScore;
+    const rb = simulateAtsCheck(resumeFor(base, 'Dev'), base, jd2).overallScore!;
+    const rc = simulateAtsCheck(resumeFor(copy, 'Dev'), copy, jd2).overallScore!;
     expect(rc - rb).toBeLessThan(10);
   });
 
@@ -97,9 +110,24 @@ describe('F1: granice słów i intencja dowodu', () => {
     const mk = (summary: string) => {
       const v = vaultWith({ hard: ['Python'], tools: ['AWS'], history: [hist('1', 'Python AWS work')] });
       v.personalInfo.summary = summary;
-      return simulateAtsCheck(resumeFor(v, 'Dev'), v, jd2).overallScore;
+      return simulateAtsCheck(resumeFor(v, 'Dev'), v, jd2).overallScore!;
     };
     expect(Math.abs(mk('Python AWS work') - mk('Python AWS work Python AWS work Python AWS work'))).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('kontakt w diagnostyce', () => {
+  it('zgłasza niepoprawny adres z @ zamiast traktować go jako kompletne dane kontaktowe', () => {
+    const vault = vaultWith({
+      summary: 'Doświadczenie zawodowe w obsłudze użytkowników i systemów IT.',
+      hard: ['Python'],
+      history: [hist('support', 'Obsługa zgłoszeń Python.')],
+    });
+    vault.personalInfo.email = 'jan@';
+
+    const result = simulateAtsCheck(resumeFor(vault, 'Developer'), vault, 'Wymagania: Python, obsługa zgłoszeń.');
+
+    expect(result.ocrWarnings).toContain('Brak prawidłowego adresu e-mail w sekcji danych osobowych.');
   });
 });
 
@@ -129,16 +157,60 @@ describe('F3/F4: formalia i stany puste', () => {
     expect(r.layer2Nlp.formalReqsCoverage).toBeGreaterThan(0);
   });
 
-  it('puste JD = 0, nie 90', () => {
+  it('nie obcina pokrycia, gdy oferta zawiera tylko jeden rodzaj wymagan', () => {
+    const skillsVault = vaultWith({ hard: ['Python'] });
+    const skillsOnly = simulateAtsCheck(resumeFor(skillsVault, 'Dev'), skillsVault, 'Python');
+    expect(skillsOnly.layer2Nlp.hardSkillsCoverage).toBe(100);
+    expect(skillsOnly.layer2Nlp.formalReqsCoverage).toBeNull();
+    expect(skillsOnly.keywordCoverageScore).toBe(100);
+
+    const formalVault = vaultWith({
+      langs: [{ id: 'english-c1', language: 'angielski', level: 'C1', context: 'praca' }],
+    });
+    const formalOnly = simulateAtsCheck(resumeFor(formalVault, 'Dev'), formalVault, 'Wymagany angielski C1.');
+    expect(formalOnly.layer2Nlp.hardSkillsCoverage).toBeNull();
+    expect(formalOnly.layer2Nlp.formalReqsCoverage).toBe(100);
+    expect(formalOnly.keywordCoverageScore).toBe(100);
+    expect(formalOnly.overallScore).toBeGreaterThan(0);
+    expect(formalOnly.layer3Scoring.formulaBreakdown).toContain('pokrycie wymagan 100%');
+
+    const missingFormal = vaultWith({ title: '', langs: [] });
+    const formalGap = simulateAtsCheck(resumeFor(missingFormal, ''), missingFormal, 'Wymagany angielski C1.');
+    expect(formalGap.layer2Nlp.formalReqsCoverage).toBe(0);
+    expect(formalGap.overallScore).toBeLessThan(15);
+    expect(formalGap.gapAnalysis.join(' ')).toMatch(/brakuj.*formaln.*angielski/i);
+    expect(formalGap.gapAnalysis.join(' ')).not.toMatch(/100%|wszystkie rozpoznane wymagania/i);
+  });
+
+  it('nie ogłasza pełnego pokrycia, gdy aktualności wymaganego SEP nie da się potwierdzić', () => {
+    const vault = vaultWith({ licenses: ['sep_1kv'] });
+    const result = simulateAtsCheck(
+      resumeFor(vault, ''),
+      vault,
+      'Wymagane aktualne uprawnienia SEP G1 do 1 kV.'
+    );
+
+    expect(result.gapAnalysis.join(' ')).toMatch(/nie można potwierdzić aktualności/i);
+    expect(result.gapAnalysis.join(' ')).not.toMatch(/100%|wszystkie rozpoznane wymagania/i);
+  });
+
+  it('brak rozpoznanych wymagan w JD daje brak wyniku, nie zero', () => {
     const v = vaultWith({ hard: ['Python'] });
-    expect(simulateAtsCheck(resumeFor(v, 'Dev'), v, '').overallScore).toBe(0);
+    const result = simulateAtsCheck(resumeFor(v, 'Dev'), v, '');
+    expect(result.overallScore).toBeNull();
+    expect(result.layer3Scoring.formulaBreakdown).toContain('nie zawiera rozpoznanych wymagan');
+    expect(result.keywordCoverageScore).toBeNull();
+    expect(result.layer2Nlp.hardSkillsCoverage).toBeNull();
+    expect(result.layer2Nlp.formalReqsCoverage).toBeNull();
+    expect(result.layer1Structure.isSingleColumnCompliant).toBeNull();
+    expect(result.formattingScore).toBeNull();
   });
 
   it('puste CV nie dostaje podłogi punktowej', () => {
     const v = vaultWith({ title: '', hard: [], tools: [] });
     const r = simulateAtsCheck(resumeFor(v, ''), v, 'Python AWS Docker');
     expect(r.overallScore).toBeLessThan(15);
-    expect(r.layer3Scoring.recencyScore).toBe(0);
+    expect(r.layer3Scoring.recencyScore).toBeNull();
   });
 });
 
@@ -166,7 +238,9 @@ describe('F5: unia czasu, nie suma punktorów', () => {
     // (bullets/rola, maks. 25 pkt), nie wielokrotność czasu roli jak dawniej
     // (4 lata → 12 lat w HUD).
     expect(unionExperienceYears(one.history)).toBe(unionExperienceYears(five.history));
-    expect(Math.abs(e5 - e1)).toBeLessThan(20);
+    expect(e1).not.toBeNull();
+    expect(e5).not.toBeNull();
+    expect(Math.abs(e5! - e1!)).toBeLessThan(20);
   });
 
   it('nakładka liczy się raz: overlap < sekwencja', () => {
@@ -190,7 +264,9 @@ describe('F5: unia czasu, nie suma punktorów', () => {
     const seq = buildAtsTelemetryReport({
       vault: mk('2022-01', '2024-01'), jobDescription: 'Python',
     }).formulaBreakdown.experienceScore;
-    expect(overlap).toBeLessThan(seq);
+    expect(overlap).not.toBeNull();
+    expect(seq).not.toBeNull();
+    expect(overlap!).toBeLessThan(seq!);
   });
 
   it('bieżące zatrudnienie liczy się do dziś (nie 0)', () => {
@@ -210,7 +286,24 @@ describe('F5: unia czasu, nie suma punktorów', () => {
     });
     const ec = buildAtsTelemetryReport({ vault: cur, jobDescription: 'Python' }).formulaBreakdown.experienceScore;
     const ep = buildAtsTelemetryReport({ vault: past, jobDescription: 'Python' }).formulaBreakdown.experienceScore;
-    expect(ec).toBeGreaterThanOrEqual(ep);
+    expect(ec).not.toBeNull();
+    expect(ep).not.toBeNull();
+    expect(ec!).toBeGreaterThanOrEqual(ep!);
+  });
+});
+
+describe('formaty dat w raporcie ATS', () => {
+  it('akceptuje kanoniczne i polskie daty miesiąc-rok, a odrzuca niepoprawny miesiąc', () => {
+    const makeResult = (startDate: string) => {
+      const v = vaultWith({ history: [{ ...hist('date', 'Python support'), startDate }] });
+      return simulateAtsCheck(resumeFor(v, 'Developer'), v, 'Wymagania: Python.');
+    };
+
+    expect(makeResult('2020-01').badDateFormats).toEqual([]);
+    expect(makeResult('01.2020').badDateFormats).toEqual([]);
+    expect(makeResult('2020').badDateFormats).toEqual([]);
+    expect(makeResult('99/2020').badDateFormats).toHaveLength(1);
+    expect(makeResult('2020-13').badDateFormats).toHaveLength(1);
   });
 });
 
@@ -239,8 +332,10 @@ describe('F7/F8: struktura i czasowniki bez uprzedzeń', () => {
     const en = vaultWith({ summary: 'Implemented the system. Delivered the API.', history: [hist('1', 'Implemented the system.')] });
     const ap = buildAtsTelemetryReport({ vault: pl, jobDescription: 'Python' }).formulaBreakdown.actionVerbsScore;
     const ae = buildAtsTelemetryReport({ vault: en, jobDescription: 'Python' }).formulaBreakdown.actionVerbsScore;
+    expect(ap).not.toBeNull();
+    expect(ae).not.toBeNull();
     expect(ae).toBeGreaterThan(0);
-    expect(Math.abs(ap - ae)).toBeLessThan(60);
+    expect(Math.abs((ap ?? 0) - (ae ?? 0))).toBeLessThan(60);
   });
 });
 
@@ -286,6 +381,6 @@ describe('F13: parser nie produkuje fikcji', () => {
     expect(fut.warnings?.join(' ').toLowerCase()).toContain('przysz');
     const v = vaultWith({});
     v.history = fut.history;
-    expect(buildAtsTelemetryReport({ vault: v, jobDescription: 'Python' }).formulaBreakdown.experienceScore).toBeLessThan(15);
+    expect(buildAtsTelemetryReport({ vault: v, jobDescription: 'Python' }).formulaBreakdown.experienceScore).toBeNull();
   });
 });

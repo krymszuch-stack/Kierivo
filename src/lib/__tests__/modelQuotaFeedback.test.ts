@@ -52,7 +52,7 @@ describe('modelQuotaFeedback - limity i feedback na operacje modelowe', () => {
       expect(fb.shortBadge).toBe('0/25');
       expect(fb.isExhausted).toBe(true);
       expect(fb.isLow).toBe(false);
-      expect(fb.details).toContain('północy');
+      expect(fb.details).toContain('00:00 UTC');
       expect(fb.details).not.toContain('Kup Pro');
       expect(fb.details).not.toContain('zł');
     });
@@ -78,6 +78,8 @@ describe('modelQuotaFeedback - limity i feedback na operacje modelowe', () => {
     it('zwraca jasne komunikaty alternatywne dla trenera STAR', () => {
       const notice = getModelGracefulDegradationNotice('coach');
       expect(notice.title).toContain('Limit symulacji AI');
+      expect(notice.message).toContain('skonfigurowany model AI');
+      expect(notice.message).not.toContain('Azure OpenAI');
       expect(notice.fallbackActionName).toContain('pytań wbudowanych');
     });
 

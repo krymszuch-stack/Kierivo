@@ -52,3 +52,4 @@ export function getApplicationSnapshotDisplayInfo(application: {
     position: offer.title,
   } : application);
 }
+export { getAtsScoreDisplayInfo } from '../../lib/atsScoreEvidence';

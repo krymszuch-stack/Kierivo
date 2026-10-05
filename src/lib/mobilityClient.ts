@@ -6,21 +6,18 @@ export interface RouteCalculationParams {
   origin: string;
   destination: string;
   engineType?: VehicleEngineType;
-  trafficMode?: 'peak' | 'smooth' | string;
+  trafficMode?: 'peak' | 'smooth';
 }
 
 export interface RouteCalculationResult {
   source: 'azure_maps' | 'local_deterministic';
+  trafficDataAvailable: boolean;
   roadDistanceKm: number;
   freeFlowMinutes: number;
   trafficMinutes: number;
   trafficDelayMinutes: number;
-  energyConsumption: {
-    unit: 'liters' | 'kWh';
-    amountPerOneWay: number;
-    amountMonthly: number;
-    costMonthlyPln: number;
-  };
+  /** Koszt pozostaje nieznany bez danych o pojeździe i cenie energii. */
+  energyConsumption: null;
   corridorDescription?: string;
   points?: Array<{ lat: number; lon: number }>;
 }

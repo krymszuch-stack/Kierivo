@@ -4,6 +4,7 @@ import { scoreCanonicalAts } from '../canonicalAts';
 import { ALL_LICENSES } from '../../data/licenses';
 import { createEmptyVault } from '../sampleVault';
 import { MasterVault } from '../../types';
+import { qualificationCases } from './knockoutQualificationCases';
 
 /** Profil z zaznaczonymi uprawnieniami i opcjonalnym tekstem w doświadczeniu. */
 function vaultWith(licenses: string[], highlightText = ''): MasterVault {
@@ -113,6 +114,17 @@ describe('Prawo jazdy i certyfikaty IT', () => {
     expect(report.findings.find((finding) => finding.ruleId === 'cloud_cert_aws')?.satisfied).toBe(false);
   });
 
+  it('znacznik atutu nie osłabia późniejszego jawnego wymogu w tej samej linii', () => {
+    const report = auditKnockouts(
+      'Wymagania: wymagane prawo jazdy kat. B, mile widziane uprawnienia SEP G1, wymagane prawo jazdy kat. C.',
+      vaultWith([]),
+    );
+
+    expect(report.findings.find((finding) => finding.ruleId === 'license_b')?.severity).toBe('knockout');
+    expect(report.findings.find((finding) => finding.ruleId === 'sep_g1')?.severity).toBe('preferred');
+    expect(report.findings.find((finding) => finding.ruleId === 'license_c')?.severity).toBe('knockout');
+  });
+
   it('sama wzmianka o certyfikacie, z której CV wprost go wyklucza, nie jest dowodem', () => {
     const report = auditKnockouts('Wymagane CCNA.', vaultWith([], 'CCNA bez certyfikatu'));
 
@@ -121,30 +133,6 @@ describe('Prawo jazdy i certyfikaty IT', () => {
 });
 
 describe('Macierz kwalifikacji z różnych branż', () => {
-  const qualificationCases = [
-    ['prawo jazdy A', 'prawo jazdy kat. A', 'Prawo jazdy kategorii A', 'Prawo jazdy kat. B', 'license_a'],
-    ['prawo jazdy B', 'prawo jazdy kat. B', 'Prawo jazdy kat B', 'Prawo jazdy kat. C', 'license_b'],
-    ['prawo jazdy C', 'prawo jazdy kat. C', 'Prawo jazdy kat. C', 'Prawo jazdy kat. B', 'license_c'],
-    ['prawo jazdy C+E', 'prawo jazdy kat. C+E', 'Prawo jazdy kat. C+E', 'Prawo jazdy kat. C', 'license_ce'],
-    ['prawo jazdy D', 'prawo jazdy kat. D', 'Prawo jazdy kat. D', 'Prawo jazdy kat. C', 'license_d'],
-    ['SEP G1', 'uprawnienia SEP G1', 'SEP G-1 — eksploatacja', 'SEP G3 — eksploatacja', 'sep_g1'],
-    ['SEP G2', 'uprawnienia SEP G2', 'SEP G 2 — dozór', 'SEP G1 — dozór', 'sep_g2'],
-    ['SEP G3', 'uprawnienia SEP G3', 'SEP G3 — eksploatacja', 'SEP G1 — eksploatacja', 'sep_g3'],
-    ['F-Gaz', 'certyfikat F-Gaz', 'Certyfikat F-GAS Personel', 'Doświadczenie w chłodnictwie bez certyfikatu F-Gaz', 'fgas'],
-    ['UDT wózki', 'uprawnienia UDT na wózki widłowe', 'UDT II WJO — wózki widłowe', 'UDT na suwnice', 'udt_forklift'],
-    ['UDT suwnice', 'uprawnienia UDT na suwnice', 'UDT — suwnice', 'UDT na wózki widłowe', 'udt_suwnice'],
-    ['UDT podesty', 'uprawnienia UDT na podesty ruchome', 'UDT — podesty ruchome', 'UDT na wózki widłowe', 'udt_lift'],
-    ['UDT urządzenia ciśnieniowe', 'uprawnienia UDT na urządzenia ciśnieniowe', 'UDT — urządzenia ciśnieniowe', 'UDT na suwnice', 'udt_pressure'],
-    ['spawanie TIG', 'uprawnienia spawalnicze TIG', 'TIG 141 — uprawnienia spawalnicze', 'MAG 135 — uprawnienia spawalnicze', 'welding'],
-    ['sanepid', 'książeczka sanepidowska', 'Aktualna książeczka sanitarno-epidemiologiczna', 'Aktualne badania lekarskie bez książeczki sanepidowskiej', 'sanepid'],
-    ['HACCP', 'certyfikat HACCP', 'Certyfikat HACCP', 'Certyfikat CCNA', 'haccp'],
-    ['badania lekarskie', 'aktualne orzeczenie lekarskie', 'Aktualne orzeczenie lekarskie', 'Książeczka sanepidowska', 'medical_clearance'],
-    ['praca na wysokości', 'uprawnienia do pracy na wysokości', 'Uprawnienia do pracy na wysokości', 'Uprawnienia UDT na wózki widłowe', 'height_work'],
-    ['certyfikat Azure', 'certyfikat Azure', 'Certyfikat Microsoft Azure', 'Praktyczna znajomość Azure bez certyfikatu', 'cloud_cert_azure'],
-    ['Scrum Master', 'certyfikat PSM I', 'PSM I — Scrum.org', 'SM I i doświadczenie w agile', 'scrum_master'],
-    ['Cisco CCNA', 'certyfikat CCNA', 'Cisco CCNA', 'Cisco CCNP', 'cisco_ccna'],
-  ] as const;
-
   it.each(qualificationCases)(
     '%s: właściwy dowód jest uznany, obcy zakres i negacja nie są, a wymóg opcjonalny nie blokuje',
     (_name, requirement, positiveEvidence, unrelatedEvidence, ruleId) => {
@@ -177,6 +165,7 @@ describe('Macierz kwalifikacji z różnych branż', () => {
         label,
         satisfied: false,
         severity: 'preferred',
+        status: 'unsatisfied',
       });
       expect(canonical.missingRequirements).not.toContain(label);
       expect(canonical.components.formal).toBe(baseline.components.formal);
@@ -199,6 +188,175 @@ describe('Macierz kwalifikacji z różnych branż', () => {
 });
 
 describe('Dowód uprawnienia a samo doświadczenie', () => {
+  it.each([
+    ['aktualność w tej samej klauzuli', 'Wymagane aktualne prawo jazdy kat. B.'],
+    ['aktualność w następnym zdaniu', 'Wymagane prawo jazdy kat. B. Dokument musi być aktualny.'],
+  ])('nie uznaje kategorii B za aktualną bez potwierdzenia terminu: %s', (_case, description) => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['b_license'];
+
+    const report = auditKnockouts(description, vault);
+    const finding = report.findings.find((item) => item.ruleId === 'license_b');
+
+    expect(finding?.status).toBe('unknown');
+    expect(finding?.satisfied).toBe(false);
+    expect(finding?.matchedVia).toBeNull();
+    expect(report.unconfirmed).toContain(finding);
+    expect(report.blocking).toHaveLength(0);
+  });
+
+  it('sprawdza aktualnosc na obowiazkowej wzmiance, nie na wczesniejszym opisie profilu', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['b_license'];
+
+    const finding = auditKnockouts(
+      'Profil kandydata: kandydat ma prawo jazdy kat. B. Wymagane aktualne prawo jazdy kat. B.',
+      vault,
+    ).findings.find((item) => item.ruleId === 'license_b');
+
+    expect(finding?.status).toBe('unknown');
+    expect(finding?.satisfied).toBe(false);
+  });
+
+  it('nie przenosi aktualnosci z opcjonalnej wzmianki na osobny wymog obowiazkowy', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['b_license'];
+
+    const finding = auditKnockouts(
+      'Mile widziane aktualne prawo jazdy kat. B. Wymagane prawo jazdy kat. B.',
+      vault,
+    ).findings.find((item) => item.ruleId === 'license_b');
+
+    expect(finding?.status).toBe('satisfied');
+    expect(finding?.satisfied).toBe(true);
+  });
+
+  it('nie przenosi aktualnosci uprawnien SEP na osobne wymaganie prawa jazdy', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['b_license', 'sep_1kv'];
+
+    const findings = auditKnockouts(
+      'Wymagania: prawo jazdy kat. B. Uprawnienia SEP G1 muszą być aktualne.',
+      vault,
+    ).findings;
+
+    expect(findings.find((item) => item.ruleId === 'license_b')?.status).toBe('satisfied');
+    expect(findings.find((item) => item.ruleId === 'sep_g1')?.status).toBe('unknown');
+  });
+
+  it('nie potwierdza aktualnosci uprawnienia bez terminu waznosci', () => {
+    const withSelectedLicense = createEmptyVault('Jan Kowalski');
+    withSelectedLicense.profiler.licenses = ['sep_1kv'];
+    const ordinary = auditKnockouts('Wymagane uprawnienia SEP G1 do 1 kV.', withSelectedLicense)
+      .findings.find((item) => item.ruleId === 'sep_g1');
+    const currentReport = auditKnockouts('Wymagane aktualne uprawnienia SEP G1 do 1 kV.', withSelectedLicense);
+    const current = currentReport.findings.find((item) => item.ruleId === 'sep_g1');
+
+    expect(ordinary?.satisfied).toBe(true);
+    expect(current?.satisfied).toBe(false);
+    expect(current?.status).toBe('unknown');
+    expect(current?.matchedVia).toBeNull();
+    expect(current?.label).toContain('termin waznosci niepotwierdzony');
+    expect(current?.hint).toContain('nie mozna potwierdzic jego aktualnosci');
+    expect(currentReport.blocking).toHaveLength(0);
+    expect(currentReport.unconfirmed).toContain(current);
+    expect(currentReport.requirementCount).toBe(0);
+  });
+
+  it('nie traktuje daty uzyskania certyfikatu jako daty jego waznosci', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.skillsMatrix.certifications = [{
+      id: 'sep-old',
+      name: 'Uprawnienia SEP G1 do 1 kV',
+      issuer: 'SEP',
+      date: '2025-01-01',
+    }];
+
+    const current = auditKnockouts('Wymagane aktualne uprawnienia SEP G1 do 1 kV.', vault)
+      .findings.find((item) => item.ruleId === 'sep_g1');
+
+    expect(current?.status).toBe('unknown');
+    expect(current?.satisfied).toBe(false);
+    expect(current?.matchedVia).toBeNull();
+  });
+
+  it('brak dokumentu dla wymogu aktualnosci pozostaje znanym brakiem', () => {
+    const report = auditKnockouts(
+      'Wymagane aktualne uprawnienia SEP G1 do 1 kV.',
+      createEmptyVault('Jan Kowalski'),
+    );
+    const finding = report.findings.find((item) => item.ruleId === 'sep_g1');
+
+    expect(finding?.status).toBe('unsatisfied');
+    expect(finding?.label).not.toContain('termin waznosci niepotwierdzony');
+    expect(report.blocking).toContain(finding);
+    expect(report.unconfirmed).not.toContain(finding);
+  });
+
+  it.each([
+    ['polski', 'Wymagane uprawnienia SEP G1 do 1 kV. Dokument musi być aktualny.'],
+    ['angielski', 'Required SEP G1 up to 1 kV. The certificate must be valid.'],
+  ])('uwzglednia doprecyzowanie aktualnosci dokumentu w nastepnym zdaniu (%s)', (_language, description) => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['sep_1kv'];
+
+    const finding = auditKnockouts(description, vault).findings.find((item) => item.ruleId === 'sep_g1');
+
+    expect(finding?.status).toBe('unknown');
+    expect(finding?.satisfied).toBe(false);
+  });
+
+  it.each([
+    ['angielski zaimek', 'Required SEP G1. It must remain valid.'],
+    ['polski podmiot domyslny', 'Wymagane SEP G1. Powinno być aktualne.'],
+  ])('uwzglednia anaforyczne doprecyzowanie aktualnosci (%s)', (_form, description) => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['sep_1kv'];
+
+    const finding = auditKnockouts(description, vault).findings.find((item) => item.ruleId === 'sep_g1');
+
+    expect(finding?.status).toBe('unknown');
+    expect(finding?.satisfied).toBe(false);
+  });
+
+  it('nie przypisuje aktualnosci z nastepnego, odrebnego wymagania do SEP', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.profiler.licenses = ['sep_1kv'];
+
+    const report = auditKnockouts(
+      'Wymagane uprawnienia SEP G1 do 1 kV. Wymagane aktualne prawo jazdy kat. B.',
+      vault,
+    );
+
+    expect(report.findings.find((item) => item.ruleId === 'sep_g1')?.status).toBe('satisfied');
+  });
+
+  it('nie uznaje umiejetnosci ani nazwy narzedzia za uprawnienie spawalnicze', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.skillsMatrix.hardSkills = ['spawanie TIG'];
+    vault.skillsMatrix.toolsAndTech = ['palnik TIG'];
+
+    const finding = auditKnockouts('Wymagane uprawnienia spawalnicze TIG.', vault)
+      .findings.find((item) => item.ruleId === 'welding');
+
+    expect(finding?.satisfied).toBe(false);
+    expect(finding?.matchedVia).toBeNull();
+  });
+
+  it('uznaje jawne uprawnienie wpisane w polu certyfikatow', () => {
+    const vault = createEmptyVault('Jan Kowalski');
+    vault.skillsMatrix.certifications = [{
+      id: 'welding-tig',
+      name: 'Uprawnienia spawalnicze TIG 141',
+      issuer: '',
+    }];
+
+    const finding = auditKnockouts('Wymagane uprawnienia spawalnicze TIG.', vault)
+      .findings.find((item) => item.ruleId === 'welding');
+
+    expect(finding?.satisfied).toBe(true);
+    expect(finding?.matchedVia).toBe('text');
+  });
   it.each([
     ['F-Gaz', 'Certyfikat F-Gaz wymagany.', 'Montaż i serwis instalacji F-Gaz', 'fgas'],
     ['UDT suwnice', 'Wymagane uprawnienia UDT na suwnice.', 'Obsługa suwnicy w zakładzie produkcyjnym', 'udt_suwnice'],
@@ -677,6 +835,15 @@ describe('Zdania przeczące i łagodzące', () => {
     const report = auditKnockouts('Nie wymagamy prawa jazdy kat. B.', vaultWith([]));
 
     expect(report.findings.map((f) => f.ruleId)).not.toContain('license_b');
+  });
+
+  it('rozpoznaje wymagają z polskim znakiem jako jawny znacznik wymogu', () => {
+    const required = auditKnockouts('Pracodawcy wymagają SEP G1 do 1 kV.', vaultWith([]));
+    const negated = auditKnockouts('Pracodawcy nie wymagają SEP G1 do 1 kV.', vaultWith([]));
+
+    expect(required.findings.find((finding) => finding.ruleId === 'sep_g1')?.severity).toBe('knockout');
+    expect(required.blocking.map((finding) => finding.ruleId)).toContain('sep_g1');
+    expect(negated.findings.map((finding) => finding.ruleId)).not.toContain('sep_g1');
   });
 
   it('„bez konieczności posiadania uprawnień SEP” nie tworzy wymagania', () => {

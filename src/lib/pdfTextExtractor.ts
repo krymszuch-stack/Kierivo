@@ -231,7 +231,7 @@ export function processExtractedText(
 export function buildExpectedText(vault: MasterVault): {
   fullText: string;
   sections: Record<string, string[]>;
-  contactInfo: { emails: string[]; phones: string[] };
+  contactInfo: { name: string; emails: string[]; phones: string[] };
   skills: string[];
   sectionHeaders: string[];
 } {
@@ -291,6 +291,7 @@ export function buildExpectedText(vault: MasterVault): {
     fullText,
     sections,
     contactInfo: {
+      name: v.personalInfo.fullName,
       emails: [v.personalInfo.email].filter(Boolean),
       phones: [v.personalInfo.phone].filter(Boolean),
     },

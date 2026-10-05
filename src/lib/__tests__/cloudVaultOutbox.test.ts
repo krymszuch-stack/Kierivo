@@ -15,6 +15,9 @@ import {
 import { resetLastGoodCache } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 import { CloudVaultConflictError } from '../cloudVault';
+import { cloudVaultOutboxKeyFor } from '../cloudVaultKeys';
+import { writeJson } from '../storage';
+import { hasInvalidPendingCloudVault, markCloudVaultUnverified } from '../cloudVaultOutbox';
 
 describe('cloudVaultOutbox', () => {
   beforeEach(() => {
@@ -166,6 +169,33 @@ describe('cloudVaultOutbox', () => {
     expect(restored?.ownerId).toBe(ownerId);
     expect(restored?.vault.personalInfo.fullName).toBe('Po ponownym otwarciu');
     expect(getCloudVaultSyncStatus(ownerId)).toBe('pending');
+  });
+
+  it('zachowuje i blokuje niepoprawny pending zamiast uznać pustą kolejkę', async () => {
+    const ownerId = 'owner-malformed-outbox';
+    const malformed = createEmptyVault('Uszkodzony snapshot');
+    malformed.schemaVersion = 1;
+    malformed.history = [{ id: 'bad' } as never];
+    const pending = { ownerId, revision: 1, queuedAt: new Date().toISOString(), baseUpdatedAt: null, vault: malformed };
+    writeJson(cloudVaultOutboxKeyFor(ownerId), pending);
+    const sender = vi.fn().mockResolvedValue({ updatedAt: 'rev-2' });
+
+    expect(hasInvalidPendingCloudVault(ownerId)).toBe(true);
+    expect(getCloudVaultSyncStatus(ownerId)).toBe('pending');
+    await expect(flushPendingCloudVault(ownerId, sender)).resolves.toBe('pending');
+    expect(sender).not.toHaveBeenCalled();
+    expect(localStorage.getItem(cloudVaultOutboxKeyFor(ownerId))).not.toBeNull();
+    expect(() => enqueueCloudVaultSave(ownerId, createEmptyVault('Nowy snapshot')))
+      .toThrow('nie został nadpisany');
+  });
+
+  it('nie zmienia błędnego odczytu w fałszywe potwierdzenie przy wstrzymanej synchronizacji', async () => {
+    const ownerId = 'owner-unverified-cloud';
+    suspendCloudVaultFlush(ownerId);
+    markCloudVaultUnverified(ownerId);
+
+    await expect(flushPendingCloudVault(ownerId, vi.fn())).resolves.toBe('unverified');
+    expect(getCloudVaultSyncStatus(ownerId)).toBe('unverified');
   });
 
   it('nie wysyła outboxu przed zakończeniem scalenia z chmurą', async () => {

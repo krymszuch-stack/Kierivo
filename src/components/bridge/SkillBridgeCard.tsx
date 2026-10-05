@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import {
   ArrowRight,
   Copy,
@@ -10,29 +10,49 @@ import {
 import { SkillBridge } from '../../types';
 import { Button } from '../ui/Button';
 import { showToast } from '../../store/useToastStore';
+import { createAsyncOperationGuard } from '../../lib/asyncOperationGuard';
 
 export interface SkillBridgeCardProps {
   bridge: SkillBridge;
   className?: string;
 }
 
-export const SkillBridgeCard: React.FC<SkillBridgeCardProps> = ({
+export const SkillBridgeCard: React.FC<SkillBridgeCardProps> = (props) => (
+  <SkillBridgeCardSession key={JSON.stringify(props.bridge)} {...props} />
+);
+
+const SkillBridgeCardSession: React.FC<SkillBridgeCardProps> = ({
   bridge,
   className = '',
 }) => {
   const [copied, setCopied] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyGuard] = useState(createAsyncOperationGuard);
+  useLayoutEffect(() => () => copyGuard.invalidate(), [copyGuard]);
+  useLayoutEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const handleCopy = async () => {
+    const token = copyGuard.begin();
+    if (!token) return;
+    setCopying(true);
+    setCopied(false);
     try {
       await navigator.clipboard.writeText(bridge.talkingPoint);
+      if (!copyGuard.isCurrent(token)) return;
       setCopied(true);
       showToast('Skopiowano odpowiedź do schowka', {
         message: `Skopiowano szkic do sprawdzenia: „${bridge.missingSkill}”`,
         variant: 'success',
       });
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback
+      if (!copyGuard.isCurrent(token)) return;
+      showToast('Nie udało się skopiować', { message: 'Zaznacz szkic odpowiedzi i skopiuj go ręcznie.', variant: 'error' });
+    } finally {
+      if (copyGuard.finish(token)) setCopying(false);
     }
   };
 
@@ -84,8 +104,9 @@ export const SkillBridgeCard: React.FC<SkillBridgeCardProps> = ({
             size="sm"
             icon={copied ? Check : Copy}
             onClick={handleCopy}
+            disabled={copying}
           >
-            {copied ? 'Skopiowano!' : 'Kopiuj odpowiedź'}
+            {copying ? 'Kopiowanie…' : copied ? 'Skopiowano!' : 'Kopiuj odpowiedź'}
           </Button>
         </div>
 

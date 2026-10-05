@@ -129,6 +129,25 @@ describe('createErrorReporter', () => {
     expect(harnessSent[0].events[0].fingerprint).toBe('aaaaaaaaaaaaaaaa');
   });
 
+  it('odrzuca uszkodzone zdarzenia z bufora i utrwala oczyszczoną kolejkę', async () => {
+    const valid: ClientErrorEvent = {
+      fingerprint: 'bbbbbbbbbbbbbbbb', kind: 'ui-crash', surface: 'ui-crash:Boundary',
+      message: 'synthetic failure', occurredAt: new Date(0).toISOString(),
+    };
+    const persisted: ClientErrorEvent[][] = [];
+    const { reporter, harness } = createHarness({
+      loadBuffered: () => [valid, null, { ...valid, userEmail: 'private@example.test' }],
+      persistBuffered: (events: ClientErrorEvent[]) => persisted.push([...events]),
+    });
+
+    expect(reporter.pendingCount()).toBe(1);
+    expect(persisted).toEqual([[valid]]);
+    await reporter.flush();
+
+    expect(harness.sent).toEqual([{ events: [valid] }]);
+    expect(reporter.pendingCount()).toBe(0);
+  });
+
   it('report nigdy nie rzuca — nawet gdy budowa zdarzenia się wywróci', () => {
     const { reporter } = createHarness();
     expect(() =>

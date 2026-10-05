@@ -315,8 +315,8 @@ export class OccupationalGraphDB {
     actions[area1Id] = czynnosci;
     objects[area1Id] = obiekty;
     outcomes[area1Id] = [
-      'gwarantując najwyższą jakość wykonania i zgodność z normami branżowymi',
-      'zapewniając bezpieczeństwo i terminową realizację powierzonych zadań',
+      'uwzględniając wymagania branżowe i dostępne procedury',
+      'planując kolejność zadań oraz zgłaszając przeszkody w ich realizacji',
     ];
     defaultTech[area1Id] = narzedzia;
 
@@ -331,7 +331,7 @@ export class OccupationalGraphDB {
       objects[area2Id] = miejsca.map((m) => `stanowisko pracy: ${m}`).concat(obiekty);
       outcomes[area2Id] = [
         'z zachowaniem rygorystycznych procedur BHP',
-        'utrzymując ciągłość i płynność operacyjną',
+        'koordynując przekazywanie zadań i informacji o przerwach w pracy',
       ];
       defaultTech[area2Id] = narzedzia;
     }

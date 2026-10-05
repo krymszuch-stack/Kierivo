@@ -100,6 +100,7 @@ const sampleVault: Partial<MasterVault> = {
 describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
   beforeEach(() => {
     sentPrompts.length = 0;
+    vi.mocked(generateWithUsage).mockClear();
   });
 
   it('generuje raport 360° z poprawną strukturą 3 pętli', async () => {
@@ -119,7 +120,7 @@ describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
     expect(report.actionableRecommendations.length).toBeGreaterThan(0);
   });
 
-  it('gwarantuje zero wycieku PII (email, telefon, photoUrl) do promptu modelu', async () => {
+  it('usuwa podany email, telefon i zdjęcie z promptu modelu', async () => {
     await verifyCvWithTripleLoop({
       vault: sampleVault as MasterVault,
       targetRole: 'Inżynier Automatyki',
@@ -134,18 +135,88 @@ describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
     expect(sent).not.toContain('data:image');
   });
 
-  it('oznacza brak oferty i stanowiska zamiast wstawiać fikcyjne wartości', async () => {
-    await verifyCvWithTripleLoop({ vault: { personalInfo: {} } as MasterVault });
+  it('opisuje jedną opinię AI o danych profilu bez udawania pomiaru rekrutera i niezależnych audytów', async () => {
+    await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    expect(generateWithUsage).toHaveBeenCalledTimes(1);
+    const sent = sentPrompts[0];
+    expect(sent).not.toMatch(/6 sekund|niezależnych pętlach|czołowych agencji headhunterskich/u);
+    expect(sent).toContain('Oceny są opinią modelu');
+    expect(sent).toContain('Nie potwierdzaj prawdziwości deklaracji ani zgodności prawnej');
+  });
 
-    expect(sentPrompts).toHaveLength(1);
-    expect(sentPrompts[0]).toContain('"targetRole": "nie podano"');
-    expect(sentPrompts[0]).toContain('"targetCompany": "nie podano"');
-    expect(sentPrompts[0]).toContain('Nie podano treści ogłoszenia.');
-    expect(sentPrompts[0]).not.toContain('Firma Rekrutująca');
+  it('pseudonimizuje caly prompt, takze edukacje i dane kontaktowe oferty', async () => {
+    const privateVault = structuredClone(sampleVault) as MasterVault;
+    const privateName = privateVault.personalInfo.fullName;
+    privateVault.education = [{
+      id: 'education-private',
+      institution: `${privateName} Technical School`,
+      degree: 'Technik',
+      fieldOfStudy: 'Automatyka',
+      startDate: '2010',
+      endDate: '2014',
+    }];
+
+    await verifyCvWithTripleLoop({
+      vault: privateVault,
+      targetRole: privateName,
+      jobDescription: 'Aplikuj: rekrutacja@example.invalid, tel. +48 600 700 800. Wymagane PLC Siemens.',
+    });
+
+    const sent = sentPrompts.at(-1) ?? '';
+    expect(sent).not.toContain(privateName);
+    expect(sent).not.toContain('rekrutacja@example.invalid');
+    expect(sent).not.toContain('+48 600 700 800');
+    expect(sent).toContain('Wymagane PLC Siemens');
+    expect(sent).toContain('2021-03');
+  });
+
+  it('odrzuca pusty profil przed wysłaniem danych do modelu', async () => {
+    await expect(verifyCvWithTripleLoop({ vault: { personalInfo: {} } as MasterVault }))
+      .rejects.toMatchObject({ status: 422, expose: true });
+
+    expect(sentPrompts).toHaveLength(0);
+    expect(generateWithUsage).not.toHaveBeenCalled();
+  });
+
+  it('oznacza brak oferty i stanowiska zamiast wstawiać fikcyjne wartości', async () => {
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+
+    expect(report.hasJobDescription).toBe(false);
+    expect(report.overallScore).toBeNull();
+    expect(report.verdict).toBeNull();
+    expect(report.atsLoop.atsScore).toBeNull();
+    expect(report.atsLoop.parsedRole).toBe('');
+    expect(report.atsLoop.recognizedKeywords).toEqual([]);
+    expect(report.atsLoop.missingCriticalKeywords).toEqual([]);
+    expect(report.atsLoop.atsFormatRisks).toEqual([]);
+    expect(sentPrompts.length).toBe(1);
+    const sent = sentPrompts[0];
+    expect(sent).toContain('"targetRole": "Inżynier Automatyki i Utrzymania Ruchu"');
+    expect(sent).toContain('"targetCompany": "nie podano"');
+    expect(sent).toContain('Nie podano treści ogłoszenia.');
+    expect(sent).not.toContain('Firma Rekrutująca');
+  });
+  it('nie przedstawia oszacowanego ryzyka formatowania, bo wejściem nie jest CV w pliku', async () => {
+    const oferta = 'Wymagamy PLC Siemens i do?wiadczenia w automatyce.';
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault, jobDescription: oferta });
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({
+      text: JSON.stringify({
+        ...baseline,
+        atsLoop: {
+          ...baseline.atsLoop,
+          atsFormatRisks: [{ severity: 'HIGH', issue: 'Nieznany układ PDF', fix: 'U?yj jednej kolumny.' }],
+        },
+      }),
+    } as never);
+
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault, jobDescription: oferta });
+
+    expect(report.hasJobDescription).toBe(true);
+    expect(report.atsLoop.atsFormatRisks).toEqual([]);
   });
 
   it('zachowuje prawidłowe zera i wyprowadza werdykt z wyniku kanonicznego', async () => {
-    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault, jobDescription: 'Wymagamy PLC Siemens.' });
     const response = {
       ...baseline,
       overallScore: 0,
@@ -156,7 +227,7 @@ describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
     };
     vi.mocked(generateWithUsage).mockResolvedValueOnce({ text: JSON.stringify(response) } as never);
 
-    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault, jobDescription: 'Wymagamy PLC Siemens.' });
 
     expect(report.overallScore).toBe(0);
     expect(report.atsLoop.atsScore).toBe(0);
@@ -197,5 +268,26 @@ describe('cvVerifier.service - Potrójna Pętla AI Weryfikacji CV', () => {
     withoutPoints.history![0].highlights = [];
     const empty = await verifyCvWithTripleLoop({ vault: withoutPoints });
     expect(empty.recruiterLoop.achievementMetricRatePct).toBeNull();
+  });
+
+  it('bez oferty usuwa rekomendacje ATS, zachowując uwagi o treści profilu', async () => {
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault, jobDescription: 'Wymagamy PLC Siemens.' });
+    const readability = { priority: 2, category: 'RECRUITER', title: 'Doprecyzuj opis działania', description: 'Opisz zakres swojego zadania.' };
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({
+      text: JSON.stringify({ ...baseline, actionableRecommendations: [...baseline.actionableRecommendations, readability] }),
+    } as never);
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    expect(report.actionableRecommendations).toEqual([readability]);
+  });
+
+  it('nie uznaje chronologii za wolną od sprzeczności, gdy model zwrócił anomalie dat', async () => {
+    const baseline = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    vi.mocked(generateWithUsage).mockResolvedValueOnce({ text: JSON.stringify({
+      ...baseline,
+      logicComplianceLoop: { ...baseline.logicComplianceLoop, chronologyValid: true, timelineAnomalies: ['Koniec pracy poprzedza początek.'] },
+    }) } as never);
+    const report = await verifyCvWithTripleLoop({ vault: sampleVault as MasterVault });
+    expect(report.logicComplianceLoop.chronologyValid).toBe(false);
+    expect(report.logicComplianceLoop.timelineAnomalies).toEqual(['Koniec pracy poprzedza początek.']);
   });
 });

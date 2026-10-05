@@ -90,6 +90,21 @@ describe('jobOfferPreprocessor', () => {
     });
   });
 
+  it('nie przypisuje nagłówków sekcji ani etykiety lokalizacji jako firmy', () => {
+    const cases = [
+      ['IT Support Specialist\nRequirements\nWindows 11'],
+      ['IT Support Specialist\nResponsibilities\nConfigure user devices'],
+      ['Technik serwisu\nMiejsce pracy: Warszawa\nZakres obowiązków: naprawa urządzeń'],
+      ['Technik serwisu\nMiejsce pracy\nWarszawa\nWymagania\nSEP'],
+    ];
+
+    for (const [text] of cases) {
+      expect(parseJobDescriptionLocal(text).companyName).toBe('');
+    }
+    expect(parseJobDescriptionLocal(cases[2][0]).location).toBe('Warszawa');
+    expect(parseJobDescriptionLocal(cases[3][0]).location).toBe('Warszawa');
+  });
+
   it('oddziela tytuł od sekcji sklejonej w tym samym długim wierszu', () => {
     expect(inferPastedOfferHeader('Specjalistka wsparcia IT. Wymagania: Windows 11, Microsoft 365, TCP/IP oraz obsługa klienta. Obowiązki obejmują rozwiązywanie problemów użytkowników.')).toEqual({
       title: 'Specjalistka wsparcia IT',
@@ -100,9 +115,12 @@ describe('jobOfferPreprocessor', () => {
   it('pozostawia zwykłe krótkie ogłoszenie jako pojedynczą ofertę bez domyślania danych', () => {
     const plain = preprocessJobOfferPaste('Backend Developer\nWymagania\nNode.js, SQL');
     const linkedin = preprocessJobOfferPaste('Szukamy osoby do zespołu.\nPraca zdalna.\nAplikuj.');
-    expect(plain.classification).toBe('single');
     expect(plain.segments).toHaveLength(1);
-    expect(linkedin.segments[0].completeness).toBe('uncertain');
+    expect(plain.segments[0].cleanText).toContain('Backend Developer');
+    expect(linkedin.segments[0].titleCandidate).toBeNull();
+    expect(linkedin.segments[0].companyCandidate).toBeNull();
+    expect(linkedin.segments[0]).not.toHaveProperty('confidence');
+    expect(linkedin.segments[0]).not.toHaveProperty('completeness');
   });
 
   it('nie wymaga wynagrodzenia i nie dzieli alternatyw pracy jednej oferty', () => {
@@ -136,7 +154,6 @@ Dyspozycyjność w weekendy.`);
     const result = preprocessJobOfferPaste(CORPUS);
     const unique = result.segments.filter((segment) => !segment.duplicateOfSegmentId);
     expect(unique).toHaveLength(6);
-    expect(result.classification).toBe('duplicated');
     expect(result.segments.find((segment) => segment.companyCandidate?.startsWith('P&P'))?.duplicateOfSegmentId).toBeNull();
     expect(result.segments.filter((segment) => segment.companyCandidate?.startsWith('P&P'))[1].duplicateOfSegmentId).toBe('segment-2');
     expect(unique.map((segment) => segment.titleCandidate)).toEqual([
@@ -177,13 +194,15 @@ Przygotowanie potraw.`);
     expect(unique[1].companyCandidate).toBe('Restauracja B sp. z o.o.');
   });
 
-  it('oznacza urwany fragment obowiązków bez wymagań jako częściowy', () => {
+  it('zachowuje urwany fragment obowiązków bez dopisywania wymagań', () => {
     const result = preprocessJobOfferPaste(`Mechanik
 Firma B O firmie
 Warszawa
 umowa o pracę
 Twój zakres obowiązków
 Naprawa maszyn,`);
-    expect(result.segments[0]).toMatchObject({ completeness: 'partial', needsUserReview: true });
+    expect(result.segments[0].titleCandidate).toBeNull();
+    expect(result.segments[0].cleanText).toMatch(/Naprawa maszyn,$/);
+    expect(result.segments[0].cleanText).not.toMatch(/^(?:nasze wymagania|wymagania)\b/im);
   });
 });

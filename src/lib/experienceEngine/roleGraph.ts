@@ -27,9 +27,9 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       hvac_installation: [
-        'zapewniając 100% szczelności i pełną zgodność z normami bezpieczeństwa',
+        'sprawdzając szczelność instalacji i stosując właściwe procedury bezpieczeństwa',
         'terminowo oddając instalacje do odbioru technicznego',
-        'gwarantując optymalną sprawność energetyczną układu',
+        'kontrolując parametry pracy układu według dokumentacji producenta',
       ],
       gas_leak_testing: [
         'wykluczając nieszczelności i podnosząc bezpieczeństwo eksploatacji',
@@ -37,7 +37,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
       ],
       service_maintenance: [
         'skracając czas przestoju urządzeń do minimum',
-        'przywracając fabryczną sprawność i bezawaryjną pracę podzespołów',
+        'diagnozując podzespoły i weryfikując ich działanie po serwisie',
       ],
       default: [
         'z zachowaniem najwyższych standardów BHP oraz procedur producenta',
@@ -78,12 +78,12 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       power_distribution: [
-        'zapewniając pełną zgodność ze schematami Eplan i normami SEP',
+        'pracując na podstawie schematów i właściwych wymagań technicznych',
         'dbając o estetykę sznurowania szaf i przejrzystość oznaczeń',
       ],
       electrical_testing: [
-        'gwarantując skuteczną ochronę przeciwporażeniową i zgodność z PBUE',
-        'eliminując zagrożenia pożarowe wynikające ze złego stanu izolacji',
+        'sprawdzając ochronę przeciwporażeniową według obowiązujących procedur',
+        'oceniając stan izolacji i odnotowując wykryte nieprawidłowości',
       ],
       plc_automation: [
         'zwiększając wydajność i automatyzację cyklu produkcyjnego',
@@ -91,10 +91,10 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
       ],
       industrial_maintenance: [
         'redukując czas nieplanowanych przestojów technologicznych',
-        'szybko lokalizując i trwale eliminując źródła usterek elektrycznych',
+        'lokalizując źródła usterek i dokumentując wykonane naprawy',
       ],
       default: [
-        'w pełnej zgodności z normami PN-HD 60364 i wymogami BHP',
+        'z uwzględnieniem norm PN-HD 60364 i wymogów BHP',
       ],
     },
     defaultTech: {
@@ -131,8 +131,8 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       tig_welding: [
-        'uzyskując 100% pozytywnych wyników badań nieniszczących RTG i UT',
-        'gwarantując idealną geometrię i szczelność przetopu',
+        'wykonując badania nieniszczące RTG i UT zgodnie z procedurą',
+        'kontrolując geometrię spoin i jakość przetopu według wymagań',
       ],
       mag_welding: [
         'zapewniając wysoką wytrzymałość statyczną i dynamiczną konstrukcji',
@@ -144,7 +144,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
       ],
     },
     defaultTech: {
-      tig_welding: ['Spawarki Fronius / Kemppi', 'Osłona Argon 99.99%', 'ISO 9606-1 FM5 (Stal nierdzewna)'],
+      tig_welding: ['Spawarki Fronius / Kemppi', 'Gaz osłonowy Argon', 'ISO 9606-1 FM5 (Stal nierdzewna)'],
       mag_welding: ['Półautomat spawalniczy Lincoln / Esab', 'Drut lity / proszkowy', 'Mieszanka Ar/CO2'],
       fitter_assembly: ['Rysunek techniczny spawalniczy', 'Ukosowarki do rur', 'Szpachlówki i spoinomierze'],
       default: ['Certyfikat UDT / TÜV ISO 9606', 'Badania VT2', 'Rysunek techniczny'],
@@ -177,15 +177,15 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       order_picking: [
-        'osiągając wskaźnik poprawności kompletacji na poziomie 99.8%',
+        'kontrolując poprawność kompletacji względem dokumentacji zamówienia',
         'zwiększając dzienną liczbę skompletowanych linii zamówień',
       ],
       forklift_high_rack: [
-        'gwarantując w 100% bezpieczną obsługę ładunków bez uszkodzeń towaru',
+        'zabezpieczając ładunki zgodnie z procedurami obsługi i transportu',
         'skracając średni czas rozładunku naczepy TIR',
       ],
       wms_inventory: [
-        'zapewniając idealną zgodność stanu fizycznego z systemem WMS',
+        'porównując stan fizyczny towaru z zapisami w systemie WMS',
         'optymalizując wykorzystanie dostępnej powierzchni magazynowej',
       ],
       default: [
@@ -226,15 +226,15 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       freight_routing: [
-        'zapewniając 100% terminowość dostaw w oknach czasowych (Just-In-Time)',
+        'koordynując dostawy z harmonogramem okien czasowych (Just-In-Time)',
         'prowadząc pojazd w sposób ekonomiczny i bezpieczny (Eco-Driving)',
       ],
       cargo_securing: [
-        'gwarantując dostarczenie towaru w nienaruszonym stanie bez szkód transportowych',
+        'kontrolując zabezpieczenie towaru przed transportem i przy odbiorze',
         'wykluczając ryzyko przesunięcia ładunku w trakcie hamowania awaryjnego',
       ],
       default: [
-        'w pełnej zgodności z przepisami transportowymi i normami bezpieczeństwa',
+        'z uwzględnieniem przepisów transportowych i norm bezpieczeństwa',
       ],
     },
     defaultTech: {
@@ -270,7 +270,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       engine_powertrain: [
-        'zapewniając bezawaryjną pracę jednostki napędowej i prawidłowe parametry spalania',
+        'sprawdzając parametry pracy jednostki napędowej po wykonanym serwisie',
         'skutecznie eliminując wycieki i niepokojące stuki silnika',
       ],
       computer_diagnostics: [
@@ -278,7 +278,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
         'przywracając fabryczne adaptacje i parametry pracy podzespołów',
       ],
       suspension_brakes: [
-        'gwarantując idealną trakcję, stabilność prowadzenia i bezpieczeństwo hamowania',
+        'kontrolując układ jezdny i hamulcowy zgodnie z zakresem naprawy',
       ],
       default: [
         'zgodnie ze sztuką warsztatową i zalecanymi momentami dokręcania śrub (Nm)',
@@ -317,12 +317,12 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       tiling_large_format: [
-        'uzyskując idealną płaszczyznę bez uskoków i perfekcyjne zacięcia narożników',
-        'gwarantując trwałe i estetyczne wykończenie powierzchni łazienkowych',
+        'kontrolując równość powierzchni i jakość wykonania po pracach',
+        'dobierając sposób wykończenia do projektu i zastosowanych materiałów',
       ],
       waterproofing_finishing: [
-        'zapewniając 100% szczelności przed wilgocią i zalaniem',
-        'uzyskując idealnie gładką powierzchnię ścian pod odbiór w świetle smugowym (Q4)',
+        'sprawdzając szczelność hydroizolacji przed kolejnym etapem prac',
+        'przygotowując powierzchnię ścian do odbioru według wymaganej klasy',
       ],
       default: [
         'z zachowaniem najwyższej kultury technicznej, czystości i tolerancji wymiarowych',
@@ -365,8 +365,8 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
         'eliminując ryzyko kolizji wrzeciona dzięki dokładnej weryfikacji kodu',
       ],
       precision_measurement: [
-        'utrzymując wskaźnik braków produkcyjnych poniżej 0.2%',
-        'gwarantując 100% zgodności z rysunkiem wykonawczym',
+        'monitorując braki produkcyjne na podstawie danych z kontroli jakości',
+        'weryfikując wykonanie detalu względem rysunku technicznego',
       ],
       default: [
         'zgodnie z normami technicznymi i wymogami ISO 9001',
@@ -405,8 +405,8 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       full_accounting: [
-        'terminowo i bezbłędnie składając deklaracje do Urzędu Skarbowego i ZUS',
-        'zapewniając pełną zgodność ksiąg z Ustawą o Rachunkowości',
+        'przygotowując deklaracje do Urzędu Skarbowego i ZUS na podstawie dokumentów',
+        'weryfikując zapisy księgowe względem obowiązujących wymagań',
       ],
       financial_reporting: [
         'dostarczając zarządowi rzetelnych danych do podejmowania decyzji biznesowych',
@@ -452,7 +452,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       negotiations_closing: [
-        'regularnie realizując i przekraczając wyznaczone plany sprzedażowe (115%+ targetu)',
+        'monitorując realizację planu sprzedażowego na podstawie wyników',
         'zwiększając średnią marżę na zawieranych kontraktach',
       ],
       account_management: [
@@ -496,7 +496,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       inbound_consulting: [
-        'utrzymując wskaźnik satysfakcji klienta CSAT na poziomie powyżej 95%',
+        'analizując opinie klientów i zgłoszenia dotyczące obsługi',
         'podnosząc wskaźnik rozwiązywania spraw przy pierwszym kontakcie (FCR)',
       ],
       issue_resolution: [
@@ -540,7 +540,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       patient_care_injections: [
-        'zapewniając bezbłędne podanie leków zgodnie ze zleceniem lekarskim',
+        'sprawdzając zgodność przygotowania leków ze zleceniem i procedurą',
         'minimalizując dyskomfort pacjenta i dbając o aseptykę zabiegową',
       ],
       emergency_triage: [
@@ -548,7 +548,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
         'skracając czas wdrożenia procedur ratujących życie',
       ],
       default: [
-        'w pełnej zgodności z zasadami EBM i najwyższymi standardami etyki zawodowej',
+        'z uwzględnieniem zasad EBM i etyki zawodowej',
       ],
     },
     defaultTech: {
@@ -585,8 +585,8 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     },
     outcomes: {
       backend: [
-        'skracając czas odpowiedzi API poniżej 100ms i zwiększając przepustowość',
-        'gwarantując bezawaryjną i skalowalną komunikację między mikroserwisami',
+        'mierząc czas odpowiedzi API i przepustowość na podstawie danych z monitoringu',
+        'monitorując komunikację między mikroserwisami i obsługując błędy integracji',
       ],
       frontend: [
         'poprawiając wynik Core Web Vitals i skracając czas ładowania widoków',
@@ -631,14 +631,14 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     outcomes: {
       ci_cd_pipelines: [
         'skracając czas wdrożenia wersji na produkcję (Deployment Lead Time)',
-        'eliminując przestoje techniczne podczas aktualizacji (Zero-Downtime Deployment)',
+        'uwzględniając dostępność usług podczas aktualizacji',
       ],
       cloud_infrastructure: [
         'obniżając miesięczne koszty infrastruktury chmurowej (FinOps)',
-        'gwarantując wysoką dostępność usług (High Availability 99.9%)',
+        'monitorując dostępność usług na podstawie rzeczywistych pomiarów',
       ],
       default: [
-        'zapewniając najwyższe standardy bezpieczeństwa i ciągłości działania (Disaster Recovery)',
+        'stosując ustalone procedury bezpieczeństwa i odtwarzania usług',
       ],
     },
     defaultTech: {
@@ -719,7 +719,7 @@ export const ROLE_GRAPH: Record<string, RoleKnowledgeNode> = {
     outcomes: {
       operations: [
         'usprawniając obieg dokumentów i skracając czas realizacji spraw formalnych',
-        'zapewniając idealny porządek administracyjny i ciągłość funkcjonowania biura',
+        'prowadząc dokumentację i koordynując bieżące procesy biurowe',
       ],
       analysis: [
         'dostarczając kadrze zarządzającej przejrzystych analiz do podejmowania decyzji',

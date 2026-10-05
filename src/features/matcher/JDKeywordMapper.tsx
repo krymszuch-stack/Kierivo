@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   Layers,
   ArrowRight,
-  TrendingUp,
   Search,
   PlusCircle,
   Copy,
@@ -31,6 +30,8 @@ import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Chip';
 import { Textarea } from '../../components/ui/Field';
 import { SkillBridgeMatrixModal } from '../../components/bridge/SkillBridgeMatrixModal';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
+import { showToast } from '../../store/useToastStore';
 
 export interface JDKeywordMapperProps {
   initialJdText?: string;
@@ -63,7 +64,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
     return mapJdKeywords(jdText, vault, tailoredResume);
   }, [jdText, vault, tailoredResume]);
 
-  const { keywords, overallCvScore, overallVaultScore, categoryCoverage, suggestions, counts } =
+  const { keywords, overallCvScore, categoryCoverage, suggestions, counts } =
     mappingResult;
 
   // Filtrowanie listy słów kluczowych
@@ -80,10 +81,15 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
     });
   }, [keywords, activeCategory, activeStatus, searchQuery]);
 
-  const handleCopySuggestion = (suggestion: KeywordSuggestion) => {
-    navigator.clipboard.writeText(suggestion.message);
-    setCopiedId(suggestion.id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopySuggestion = async (suggestion: KeywordSuggestion) => {
+    try {
+      await copyTextAndNotifySuccess(suggestion.message, () => {
+        setCopiedId(suggestion.id);
+        setTimeout(() => setCopiedId(null), 2000);
+      });
+    } catch {
+      showToast('Nie udało się skopiować', { message: 'Zaznacz treść sugestii i skopiuj ją ręcznie.', variant: 'error' });
+    }
   };
 
   const statusBadges: Record<KeywordMatchStatus, { label: string; variant: 'success' | 'warning' | 'danger'; icon: React.ElementType }> = {
@@ -150,7 +156,7 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
           <div className="space-y-3 pt-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
               <div className="flex items-center gap-2">
-                <span className="font-bold text-ink">Pokrycie w bieżącym CV:</span>
+                <span className="font-bold text-ink">Pokrycie wykrytych terminów w bieżącym CV:</span>
                 <span className="text-lg font-black text-brand-600 font-mono">
                   {overallCvScore}%
                 </span>
@@ -159,13 +165,12 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
                 </span>
               </div>
 
-              {overallVaultScore > overallCvScore && (
-                <div className="flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-0.5 font-mono text-xs font-bold text-brand-700">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  <span>Potencjał z MasterVault (szacunek): {overallVaultScore}% (+{overallVaultScore - overallCvScore}%)</span>
-                </div>
-              )}
             </div>
+            <p className="text-xs text-muted">
+              To liczba terminów rozpoznanych przez mapper w treści ogłoszenia i CV; nie jest wynikiem ATS ani prognozą decyzji rekrutera.
+              {counts.inVaultNotCv > 0 && ` W MasterVault, poza bieżącym CV: ${counts.inVaultNotCv}.`}
+              {counts.missingInVault > 0 && ` Nie znaleziono w MasterVault: ${counts.missingInVault}.`}
+            </p>
 
             {/* Wizualny segmentowy Heatmap Bar */}
             <div className="space-y-1.5">
@@ -287,7 +292,6 @@ export const JDKeywordMapper: React.FC<JDKeywordMapperProps> = ({
                     <div className="space-y-0.5 min-w-0">
                       <p className="text-xs font-semibold text-ink leading-snug">{sug.message}</p>
                       <div className="flex items-center gap-2 text-[10px] text-muted font-mono">
-                        <span className="font-bold text-brand-600">wpływ wg heurystyki: +{sug.impactScore}%</span>
                         {sug.targetName && <span>Dotyczy: {sug.targetName}</span>}
                       </div>
                     </div>

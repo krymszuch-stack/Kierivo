@@ -1,0 +1,3 @@
+scripts/*.sh text eol=lf
+*.pdf binary
+*.gz binary

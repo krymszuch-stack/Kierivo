@@ -138,6 +138,22 @@ describe('Elevator Pitch Generator (elevator-pitch-gen-v1)', () => {
       expect(pitch.thirtySeconds).not.toContain('Jestem Administrator IT');
     });
 
+    it('ustala domyślną rolę z dat, a nie z pierwszej karty w historii', () => {
+      const vault = createEmptyVault('Jan Kowalski');
+      vault.history = [
+        { id: 'old', company: 'Starsza firma', role: 'Magazynier', location: '', startDate: '2018-01', endDate: '2020-12', isCurrent: false, highlights: [] },
+        { id: 'new', company: 'Nowsza firma', role: 'Technik wsparcia IT', location: '', startDate: '2022-01', endDate: '2024-06', isCurrent: false, highlights: [] },
+      ];
+
+      const oldFirst = generateElevatorPitch(vault);
+      const newFirst = generateElevatorPitch({ ...vault, history: [...vault.history].reverse() });
+
+      expect(oldFirst.targetRole).toBe('Technik wsparcia IT');
+      expect(newFirst.targetRole).toBe('Technik wsparcia IT');
+      expect(oldFirst.thirtySeconds).toContain('Przygotowuję się do rozmowy na stanowisko Technik wsparcia IT.');
+      expect(oldFirst.thirtySeconds).not.toContain('Przygotowuję się do rozmowy na stanowisko Magazynier.');
+    });
+
     it('generuje wersję 1-liner (~10-15s)', () => {
       const vault = createMockVault();
       const pitch = generateElevatorPitch(vault);

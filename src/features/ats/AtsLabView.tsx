@@ -20,13 +20,17 @@ import {
 } from 'lucide-react';
 import { MasterVault } from '../../types';
 import { simulateMultiEngineATS, AtsEngineResult } from '../../lib/atsSimulator';
-import { scoreCanonicalAts } from '../../lib/canonicalAts';
+import { scoreCanonicalAts, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, getUnmetBlockingRequirements } from '../../lib/canonicalAts';
+import { getCanonicalScoreMetricLabel, hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 import { formatDecimalPl } from '../../lib/pluralFormat';
 import { buildAtsTelemetryReport, STUFFING_DENSITY_THRESHOLD } from '../../lib/atsScorer';
 import { ScoreRing, EmptyStateScoreRing, ResultScoreRing } from '../../components/ui/ScoreRing';
 import { Button } from '../../components/ui/Button';
 import { ScrollContinuationHint } from '../../components/ui/ScrollContinuationHint';
 import { loadAtsLabDraft, saveAtsLabDraft } from '../../lib/atsLabDraft';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
+import { getAnalysisMonth } from '../../lib/analysisPeriod';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import type { NavTabId } from '../../lib/navigation';
 
@@ -130,20 +134,15 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
     setActiveSectionId(id);
   };
 
-  const canonical = useMemo(
-    () => scoreCanonicalAts(vault, customJdText, customRole),
-    [vault, customJdText, customRole]
-  );
-
-  const consensus = useMemo(
-    () => simulateMultiEngineATS(vault, customJdText, customRole),
-    [vault, customJdText, customRole]
-  );
-
-  const telemetry = useMemo(
-    () => buildAtsTelemetryReport({ vault, jobDescription: customJdText }),
-    [vault, customJdText]
-  );
+  const now = useAnalysisClock();
+  const analysisMonth = getAnalysisMonth(now);
+  const { canonical, consensus, telemetry } = useMemo(() => ({
+    canonical: scoreCanonicalAts(vault, customJdText, customRole),
+    consensus: simulateMultiEngineATS(vault, customJdText, customRole),
+    telemetry: buildAtsTelemetryReport({ vault, jobDescription: customJdText }),
+    // Silniki czytają bieżący czas wewnętrznie; miesiąc unieważnia ich lokalny cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [vault, customJdText, customRole, analysisMonth]);
 
   const activeEngine = useMemo(
     () => consensus.engines.find((engine) => engine.id === selectedEngineId) || consensus.engines[0],
@@ -151,7 +150,18 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   );
 
   const isEmptyProfile = canonical.state === 'INSUFFICIENT_CV';
-  const isScorable = canonical.state === 'SCORABLE';
+  const scorableScore = canonical.state === 'SCORABLE' ? canonical.score : null;
+  const isScorable = scorableScore !== null;
+  const scoreBand = isScorable ? getCanonicalScoreBand(scorableScore) : null;
+  const profileCoverage = measureVaultCompleteness(vault).percent;
+  const detectedRequirementCount = canonical.matchedRequirements.length + canonical.missingRequirements.length + canonical.unconfirmedRequirements.length;
+  const limitedMatchEvidence = hasLimitedMatchEvidence({
+    profileCompleteness: profileCoverage,
+    totalRequirementCount: detectedRequirementCount,
+    fitEvidenceAvailable: consensus.careerFitAdvice.assessment !== 'INSUFFICIENT_EVIDENCE',
+    blockingRequirements: getUnmetBlockingRequirements(canonical),
+    unconfirmedRequirements: canonical.unconfirmedRequirements,
+  });
 
   const handleGoToProfile = () => {
     if (onNavigate) {
@@ -164,8 +174,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   const getScoreTextColor = (val: number | null, isEmpty: boolean) => {
     if (isEmpty) return 'text-ink-muted';
     if (val === null) return 'text-ink-muted';
-    if (val >= 75) return 'text-emerald-500';
-    if (val >= 50) return 'text-blue-500';
+    const band = getCanonicalScoreBand(val);
+    if (band === 'high') return 'text-emerald-500';
+    if (band === 'moderate') return 'text-blue-500';
     return 'text-amber-500';
   };
 
@@ -186,7 +197,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
     },
     {
       id: 'structure',
-      label: 'Struktura',
+      label: 'Sekcje i dane profilu',
       weight: Math.round(canonical.effectiveWeights.structure * 100),
       value: canonical.components.structure,
       intensity: 'border-ink/8 bg-surface/65',
@@ -210,6 +221,8 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         return { badge: 'bg-amber-500 text-white', label: 'Niski wynik' };
       case 'REJECTED':
         return { badge: 'bg-rose-500 text-white', label: 'Bardzo niski wynik' };
+      case 'NOT_ASSESSED':
+        return { badge: 'bg-ink/60 text-white', label: 'Nie oceniono' };
       default:
         return { badge: 'bg-ink/60 text-white', label: 'Brak oceny' };
     }
@@ -307,23 +320,25 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
           <div className="flex flex-col items-center justify-center rounded-2xl border border-ink/5 bg-surface/50 p-5 text-center lg:col-span-4">
             {!isScorable ? (
               <EmptyStateScoreRing
-                label="Dopasowanie profilu"
+                label={getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Dopasowanie profilu')}
                 message={isEmptyProfile
                   ? 'Brak danych profilu'
                   : canonical.state === 'INSUFFICIENT_JD'
                     ? 'Dodaj treść oferty'
+                    : canonical.state === 'UNCONFIRMED_REQUIREMENTS'
+                      ? 'Potwierdź wymagania formalne'
                     : 'Nie wykryto wymagań'}
               />
             ) : (
               <ResultScoreRing
-                value={canonical.score}
-                label="Dopasowanie profilu"
+                value={scorableScore!}
+                label={getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Dopasowanie profilu')}
               />
             )}
 
             <div className="group relative mt-2 flex items-center justify-center gap-1">
               <span className="text-xs font-bold uppercase tracking-wider text-ink-muted">
-                Dopasowanie profilu
+                {getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Dopasowanie profilu')}
               </span>
               <div className="relative inline-block">
                 <button
@@ -336,7 +351,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-xl border border-line bg-surface-raised p-3 text-left text-[11px] leading-relaxed text-ink shadow-lg opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   <p className="font-bold text-ink">Metodologia Kierivo (D07–D11):</p>
                   <p className="mt-1 text-ink-muted">
-                    Ważona ocena 4 filarów profilu: Umiejętności (40%), Staż i świeżość (25%), Struktura dokumentu (20%) oraz Wymagania formalne (15%). Deterministyczny audyt regułowy bez losowości AI.
+                    Ważona ocena 4 filarów: Umiejętności (40%), Staż i świeżość (25%), sekcje i dane profilu (20%) oraz wymagania formalne (15%). Deterministyczne reguły Kierivo; nie jest to wynik zewnętrznego ATS ani pomiar wyglądu PDF.
                   </p>
                 </div>
               </div>
@@ -347,6 +362,22 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 ? 'wymaga danych w profilu kandydata'
                 : 'zgodność profilu z ofertą wg reguł Kierivo (D07–D11)'}
             </span>
+
+            {isScorable && limitedMatchEvidence && (
+              <p role="status" className="mt-3 max-w-xs rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                {profileCoverage < 50 && <>Uzupełniono {profileCoverage}% ważonych sekcji profilu. </>}
+                {detectedRequirementCount > 0 && detectedRequirementCount < 3 && <>
+                  Rozpoznano tylko {detectedRequirementCount} {detectedRequirementCount === 1 ? 'wymaganie' : 'wymagania'}.{' '}
+                </>}
+                {consensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE' && <>
+                  Ocena dopasowania zawodowego jest wstrzymana z powodu brakujących danych.{' '}
+                </>}
+                {canonical.unconfirmedRequirements.length > 0 && <>
+                  Nie można potwierdzić: {canonical.unconfirmedRequirements.join(', ')}. Brak danych nie oznacza spełnienia ani niespełnienia tych wymogów.{' '}
+                </>}
+                Wynik jest wstępny i korzysta tylko z dostępnych danych. Sprawdź odczyt CV oraz pełną treść oferty.
+              </p>
+            )}
 
             {isEmptyProfile ? (
               <div className="mt-4 w-full max-w-xs space-y-2">
@@ -367,17 +398,17 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               <span className="mt-4 rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-extrabold text-white">
                 {canonical.state === 'INSUFFICIENT_JD'
                   ? 'Zbyt krótkie ogłoszenie'
-                  : 'Brak wykrytych wymagań'}
+                  : canonical.state === 'UNCONFIRMED_REQUIREMENTS'
+                    ? 'Wymagania do potwierdzenia'
+                    : 'Brak wykrytych wymagań'}
               </span>
             ) : (
               <span className={`mt-4 rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white ${
-                canonical.score >= 80 ? 'bg-emerald-500' : canonical.score >= 65 ? 'bg-blue-500' : 'bg-amber-500'
+                scoreBand === 'high' ? 'bg-emerald-500' : scoreBand === 'moderate' ? 'bg-blue-500' : 'bg-amber-500'
               }`}>
-                {canonical.score >= 80
-                  ? 'Wysoka zgodność z ofertą'
-                  : canonical.score >= 65
-                    ? 'Umiarkowana zgodność z ofertą'
-                    : 'Niska zgodność z ofertą'}
+                {limitedMatchEvidence
+                  ? 'Wynik wstępny — ograniczone dane'
+                  : scoreBand ? CANONICAL_SCORE_BAND_LABELS[scoreBand] : ''}
               </span>
             )}
           </div>
@@ -412,7 +443,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                   <div className="mt-2.5 pt-2 border-t border-ink/5">
                     <div className="flex items-center justify-between text-[10px] text-ink-faint">
                       <span>Waga</span>
-                      <span className="font-mono font-bold text-ink-muted">{pillar.weight}%</span>
+                      <span className="font-mono font-bold text-ink-muted">{isScorable ? `${pillar.weight}%` : '—'}</span>
                     </div>
                     <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink/10">
                       <div
@@ -430,12 +461,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               {isScorable ? <>
                 <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
                 <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
+                {canonical.unconfirmedRequirements.length > 0 && <span>Do potwierdzenia: <strong className="font-mono text-amber-600">{canonical.unconfirmedRequirements.length}</strong></span>}
                 <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
               </> : <span>Wynik dopasowania pojawi się po dodaniu profilu i treści oferty.</span>}
-              {isScorable && (
+              {isScorable && consensus.medianScore !== null && (
                 <div className="ml-auto flex items-center gap-1.5 text-ink-faint">
-                  <span>Mediana symulatora: <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
-                  <span className="text-[10px] text-ink-faint">(odniesienie z 3 silników heurystycznych)</span>
+                  <span>Mediana kontrolnych wskaznikow ({consensus.assessedEngineCount} modulow; nie ocena dopasowania): <strong className="font-mono text-ink">{consensus.medianScore}%</strong></span>
                 </div>
               )}
             </div>
@@ -449,32 +480,33 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold text-ink">
-              <Zap className="h-5 w-5 text-brand-fg" /> Mierzone cechy dokumentu
+              <Zap className="h-5 w-5 text-brand-fg" /> Metryki treści profilu (reguły Kierivo)
             </h2>
             <p className="mt-1 text-sm text-ink-muted">
-              Pokrycie lematów, doświadczenie i metryki, struktura dokumentu, język sprawczy oraz kary za rozpoznane wymagania formalne.
+              Heurystyki dopasowania liczone z danych profilu i oferty. Wskaźniki struktury dotyczą tekstu CV renderowanego z profilu, nie zaimportowanego pliku ani zewnętrznego systemu ATS.
             </p>
+            <p className="mt-1 text-xs text-ink-muted">{telemetry.overallScore === null ? 'Wynik laczny wstrzymany; wymagane sa daty doswiadczenia oraz rozpoznane wymagania oferty.' : `Dostepne dane obejmuja ${telemetry.formulaBreakdown.assessedWeightPercent}% nominalnych wag.`}</p>
           </div>
           <div className="shrink-0 rounded-2xl border border-ink/5 bg-surface/60 px-5 py-3 text-center">
-            <span className="font-mono text-3xl font-black text-ink">{isScorable ? `${telemetry.overallScore}%` : '—'}</span>
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-ink-faint">{isScorable ? 'Wynik telemetrii' : 'Brak porównania'}</span>
+            <span className="font-mono text-3xl font-black text-ink">{isScorable && telemetry.overallScore !== null ? `${telemetry.overallScore}%` : '—'}</span>
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-ink-faint">{isScorable && telemetry.overallScore !== null ? 'Wynik telemetrii' : 'Wynik wstrzymany'}</span>
           </div>
         </div>
 
         {isScorable ? <>
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {([
-            ['Pokrycie lematów', '40%', telemetry.formulaBreakdown.hardSkillsScore],
-            ['Doświadczenie i metryki', '25%', telemetry.formulaBreakdown.experienceScore],
-            ['Struktura dokumentu', '20%', telemetry.formulaBreakdown.structureScore],
-            ['Sprawczość języka', '15%', telemetry.formulaBreakdown.actionVerbsScore],
+            ['Pokrycie lematów', telemetry.formulaBreakdown.hardSkillsScore === null ? 'brak danych' : '40%', telemetry.formulaBreakdown.hardSkillsScore],
+            ['Doświadczenie i metryki', telemetry.formulaBreakdown.experienceScore === null ? 'brak danych' : '25%', telemetry.formulaBreakdown.experienceScore],
+            ['Struktura treści CV (heurystyka)', '20%', telemetry.formulaBreakdown.structureScore],
+            ['Sprawczość języka', telemetry.formulaBreakdown.actionVerbsScore === null ? 'brak danych' : '15%', telemetry.formulaBreakdown.actionVerbsScore],
           ] as const).map(([label, weight, value]) => (
             <div key={label} className="rounded-xl border border-ink/5 bg-surface/60 p-4">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-ink-muted">{label}</span>
-                <span className="font-mono text-[10px] text-brand-fg">waga {weight}</span>
+                <span className="font-mono text-[10px] text-brand-fg">{weight === 'brak danych' ? 'Brak danych' : `waga ${weight}`}</span>
               </div>
-              <span className="mt-1 block font-mono text-2xl font-bold text-ink">{value}</span>
+              <span className="mt-1 block font-mono text-2xl font-bold text-ink">{value === null ? '\u2014' : `${value}%`}</span>
             </div>
           ))}
           <div className="rounded-xl border border-ink/5 bg-surface/60 p-4">
@@ -492,7 +524,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             </h3>
             <p className="text-xs text-ink-muted">
               Tokeny w profilu: <strong className="font-mono text-ink">{telemetry.linguisticTelemetry.totalExtractedTokens}</strong> · sprawczość języka:{' '}
-              <strong className="font-mono text-ink">{Math.round(telemetry.linguisticTelemetry.actionVerbRatio * 100)}%</strong> zdań
+              <strong className="font-mono text-ink">{telemetry.linguisticTelemetry.actionVerbRatio === null ? 'brak danych' : `${Math.round(telemetry.linguisticTelemetry.actionVerbRatio * 100)}%`}</strong>{telemetry.linguisticTelemetry.actionVerbRatio === null ? ' — brak narracji zawodowej do oceny' : ' zdań'}
             </p>
             {telemetry.linguisticTelemetry.missingCriticalLemmas.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -529,8 +561,11 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
 
           <div className="space-y-3 rounded-2xl border border-ink/5 bg-surface/60 p-5">
             <h3 className="flex items-center gap-2 text-sm font-bold text-ink">
-              <Layers className="h-4 w-4 text-brand-fg" /> Struktura
+              <Layers className="h-4 w-4 text-brand-fg" /> Struktura renderu profilu
             </h3>
+            <p className="text-xs text-ink-muted">
+              To wskaźniki kanonicznego tekstu z profilu Kierivo. Ten widok nie mierzy układu ani kolejności odczytu zaimportowanego PDF-a.
+            </p>
             <div className="grid grid-cols-2 gap-2.5 text-xs">
               <div className="rounded-lg border border-ink/5 bg-surface/80 p-3">Kolejność: <strong>{telemetry.structuralTelemetry.readingOrderIntegrity}</strong></div>
               <div className="rounded-lg border border-ink/5 bg-surface/80 p-3">Nagłówki: <strong>{telemetry.structuralTelemetry.headingHierarchyValid ? 'VALID' : 'FLAT'}</strong></div>
@@ -559,9 +594,14 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                       <p className="text-[11px] text-ink-faint">{label.category}</p>
                     </div>
                     <span className="rounded-full bg-brand px-2 py-0.5 font-mono text-[10px] font-extrabold text-on-brand shadow-xs">
-                      {profileResult.score}/100
+                      {profileResult.score === null ? 'Brak danych' : `${profileResult.score}/100`}
                     </span>
                   </div>
+                  {profileResult.unavailableReason && (
+                    <p className="text-[11px] leading-snug text-ink-muted" role="note">
+                      {profileResult.unavailableReason}
+                    </p>
+                  )}
                   {profileResult.criticalRisks.length > 0 && (
                     <ul className="space-y-1.5">
                       {profileResult.criticalRisks.map((risk) => (
@@ -595,16 +635,19 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       {isScorable && <>
       <ScrollContinuationHint targetId="ocena-dopasowania" label="Dalej: Ocena dopasowania profilu ↓" />
 
-      <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${consensus.careerFitAdvice.isRealisticFit ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/25 bg-amber-500/5'}`}>
+      <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${consensus.careerFitAdvice.assessment === 'PLAUSIBLE_FIT' ? 'border-emerald-500/20 bg-emerald-500/5' : consensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE' ? 'border-line bg-surface/60' : 'border-amber-500/25 bg-amber-500/5'}`}>
         <div className="flex items-start gap-4">
           <div className="rounded-2xl bg-brand/10 p-3 text-brand-fg"><Compass className="h-6 w-6" /></div>
           <div className="flex-1 space-y-2">
             <h2 className="text-base font-bold text-ink">Ocena dopasowania profilu według reguł Kierivo</h2>
+            {consensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE' && (
+              <p className="text-xs font-semibold text-muted">Brak wystarczających danych o doświadczeniu</p>
+            )}
             <p className="text-sm leading-relaxed text-ink-muted">{consensus.careerFitAdvice.verdict}</p>
             <div className="rounded-xl border border-ink/5 bg-surface/80 p-3 text-xs text-ink">
               <strong>Rekomendowany plan działania:</strong> {consensus.careerFitAdvice.actionablePlan}
             </div>
-            {!consensus.careerFitAdvice.isRealisticFit && consensus.careerFitAdvice.suggestedAlternativeRoles.length > 0 && (
+            {consensus.careerFitAdvice.assessment === 'SIGNIFICANT_GAPS' && consensus.careerFitAdvice.suggestedAlternativeRoles.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-2">
                 {consensus.careerFitAdvice.suggestedAlternativeRoles.map((roleName) => (
                   <span key={roleName} className="inline-flex items-center gap-1.5 rounded-xl border border-ink/10 bg-surface px-3 py-1 text-xs font-semibold text-ink">
@@ -641,7 +684,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                  onClick={() => setSelectedEngineId(engine.id)}
                 className={`relative flex flex-col items-center justify-between rounded-2xl border p-4 text-center transition-all ${isSelected ? 'border-brand bg-surface-raised ring-2 ring-brand/30' : 'border-ink/10 bg-surface/60'}`}
               >
-                <span className="font-mono text-2xl font-black text-ink">{engine.score}%</span>
+                <span className="font-mono text-2xl font-black text-ink">{engine.score === null ? '—' : `${engine.score}%`}</span>
                 <div className="mt-2 w-full">
                   <div className="truncate text-xs font-bold text-ink" title={engine.name}>{engine.name}</div>
                   <div className="truncate text-[10px] text-ink-faint" title={engine.component}>{engine.component}</div>
@@ -670,7 +713,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               </div>
               <div className="text-right">
                 <span className="block text-xs text-ink-faint">Wynik modułu Kierivo</span>
-                <span className="font-mono text-2xl font-black text-brand-fg">{activeEngine.score}%</span>
+                <span className="font-mono text-2xl font-black text-brand-fg">{activeEngine.score === null ? '—' : `${activeEngine.score}%`}</span>
               </div>
             </div>
 

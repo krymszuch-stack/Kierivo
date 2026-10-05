@@ -1,6 +1,8 @@
 import { WorkExperience, Education, Certification, LanguageProficiency, Project, HighlightMetric } from '../types';
-import { normalizeDocumentText } from './textNormalization';
+import { DocumentTextLimitError, MAX_DOCUMENT_TEXT_CHARS, normalizeDocumentText } from './textNormalization';
 import { extractEmbeddedMasterVault, convertResumeDataToParsedCVResult } from './portableCvExtractor';
+import { containsPhrase, hasPositiveSkillEvidence } from './skillEvidence';
+import { inferLatestExperienceRole } from './experienceChronology';
 
 /**
  * PDF.js is loaded on demand: importing it at module scope pulls in browser-only globals
@@ -22,6 +24,10 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 /** Maksymalny rozmiar tekstu po dekompresji DOCX (5 MB). */
 const MAX_DECOMPRESSED_TEXT_LENGTH = 5 * 1024 * 1024;
+/** Łączny limit danych DOCX zadeklarowanych w ZIP, sprawdzany przed rozpakowaniem (20 MB). */
+const MAX_DOCX_ARCHIVE_EXPANSION_BYTES = 20 * 1024 * 1024;
+/** Limit wpisów ZIP chroni przed archiwum z ogromną liczbą małych elementów. */
+const MAX_DOCX_ARCHIVE_ENTRIES = 2000;
 export class DecompressionLimitError extends Error {
   readonly code = 'DOCX_DECOMPRESSION_LIMIT';
 
@@ -30,6 +36,42 @@ export class DecompressionLimitError extends Error {
       'Dokument jest zbyt duży po rozpakowaniu (ponad 5 MB tekstu). Plik może być uszkodzony lub zawierać zbyt dużo danych. Wklej treść CV ręcznie.'
     );
     this.name = 'DecompressionLimitError';
+  }
+}
+
+export class InvalidDocxError extends Error {
+  readonly code = 'INVALID_DOCX';
+
+  constructor() {
+    super('Nie udało się odczytać dokumentu DOCX. Plik może być uszkodzony albo nie zawierać tekstu. Zapisz go ponownie jako DOCX lub wklej treść CV ręcznie.');
+    this.name = 'InvalidDocxError';
+  }
+}
+
+export class DocxArchiveLimitError extends Error {
+  readonly code = 'DOCX_ARCHIVE_LIMIT';
+
+  constructor() {
+    super('Archiwum DOCX przekracza bezpieczny limit rozpakowania (20 MB lub 2000 elementów). Zapisz dokument ponownie albo wklej treść CV ręcznie.');
+    this.name = 'DocxArchiveLimitError';
+  }
+}
+
+export class UnsupportedLegacyDocFormatError extends Error {
+  readonly code = 'UNSUPPORTED_LEGACY_DOC_FORMAT';
+
+  constructor() {
+    super('Stary format Word 97–2003 (.doc) nie jest obsługiwany. Zapisz dokument jako DOCX lub PDF i zaimportuj go ponownie.');
+    this.name = 'UnsupportedLegacyDocFormatError';
+  }
+}
+
+export class UnsupportedMasterVaultJsonCvError extends Error {
+  readonly code = 'MASTERVAULT_JSON_IS_NOT_CV';
+
+  constructor() {
+    super('Plik JSON zawiera kopię profilu MasterVault, a nie treść CV. Zaimportuj go w edytorze profilu albo wybierz PDF, DOCX lub TXT.');
+    this.name = 'UnsupportedMasterVaultJsonCvError';
   }
 }
 
@@ -56,25 +98,88 @@ function validateMagicBytes(header: Uint8Array, ext: string): boolean {
     case '.pdf':
       return header[0] === pdf[0] && header[1] === pdf[1] && header[2] === pdf[2] && header[3] === pdf[3];
     case '.docx':
-    case '.doc':
       return header[0] === zip[0] && header[1] === zip[1] && header[2] === zip[2] && header[3] === zip[3];
     case '.rtf':
       return header[0] === rtf[0] && header[1] === rtf[1] && header[2] === rtf[2] && header[3] === rtf[3];
-    case '.json':
-      // JSON może zaczynać się od BOM (EF BB BF), Spacji ({) lub [
-      return (
-        header[0] === 0xef || // BOM UTF-8
-        header[0] === 0x7b || // {
-        header[0] === 0x5b || // [
-        header[0] === 0x0a || // \n (pusta linia przed)
-        header[0] === 0x20    // spacja
-      );
     case '.csv':
     case '.txt':
       // Tekst — nie ma magic bytes, akceptujemy wszystko
       return true;
     default:
       return false;
+  }
+}
+
+/**
+ * Sprawdza centralny katalog ZIP przed uruchomieniem Mammoth. Limit samego
+ * tekstu po ekstrakcji nie chroni pamięci, jeśli skompresowany XML rozwija się
+ * wielokrotnie ponad rozmiar pliku.
+ */
+async function validateDocxArchiveBounds(file: File): Promise<void> {
+  const endWindowLength = Math.min(file.size, 22 + 0xffff);
+  const endWindowStart = file.size - endWindowLength;
+  const endWindow = new Uint8Array(await file.slice(endWindowStart).arrayBuffer());
+  const endView = new DataView(endWindow.buffer, endWindow.byteOffset, endWindow.byteLength);
+  const endSignature = 0x06054b50;
+  let endRecordOffset = -1;
+
+  for (let offset = endWindow.length - 22; offset >= 0; offset -= 1) {
+    if (endView.getUint32(offset, true) !== endSignature) continue;
+    const commentLength = endView.getUint16(offset + 20, true);
+    if (offset + 22 + commentLength === endWindow.length) {
+      endRecordOffset = offset;
+      break;
+    }
+  }
+
+  if (endRecordOffset < 0) throw new InvalidDocxError();
+
+  const diskNumber = endView.getUint16(endRecordOffset + 4, true);
+  const centralDirectoryDisk = endView.getUint16(endRecordOffset + 6, true);
+  const entriesOnDisk = endView.getUint16(endRecordOffset + 8, true);
+  const entryCount = endView.getUint16(endRecordOffset + 10, true);
+  const centralDirectorySize = endView.getUint32(endRecordOffset + 12, true);
+  const centralDirectoryOffset = endView.getUint32(endRecordOffset + 16, true);
+
+  if (diskNumber !== 0 || centralDirectoryDisk !== 0 || entriesOnDisk !== entryCount) {
+    throw new InvalidDocxError();
+  }
+  if (
+    entryCount === 0xffff || centralDirectorySize === 0xffffffff || centralDirectoryOffset === 0xffffffff ||
+    entryCount > MAX_DOCX_ARCHIVE_ENTRIES
+  ) {
+    throw new DocxArchiveLimitError();
+  }
+
+  const endRecordAbsoluteOffset = endWindowStart + endRecordOffset;
+  if (centralDirectoryOffset + centralDirectorySize > endRecordAbsoluteOffset || centralDirectorySize > file.size) {
+    throw new InvalidDocxError();
+  }
+
+  const directory = new Uint8Array(
+    await file.slice(centralDirectoryOffset, centralDirectoryOffset + centralDirectorySize).arrayBuffer()
+  );
+  const directoryView = new DataView(directory.buffer, directory.byteOffset, directory.byteLength);
+  let cursor = 0;
+  let totalExpandedBytes = 0;
+
+  for (let index = 0; index < entryCount; index += 1) {
+    if (cursor + 46 > directory.length || directoryView.getUint32(cursor, true) !== 0x02014b50) {
+      throw new InvalidDocxError();
+    }
+
+    const expandedSize = directoryView.getUint32(cursor + 24, true);
+    const nameLength = directoryView.getUint16(cursor + 28, true);
+    const extraLength = directoryView.getUint16(cursor + 30, true);
+    const commentLength = directoryView.getUint16(cursor + 32, true);
+    const entryLength = 46 + nameLength + extraLength + commentLength;
+
+    if (expandedSize === 0xffffffff) throw new DocxArchiveLimitError();
+    if (cursor + entryLength > directory.length) throw new InvalidDocxError();
+
+    totalExpandedBytes += expandedSize;
+    if (totalExpandedBytes > MAX_DOCX_ARCHIVE_EXPANSION_BYTES) throw new DocxArchiveLimitError();
+    cursor += entryLength;
   }
 }
 
@@ -107,9 +212,21 @@ export interface ExtractedFileResult {
   portableVault?: ParsedCVResult;
 }
 
+/** Identyfikator zależny od treści wpisu i jego pozycji, bez zegara ani losowości. */
+function parsedEntryId(kind: string, index: number, content: string): string {
+  let hash = 2166136261;
+  let secondaryHash = 0x9e3779b9;
+  for (let i = 0; i < content.length; i += 1) {
+    const code = content.charCodeAt(i);
+    hash = Math.imul(hash ^ code, 16777619);
+    secondaryHash = Math.imul(secondaryHash ^ code, 0x85ebca6b);
+  }
+  return `${kind}_parsed_${(hash >>> 0).toString(36)}${(secondaryHash >>> 0).toString(36)}_${index}`;
+}
+
 /**
  * Universal Multi-Format Text Extractor
- * Supports: .pdf, .docx, .doc, .rtf, .txt, .json, .csv
+ * Supports: .pdf, .docx, .rtf, .txt, .csv
  */
 export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileResult> {
   // --- Ochrona 1: limit rozmiaru pliku ---
@@ -132,34 +249,38 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
   const header = new Uint8Array(headerBuf);
   const ext = ('.' + fileName.split('.').pop()) || '.unknown';
 
+  // Mammoth czyta OpenXML (.docx), a nie binarny format Word 97–2003 (.doc).
+  // Rozpoznajemy jego sygnaturę, żeby nie opisać poprawnego pliku jako uszkodzonego.
+  if (ext === '.doc' && header[0] === 0xd0 && header[1] === 0xcf && header[2] === 0x11 && header[3] === 0xe0) {
+    throw new UnsupportedLegacyDocFormatError();
+  }
+  if (ext === '.json') {
+    throw new UnsupportedMasterVaultJsonCvError();
+  }
+
   if (!validateMagicBytes(header, ext)) {
     throw new Error(
       'Plik nie odpowiada rozszerzeniu. Wykryto niezgodność między nazwą pliku a jego zawartością — sprawdź, czy plik nie został uszkodzony lub zmieniony.'
     );
   }
 
-  // 1. JSON Format
-  if (fileName.endsWith('.json')) {
-    const rawJson = await file.text();
-    return { text: rawJson, format: 'JSON' };
-  }
-
-  // 2. CSV Format
+  // CSV jest zachowywany jako tekst dla wewnętrznych konsumentów ekstraktora.
   if (fileName.endsWith('.csv')) {
     const rawCsv = await file.text();
     return { text: rawCsv, format: 'CSV' };
   }
 
-  // 3. RTF Format
+  // RTF Format
   if (fileName.endsWith('.rtf')) {
     const rawRtf = await file.text();
     const cleanText = stripRtfControlWords(rawRtf);
     return { text: cleanText, format: 'RTF' };
   }
 
-  // 4. DOCX / DOC Format
-  if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+  // DOCX Format
+  if (fileName.endsWith('.docx')) {
     try {
+      await validateDocxArchiveBounds(file);
       // Mammoth jest ładowany na żądanie (Z-1), aby biblioteka DOCX nie dociążała
       // głównej paczki wejściowej dla użytkowników niekorzystających z formatu Word.
       const mammoth = await import('mammoth');
@@ -179,15 +300,15 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
         return { text: result.value, format: 'DOCX' };
       }
     } catch (err) {
-      if (err instanceof DecompressionLimitError || (err instanceof Error && (err.message.includes('za duży') || err.message.includes('zbyt duży')))) {
+      if (err instanceof DecompressionLimitError || err instanceof DocxArchiveLimitError || err instanceof InvalidDocxError) {
         throw err;
       }
+      throw new InvalidDocxError();
     }
-    const txt = await file.text();
-    return { text: txt, format: 'DOC/TXT' };
+    throw new InvalidDocxError();
   }
 
-  // 5. PDF Format
+  // PDF Format
   if (fileName.endsWith('.pdf')) {
     const arrayBuffer = await file.arrayBuffer();
 
@@ -309,7 +430,7 @@ export async function extractTextFromAnyFile(file: File): Promise<ExtractedFileR
     return { text: pdfText, format: 'PDF' };
   }
 
-  // 6. Plain Text (.txt, .md, .text)
+  // Plain Text (.txt, .md, .text)
   const plainText = await file.text();
   return { text: plainText, format: 'TXT' };
 }
@@ -648,7 +769,22 @@ export function extractLocationString(text: string): string {
  * Rozdziela linię lub fragment na Stanowisko i Firmę.
  */
 function disambiguateRoleAndCompany(text: string): { role: string; company: string } {
-  const cleaned = text.replace(DATE_RANGE_REGEX, '').replace(/[()|;,·•]+$/, '').trim();
+  const cleaned = text
+    .replace(DATE_RANGE_REGEX, '')
+    .replace(/^(?:stanowisko|rola|job\s+title|position):\s*/i, '')
+    .replace(/[()|;,·•]+$/, '')
+    .trim();
+  const commaParts = cleaned.split(/,\s*/);
+  if (commaParts.length === 2) {
+    const [left, right] = commaParts;
+    const leftIsRole = ROLE_KEYWORDS.test(left);
+    const rightIsRole = ROLE_KEYWORDS.test(right);
+    // CV często zapisują „rola, firma”. Sam przecinek jest niejednoznaczny,
+    // więc rozdzielamy go tylko wtedy, gdy jedną stronę potwierdza słownik ról.
+    if (left && right && leftIsRole && !rightIsRole) return { role: left, company: right };
+    if (left && right && rightIsRole && !leftIsRole) return { company: left, role: right };
+  }
+
   const separators = /\s+[-–—]\s+|\s*[·•|]\s*|\s+w\s+|\s+at\s+/i;
   const parts = cleaned.split(separators).map((p) => p.trim()).filter(Boolean);
 
@@ -794,7 +930,9 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
     // Jeśli brak roli lub firmy w headerLines, szukamy w otherLines
     if (!role || !company) {
       for (const oLine of block.otherLines.slice(0, 2)) {
-        if (!isLocationLine(oLine)) {
+        // Opis obowiązków nie jest nazwą firmy. Używaj tu tylko linii z
+        // jawnym sygnałem roli albo pracodawcy; sam dowolny tekst nie wystarcza.
+        if (!isLocationLine(oLine) && (ROLE_KEYWORDS.test(oLine) || COMPANY_KEYWORDS.test(oLine))) {
           const { role: r, company: c } = disambiguateRoleAndCompany(oLine);
           if (r && !role) role = r;
           if (c && !company) company = c;
@@ -819,7 +957,7 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
     const isCurrent = block.dateRange?.isCurrent || endDate === 'Obecnie';
 
     const highlights: HighlightMetric[] = block.bulletLines.map((text, idx) => ({
-      id: `hl_parsed_${Date.now()}_${entries.length}_${idx}`,
+      id: parsedEntryId('hl', idx, `${entries.length}:${text}`),
       text,
       action: '',
       target: '',
@@ -832,7 +970,7 @@ function parseExperienceEntries(sectionLines: string[]): WorkExperience[] {
       .filter(Boolean).join('\n').trim() || undefined;
 
     entries.push({
-      id: `exp_parsed_${Date.now()}_${entries.length}`,
+      id: parsedEntryId('exp', entries.length, JSON.stringify({ company, role, location, startDate, endDate, description, highlights })),
       company,
       role,
       location,
@@ -942,7 +1080,7 @@ function parseEducationEntries(sectionLines: string[]): Education[] {
     }
 
     entries.push({
-      id: `edu_parsed_${Date.now()}_${entries.length}`,
+      id: parsedEntryId('edu', entries.length, JSON.stringify({ institution, degree, fieldOfStudy, startDate: block.dateRange?.startDate || '', endDate: block.dateRange?.endDate || explicitYear })),
       institution,
       degree: degree || '',
       fieldOfStudy: fieldOfStudy || '',
@@ -968,11 +1106,14 @@ function parseCertificationEntries(sectionLines: string[]): Certification[] {
       const withoutYear = line.replace(/[(,|-]?\s*(?:19|20)\d{2}\s*[),|]?/, '').trim();
       const parts = withoutYear.split(/\s+[-–—]\s+|\s*\|\s*|\s*,\s*/).map((p) => p.trim()).filter(Boolean);
 
+      const name = parts[0] ?? withoutYear;
+      const issuer = parts[1] ?? '';
+      const date = yearMatch ? yearMatch[0] : undefined;
       return {
-        id: `cert_parsed_${Date.now()}_${index}`,
-        name: parts[0] ?? withoutYear,
-        issuer: parts[1] ?? '',
-        date: yearMatch ? yearMatch[0] : undefined,
+        id: parsedEntryId('cert', index, JSON.stringify({ name, issuer, date })),
+        name,
+        issuer,
+        date,
       };
     });
 }
@@ -1020,7 +1161,7 @@ function parseLanguages(sectionLines: string[]): LanguageProficiency[] {
     // Brak poziomu w źródle nie oznacza B2 — tego nie wolno dopisywać do CV.
     if (!level) continue;
     languages.push({
-      id: `lang_parsed_${Date.now()}_${languages.length}`,
+      id: parsedEntryId('lang', languages.length, JSON.stringify({ language: langName, level, context: context || clean })),
       language: langName,
       level,
       context: context || clean,
@@ -1047,7 +1188,7 @@ function parseProjects(sectionLines: string[]): Project[] {
     if (!isBullet && (clean.includes('-') || clean.includes(':') || !currentProj)) {
       if (currentProj?.name) {
         projects.push({
-          id: `proj_parsed_${Date.now()}_${projects.length}`,
+          id: parsedEntryId('proj', projects.length, JSON.stringify(currentProj)),
           name: currentProj.name,
           role: currentProj.role || 'Główny wykonawca',
           description: currentProj.description || '',
@@ -1069,7 +1210,7 @@ function parseProjects(sectionLines: string[]): Project[] {
 
   if (currentProj?.name) {
     projects.push({
-      id: `proj_parsed_${Date.now()}_${projects.length}`,
+      id: parsedEntryId('proj', projects.length, JSON.stringify(currentProj)),
       name: currentProj.name,
       role: currentProj.role || 'Główny wykonawca',
       description: currentProj.description || '',
@@ -1119,7 +1260,19 @@ function parseSkillList(sectionLines: string[]): string[] {
     const items = content.split(/[,;|•►▪●\n]|\s+\/\s+/).map((s) => s.trim()).filter(Boolean);
 
     for (const item of items) {
-      if (item.length >= 2 && item.length <= 60 && !item.toLowerCase().startsWith('np.') && !isNonSkillMarker(item)) {
+      // Wiersz umiejętności może opisywać brak kompetencji lub naukę; sama
+      // obecność nazwy po przecinku nie jest pozytywnym dowodem.
+      const containsTaintedTechnology = COMPREHENSIVE_SKILL_LEXICON.some(
+        (knownSkill) => containsPhrase(item, knownSkill) && !hasPositiveSkillEvidence(cleanLine, knownSkill)
+      );
+      if (
+        item.length >= 2 &&
+        item.length <= 60 &&
+        !item.toLowerCase().startsWith('np.') &&
+        !isNonSkillMarker(item) &&
+        !containsTaintedTechnology &&
+        hasPositiveSkillEvidence(cleanLine, item)
+      ) {
         skills.push(item);
       }
     }
@@ -1174,7 +1327,9 @@ export function detectCyrillicScript(text: string): {
   const letters = text.replace(/[^a-zA-Z\u0400-\u04FF\u0500-\u052F\u0100-\u017F]/g, '');
   const ratio = letters.length > 0 ? count / letters.length : 0;
 
-  const hasCyrillic = count >= 6 || ratio > 0.04;
+  // Kilka znakow w obcym imieniu nie powinno blokowac calego CV; sygnal
+  // dotyczy dopiero dokumentu, w ktorym cyrylica stanowi istotna czesc tekstu.
+  const hasCyrillic = count >= 3 && ratio > 0.04;
   const message = hasCyrillic
     ? 'Wykryto alfabet cyrylicki (cyrylicę). Parser CV obsługuje wyłącznie dokumenty sporządzone w alfabecie łacińskim (polski i angielski). Wprowadź dane ręcznie lub wklej wersję przetłumaczoną.'
     : undefined;
@@ -1192,6 +1347,9 @@ export function detectCyrillicScript(text: string): {
  */
 export function parseTextToMasterVault(text: string | undefined | null, format: string = 'TXT'): ParsedCVResult {
   const safeText = typeof text === 'string' ? text : String(text || '');
+  if (safeText.length > MAX_DOCUMENT_TEXT_CHARS) {
+    throw new DocumentTextLimitError();
+  }
   if (!safeText.trim()) {
     return {
       personalInfo: {
@@ -1240,7 +1398,10 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
 
   // 4. Ekstrakcja Imienia i Nazwiska (z nagłówka, ignorując maile, telefony, linki i szum)
   let fullName = '';
-  const headerLines = (sections.header && sections.header.length > 0) ? sections.header : lines.slice(0, 8);
+  // splitIntoSections zawsze tworzy klucz `header`; gdy jest pusty, tekst
+  // zaczął się nagłówkiem sekcji, więc nie wolno awansować pierwszych linii
+  // doświadczenia do danych osobowych ani tytułu kandydata.
+  const headerLines = sections.header;
   for (const line of headerLines) {
     if (/(?:curriculum|życiorys|resume|klauzula|zgoda\s+na\s+przetwarzanie|here\s+is|system:|assistant|bot|```|[{}]|ignore\s+previous|drop\s+table)/i.test(line)) continue;
     const cleanedLine = line
@@ -1318,18 +1479,17 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
   const projects = parseProjects(sections.projects ?? []);
 
   // 6. Ekstrakcja Stanowiska (Title)
-  const explicitTitleMatch = clean.match(/(?:stanowisko|tytuł|specjalność|rola|job\s+title):\s*([^\n]+)/i);
+  const explicitTitleMatch = headerLines.join('\n').match(/(?:stanowisko|tytuł|specjalność|rola|job\s+title):\s*([^\n]+)/i);
   const headerTitle = headerLines.slice(1).find((line) => line.length < 90 && ROLE_KEYWORDS.test(line))
     ?.split(',')[0]?.trim();
+  const inferredHistoryTitle = inferLatestExperienceRole(history);
   // Nie szukaj tytułu w całym dokumencie: „technik” w sekcji Edukacja albo
   // „operator” w opisie obowiązków nie jest stanowiskiem kandydata.
   const title = explicitTitleMatch
     ? explicitTitleMatch[1].trim()
     : headerTitle
     ? headerTitle
-    : history.length > 0 && history[0].role
-    ? history[0].role
-    : '';
+    : inferredHistoryTitle;
 
   // 7. Ekstrakcja Lokalizacji
   const explicitLocMatch = clean.match(/(?:lokalizacja|miejscowość|adres|location|miejsce\s+zamieszkania):\s*([^\n,]+)/i);
@@ -1356,10 +1516,9 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
   }
 
   // 8. Ekstrakcja Podsumowania (Summary)
-  const summaryMatch = clean.match(/(?:podsumowanie(?:\s+zawodowe)?|o\s+sobie|o\s+mnie|profil(?:\s+(?:zawodowy|osobowy|kandydata))?|summary):\s*([^\n]+(?:\n[^\n]+){0,4})/i);
-  const summary = summaryMatch
-    ? summaryMatch[1].trim()
-    : (sections.summary ?? []).join('\n').trim();
+  // Sekcje są już podzielone wcześniej; regex wielowierszowy wciągał do
+  // podsumowania kolejne nagłówki i fałszował jednocześnie umiejętności/historię.
+  const summary = (sections.summary ?? []).join('\n').trim();
 
   // 9. Ekstrakcja Umiejętności (Twarde, Miękkie, Narzędzia)
   const extractedSkillsFromSection = parseSkillList(sections.skills ?? []);
@@ -1385,9 +1544,10 @@ export function parseTextToMasterVault(text: string | undefined | null, format: 
   ].filter(Boolean).join('\n');
 
   // Dodatkowe skanowanie leksykonu po wyodrębnionej treści, by nie zgubić technologii.
+  // Surowe wyszukanie dopisywało m.in. SAP z „nie znam SAP”; współdzielimy
+  // matcher rozpoznający negację, naukę i granice frazy.
   for (const kw of COMPREHENSIVE_SKILL_LEXICON) {
-    const escaped = kw.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(skillEvidenceText)) {
+    if (hasPositiveSkillEvidence(skillEvidenceText, kw)) {
       hardSkillsSet.add(kw);
     }
   }

@@ -10,7 +10,7 @@ import {
   DEFAULT_PRE_CALL_CHECKLIST,
 } from '../interviewLoopEngine';
 import { MemoryStorage } from './helpers/memoryStorage';
-import { resetLastGoodCache } from '../storage';
+import { profileDataKeyFor, readJson, resetLastGoodCache, StorageKeys, writeJson } from '../storage';
 
 describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
   beforeEach(() => {
@@ -29,6 +29,14 @@ describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
       expect(session.preCallChecklist.length).toBe(DEFAULT_PRE_CALL_CHECKLIST.length);
       expect(session.preCallChecklist.every((i) => !i.completed)).toBe(true);
       expect(session.liveTracker.currentStage).toBe('INTRO');
+    });
+
+    it('nie dopowiada firmy, stanowiska ani daty rozmowy przy pustym kontekście', () => {
+      const session = createInterviewSession('', '');
+
+      expect(session.companyName).toBe('');
+      expect(session.roleTitle).toBe('');
+      expect(session.scheduledAt).toBeUndefined();
     });
 
     it('zmienia etap rozmowy i ustawia status IN_PROGRESS', () => {
@@ -62,6 +70,40 @@ describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
       expect(email).toContain('wdrożenie mikroserwisów i optymalizacja bazy danych');
       expect(email).toContain('Jan Kowalski');
     });
+
+    it('nie wymyśla nastroju ani treści rozmowy i dołącza wyłącznie wpisane punkty follow-upu', () => {
+      const session = createInterviewSession('Firma testowa', 'Magazynier');
+      session.liveTracker.notes = [{
+        id: 'synthetic-note',
+        timestamp: '12:00',
+        stage: 'TECHNICAL',
+        text: 'Rozmowa o wózkach widłowych',
+        sentiment: 'NEUTRAL',
+      }];
+
+      const blankEmail = generateFollowUpEmail(session, 'Kandydat');
+      expect(blankEmail).not.toMatch(/dzisiejsz|inspiruj|świetn|duże zainteresowanie|plany zespołu|wrażenie/i);
+      expect(blankEmail).not.toContain('Rozmowa o wózkach widłowych');
+      expect(blankEmail).not.toContain('Kandydat');
+
+      const notedEmail = generateFollowUpEmail(session, '', {
+        whatWentWell: 'omówienie procedury przyjęcia dostawy',
+        topicsToClarifyInFollowUp: 'szkolenie UDT przed rozpoczęciem pracy',
+      });
+      expect(notedEmail).toContain('Notatka po rozmowie: omówienie procedury przyjęcia dostawy');
+      expect(notedEmail).toContain('Proszę o doprecyzowanie kwestii: szkolenie UDT przed rozpoczęciem pracy');
+      expect(notedEmail).not.toMatch(/dzisiejsz|inspiruj|świetn|duże zainteresowanie|plany zespołu|wrażenie/i);
+    });
+
+    it('zmienia wariant po kliknięciu przebudowy i zachowuje jawnie podane tematy', () => {
+      const session = createInterviewSession('Firma testowa', 'Analityk danych');
+      const variant0 = generateFollowUpEmail(session, '', { topicsToClarifyInFollowUp: 'zakres raportowania KPI' }, 0);
+      const variant1 = generateFollowUpEmail(session, '', { topicsToClarifyInFollowUp: 'zakres raportowania KPI' }, 1);
+
+      expect(variant1).not.toBe(variant0);
+      expect(variant0).toContain('zakres raportowania KPI');
+      expect(variant1).toContain('zakres raportowania KPI');
+    });
   });
 
   describe('Trwałość w pamięci lokalnej (StorageKeys.interviewLoops)', () => {
@@ -88,6 +130,27 @@ describe('Interview Loop Manager (interview-loop-manager-v1)', () => {
       expect(loadInterviewSessions('profile-b')).toEqual([]);
       deleteInterviewSession('profile-b', session.id);
       expect(loadInterviewSessions('profile-a')).toEqual([session]);
+    });
+
+    it('pomija wadliwe rekordy przy odczycie i zachowuje je przy zapisie oraz usunięciu poprawnej sesji', () => {
+      const key = profileDataKeyFor(StorageKeys.interviewLoops, 'profile-a');
+      const valid = createInterviewSession('Firma A', 'Rola A');
+      const invalid = { id: 'broken-session', companyName: 'Firma B', roleTitle: 'Rola B', liveTracker: null };
+      writeJson(key, [valid, null, invalid]);
+
+      expect(loadInterviewSessions('profile-a')).toEqual([valid]);
+
+      const next = createInterviewSession('Firma C', 'Rola C');
+      saveInterviewSession('profile-a', next);
+      const afterSave = readJson<unknown[]>(key, []);
+      expect(afterSave).toContainEqual(null);
+      expect(afterSave).toContainEqual(invalid);
+
+      deleteInterviewSession('profile-a', valid.id);
+      const afterDelete = readJson<unknown[]>(key, []);
+      expect(afterDelete).toContainEqual(null);
+      expect(afterDelete).toContainEqual(invalid);
+      expect(loadInterviewSessions('profile-a').map((session) => session.id)).toEqual([next.id]);
     });
   });
 });

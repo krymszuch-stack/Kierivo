@@ -2,9 +2,11 @@ import { ExtractedProfileData, SummarySuggestion } from './types';
 
 function formatYears(years: number): string {
   if (years <= 0) return '';
-  if (years === 1) return 'rocznym doświadczeniem zawodowym';
-  if (years >= 2 && years <= 4) return `${years}-letnim doświadczeniem zawodowym`;
-  return `${years}-letnim doświadczeniem zawodowym`;
+  if (years === 1) return '1 pełny rok';
+  if (years % 10 >= 2 && years % 10 <= 4 && (years % 100 < 12 || years % 100 > 14)) {
+    return `${years} pełne lata`;
+  }
+  return `${years} pełnych lat`;
 }
 
 function formatSkills(skills: string[]): string {
@@ -30,20 +32,15 @@ export function generateSummaries(profile: ExtractedProfileData, count = 4): Sum
   }
 
   // Styl 1: Kompaktowy
-  let compactText = '';
-  if (title && yearsOfExperience > 0) {
-    compactText = `${title} z ${formatYears(yearsOfExperience)}.`;
-    if (topSkills.length > 0) {
-      compactText += ` W codziennej pracy wykorzystuję ${formatSkills(topSkills.slice(0, 3))}.`;
-    }
-  } else if (title) {
-    compactText = `${title}.`;
-    if (topSkills.length > 0) {
-      compactText += ` Doświadczenie w obszarach: ${formatSkills(topSkills.slice(0, 4))}.`;
-    }
-  } else if (topSkills.length > 0) {
-    compactText = `Doświadczenie zawodowe oparte na znajomości: ${formatSkills(topSkills.slice(0, 4))}.`;
+  const compactParts: string[] = [];
+  if (title) compactParts.push(`${title}.`);
+  if (yearsOfExperience > 0) {
+    compactParts.push(`Z wpisanych przedziałów wynika ${formatYears(yearsOfExperience)} łącznego stażu zawodowego.`);
   }
+  if (topSkills.length > 0) {
+    compactParts.push(`W profilu wymieniono: ${formatSkills(topSkills.slice(0, 4))}.`);
+  }
+  const compactText = compactParts.join(' ');
 
   if (compactText) {
     const words = compactText.trim().split(/\s+/).length;
@@ -66,7 +63,7 @@ export function generateSummaries(profile: ExtractedProfileData, count = 4): Sum
       .join(', ');
     let historyText = `${title ? `${title}. ` : ''}Dotychczasowa praktyka obejmuje stanowiska: ${rolesDesc}.`;
     if (topSkills.length > 0) {
-      historyText += ` Praktyczna znajomość: ${formatSkills(topSkills.slice(0, 3))}.`;
+      historyText += ` W profilu wymieniono kompetencje: ${formatSkills(topSkills.slice(0, 3))}.`;
     }
     const words = historyText.trim().split(/\s+/).length;
     const sentences = historyText.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
@@ -83,7 +80,7 @@ export function generateSummaries(profile: ExtractedProfileData, count = 4): Sum
 
   // Styl 3: Umiejętności
   if (topSkills.length > 0) {
-    const skillsText = `${title ? `${title}. ` : ''}Profil zawodowy skoncentrowany na kluczowych kompetencjach: ${formatSkills(topSkills)}. Doświadczenie w bezpośrednim stosowaniu tych rozwiązań w praktyce zawodowej.`;
+    const skillsText = `${title ? `${title}. ` : ''}W profilu wymieniono kompetencje: ${formatSkills(topSkills)}.`;
     const words = skillsText.trim().split(/\s+/).length;
     const sentences = skillsText.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
     results.push({
@@ -112,7 +109,8 @@ export function generateSummaries(profile: ExtractedProfileData, count = 4): Sum
       highlightedKeywords: extractKeywords(highlightText, keywordCandidates),
     });
   } else if (workEntries.length > 0 && topSkills.length > 0) {
-    const highlightText = `${title ? `${title}. ` : ''}Doświadczenie zdobyte przy realizacji zadań w ${workEntries.map((e) => e.company || e.role).join(', ')} z wykorzystaniem ${formatSkills(topSkills.slice(0, 2))}.`;
+    const roles = workEntries.map((e) => (e.company ? `${e.role} w ${e.company}` : e.role)).join(', ');
+    const highlightText = `${title ? `${title}. ` : ''}Wpisy historii zawodowej: ${roles}. W profilu wymieniono kompetencje: ${formatSkills(topSkills.slice(0, 2))}.`;
     const words = highlightText.trim().split(/\s+/).length;
     const sentences = highlightText.split(/[.!?]+/).filter((s) => s.trim().length > 0).length;
     results.push({

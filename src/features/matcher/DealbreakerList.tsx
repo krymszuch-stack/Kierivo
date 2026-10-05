@@ -5,12 +5,14 @@ import { Button } from '../../components/ui/Button';
 
 export interface DealbreakerListProps {
   missingItems: string[];
+  unconfirmedItems?: string[];
   onAddToVault?: (item: string) => void;
   className?: string;
 }
 
 export const DealbreakerList: React.FC<DealbreakerListProps> = ({
   missingItems,
+  unconfirmedItems = [],
   onAddToVault,
   className = '',
 }) => {
@@ -34,14 +36,14 @@ export const DealbreakerList: React.FC<DealbreakerListProps> = ({
         </span>
       </div>
 
-      {missingItems.length === 0 ? (
+      {missingItems.length === 0 && unconfirmedItems.length === 0 ? (
         <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success-soft p-4 text-xs font-semibold text-success-fg">
           <CheckCircle2 className="h-5 w-5 shrink-0" />
           <span>
-            Wspaniale! Twój profil w Master Vault zawiera wszystkie kluczowe wymagania twarde z tego ogłoszenia.
+            Nie wykryto braków w wymaganiach rozpoznanych przez Kierivo.
           </span>
         </div>
-      ) : (
+      ) : missingItems.length > 0 ? (
         <div className="space-y-2">
           <AnimatePresence mode="popLayout">
             {missingItems.map((item, idx) => {
@@ -82,6 +84,15 @@ export const DealbreakerList: React.FC<DealbreakerListProps> = ({
               );
             })}
           </AnimatePresence>
+        </div>
+      ) : null}
+
+      {unconfirmedItems.length > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning-soft/40 p-4 text-xs text-warning-fg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Wymagają potwierdzenia: <strong>{unconfirmedItems.join(', ')}</strong>. Nie zaliczamy ich ani nie traktujemy jako braków bez danych, które pozwalają je potwierdzić.
+          </span>
         </div>
       )}
     </div>

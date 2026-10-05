@@ -4,7 +4,6 @@ import {
   Briefcase,
   AlertCircle,
   AlertTriangle,
-  Info,
   ArrowRight,
   RotateCcw,
   Sparkles,
@@ -19,7 +18,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { Textarea } from '../../components/ui/Field';
-import { extractTextFromAnyFile } from '../../lib/cvUniversalParser';
+import { extractTextFromAnyFile, InvalidDocxError, UnsupportedLegacyDocFormatError, UnsupportedMasterVaultJsonCvError } from '../../lib/cvUniversalParser';
 import {
   runQuickAtsCheck,
   QuickCheckError,
@@ -28,9 +27,16 @@ import {
   type TopProblem,
 } from '../../lib/quickAtsCheck';
 import { inferPastedOfferHeader } from '../../lib/jobOfferPreprocessor';
+import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 import { showToast } from '../../store/useToastStore';
 import { JobOffer, MasterVault } from '../../types';
-import { getTopProblemLabel } from '../../lib/quickOnboardingPresentation';
+import { QuickCheckFindings } from './QuickCheckFindings';
+import { getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, getUnmetBlockingRequirements, hasCareerEvidence } from '../../lib/canonicalAts';
+import { getCanonicalScoreMetricLabel, hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { getScoreRingTrackDashArray } from '../../lib/scoreRingPresentation';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
+import { getCalculationTimeFreshness } from '../../lib/analysisPeriod';
+import { AnalysisTimeNotice } from '../../components/ui/AnalysisTimeNotice';
 
 export interface QuickOnboardingFlowProps {
   /** Wywołanie po kliknięciu „Pokaż szczegóły” — przekazuje wyekstrahowany profil i ofertę do trybu zaawansowanego */
@@ -43,22 +49,23 @@ export interface QuickOnboardingFlowProps {
 }
 
 function getTone(score: number): { text: string; bg: string; border: string; ring: string; label: string } {
-  if (score >= 75) {
+  const band = getCanonicalScoreBand(score);
+  if (band === 'high') {
     return {
       text: 'text-success-fg',
       bg: 'bg-success-soft',
       border: 'border-success/30',
       ring: 'stroke-success-fg',
-      label: 'Wysokie dopasowanie',
+      label: CANONICAL_SCORE_BAND_LABELS[band],
     };
   }
-  if (score >= 50) {
+  if (band === 'moderate') {
     return {
       text: 'text-warning-fg',
       bg: 'bg-warning-soft',
       border: 'border-warning/30',
       ring: 'stroke-warning-fg',
-      label: 'Umiarkowane dopasowanie',
+      label: CANONICAL_SCORE_BAND_LABELS[band],
     };
   }
   return {
@@ -66,7 +73,7 @@ function getTone(score: number): { text: string; bg: string; border: string; rin
     bg: 'bg-danger-soft',
     border: 'border-danger/30',
     ring: 'stroke-danger-fg',
-    label: 'Wymaga optymalizacji',
+    label: CANONICAL_SCORE_BAND_LABELS[band],
   };
 }
 
@@ -80,16 +87,70 @@ interface StatusMeta {
   tips: Array<{ title: string; desc: string }>;
 }
 
-function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMeta {
+function getResultStatusMeta(score: number, topProblems: TopProblem[], limitedEvidence = false, requirementCount = 0, careerEvidenceAvailable = true, blockingRequirements: string[] = [], unconfirmedRequirements: string[] = []): StatusMeta {
+  const band = getCanonicalScoreBand(score);
   const hasFormalIssue = topProblems.some((p) => p.category === 'formal');
 
-  if (score >= 75) {
+  if (blockingRequirements.length > 0) {
     return {
-      statusLabel: 'Wysokie dopasowanie',
+      statusLabel: 'Wymóg obowiązkowy niepotwierdzony',
+      headline: 'Sprawdź wymagane uprawnienie przed oceną aplikacji',
+      subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.`,
+      cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
+      badgeClass: 'bg-warning-soft text-warning-fg',
+      icon: AlertTriangle,
+      tips: [{
+        title: 'Sprawdź uprawnienie i treść oferty',
+        desc: 'Dodaj je do profilu tylko wtedy, gdy faktycznie je posiadasz. W przeciwnym razie traktuj je jako brak blokujący.',
+      }],
+    };
+  }
+
+  if (unconfirmedRequirements.length > 0) {
+    return {
+      statusLabel: 'Wynik wstępny — wymóg niepotwierdzony',
+      headline: 'Nie wszystkie wymagania da się potwierdzić',
+      subline: `Nie można potwierdzić: ${unconfirmedRequirements.join(', ')}. Uzupełnij wiarygodne dane w profilu; te wymogi nie są liczone ani jako zaliczone, ani jako braki.`,
+      cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
+      badgeClass: 'bg-warning-soft text-warning-fg',
+      icon: AlertTriangle,
+      tips: [{
+        title: 'Sprawdź niepotwierdzony wymóg',
+        desc: 'Dodaj do profilu daty lub inne brakujące dane wyłącznie wtedy, gdy możesz je potwierdzić.',
+      }],
+    };
+  }
+
+  if (limitedEvidence) {
+    return {
+      statusLabel: 'Wynik wstępny — ograniczone dane',
+      headline: 'Za mało danych, by kategorycznie ocenić dopasowanie',
+      subline: careerEvidenceAvailable
+        ? `Rozpoznano ${requirementCount} ${requirementCount === 1 ? 'wymaganie' : 'wymagania'}. Sprawdź odczyt oferty i CV przed wyciągnięciem wniosku.`
+        : 'Brakuje zapisanej historii doświadczenia lub projektu; ten wynik nie potwierdza dopasowania zawodowego.',
+      cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
+      badgeClass: 'bg-warning-soft text-warning-fg',
+      icon: AlertTriangle,
+      tips: [
+        {
+          title: 'Sprawdź rozpoznane wymagania',
+          desc: 'Porównaj listę wymagań z oryginalną ofertą. Wynik może być wstępny, jeśli parser pominął część treści.',
+        },
+        {
+          title: 'Zweryfikuj odczyt CV',
+          desc: 'Upewnij się, że wklejony tekst zawiera doświadczenie i umiejętności, na których ma opierać się dopasowanie.',
+        },
+      ],
+    };
+  }
+
+  if (band === 'high') {
+    return {
+      statusLabel: CANONICAL_SCORE_BAND_LABELS[band],
       headline: 'Wysoka zgodność wykrytych wymagań z treścią CV',
       subline: 'To wynik reguł Kierivo dla tej oferty. Sprawdź rozpoznane dane i wymagania przed wysłaniem CV.',
-      cardClass: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-100',
-      badgeClass: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
+      cardClass: 'bg-success-soft border-success/30 text-success-fg',
+      badgeClass: 'bg-success-soft text-success-fg',
       icon: CheckCircle2,
       tips: [
         {
@@ -108,13 +169,13 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
     };
   }
 
-  if (score >= 50) {
+  if (band === 'moderate') {
     return {
-      statusLabel: 'Wymaga drobnych uzupełnień',
+      statusLabel: CANONICAL_SCORE_BAND_LABELS[band],
       headline: 'Wykryto częściową zgodność CV z ogłoszeniem',
       subline: 'Sprawdź, czy wskazane braki rzeczywiście nie występują w Twoim CV. Parser może pominąć fragmenty dokumentu.',
-      cardClass: 'bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-100',
-      badgeClass: 'bg-amber-500/20 text-amber-700 dark:text-amber-300',
+      cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
+      badgeClass: 'bg-warning-soft text-warning-fg',
       icon: AlertTriangle,
       tips: [
         {
@@ -136,11 +197,11 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[]): StatusMe
   }
 
   return {
-    statusLabel: 'Niska zgodność w analizie Kierivo',
+    statusLabel: CANONICAL_SCORE_BAND_LABELS[band],
     headline: 'Wykryto istotne luki lub nierozpoznane dane',
     subline: 'Porównaj wynik z oryginalnym CV i ogłoszeniem. Niski wynik może też wynikać z błędnego odczytu treści.',
-    cardClass: 'bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-100',
-    badgeClass: 'bg-rose-500/20 text-rose-700 dark:text-rose-300',
+    cardClass: 'bg-danger-soft border-danger/30 text-danger-fg',
+    badgeClass: 'bg-danger-soft text-danger-fg',
     icon: AlertCircle,
     tips: [
       {
@@ -171,7 +232,9 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
   const [cvText, setCvText] = useState(initialCvText);
   const [jdText, setJdText] = useState(initialJdText);
   const [cvFormat, setCvFormat] = useState('TXT');
-  const [result, setResult] = useState<QuickCheckResult | null>(null);
+  const [storedResult, setResult] = useState<QuickCheckResult | null>(null);
+  const now = useAnalysisClock();
+  const result = storedResult && getCalculationTimeFreshness(storedResult.canonicalResult, now) === 'current' ? storedResult : null;
   const [error, setError] = useState<{ message: string; field: 'cv' | 'jd' } | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -191,9 +254,11 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
         message: `Plik odczytany lokalnie (${format}).`,
         variant: 'success',
       });
-    } catch {
+    } catch (error) {
       setError({
-        message: 'Nie udało się odczytać tego pliku. Wklej treść CV bezpośrednio w pole tekstowe.',
+        message: error instanceof InvalidDocxError || error instanceof UnsupportedLegacyDocFormatError || error instanceof UnsupportedMasterVaultJsonCvError
+          ? error.message
+          : 'Nie udało się odczytać tego pliku. Wklej treść CV bezpośrednio w pole tekstowe.',
         field: 'cv',
       });
     } finally {
@@ -255,14 +320,27 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
   const canonicalScore = result?.canonicalResult.state === 'SCORABLE'
     ? result.canonicalResult.score
     : null;
+  const profileCoverage = result ? measureVaultCompleteness(result.vault).percent : null;
+  const detectedRequirementCount = result
+    ? result.canonicalResult.matchedRequirements.length + result.canonicalResult.missingRequirements.length + result.canonicalResult.unconfirmedRequirements.length
+    : undefined;
+  const limitedMatchEvidence = hasLimitedMatchEvidence({
+    profileCompleteness: profileCoverage ?? undefined,
+    totalRequirementCount: detectedRequirementCount,
+    fitEvidenceAvailable: result ? hasCareerEvidence(result.vault) : undefined,
+    blockingRequirements: getUnmetBlockingRequirements(result?.canonicalResult),
+    unconfirmedRequirements: result?.canonicalResult.unconfirmedRequirements,
+  });
+  const careerEvidenceAvailable = result ? hasCareerEvidence(result.vault) : true;
   const tone = canonicalScore === null ? null : getTone(canonicalScore);
   const statusMeta = canonicalScore === null
     ? null
-    : getResultStatusMeta(canonicalScore, topProblems);
+    : getResultStatusMeta(canonicalScore, topProblems, limitedMatchEvidence, detectedRequirementCount, careerEvidenceAvailable, getUnmetBlockingRequirements(result?.canonicalResult), result?.canonicalResult.unconfirmedRequirements);
   const circumference = 2 * Math.PI * 42;
 
   return (
     <div className={`space-y-6 ${className}`}>
+      {storedResult && !result && <AnalysisTimeNotice score={storedResult.canonicalResult.score} onRefresh={handleCheck} />}
       <AnimatePresence mode="wait">
         {!result ? (
           /* ============================================================
@@ -325,7 +403,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,.docx,.doc,.rtf,.txt"
+                      accept=".pdf,.docx,.rtf,.txt"
                       className="hidden"
                       onChange={(e) => handleFile(e.target.files?.[0])}
                     />
@@ -401,7 +479,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
             <Card variant="elevated" className="space-y-6 p-6 sm:p-8">
               {/* 1. Jasno wyróżniony kolorystycznie nagłówek z wynikiem i 2–3 wskazówkami */}
               {statusMeta && (
-                <div className={`rounded-2xl border p-5 sm:p-6 transition-all ${statusMeta.cardClass}`}>
+                <div data-testid="quick-onboarding-status" className={`rounded-2xl border p-5 sm:p-6 transition-all ${statusMeta.cardClass}`}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-3.5">
                       <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${statusMeta.badgeClass}`}>
@@ -413,7 +491,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                             {statusMeta.statusLabel}
                           </span>
                           <span className="font-mono text-xs font-semibold opacity-90">
-                            Wynik dopasowania: <strong className="font-bold">{canonicalScore}%</strong>
+                            {getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Wynik dopasowania')}: <strong className="font-bold">{canonicalScore}%</strong>
                           </span>
                         </div>
                         <h3 className="mt-1.5 text-lg font-bold sm:text-xl leading-snug">
@@ -471,14 +549,22 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                 role="status"
                 aria-label={canonicalScore === null
                   ? 'Nie wyliczono wyniku dopasowania Kierivo'
-                  : `Wynik dopasowania Kierivo ${canonicalScore} procent`}
+                  : `${getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Wynik dopasowania')} Kierivo ${canonicalScore} procent`}
                 className="flex flex-col gap-5 rounded-2xl border border-line bg-surface p-5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-5">
                   {/* Pierścień graficzny */}
                   <div className="relative h-[88px] w-[88px] shrink-0">
                     <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-                      <circle cx="50" cy="50" r="42" className="stroke-line" strokeWidth="8" fill="none" />
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="42"
+                        className="stroke-line"
+                        strokeWidth="8"
+                        fill="none"
+                        strokeDasharray={getScoreRingTrackDashArray(canonicalScore)}
+                      />
                       <motion.circle
                         cx="50"
                         cy="50"
@@ -523,8 +609,31 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                     </div>
                     <p className="text-xs text-muted leading-relaxed">
                       Zgodność wymaganych umiejętności: <strong className="text-ink font-semibold">{result.canonicalResult.components.skills === null ? '—' : `${result.canonicalResult.components.skills}%`}</strong> ·
-                      Czytelność układu dla rekrutera: <strong className="text-ink font-semibold">{result.ats.structureScore}%</strong>
+                      Struktura tekstu CV (reguły Kierivo): <strong className="text-ink font-semibold">{result.ats.structureScore === null ? 'brak danych' : `${result.ats.structureScore}%`}</strong>
                     </p>
+                    <p className="text-[11px] text-muted">
+                      To heurystyka nagłówków i sygnałów w tekście. Nie ocenia wyglądu PDF ani wyniku konkretnego systemu ATS.
+                    </p>
+                    {profileCoverage !== null && (
+                      <p className="text-[11px] text-muted">
+                        Pokrycie sekcji profilu: <strong className="text-ink font-semibold">{profileCoverage}%</strong> (obecność sekcji, nie jakość ich treści).
+                      </p>
+                    )}
+                    {profileCoverage !== null && profileCoverage < 50 && (
+                      <p role="note" className="text-xs text-warning-fg">
+                        Rozpoznano mniej niż połowę ważonych sekcji profilu. Wynik dotyczy tylko znalezionych danych; sprawdź, czy parser poprawnie odczytał CV.
+                      </p>
+                    )}
+                    {result.canonicalResult.unconfirmedRequirements.length > 0 && (
+                      <p role="note" className="text-xs text-warning-fg">
+                        Nie można potwierdzić: {result.canonicalResult.unconfirmedRequirements.join(', ')}. Te wymogi nie są zaliczone ani traktowane jako braki bez wiarygodnych danych.
+                      </p>
+                    )}
+                    {canonicalScore !== null && detectedRequirementCount !== undefined && detectedRequirementCount > 0 && detectedRequirementCount < 3 && (
+                      <p role="note" className="text-xs text-warning-fg">
+                        Rozpoznano tylko {detectedRequirementCount} {detectedRequirementCount === 1 ? 'wymaganie' : 'wymagania'}. Sprawdź, czy parser objął całą ofertę.
+                      </p>
+                    )}
                     {canonicalScore === null && (
                       <p role="note" className="text-xs text-warning-fg">
                         Nie wyliczono wyniku głównego. {result.canonicalResult.reason}
@@ -543,78 +652,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                 )}
               </div>
 
-              {/* 3. Sekcja: 3 kluczowe kwestie do poprawy w CV */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold text-ink uppercase tracking-wide font-mono">
-                    3 najważniejsze rzeczy do poprawy w Twoim CV
-                  </h4>
-                  <span className="text-[11px] text-muted">
-                    Najważniejsze rzeczy do sprawdzenia w CV
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3">
-                  {topProblems.map((problem, idx) => {
-                    const isCritical = problem.severity === 'critical';
-                    const isWarning = problem.severity === 'warning';
-
-                    return (
-                      <div
-                        key={problem.id || idx}
-                        className={`flex items-start gap-3.5 rounded-2xl border p-4 transition-colors ${
-                          isCritical
-                            ? 'border-danger/40 bg-danger-soft/60 text-danger-fg'
-                            : isWarning
-                            ? 'border-warning/40 bg-warning-soft/60 text-ink'
-                            : 'border-line bg-surface text-ink'
-                        }`}
-                      >
-                        <div className="mt-0.5 shrink-0">
-                          {isCritical ? (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-danger/20 text-danger-fg">
-                              <AlertCircle className="h-4 w-4" />
-                            </span>
-                          ) : isWarning ? (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-warning/20 text-warning-fg">
-                              <AlertTriangle className="h-4 w-4" />
-                            </span>
-                          ) : (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-50 text-brand-fg">
-                              <Info className="h-4 w-4" />
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-muted">
-                              Punkt #{idx + 1}
-                            </span>
-                            <span
-                              className={`rounded px-1.5 py-0.2 font-mono text-[9px] font-bold uppercase ${
-                                isCritical
-                                  ? 'bg-danger text-white'
-                                  : isWarning
-                                  ? 'bg-warning/30 text-warning-fg'
-                                  : 'bg-sunken text-muted'
-                              }`}
-                            >
-                              {getTopProblemLabel(problem)}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm font-bold text-ink">
-                            {problem.title}
-                          </p>
-                          <p className="mt-0.5 text-xs leading-relaxed text-muted">
-                            {problem.description}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <QuickCheckFindings problems={topProblems} />
 
               {/* 4. Stopka: Przycisk POKAŻ SZCZEGÓŁY */}
               <div className="flex flex-col gap-3 rounded-2xl border border-brand-200 bg-brand-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">

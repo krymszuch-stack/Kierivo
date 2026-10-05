@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useId, useState, useMemo, useEffect } from 'react';
 import {
   Briefcase,
   Plus,
@@ -58,6 +58,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
   errors = {},
   onClearError,
 }) => {
+  const descriptionPrefix = useId();
   const [wizardExperience, setWizardExperience] = useState<WorkExperience | null>(null);
 
   // Zbiór ID stanowisk rozwiniętych do pełnej edycji
@@ -642,7 +643,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                         {/* Ogólny opis roli (opcjonalne) */}
                         <div className="space-y-1.5 pt-2 border-t border-line/50">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <label className="text-xs font-bold text-ink">
+                            <label htmlFor={`${descriptionPrefix}-${item.id}`} className="text-xs font-bold text-ink">
                               Ogólny Opis Roli i Zakres Odpowiedzialności (opcjonalne)
                             </label>
                             <button
@@ -656,6 +657,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                           </div>
 
                           <Textarea
+                            id={`${descriptionPrefix}-${item.id}`}
                             rows={2}
                             value={item.description || ''}
                             onChange={(e) => handleUpdateExperience(item.id, 'description', e.target.value)}

@@ -1,6 +1,11 @@
 import { JobApplication, MasterVault } from '../types';
+import { CANONICAL_ATS_SCORE_PROVENANCE } from '../types';
 import { NavTabId } from './navigation';
 import { VaultSectionSpec, measureVaultCompleteness } from './vaultCompleteness';
+import { hasCanonicalAtsScore } from './canonicalAts';
+import { hasLimitedMatchEvidence } from './matchInterpretation';
+import { isValidAtsScoreContext } from './atsScoreEvidence';
+import { getCalculationTimeFreshness } from './analysisPeriod';
 
 /**
  * Silnik „następnego kroku" — jedna rekomendacja zamiast tablicy z funkcjami.
@@ -24,9 +29,9 @@ import { VaultSectionSpec, measureVaultCompleteness } from './vaultCompleteness'
 
 export type NextActionType =
   | 'pre_call_brief'
-  | 'send_followup'
+  | 'prepare_followup'
   | 'complete_vault'
-  | 'add_first_job'
+  | 'analyze_job'
   | 'improve_ats'
   | 'follow_up_application'
   | 'daily_challenge';
@@ -153,7 +158,7 @@ const RULES: readonly Rule[] = [
 
   // 2. Rozmowa się odbyła, a follow-up nie poszedł.
   {
-    actionType: 'send_followup',
+    actionType: 'prepare_followup',
     evaluate: ({ applications, now }) => {
       const finished = applications
         .filter((app) => app.status === 'Rozmowa' && !app.debriefSentAt)
@@ -166,9 +171,9 @@ const RULES: readonly Rule[] = [
       if (!finished) return null;
 
       return {
-        actionType: 'send_followup',
-        title: 'Wyślij follow-up po rozmowie',
-        description: `Rozmowa z ${finished.app.company} już się odbyła. Podsumuj ją i wyślij wiadomość, póki pamiętasz szczegóły.`,
+        actionType: 'prepare_followup',
+        title: 'Przygotuj follow-up po rozmowie',
+        description: `Rozmowa z ${finished.app.company} już się odbyła. Otwórz aplikację, dopisz podsumowanie i ręcznie oznacz follow-up po wysłaniu wiadomości — Kierivo nie wysyła jej za Ciebie.`,
         deepLink: { tab: 'pipeline', applicationId: finished.app.id },
         estimatedMinutes: 10,
         context: { company: finished.app.company, position: finished.app.position },
@@ -189,7 +194,7 @@ const RULES: readonly Rule[] = [
       return {
         actionType: 'complete_vault',
         title: `Uzupełnij: ${weakest.label}`,
-        description: `${weakest.blocks} Profil jest wypełniony w ${completeness.percent}%.`,
+        description: `Uzupełnij ${weakest.label}. Profil jest wypełniony w ${completeness.percent}%.`,
         deepLink: { tab: 'profil' },
         estimatedMinutes: 5,
         context: {
@@ -200,15 +205,15 @@ const RULES: readonly Rule[] = [
     },
   },
 
-  // 4. Profil gotowy, ale nie ma do czego go dopasować.
+  // 4. Profil gotowy, ale Pipeline nie zawiera zapisanej aplikacji.
   {
-    actionType: 'add_first_job',
+    actionType: 'analyze_job',
     evaluate: ({ applications }) => {
       if (applications.length > 0) return null;
 
       return {
-        actionType: 'add_first_job',
-        title: 'Wklej pierwszą ofertę pracy',
+        actionType: 'analyze_job',
+        title: 'Wklej ofertę do analizy',
         description:
           'Profil jest gotowy. Wklej treść ogłoszenia albo jego adres, a zobaczysz dopasowanie i braki, zanim wyślesz zgłoszenie.',
         deepLink: { tab: 'aplikuj' },
@@ -221,13 +226,26 @@ const RULES: readonly Rule[] = [
   // 5. Aplikacja w toku z wynikiem ATS poniżej progu.
   {
     actionType: 'improve_ats',
-    evaluate: ({ applications }) => {
+    evaluate: ({ applications, now }) => {
       const weakest = applications
         .filter((app) => ACTIVE_STATUSES.has(app.status))
-        // `undefined` znaczy „nie mierzono", nie „zero". Aplikacja dodana
-        // ręcznie nigdy nie przeszła przez symulator i nie ma jej za co ganić.
-        .filter((app) => typeof app.atsScore === 'number' && app.atsScore < ATS_GOOD_ENOUGH)
-        .sort((a, b) => (a.atsScore ?? 0) - (b.atsScore ?? 0))[0];
+        // Migracja zachowuje starszą liczbę, ale bez wersji źródła nie wiadomo,
+        // czy była kanoniczna. Nie używamy jej do rekomendacji ani do zawstydzania.
+        .filter((app): app is JobApplication & {
+          atsScore: number;
+          atsScoreProvenance: typeof CANONICAL_ATS_SCORE_PROVENANCE;
+        } => hasCanonicalAtsScore(app) &&
+          isValidAtsScoreContext(app.atsScoreContext) &&
+          getCalculationTimeFreshness(app.atsScoreContext, now) === 'current' &&
+          !hasLimitedMatchEvidence({
+            profileCompleteness: app.atsScoreContext.profileCompleteness,
+            totalRequirementCount: app.atsScoreContext.detectedRequirementCount,
+            fitEvidenceAvailable: app.atsScoreContext.careerEvidenceAvailable,
+            blockingRequirements: (app.atsScoreContext.unmetBlockingRequirementCount ?? 0) > 0 ? ['unmet'] : [],
+            unconfirmedRequirementCount: app.atsScoreContext.unconfirmedRequirementCount ?? 0,
+          }) &&
+          app.atsScore < ATS_GOOD_ENOUGH)
+        .sort((a, b) => a.atsScore - b.atsScore)[0];
 
       if (!weakest) return null;
 

@@ -1,20 +1,16 @@
 /**
  * Rejestr realnego zużycia modelu.
  *
- * Do tej pory `response.usageMetadata` nie było czytane nigdzie w projekcie, a
- * `GET /api/usage/stats` zwracał wymyślone stałe. Skutek: nie dało się
- * odpowiedzieć na pytanie „ile kosztuje mnie jeden użytkownik", więc każdy
- * cennik byłby zgadywaniem.
+ * Zarejestrowane tokeny pochodzą z `response.usageMetadata`. Nie agregujemy ich
+ * w pamięci procesu: taki licznik miesza użytkowników i resetuje się po restarcie.
+ * Trwałe zdarzenia zapisują `user_id` z uwierzytelnionej ścieżki i mogą być użyte
+ * w odrębnej, chronionej analityce operacyjnej.
  *
  * Zapis idzie w dwa miejsca:
  *  - **ustrukturyzowana linia JSON na stdout** — Cloud Run Logging indeksuje ją
  *    automatycznie i da się po niej filtrować bez stawiania czegokolwiek;
- *  - **agregacja w pamięci** — żeby endpoint statystyk zwracał realne liczby.
- *
- * Agregacja ginie przy restarcie instancji — na Cloud Run ze skalowaniem do zera
- * dzieje się to często. Dlatego zapis idzie także do tabeli `ai_usage_events`,
- * gdy backend jest skonfigurowany; wtedy dopiero da się odpowiedzieć na pytanie
- * „ile kosztuje mnie ten konkretny użytkownik".
+ * Zdarzenie zapisuje się także do tabeli `ai_usage_events`, gdy backend jest
+ * skonfigurowany. Nie łączymy danych różnych osób w nietrwały licznik procesu.
  *
  * Zapis do bazy jest świadomie **nieblokujący i niekrytyczny**: rozliczenie
  * zużycia nie może wywrócić żądania, które model już obsłużył. Utrata jednego
@@ -43,33 +39,6 @@ const PRICE_PER_MILLION_USD: Record<string, { input: number; output: number }> =
   'gemini-3.6-flash': { input: 0.75, output: 3.75 },
 };
 
-export interface UsageTotals {
-  calls: number;
-  promptTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  estimatedCostUsd: number;
-  /** `true`, gdy choć jedno wywołanie użyło modelu spoza tabeli cen. */
-  hasUnpricedCalls: boolean;
-  since: string;
-  byContext: Record<string, { calls: number; totalTokens: number; estimatedCostUsd: number }>;
-}
-
-function emptyTotals(): UsageTotals {
-  return {
-    calls: 0,
-    promptTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    estimatedCostUsd: 0,
-    hasUnpricedCalls: false,
-    since: new Date().toISOString(),
-    byContext: {},
-  };
-}
-
-let totals: UsageTotals = emptyTotals();
-
 export function estimateCostUsd(model: string, promptTokens: number, outputTokens: number): number | null {
   const price = PRICE_PER_MILLION_USD[model];
   if (!price) return null;
@@ -85,26 +54,7 @@ export function estimateCostUsd(model: string, promptTokens: number, outputToken
 export function recordUsage(event: UsageEvent): void {
   const promptTokens = Number.isFinite(event.promptTokens) ? Math.max(0, event.promptTokens) : 0;
   const outputTokens = Number.isFinite(event.outputTokens) ? Math.max(0, event.outputTokens) : 0;
-  const totalTokens = promptTokens + outputTokens;
-
   const cost = estimateCostUsd(event.model, promptTokens, outputTokens);
-
-  totals.calls += 1;
-  totals.promptTokens += promptTokens;
-  totals.outputTokens += outputTokens;
-  totals.totalTokens += totalTokens;
-  totals.estimatedCostUsd += cost ?? 0;
-  if (cost === null) totals.hasUnpricedCalls = true;
-
-  const perContext = totals.byContext[event.context] ?? {
-    calls: 0,
-    totalTokens: 0,
-    estimatedCostUsd: 0,
-  };
-  perContext.calls += 1;
-  perContext.totalTokens += totalTokens;
-  perContext.estimatedCostUsd += cost ?? 0;
-  totals.byContext[event.context] = perContext;
 
   console.log(
     JSON.stringify({
@@ -113,7 +63,7 @@ export function recordUsage(event: UsageEvent): void {
       model: event.model,
       promptTokens,
       outputTokens,
-      totalTokens,
+      totalTokens: promptTokens + outputTokens,
       estimatedCostUsd: cost,
       at: new Date().toISOString(),
     })
@@ -155,16 +105,4 @@ async function persistUsage(
   } catch (err) {
     console.warn('[usage] Nie udało się zapisać zużycia do bazy:', err);
   }
-}
-
-export function getUsageTotals(): UsageTotals {
-  return {
-    ...totals,
-    byContext: { ...totals.byContext },
-  };
-}
-
-/** Wyłącznie na potrzeby testów — produkcja nigdy nie zeruje licznika. */
-export function resetUsageTotals(): void {
-  totals = emptyTotals();
 }

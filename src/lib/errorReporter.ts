@@ -9,6 +9,7 @@ import {
   type SanitizedStackFrame,
 } from './errorSanitizer';
 import { readJson, StorageKeys, writeJson } from './storage';
+import { parseClientErrorBuffer } from './clientErrorBuffer';
 
 /**
  * Kolejka zgłoszeń błędów klienta do `/api/errors`.
@@ -56,7 +57,7 @@ export interface ErrorReporterDeps {
   detectUaFamily?: () => string | undefined;
   detectViewportBucket?: () => string | undefined;
   sendBatch: (payload: { events: ClientErrorEvent[] }) => Promise<boolean>;
-  loadBuffered: () => ClientErrorEvent[];
+  loadBuffered: () => unknown;
   persistBuffered: (events: ClientErrorEvent[]) => void;
 }
 
@@ -105,8 +106,13 @@ export function createErrorReporter(deps: Partial<ErrorReporterDeps> = {}): Erro
   // Bufor z poprzednich sesji wraca do kolejki od razu — gwarancja dosłania
   // obejmuje zdarzenia sprzed restartu przeglądarki.
   try {
-    const buffered = deps.loadBuffered?.() ?? [];
-    queue.push(...buffered.slice(-MAX_QUEUE));
+    const rawBuffered = deps.loadBuffered?.() ?? [];
+    const buffered = parseClientErrorBuffer(rawBuffered, MAX_QUEUE);
+    queue.push(...buffered.events);
+    if (buffered.invalidCount > 0) {
+      // Wadliwy rekord nie może zatruć każdej kolejnej partii; zachowujemy tylko zdarzenia zgodne z API.
+      deps.persistBuffered?.(queue);
+    }
   } catch {
     /* Uszkodzony bufor nie może zablokować raportowania nowych zdarzeń. */
   }
@@ -265,7 +271,7 @@ export function getBrowserReporter(): ErrorReporter {
   if (!browserReporter) {
     browserReporter = createErrorReporter({
       sendBatch: defaultSendBatch,
-      loadBuffered: () => readJson<ClientErrorEvent[]>(StorageKeys.errorReportBuffer, []),
+      loadBuffered: () => readJson<unknown>(StorageKeys.errorReportBuffer, []),
       persistBuffered: (events) => writeJson(StorageKeys.errorReportBuffer, events),
       detectUaFamily: () => {
         if (typeof navigator === 'undefined') return undefined;

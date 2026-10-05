@@ -1,5 +1,6 @@
 import { MasterVault } from '../../types';
 import { parseMonthYear } from '../dateUtils';
+import { getLatestExperience, inferLatestExperienceRole } from '../experienceChronology';
 import { ExtractedProfileData } from './types';
 
 function monthIndex(value: string): number | null {
@@ -42,7 +43,8 @@ export function calculateYearsOfExperience(history: MasterVault['history']): num
 
 /** Wyciąga tylko wpisy podane w Vault; etykieta zawodu nie tworzy doświadczenia. */
 export function extractProfileFromVault(vault: MasterVault): ExtractedProfileData {
-  const title = (vault.personalInfo?.title || vault.history.find((item) => item.role.trim())?.role || '').trim();
+  const latestExperience = getLatestExperience(vault.history);
+  const title = (vault.personalInfo?.title || inferLatestExperienceRole(vault.history)).trim();
   const topSkills = [...new Set((vault.skillsMatrix?.hardSkills || [])
     .map((skill) => skill.trim())
     .filter(Boolean))].slice(0, 6);
@@ -50,8 +52,7 @@ export function extractProfileFromVault(vault: MasterVault): ExtractedProfileDat
     .filter((item) => item.role && item.role.trim())
     .slice(0, 3)
     .map((item) => ({ role: item.role.trim(), company: (item.company || '').trim() }));
-  const sourceHighlight = (vault.history || [])
-    .flatMap((item) => item.highlights || [])
+  const sourceHighlight = (latestExperience?.highlights || [])
     .map((item) => item.text.trim())
     .find(Boolean) || '';
 

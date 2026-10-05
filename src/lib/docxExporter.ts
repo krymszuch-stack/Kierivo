@@ -211,6 +211,9 @@ export function buildCvDocument(
     vault.personalInfo?.email ? `E-mail: ${vault.personalInfo.email}` : '',
     vault.personalInfo?.phone ? `Tel: ${vault.personalInfo.phone}` : '',
     vault.personalInfo?.location ? `Lokalizacja: ${vault.personalInfo.location}` : '',
+    vault.personalInfo?.linkedin ? `LinkedIn: ${vault.personalInfo.linkedin}` : '',
+    vault.personalInfo?.github ? `GitHub: ${vault.personalInfo.github}` : '',
+    vault.personalInfo?.website ? `WWW: ${vault.personalInfo.website}` : '',
   ]
     .filter(Boolean)
     .join('  |  ');
@@ -283,6 +286,7 @@ export function buildCvDocument(
       paragraphs.push(h3EntryOptions(project.name, project.role || '', project.techStack?.join(', ') ?? ''));
       if (project.description?.trim()) paragraphs.push(bodyOptions(project.description));
       if (project.metrics?.trim()) paragraphs.push(bulletOptions(project.metrics));
+      if (project.link?.trim()) paragraphs.push(bodyOptions(project.link));
     }
   }
 

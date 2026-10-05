@@ -78,7 +78,6 @@ describe('Phrasing Variations & Anti-Repetition Engine', () => {
       roleTitle: 'Senior Cloud DevOps Architect',
       topSkills: 'Kubernetes, AWS, Terraform',
       topMetric: '65%',
-      verifiedClaimsCount: 4,
     };
 
     const variations = getPitchHookVariations(ctx);
@@ -137,6 +136,21 @@ describe('Phrasing Variations & Anti-Repetition Engine', () => {
     expect(cl0.callToAction).toBeDefined();
   });
 
+  it('4a. Hook listu nie pobiera metryki z pierwszej, starszej karty historii', () => {
+    const vault = createSampleVault();
+    vault.history = [
+      { id: 'old', company: 'Starsza firma', role: 'Magazynier', location: '', startDate: '2018-01', endDate: '2020-12', isCurrent: false, highlights: [{ id: 'old-h', text: 'Starszy wynik', action: '', target: '', tool: '', metric: '8 starych sztuk', keywords: [] }] },
+      { id: 'new', company: 'Nowsza firma', role: 'Technik', location: '', startDate: '2022-01', endDate: '2024-06', isCurrent: false, highlights: [{ id: 'new-h', text: 'Nowszy wynik', action: '', target: '', tool: '', metric: '120 aktualnych zgłoszeń', keywords: [] }] },
+    ];
+
+    const hooks = Array.from({ length: 24 }, (_, variantIndex) =>
+      generateAntiTemplateCoverLetter('Technik', 'Firma docelowa', '', vault, variantIndex).hook
+    );
+
+    expect(hooks.some((hook) => hook.includes('120 aktualnych zgłoszeń'))).toBe(true);
+    expect(hooks.every((hook) => !hook.includes('8 starych sztuk'))).toBe(true);
+  });
+
   it('5. Renderer Pitch w ConsistencyGuard generuje dynamiczny hook i CTA', () => {
     const vault = createSampleVault();
 
@@ -144,7 +158,7 @@ describe('Phrasing Variations & Anti-Repetition Engine', () => {
     const render1 = renderPitchFromClaims(vault, undefined, 'Cloud Lead', 1);
 
     expect(render0.hook).not.toEqual(render1.hook);
-    expect(render0.coreStrengths.length).toBeGreaterThan(0);
+    expect(render0.profileStatements.length).toBeGreaterThan(0);
   });
 
   it('6. Generator Follow-up Email generuje różne formuły podziękowań i otwarć', () => {
@@ -208,6 +222,27 @@ describe('Phrasing Variations & Anti-Repetition Engine', () => {
       expect(letter.fullText).toContain('Aleksandra Nowicka');
       expect(letter.proofPoints.length).toBeGreaterThan(0);
       expect(letter.callToAction.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('nie dopisuje doświadczenia ani podpisu zastępczego do listu z pustego profilu', () => {
+    const vault = createSampleVault();
+    vault.personalInfo.fullName = '';
+    vault.personalInfo.email = '';
+    vault.personalInfo.phone = '';
+    vault.personalInfo.title = '';
+    vault.personalInfo.summary = '';
+    vault.skillsMatrix.hardSkills = [];
+    vault.skillsMatrix.toolsAndTech = [];
+    vault.history = [];
+    vault.projects = [];
+    const unsupportedClaims = /specjalista z praktyką|biegłość|udokumentowanym doświadczeniem|wdrożeniami|od lat|bezbłędnie|natychmiast|wymierne rezultaty|case studies/i;
+
+    for (let variantIndex = 0; variantIndex < 8; variantIndex += 1) {
+      const letter = generateAntiTemplateCoverLetter('Tester', 'Firma testowa', '', vault, variantIndex);
+      expect(letter.fullText).not.toMatch(unsupportedClaims);
+      expect(letter.fullText).not.toMatch(/\nKandydat(?:\n|$)/);
+      expect(letter.proofPoints).toHaveLength(0);
     }
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MemoryStorage } from './helpers/memoryStorage';
-import { cheatSheetCacheKeyFor, readRaw } from '../storage';
+import { cheatSheetCacheKeyFor, readRaw, writeJson } from '../storage';
 import { api } from '../apiClient';
 import { MasterVault } from '../../types';
 import {
@@ -15,7 +15,17 @@ beforeEach(() => {
   (globalThis as { localStorage?: unknown }).localStorage = new MemoryStorage();
 });
 
-const wpis = () => ({}) as unknown as CheatSheetEnrichment;
+const wpis = (): CheatSheetEnrichment => ({
+  starTalkingPoints: [{
+    relatedRequirement: 'React',
+    situation: 'Syntetyczna sytuacja',
+    task: 'Syntetyczne zadanie',
+    action: 'Syntetyczne działanie',
+    result: 'Syntetyczny rezultat',
+  }],
+  personalizedFraming: 'Syntetyczne uzasadnienie',
+  emergencyPhrases: [{ scenario: 'Brak odpowiedzi', phrasePL: 'Poproszę o chwilę na namysł.' }],
+});
 
 function kluczeCache(): string[] {
   const wyniki: string[] = [];
@@ -38,11 +48,45 @@ describe('cache spersonalizowanej ściągi', () => {
     post.mockRestore();
   });
 
-  it('zapisany wpis da się odczytać po tym samym skrócie', () => {
-    const hash = hashCheatSheetInput({} as never, 'tytuł', 'firma', 'opis');
+  it('zapisany wpis da się odczytać po tym samym skrócie', async () => {
+    const hash = await hashCheatSheetInput({} as never, 'tytuł', 'firma', 'opis');
     writeCachedEnrichment(hash, wpis());
 
-    expect(readCachedEnrichment(hash)).toEqual({});
+    expect(readCachedEnrichment(hash)).toEqual(wpis());
+  });
+
+  it('różne oferty nie współdzielą cache przez kolizję prostego skrótu 32-bitowego', async () => {
+    const vault = {} as never;
+    const hashAa = await hashCheatSheetInput(vault, 'Aa', 'Firma', 'Opis');
+    const hashBB = await hashCheatSheetInput(vault, 'BB', 'Firma', 'Opis');
+
+    expect(hashAa).not.toBe(hashBB);
+  });
+
+  it('odrzuca i usuwa uszkodzoną strukturę cache zamiast zwracać ją jako wzbogacenie', () => {
+    const hash = 'h-broken';
+    const key = cheatSheetCacheKeyFor(hash);
+    writeJson(key, {
+      hash,
+      enrichment: {},
+      cachedAt: new Date().toISOString(),
+    });
+
+    expect(readCachedEnrichment(hash)).toBeNull();
+    expect(readRaw(key)).toBeNull();
+  });
+
+  it('nie używa poprawnego cache envelope pod obcym skrótem', () => {
+    const hash = 'h-requested';
+    const key = cheatSheetCacheKeyFor(hash);
+    writeJson(key, {
+      hash: 'h-another-offer',
+      enrichment: wpis(),
+      cachedAt: new Date().toISOString(),
+    });
+
+    expect(readCachedEnrichment(hash)).toBeNull();
+    expect(readRaw(key)).toBeNull();
   });
 
   it('po przekroczeniu limitu wypadają najstarsze wpisy, nie najnowsze', () => {

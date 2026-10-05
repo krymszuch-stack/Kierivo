@@ -81,18 +81,28 @@ describe('Profil raportu ATS', () => {
     expect([...b.recommendations].sort()).toEqual([...a.recommendations].sort());
   });
 
-  it('przy profilu fizycznym czytelność dla parsera idzie przed gęstością tytułu', () => {
+  it('przy profilu fizycznym czytelnosc tekstu wyprzedza tytul stanowiska', () => {
     const { resume, vault } = cvWithProblems();
 
     const physical = simulateAtsCheck(resume, vault, JD, 'PHYSICAL');
 
-    const structureIdx = physical.recommendations.findIndex((r) => r.startsWith('Struktura PDF'));
+    const structureIdx = physical.recommendations.findIndex((r) => r.startsWith('Czytelno\u015b\u0107 tekstu'));
     const titleIdx = physical.recommendations.findIndex((r) => r.startsWith('Nazwa stanowiska z oferty'));
 
     // Test ma sens tylko wtedy, gdy oba zalecenia faktycznie padły.
     expect(structureIdx).toBeGreaterThanOrEqual(0);
     expect(titleIdx).toBeGreaterThanOrEqual(0);
     expect(structureIdx).toBeLessThan(titleIdx);
+  });
+
+  it('nie uznaje metryk procentowych ani wyniku 10/10 za graficzna skale', () => {
+    const { resume, vault } = cvWithProblems();
+    vault.history[0].highlights[0].text = 'Zwi?kszenie dost?pno?ci o 90%; wynik testu 10/10.';
+
+    const result = simulateAtsCheck(resume, vault, JD);
+
+    expect(result.layer1Structure.unparsableElementsWarnings).toHaveLength(0);
+    expect(result.recommendations.some((item) => item.startsWith('Czytelno\u015b\u0107 tekstu'))).toBe(false);
   });
 
   it('nie zgłasza różnicy nazw, gdy tytuł oferty i nagłówek CV są nieznane', () => {

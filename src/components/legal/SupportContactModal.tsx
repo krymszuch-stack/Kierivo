@@ -2,7 +2,7 @@ import React from 'react';
 import { Mail, LifeBuoy, Send } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
-import { buildSupportEmailHref } from '../../lib/supportEmail';
+import { buildSupportEmailHref, isValidSupportReplyAddress } from '../../lib/supportEmail';
 
 interface SupportContactModalProps {
   isOpen: boolean;
@@ -19,9 +19,8 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
   const [email, setEmail] = React.useState('');
 
   const isProblem = defaultCategory === 'problem';
-  const emailHref = feedback.trim()
-    ? buildSupportEmailHref({ category: defaultCategory, email, message: feedback })
-    : undefined;
+  const isReplyAddressValid = isValidSupportReplyAddress(email);
+  const emailHref = buildSupportEmailHref({ category: defaultCategory, email, message: feedback });
 
   return (
     <Modal
@@ -49,23 +48,32 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
 
           <form onSubmit={(event) => event.preventDefault()} className="space-y-3 pt-1">
             <div>
-              <label className="block font-bold text-[11px] text-muted mb-1">
+              <label htmlFor="support-reply-address" className="block font-bold text-[11px] text-muted mb-1">
                 Twój adres e-mail (opcjonalnie do odpowiedzi)
               </label>
               <input
+                id="support-reply-address"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                aria-invalid={!isReplyAddressValid}
+                aria-describedby={!isReplyAddressValid ? 'support-reply-address-error' : undefined}
                 placeholder="adrian.k@example.com"
                 className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500 focus-visible:outline-none"
               />
+              {!isReplyAddressValid && (
+                <p id="support-reply-address-error" className="mt-1 text-[11px] text-danger-fg" role="alert">
+                  Podaj poprawny adres e-mail lub pozostaw pole puste.
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block font-bold text-[11px] text-muted mb-1">
+              <label htmlFor="support-message" className="block font-bold text-[11px] text-muted mb-1">
                 Treść wiadomości / Opis zgłoszenia
               </label>
               <textarea
+                id="support-message"
                 rows={4}
                 required
                 value={feedback}
@@ -81,9 +89,9 @@ export const SupportContactModal: React.FC<SupportContactModalProps> = ({
               </Button>
               <a
                 href={emailHref}
-                aria-disabled={!emailHref}
+                aria-disabled={!emailHref || !isReplyAddressValid}
                 onClick={(event) => {
-                  if (!emailHref) event.preventDefault();
+                  if (!emailHref || !isReplyAddressValid) event.preventDefault();
                 }}
                 className={`relative inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-brand-grad px-3 py-1 text-xs font-medium text-on-brand shadow-raised transition-colors ${emailHref ? 'hover:brightness-110' : 'cursor-not-allowed opacity-50'}`}
               >

@@ -9,10 +9,36 @@
 
 import { parseTextToMasterVault, type ParsedCVResult } from './cvUniversalParser';
 import type { AppliedImportCounts } from './vaultImportMerge';
+import type { MasterVault } from '../types';
+import { createEmptyVault } from './sampleVault';
+import { hasSufficientCvContent } from './canonicalAts';
+import { MAX_DOCUMENT_TEXT_CHARS } from './textNormalization';
+
+/** Buduje profil z odczytanych pól CV, bez dopisywania brakujących danych. */
+export function vaultFromParsedCv(parsed: ParsedCVResult): MasterVault {
+  const vault = createEmptyVault(parsed.personalInfo.fullName, parsed.personalInfo.email);
+
+  return {
+    ...vault,
+    personalInfo: { ...vault.personalInfo, ...parsed.personalInfo },
+    profiler: { ...vault.profiler, languages: parsed.languages || [] },
+    skillsMatrix: {
+      ...vault.skillsMatrix,
+      hardSkills: parsed.hardSkills,
+      softSkills: parsed.softSkills,
+      toolsAndTech: parsed.toolsAndTech,
+      certifications: parsed.certifications,
+    },
+    history: parsed.history,
+    education: parsed.education,
+    rawText: parsed.rawText,
+  } as MasterVault;
+}
 
 export interface ResolveCvIngestionParams {
   extractedText: string;
   portableResult?: ParsedCVResult;
+  parsedResult?: ParsedCVResult;
   fileName?: string;
   isFile: boolean;
 }
@@ -20,6 +46,7 @@ export interface ResolveCvIngestionParams {
 export interface CvTextValidationResult {
   valid: boolean;
   error?: string;
+  parsedResult?: ParsedCVResult;
 }
 
 /**
@@ -32,13 +59,35 @@ export const MIN_RAW_CV_LENGTH = 30;
  */
 export function validateRawCvText(text: string): CvTextValidationResult {
   const trimmed = (text || '').trim();
+  if (trimmed.length > MAX_DOCUMENT_TEXT_CHARS) {
+    return {
+      valid: false,
+      error: `Tekst CV przekracza limit ${MAX_DOCUMENT_TEXT_CHARS.toLocaleString('pl-PL')} znaków. Skróć tekst lub podziel dokument przed importem.`,
+    };
+  }
   if (!trimmed || trimmed.length < MIN_RAW_CV_LENGTH) {
     return {
       valid: false,
       error: 'Wklejony tekst jest zbyt krótki do analizy (wymagane minimum 30 znaków).',
     };
   }
-  return { valid: true };
+
+  // Sama długość przepuszczała przypadkowe ciągi i pozwalała parserowi uznać
+  // powtarzane znaki za imię. Zastosuj ten sam próg treści, którego używa kanon ATS.
+  const parsed = parseTextToMasterVault(trimmed);
+  if (parsed.hasCyrillicScript) {
+    return {
+      valid: false,
+      error: 'Wykryto alfabet cyrylicki. Automatyczne parsowanie CV obsługuje tekst po polsku i angielsku; przetłumacz treść albo uzupełnij profil ręcznie.',
+    };
+  }
+  if (!hasSufficientCvContent(vaultFromParsedCv(parsed))) {
+    return {
+      valid: false,
+      error: 'Nie wykryto wystarczającej treści zawodowej. Dodaj opis doświadczenia, umiejętności, podsumowanie, projekty lub kwalifikacje.',
+    };
+  }
+  return { valid: true, parsedResult: parsed };
 }
 
 /**
@@ -48,10 +97,11 @@ export function validateRawCvText(text: string): CvTextValidationResult {
 export function resolveCvIngestionResult({
   extractedText,
   portableResult,
+  parsedResult,
   fileName,
   isFile,
 }: ResolveCvIngestionParams): ParsedCVResult {
-  const result = portableResult || parseTextToMasterVault(extractedText);
+  const result = portableResult || parsedResult || parseTextToMasterVault(extractedText);
 
   if (isFile) {
     result.detectedFormat = portableResult

@@ -1,44 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { calculateApplicationProgress } from '../applicationMetrics';
+import { calculateCurrentApplicationStageShare } from '../applicationMetrics';
 
-describe('Wskaźnik przejścia do rozmowy/oferty', () => {
-  it('nie zamienia samych szkiców w wynik 0%', () => {
-    expect(calculateApplicationProgress(['Do wysłania'])).toEqual({
+describe('Aktualny udzial aplikacji na etapach rozmowy i oferty', () => {
+  it('nie pokazuje 0% dla samych szkicow bez wyslanych aplikacji', () => {
+    expect(calculateCurrentApplicationStageShare(['Do wys\u0142ania'])).toEqual({
       percent: null,
-      eligibleCount: 0,
-      progressedCount: 0,
+      submittedCount: 0,
+      currentAdvancedStageCount: 0,
     });
   });
 
-  it('liczy brak przejścia tylko po rzeczywistym wysłaniu', () => {
-    expect(calculateApplicationProgress(['Wysłana'])).toEqual({
-      percent: 0,
-      eligibleCount: 1,
-      progressedCount: 0,
-    });
-  });
-
-  it('liczy rozmowy i oferty wśród wysłanych oraz aktywnych, bez szkiców', () => {
-    expect(calculateApplicationProgress(['Do wysłania', 'Wysłana', 'Rozmowa', 'Oferta'])).toEqual({
-      percent: 67,
-      eligibleCount: 3,
-      progressedCount: 2,
-    });
-  });
-
-  it('uwzględnia status Odrzucona w mianowniku, dając 0% przejść zamiast fałszywego 100%', () => {
-    expect(calculateApplicationProgress(['Odrzucona'])).toEqual({
-      percent: 0,
-      eligibleCount: 1,
-      progressedCount: 0,
-    });
-  });
-
-  it('poprawnie liczy wskaźnik przy 1 rozmowie i 1 odrzuceniu (50%)', () => {
-    expect(calculateApplicationProgress(['Rozmowa', 'Odrzucona'])).toEqual({
+  it('liczy biezacy etap sposrod wyslanych, aktywnych i zamknietych aplikacji', () => {
+    expect(calculateCurrentApplicationStageShare([
+      'Do wys\u0142ania', 'Wys\u0142ana', 'Rozmowa', 'Oferta', 'Odrzucona',
+    ])).toEqual({
       percent: 50,
-      eligibleCount: 2,
-      progressedCount: 1,
+      submittedCount: 4,
+      currentAdvancedStageCount: 2,
+    });
+  });
+
+  it('pokazuje 0% biezacych rozmow/ofert, gdy zostaly tylko zamkniete aplikacje', () => {
+    expect(calculateCurrentApplicationStageShare(['Odrzucona'])).toEqual({
+      percent: 0,
+      submittedCount: 1,
+      currentAdvancedStageCount: 0,
     });
   });
 });

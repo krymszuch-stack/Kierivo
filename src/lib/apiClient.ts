@@ -1,4 +1,5 @@
 import { clientEnv } from './clientEnv';
+import { isPrivacyWipeInProgress } from './storage';
 
 /**
  * Jedno wejście do API.
@@ -63,7 +64,17 @@ export function setAccessTokenProvider(provider: TokenProvider): void {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const assertRequestsAllowed = () => {
+    if (isPrivacyWipeInProgress()) throw new ApiError(403, {
+      success: false,
+      error: 'Usuwanie danych zablokowało żądania API w tej karcie. Odśwież aplikację po zakończeniu operacji.',
+    });
+  };
+  assertRequestsAllowed();
   const token = await getAccessToken();
+  // SDK może nadal zwrócić token po błędzie signOut. Sprawdzenie po await
+  // blokuje także żądanie, które czekało na token przed rozpoczęciem wymazania.
+  assertRequestsAllowed();
 
   const headers = new Headers(init.headers);
   if (init.body !== undefined) headers.set('Content-Type', 'application/json');

@@ -30,6 +30,10 @@ const ALIAS_GROUPS: Array<{ canonical: string; variants: string[] }> = [
   { canonical: 'github actions', variants: ['gh actions'] },
   { canonical: 'entra id', variants: ['azure ad'] },
   { canonical: 'microsoft 365', variants: ['m365', 'office 365'] },
+  // Obsługa zgłoszeń, ich priorytetyzacja i eskalacja opisują triage incydentów;
+  // alias działa tylko dla tej frazy i zachowuje granice słów oraz kontrolę negacji.
+  { canonical: 'incident triage', variants: ['triage incydentów', 'triage incydentow', 'incident prioritization and escalation', 'kategoryzowanie ustalanie priorytetu przekazywanie incydentow'] },
+  { canonical: 'customer-facing technical support', variants: ['customer-facing support', 'customer facing technical support', 'customer facing support'] },
 ];
 
 /**
@@ -169,6 +173,7 @@ const LEAKAGE_SOURCE = [
 const NEGATION_RE = new RegExp(`(?:^|[^\\p{L}\\p{N}_])(${NEGATION_SOURCE})(?=[^\\p{L}\\p{N}_]|$)`, 'iu');
 const LEARNING_RE = new RegExp(`(?:^|[^\\p{L}\\p{N}_])(${LEARNING_SOURCE})(?=[^\\p{L}\\p{N}_]|$)`, 'iu');
 const LEAKAGE_RE = new RegExp(`(${LEAKAGE_SOURCE})`, 'iu');
+const POSTFIXED_TAINT_RE = new RegExp(`^(?:\\d+(?:\\.\\d+)*)?[ \\t]*(?:[—–:-][ \\t]*)?(?:${LEARNING_SOURCE}|${NEGATION_SOURCE})(?=[^\\p{L}\\p{N}_]|$)`, 'iu');
 
 /** Skróty z kropką nie kończą klauzuli (`kat. B`, `np.`, `tzw.`). */
 const ABBREV_BEFORE_DOT = /(kat|np|tzw|mgr|inz|dr|al|ul|godz|godziny|nr|r)$/i;
@@ -287,14 +292,67 @@ function findStemOccurrences(normalizedHaystack: string, phrase: string): number
   return out;
 }
 
-function isTainted(normalizedHaystack: string, matchIndex: number): boolean {
-  const start = clauseStart(normalizedHaystack, matchIndex);
+const PERSONAL_DECLARATION_SOURCE = '(?:znam|umiem|mam|posiadam|obsluguje|obslugiwalem|obslugiwalam|uzywam|uzywalem|uzywalam|konfiguruje|konfigurowalem|konfigurowalam|wdrazam|wdrozylem|wdrozylam|spawam|spawalem|spawalam|montuje|montowalem|montowalam|kompletuje|kompletowalem|kompletowalam|(?:i|we)\\s+(?:used|use|configured|configure|implemented|implement|operated|operate|have|managed|manage|know))';
+const PERSONAL_CLAUSE_SEPARATOR_RE = /(?:,\s*(?:(?:ale|lecz|natomiast|but|yet|a)\s+)?|\s+(?:ale|lecz|natomiast|but|yet)\s+)/giu;
+const PERSONAL_CLAUSE_PREFIX_RE = new RegExp(`^(?:ja\\s+)?(?:nie\\s+)?${PERSONAL_DECLARATION_SOURCE}(?![\\p{L}\\p{N}])`, 'u');
+
+/** Granice osobistej czynności zachowują indeksy oryginalnego tekstu. */
+export function getPersonalClaimBounds(text: string, index: number): { start: number; end: number } {
+  let start = 0;
+  let end = text.length;
+  for (const separator of text.matchAll(PERSONAL_CLAUSE_SEPARATOR_RE)) {
+    const next = separator.index + separator[0].length;
+    if (!PERSONAL_CLAUSE_PREFIX_RE.test(stripDiacriticsLower(text.slice(next)))) continue;
+    if (next <= index) start = next;
+    else { end = separator.index; break; }
+  }
+  return { start, end };
+}
+
+function evidenceClauseStart(text: string, index: number): number {
+  const start = clauseStart(text, index);
+  const prefix = text.slice(start, index);
+  // Przecinek w liście narzędzi nie kończy negacji. Nowa osobista czynność
+  // po przecinku lub spójniku ma własny kontekst, także przy ponownej negacji.
+  return start + getPersonalClaimBounds(prefix, prefix.length).start;
+}
+
+const OTHER_ACTOR_SOURCE = '(?:kolega|kolezanka|koledzy|kolezanki|wspolpracownik|wspolpracownicy|zespol|dostawca|podwykonawca|(?:my|our|the)\\s+(?:colleague|team|vendor|coworker))';
+const OTHER_ACTION_SOURCE = '(?:obslugiwal(?:a|i|y)?|uzywal(?:a|i|y)?|konfigurowal(?:a|i|y)?|posiada(?:ja)?|wdrazal(?:a|i|y)?|wykonywal(?:a|i|y)?|obsluguje|obsluguja|uzywa|uzywaja|konfiguruje|wdraza|used|operated|configured|implemented|has|uses)';
+const OTHER_ACTOR_PREFIX_RE = new RegExp(`(?<![\\p{L}\\p{N}])${OTHER_ACTOR_SOURCE}\\s+(?:\\p{L}+\\s+){0,3}${OTHER_ACTION_SOURCE}(?![\\p{L}\\p{N}])`, 'gu');
+const OTHER_ACTOR_SUFFIX_RE = new RegExp(`^[ \\t]*(?:[—–:-][ \\t]*)?(?:${OTHER_ACTION_SOURCE}\\s+(?:(?:moj|moja|nasz|nasza)\\s+)?${OTHER_ACTOR_SOURCE}|(?:was|is|were|are)\\s+(?:used|operated|configured|implemented)\\s+by\\s+${OTHER_ACTOR_SOURCE})(?![\\p{L}\\p{N}])`, 'u');
+
+function describesAnotherActor(prefix: string): boolean {
+  // Podmiot cudzej czynności nie potwierdza praktyki kandydata. Instrumentalne
+  // „z zespołem” nie pasuje do podmiotu; późniejsze „ja/I” zmienia właściciela.
+  const own = new RegExp(`(?<![\\p{L}\\p{N}])(?:ja|${PERSONAL_DECLARATION_SOURCE})(?![\\p{L}\\p{N}])`, 'gu');
+  const other = [...prefix.matchAll(OTHER_ACTOR_PREFIX_RE)].at(-1);
+  // Po normalizacji „obsługuje” i „obsługuję” mają tę samą postać. Jawny
+  // podmiot rozstrzyga właściciela; resetem może być dopiero późniejsza czynność.
+  return Boolean(other && !own.test(prefix.slice(other.index + other[0].length)));
+}
+
+function isTainted(normalizedHaystack: string, matchIndex: number, phrase?: string): boolean {
+  const start = evidenceClauseStart(normalizedHaystack, matchIndex);
+  if (describesAnotherActor(normalizedHaystack.slice(start, matchIndex))) return true;
   // Negacja i nauka dotyczą najbliższego kontekstu przed frazą;
   // wyciek wymagań (nagłówek ogłoszenia) sięga dalej w tej samej klauzuli.
   const near = normalizedHaystack.slice(start, matchIndex).slice(-70);
   if (NEGATION_RE.test(near) || LEARNING_RE.test(near)) return true;
   const far = normalizedHaystack.slice(start, matchIndex).slice(-140);
   if (LEAKAGE_RE.test(far)) return true;
+  if (phrase) {
+    // Listy profilu zapisują także „RabbitMQ — w trakcie nauki”. Oceniaj tylko
+    // bezpośredni dopisek, aby nauka kolejnego narzędzia nie negowała poprzedniego.
+    const tail = normalizedHaystack.slice(matchIndex);
+    const match = cachedPhraseRegex(buildPhraseSource(phrase), true).exec(tail);
+    const length = match?.index === 0 ? match[0].length : tail.match(/^[\p{L}\p{N}#+.]+/u)?.[0].length;
+    if (length) {
+      const suffix = tail.slice(length);
+      if (POSTFIXED_TAINT_RE.test(suffix)) return true;
+      if (OTHER_ACTOR_SUFFIX_RE.test(suffix)) return true;
+    }
+  }
   return false;
 }
 
@@ -328,18 +386,41 @@ export function hasPositiveSkillEvidenceNormalized(normalizedHaystack: string, p
   if (!/[\p{L}\p{N}]/u.test(raw)) return false;
 
   const variants = cachedVariants(raw);
+  // Wymóg po angielsku może być udowodniony przez opisaną po polsku czynność;
+  // zachowujemy zdanie źródłowe i nie dopisujemy terminu do profilu.
+  if (stripDiacriticsLower(raw) === 'incident triage') {
+    const clauses = normalizedHaystack.split(/(?<=[.!?;\n])/u);
+    let offset = 0;
+    for (const clause of clauses) {
+      const categorization = /kategoryz\p{L}*/u.exec(clause);
+      const hasPriority = /(?:ustal\p{L}*\s+priorytet|prioryt\p{L}*)/u.test(clause);
+      const hasEscalation = /(?:przekaz\p{L}*|eskal\p{L}*)/u.test(clause);
+      if (categorization?.index !== undefined && hasPriority && hasEscalation &&
+        !isTainted(normalizedHaystack, offset + categorization.index)) return true;
+      offset += clause.length;
+    }
+  }
+  const normalizedPhrase = stripDiacriticsLower(raw);
+  if (normalizedPhrase === 'customer-facing technical support' || normalizedPhrase === 'customer-facing support') {
+    const supportTask = /(?:wsparc\p{L}*|obslu\p{L}*)[^.!?;\n]{0,80}(?:uzytkownik\p{L}*|klient\p{L}*|zgloszen\p{L}*)/u.exec(normalizedHaystack);
+    if (
+      supportTask?.index !== undefined &&
+      /(?:uzytkownik\p{L}*|klient\p{L}*)/u.test(supportTask[0]) &&
+      !isTainted(normalizedHaystack, supportTask.index)
+    ) return true;
+  }
   const seen = new Set<number>();
   for (const variant of variants) {
     for (const idx of findRawOccurrences(normalizedHaystack, variant)) {
       if (seen.has(idx)) continue;
       seen.add(idx);
-      if (!isTainted(normalizedHaystack, idx)) return true;
+      if (!isTainted(normalizedHaystack, idx, variant)) return true;
     }
     if (variant === variants[0]) {
       for (const idx of findStemOccurrences(normalizedHaystack, variant)) {
         if (seen.has(idx)) continue;
         seen.add(idx);
-        if (!isTainted(normalizedHaystack, idx)) return true;
+        if (!isTainted(normalizedHaystack, idx, variant)) return true;
       }
     }
   }
@@ -397,7 +478,7 @@ export function countPositiveSkillEvidence(haystack: string, phrase: string): nu
     for (const idx of findRawOccurrences(text, variant)) {
       if (seen.has(idx)) continue;
       seen.add(idx);
-      if (!isTainted(text, idx)) count++;
+      if (!isTainted(text, idx, variant)) count++;
     }
   }
   return count;

@@ -1,11 +1,11 @@
 /**
- * Walidator PDF pod kątem kompatybilności z konkretnymi ATS-ami.
+ * Lokalny przegląd wyekstrahowanego tekstu według konfigurowalnych profili reguł.
  *
- * Porównuje wyekstrahowany tekst z PDF z oczekiwaną treścią z MasterVault,
- * stosując reguły specyficzne dla każdego vendora ATS.
+ * Porównuje wyekstrahowany tekst z oczekiwaną treścią z MasterVault.
+ * Nazwy profili ATS służą do grupowania aliasów i wzorców. Moduł nie uruchamia
+ * parserów dostawców ani nie prognozuje zgodności z ich wdrożeniami.
  *
- * To NIE jest symulator scoringu ATS — to walidacja parsowalności:
- * "czy dany ATS faktycznie wyekstrahuje dane z tego dokumentu?"
+ * Nie wylicza wyniku parsowalności ani nie stwierdza, co faktycznie wyekstrahuje ATS.
  *
  * Wynik: per-vendor raport z konkretnymi problemami i zaleceniami.
  *
@@ -35,28 +35,22 @@ export interface AtsPdfValidationResult {
   vendorId: string;
   /** Nazwa ATS */
   vendorName: string;
-  /** Ocena parsowalności 0–100 */
-  parseScore: number;
-  /** Status ogólny */
-  status: 'PASS' | 'WARN' | 'FAIL';
   /** Wykryte problemy */
   issues: AtsIssue[];
   /** Zalecenia naprawcze */
   recommendations: string[];
-  /** Co ATS faktycznie wyekstrahuje */
+  /** Pola dopasowane w tekście przez lokalne reguły profilu */
   extractedFields: ExtractedFields;
-  /** Czego ATS nie będzie w stanie odczytać */
-  lostFields: string[];
-  /** Czy Tagged PDF pomaga temu ATS-owi? */
-  taggedPdfBeneficial: boolean;
+  /** Pola profilu, których nie znaleziono w wyekstrahowanym tekście */
+  notFoundFields: string[];
+  /** Czy konfiguracja tego profilu reguł uwzględnia /ActualText? */
+  profileReadsActualText: boolean;
 }
 
 export interface AtsIssue {
   id: string;
   severity: 'critical' | 'warning' | 'info';
   message: string;
-  /** Na przykładzie której sekcji/elementu */
-  context?: string;
   /** Sugestia naprawy */
   fix?: string;
 }
@@ -66,8 +60,6 @@ export interface ExtractedFields {
   email: string | null;
   phone: string | null;
   skills: string[];
-  experienceEntries: number;
-  educationEntries: number;
   sectionHeadersFound: string[];
   totalTextLength: number;
 }
@@ -77,33 +69,19 @@ export interface ExtractedFields {
 // ---------------------------------------------------------------------------
 
 /**
- * Symuluje, jak dany ATS wyekstrahuje tekst z PDF.
+ * Sprawdza wyekstrahowany tekst zestawem jawnych lokalnych reguł.
  *
- * Każdy vendor ma swoją logikę:
- * - Workday: pomija headers/footers, surowe linie
- * - Greenhouse: semantyczne parsowanie, obsługuje kolumny
- * - Lever: stemming-based, traci kolumny
- * - iCIMS: Textkernel NMR, najbardziej wyrozumiały
- * - Taleo: literal exact, najsurowszy
+ * Profil regułowy dopasowuje tekst do oczekiwanych danych i aliasów sekcji.
+ * Sam tekst po ekstrakcji nie zawiera geometrii kolumn ani tabel, więc ten
+ * moduł nie symuluje ich obsługi przez poszczególnych vendorów.
  */
-function simulateVendorExtraction(
+function inspectTextWithRuleProfile(
   extracted: ExtractedPdfText,
-  profile: AtsVendorProfile
+  profile: AtsVendorProfile,
+  expected: ReturnType<typeof buildExpectedText>
 ): ExtractedFields {
   const lines = [...extracted.lines];
-
-  // Symulacja pomijania elementów (Workday pomija headers/footers, Taleo tabele itp.)
-  let filteredLines = lines;
-  if (!profile.sectionDetection.handlesMultiColumn) {
-    // Proste symulowanie: przy wielokolumnowym layoutcie tracimy ~20% tekstu
-    // (druga kolumna może być pominięta)
-    const columnIndicators = lines.filter(
-      (l) => l.includes('  ') && l.trim().length > 20
-    );
-    if (columnIndicators.length > lines.length * 0.3) {
-      filteredLines = lines.filter((_, i) => i % 5 !== 4); // symulacja utraty co 5. linii
-    }
-  }
+  const filteredLines = lines;
 
   const fullText = filteredLines.join('\n').toLowerCase();
   const sectionText = filteredLines.map((line) => {
@@ -123,44 +101,34 @@ function simulateVendorExtraction(
   }
 
   // Ekstrakcja danych kontaktowych
-  const emailMatch = fullText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-  const phoneMatch = fullText.match(
-    /(?:\+?\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{2,4}/
+  const emailCandidates = [...fullText.matchAll(/[\w.+-]+@[\w-]+\.[\w.]+/g)].map(([value]) => value);
+  const expectedEmail = expected.contactInfo.emails.find((value) =>
+    emailCandidates.includes(value.toLowerCase())
   );
+  const phoneCandidates = [...fullText.matchAll(/(?:\+?\d{1,3}[\s-]?)?\(?\d{2,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{2,4}/g)]
+    .map(([value]) => value);
+  const matchedPhone = expected.contactInfo.phones.flatMap((expectedValue) => {
+    const digits = expectedValue.replace(/\D/g, '');
+    return digits ? phoneCandidates.find((candidate) => candidate.replace(/\D/g, '') === digits) ?? [] : [];
+  })[0];
+  const normalizeName = (value: string) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const expectedName = normalizeName(expected.contactInfo.name);
+  // PDF-extractors may put a document label or another header before the name;
+  // without layout geometry, the first extracted line is not reliable evidence
+  // that the candidate's name is missing.
+  const normalizedText = ` ${normalizeName(filteredLines.join(' '))} `;
+  const extractedName = expectedName && normalizedText.includes(` ${expectedName} `)
+    ? expected.contactInfo.name
+    : null;
 
-  // Ekstrakcja umiejętności (na podstawie strategii vendora)
-  const skills: string[] = [];
-  const tokens = tokenize(filteredLines.join(' '));
-
-  // Sprawdź czy Tagged PDF /ActualText jest dostępny
-  if (profile.keywordMatching.readsActualText && extracted.hasActualText) {
-    // Gdy ATS czyta /ActualText, ma dostęp do pełnych fraz semantycznych
-    // (zakładamy, że Tagged PDF jest poprawnie zbudowany)
-    for (const token of tokens) {
-      if (token.length > 2) skills.push(token);
-    }
-  } else {
-    // Bez /ActualText — ATS polega na surowym tekście
-    for (const token of tokens) {
-      if (token.length > 2) skills.push(token);
-    }
-  }
-
-  // Liczba wpisów doświadczenia i wykształcenia
-  const experienceEntries = filteredLines.filter(
-    (l) => /(?:obecnie|present|–|-|\d{4})/.test(l) && l.length > 10
-  ).length;
-  const educationEntries = filteredLines.filter(
-    (l) => /(?:universytet|university|uczelnia|inż|mgr|lic|studia)/i.test(l)
-  ).length;
+  // To analiza tokenów z dostarczonego ekstraktu, nie wynik parsera ATS.
+  const skills = tokenize(filteredLines.join(' ')).filter((token) => token.length > 2);
 
   return {
-    name: extracted.lines[0]?.trim() ?? null,
-    email: emailMatch?.[0] ?? null,
-    phone: phoneMatch?.[0] ?? null,
+    name: extractedName,
+    email: expectedEmail ?? null,
+    phone: matchedPhone ?? null,
     skills: [...new Set(skills)],
-    experienceEntries: Math.max(1, Math.floor(experienceEntries / 2)),
-    educationEntries: Math.max(0, educationEntries),
     sectionHeadersFound: sectionsFound,
     totalTextLength: filteredLines.join(' ').length,
   };
@@ -173,43 +141,40 @@ function compareFields(
   extracted: ExtractedFields,
   expected: ReturnType<typeof buildExpectedText>,
   profile: AtsVendorProfile,
-  extractedText: ExtractedPdfText
-): { score: number; issues: AtsIssue[]; lostFields: string[] } {
+  extractedText: ExtractedPdfText,
+  actualTextMetadataProvided: boolean
+): { issues: AtsIssue[]; notFoundFields: string[] } {
   const issues: AtsIssue[] = [];
-  const lostFields: string[] = [];
-  let score = 100;
+  const notFoundFields: string[] = [];
 
   // 1. Sprawdź dane kontaktowe
-  if (!extracted.name) {
+  if (expected.contactInfo.name && !extracted.name) {
     issues.push({
       id: 'MISSING_NAME',
       severity: 'critical',
-      message: 'ATS nie wykrył imienia i nazwiska.',
-      fix: 'Upewnij się, że imię i nazwisko jest w pierwszej linii dokumentu.',
+      message: 'W wyekstrahowanym tekście nie znaleziono imienia i nazwiska z profilu.',
+      fix: 'Sprawdź, czy imię i nazwisko z profilu jest czytelne i obecne w wyekstrahowanym tekście CV.',
     });
-    score -= 20;
-    lostFields.push('Imię i nazwisko');
+    notFoundFields.push('Imię i nazwisko');
   }
 
-  if (!extracted.email) {
+  if (expected.contactInfo.emails.length > 0 && !extracted.email) {
     issues.push({
       id: 'MISSING_EMAIL',
       severity: 'critical',
-      message: 'ATS nie wykrył adresu e-mail.',
+      message: 'W wyekstrahowanym tekście nie znaleziono adresu e-mail z profilu.',
       fix: 'Umieść e-mail w sekcji "Kontakt" lub u góry dokumentu.',
     });
-    score -= 15;
-    lostFields.push('E-mail');
+    notFoundFields.push('E-mail');
   }
 
-  if (!extracted.phone) {
+  if (expected.contactInfo.phones.length > 0 && !extracted.phone) {
     issues.push({
       id: 'MISSING_PHONE',
       severity: 'warning',
-      message: 'ATS nie wykrył numeru telefonu.',
+      message: 'W wyekstrahowanym tekście nie znaleziono numeru telefonu z profilu.',
       fix: 'Dodaj numer telefonu w standardowym formacie.',
     });
-    score -= 5;
   }
 
   // 2. Sprawdź sekcje
@@ -223,11 +188,10 @@ function compareFields(
       issues.push({
         id: `MISSING_SECTION_${section.toUpperCase()}`,
         severity,
-        message: `Sekcja "${section}" nie została wykryta przez parser ATS.`,
+        message: `W wyekstrahowanym tekście nie znaleziono rozpoznanego nagłówka sekcji "${section}" dla tego profilu reguł.`,
         fix: `Użyj standardowego nagłówka sekcji: ${profile.sectionDetection.headerAliases[section]?.join(', ')}`,
       });
-      score -= severity === 'critical' ? 15 : 8;
-      lostFields.push(`Sekcja: ${section}`);
+      notFoundFields.push(`Sekcja: ${section}`);
     }
   }
 
@@ -250,7 +214,6 @@ function compareFields(
       message: `Wykryto tylko ${Math.round(skillCoverage * 100)}% oczekiwanych umiejętności.`,
       fix: 'Sprawdź, czy umiejętności nie są ukryte w grafice lub kolumnach.',
     });
-    score -= Math.round((1 - skillCoverage) * 20);
   }
 
   // 4. Sprawdź unparsable patterns vendora
@@ -262,41 +225,21 @@ function compareFields(
         id: 'UNPARSABLE_ELEMENT',
         severity: 'warning',
         message: `Wykryto element nieparsowalny: ${pattern}`,
-        context: profile.parsingStrategy,
         fix: 'Zamień element graficzny na tekst.',
       });
-      score -= 5;
     }
   }
 
-  // 5. Sprawdź formatting penalties
-  for (const penalty of profile.formattingPenalties) {
-    if (penalty.severity === 'high') {
-      issues.push({
-        id: `FORMAT_PENALTY_${penalty.pattern.toUpperCase()}`,
-        severity: 'warning',
-        message: penalty.description,
-        fix: `Dla ${profile.name}: ${penalty.description}`,
-      });
-      score -= 3;
-    }
-  }
-
-  // 6. Widzialność Tagged PDF
-  if (profile.keywordMatching.readsActualText && !extractedText.hasActualText) {
+  // 5. Widzialność Tagged PDF
+  if (actualTextMetadataProvided && profile.keywordMatching.readsActualText && !extractedText.hasActualText) {
     issues.push({
-      id: 'NO_TAGGED_PDF',
+      id: 'NO_ACTUALTEXT_SIGNAL',
       severity: 'info',
-      message: `${profile.name} obsługuje Tagged PDF /ActualText, ale dokument go nie zawiera.`,
-      fix: 'Wygeneruj CV z włączonym Tagged PDF (domyślne w mvcv).',
+      message: `Konfiguracja profilu ${profile.name} uwzględnia /ActualText, ale ekstrakcja nie zawiera sygnału o jego obecności.`,
     });
   }
 
-  return {
-    score: Math.max(0, Math.min(100, score)),
-    issues,
-    lostFields,
-  };
+  return { issues, notFoundFields };
 }
 
 // ---------------------------------------------------------------------------
@@ -304,14 +247,12 @@ function compareFields(
 // ---------------------------------------------------------------------------
 
 export interface AtsPdfValidationOptions {
-  /** Bufor PDF (binarny) */
-  pdfBuffer?: ArrayBuffer;
-  /** Surowy tekst ekstrahowany z PDF (alternatywa dla pdfBuffer) */
+  /** Surowy tekst ekstrahowany z PDF */
   extractedText?: string;
   /** Czy Tagged PDF zawiera /ActualText? (z verify.py) */
-  hasActualText?: boolean;
+  hasActualText?: boolean | null;
   /** Czy wykryto niewidoczny tekst (Tr 3)? (z verify.py) */
-  hasInvisibleText?: boolean;
+  hasInvisibleText?: boolean | null;
   /** Których ATS-ów dotyczy walidacja (domyślnie wszystkie) */
   vendorIds?: string[];
 }
@@ -319,14 +260,10 @@ export interface AtsPdfValidationOptions {
 export interface AtsPdfValidationReport {
   /** Wyniki per-vendor */
   vendors: AtsPdfValidationResult[];
-  /** Ogólna ocena (średnia ważona) */
-  overallScore: number;
-  /** Status ogólny */
-  overallStatus: 'PASS' | 'WARN' | 'FAIL';
   /** Czy Tagged PDF jest obecny? */
-  taggedPdfPresent: boolean;
+  taggedPdfPresent: boolean | null;
   /** Czy wykryto niewidoczny tekst? */
-  invisibleTextDetected: boolean;
+  invisibleTextDetected: boolean | null;
   /** Zalecenia ogólne */
   generalRecommendations: string[];
   /** Timestamp walidacji */
@@ -334,15 +271,16 @@ export interface AtsPdfValidationReport {
 }
 
 /**
- * Waliduje PDF pod kątem kompatybilności z wybranymi ATS-ami.
+ * Przegląda tekst PDF według wybranych lokalnych profili reguł.
  *
- * Przyjmuje surowy tekst ekstrahowany z PDF (przez pdfminer.six w Pythonie)
- * lub bufor PDF i ekstrahuje go samodzielnie.
+ * Przyjmuje surowy tekst ekstrahowany z PDF (przez pdfminer.six w Pythonie).
+ * Bufor binarny bez tekstu ekstrakcji zwraca pustą listę wyników i wyjaśnienie,
+ * bo ten moduł nie zawiera własnego parsera PDF.
  *
  * @example
  * ```ts
- * const report = await validatePdfForAts(pdfBuffer, vault);
- * report.vendors.forEach(v => console.log(`${v.vendorName}: ${v.parseScore}`));
+ * const report = await validatePdfForAts(extractedPdfText, vault);
+ * report.vendors.forEach(v => console.log(`${v.vendorName}: ${v.issues.length} reguł do sprawdzenia`));
  * ```
  */
 export async function validatePdfForAts(
@@ -352,19 +290,17 @@ export async function validatePdfForAts(
 ): Promise<AtsPdfValidationReport> {
   // Przygotowanie danych wejściowych
   let rawText: string;
-  let hasActualText = options.hasActualText ?? false;
-  const hasInvisibleText = options.hasInvisibleText ?? false;
+  const binaryInputNotExtracted = typeof input !== 'string' && options.extractedText === undefined;
+  const hasActualText = binaryInputNotExtracted ? null : options.hasActualText ?? null;
+  const hasInvisibleText = binaryInputNotExtracted ? null : options.hasInvisibleText ?? null;
 
   if (typeof input === 'string') {
     rawText = input;
   } else {
-    // Bufor PDF — w prawdziwej implementacji tu byłoby pdfjs-dist
-    // Na razie traktujemy jako pusty (wymaga podłączenia Pythona)
-    rawText = '';
-    hasActualText = false;
+    rawText = options.extractedText ?? '';
   }
 
-  const extracted = processExtractedText(rawText, hasActualText, hasInvisibleText);
+  const extracted = processExtractedText(rawText, hasActualText === true, hasInvisibleText === true);
   const expected = buildExpectedText(vault);
 
   // Walidacja per-vendor
@@ -372,79 +308,54 @@ export async function validatePdfForAts(
   const vendors: AtsPdfValidationResult[] = [];
 
   for (const profile of ALL_ATS_PROFILES) {
+    if (binaryInputNotExtracted) break;
     if (!vendorIds.includes(profile.id)) continue;
 
-    const extractedFields = simulateVendorExtraction(extracted, profile);
-    const { score, issues, lostFields } = compareFields(
+    const extractedFields = inspectTextWithRuleProfile(extracted, profile, expected);
+    const { issues, notFoundFields } = compareFields(
       extractedFields,
       expected,
       profile,
-      extracted
+      extracted,
+      hasActualText !== null
     );
 
     // Buduj zalecenia
     const recommendations: string[] = [];
-    if (score < 50) {
-      recommendations.push(`Dokument wymaga istotnych zmian formatowania dla ${profile.name}.`);
-    }
     if (issues.some((i) => i.id === 'MISSING_SECTION_EXPERIENCE')) {
       recommendations.push('Dodaj sekcję "Doświadczenie" z czytelnym nagłówkiem.');
     }
     if (issues.some((i) => i.id === 'LOW_SKILL_COVERAGE')) {
       recommendations.push('Umieść umiejętności w dedykowanej sekcji tekstowej.');
     }
-    if (!extracted.hasActualText && profile.keywordMatching.readsActualText) {
-      recommendations.push(`Dla ${profile.name}: włącz Tagged PDF /ActualText.`);
-    }
-
     vendors.push({
       vendorId: profile.id,
       vendorName: profile.name,
-      parseScore: score,
-      status: score >= 80 ? 'PASS' : score >= 50 ? 'WARN' : 'FAIL',
       issues,
       recommendations,
       extractedFields,
-      lostFields,
-      taggedPdfBeneficial: profile.keywordMatching.readsActualText,
+      notFoundFields,
+      profileReadsActualText: profile.keywordMatching.readsActualText,
     });
   }
 
-  // Ogólna ocena
-  const overallScore =
-    vendors.length > 0
-      ? Math.round(vendors.reduce((sum, v) => sum + v.parseScore, 0) / vendors.length)
-      : 0;
-
-  const overallStatus: 'PASS' | 'WARN' | 'FAIL' =
-    vendors.every((v) => v.status === 'PASS')
-      ? 'PASS'
-      : vendors.some((v) => v.status === 'FAIL')
-        ? 'FAIL'
-        : 'WARN';
-
   // Zalecenia ogólne
   const generalRecommendations: string[] = [];
+  if (binaryInputNotExtracted) {
+    generalRecommendations.push('Walidacji nie wykonano: przekazano bufor PDF bez tekstu wyekstrahowanego przez parser PDF.');
+  } else if (vendors.length === 0) {
+    generalRecommendations.push('Nie wybrano rozpoznanego profilu regułowego, więc walidacja nie została wykonana.');
+  }
   if (hasInvisibleText) {
     generalRecommendations.push(
-      'KRYTYCZNE: Wykryto niewidoczny tekst (Tr 3). ATS-y wykrywają to jako fraud i dyskwalifikują kandydata.'
+      'Wykryto niewidoczny tekst (Tr 3). Sprawdź, czy odpowiada widocznej treści CV; ten raport nie ustala jego przeznaczenia ani reakcji konkretnego ATS.'
     );
   }
-  if (!hasActualText) {
-    generalRecommendations.push(
-      'Brak Tagged PDF /ActualText. Dodanie go poprawi kompatybilność z Workday, Greenhouse i iCIMS.'
-    );
+  if (!binaryInputNotExtracted) {
+    generalRecommendations.push('Analiza dotyczy wyekstrahowanego tekstu; nie ocenia geometrii kolumn, tabel, nagłówków ani kolejności czytania w układzie PDF.');
   }
-  if (vendors.some((v) => v.status === 'FAIL')) {
-    generalRecommendations.push(
-      'Co najmniej jeden ATS nie będzie w stanie poprawnie sparsować tego dokumentu. Sprawdź szczegóły per-vendor.'
-    );
-  }
-
   return {
     vendors,
-    overallScore,
-    overallStatus,
     taggedPdfPresent: hasActualText,
     invisibleTextDetected: hasInvisibleText,
     generalRecommendations,
@@ -459,7 +370,7 @@ export async function validatePdfForAts(
 export function validatePdfTextForAts(
   extractedText: string,
   vault: MasterVault,
-  options: { hasActualText?: boolean; hasInvisibleText?: boolean; vendorIds?: string[] } = {}
+  options: Pick<AtsPdfValidationOptions, 'hasActualText' | 'hasInvisibleText' | 'vendorIds'> = {}
 ): Promise<AtsPdfValidationReport> {
   return validatePdfForAts(extractedText, vault, options);
 }

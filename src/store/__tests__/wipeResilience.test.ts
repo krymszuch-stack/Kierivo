@@ -25,6 +25,20 @@ const aplikacja = (nadpisane: Partial<JobApplication> = {}): JobApplication => (
 });
 
 describe('odporność sklepów na „usuń moje dane"', () => {
+  it('czyszczenie jednego zakresu resetuje jego cache i zachowuje pozostały profil', async () => {
+    const storage = await import('../../lib/storage');
+    const milestones = await import('../milestonesStore');
+    const apps = await import('../useApplications');
+    milestones.markShortcutsHintSeen('anonymous');
+    milestones.markShortcutsHintSeen('local-other');
+    storage.writeJson(storage.applicationsKeyFor('anonymous'), [aplikacja(), null]);
+    apps.loadApplicationsFor('anonymous');
+    expect(await storage.clearProfileStorageDurably('anonymous')).toBe(true);
+    expect(milestones.getMilestones('anonymous')).toEqual({});
+    expect(milestones.getMilestones('local-other').shortcutsHintSeenAt).toBeDefined();
+    apps.saveApplicationsFor('anonymous', []);
+    expect(storage.readJson(storage.applicationsKeyFor('anonymous'), null)).toEqual([]);
+  });
   it('wipeAppStorage powiadamia zarejestrowane sklepy; odpinięty przestaje dostawać zdarzenia', async () => {
     const storage = await import('../../lib/storage');
     const zdarzenia: string[] = [];

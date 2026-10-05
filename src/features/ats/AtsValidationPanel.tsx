@@ -7,21 +7,14 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, XCircle, Info } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
-import { ScoreRing } from '../../components/ui/ScoreRing';
 import type { AtsPdfValidationReport, AtsPdfValidationResult, AtsIssue } from '../../lib/atsPdfValidator';
 
 interface AtsValidationPanelProps {
   report: AtsPdfValidationReport;
   className?: string;
 }
-
-const STATUS_CONFIG = {
-  PASS: { color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle, label: 'OK' },
-  WARN: { color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', icon: AlertTriangle, label: 'Uwagi' },
-  FAIL: { color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', icon: XCircle, label: 'Problemy' },
-} as const;
 
 const SEVERITY_CONFIG = {
   critical: { color: 'text-red-600', icon: XCircle },
@@ -47,8 +40,6 @@ function IssueRow({ issue }: { issue: AtsIssue }) {
 
 function VendorCard({ result }: { result: AtsPdfValidationResult }) {
   const [expanded, setExpanded] = useState(false);
-  const statusConfig = STATUS_CONFIG[result.status];
-  const StatusIcon = statusConfig.icon;
 
   return (
     <Card variant="flat" className="border border-line">
@@ -57,24 +48,16 @@ function VendorCard({ result }: { result: AtsPdfValidationResult }) {
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-3 text-left"
       >
-        <ScoreRing
-          value={result.parseScore}
-          size={48}
-          stroke={4}
-          suffix=""
-          className="shrink-0"
-        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-ink">Profil reguł: {result.vendorName}</span>
-            <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${statusConfig.bg} ${statusConfig.color} ${statusConfig.border} border`}>
-              <StatusIcon className="h-2.5 w-2.5" />
-              {statusConfig.label}
+            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-muted">
+              {result.issues.length === 0 ? 'Brak uwag regułowych' : `${result.issues.length} uwag do sprawdzenia`}
             </span>
           </div>
           <p className="text-[10px] text-muted">
             {result.extractedFields.sectionHeadersFound.length} sekcji wykrytych
-            {result.lostFields.length > 0 && ` · ${result.lostFields.length} pól utraconych`}
+            {result.notFoundFields.length > 0 && ` · ${result.notFoundFields.length} pól nieznalezionych w tekście`}
           </p>
         </div>
         {expanded ? (
@@ -128,14 +111,14 @@ function VendorCard({ result }: { result: AtsPdfValidationResult }) {
             </div>
           )}
 
-          {/* Utracone pola */}
-          {result.lostFields.length > 0 && (
+          {/* Pola profilu nieznalezione w wyekstrahowanym tekście */}
+          {result.notFoundFields.length > 0 && (
             <div>
               <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-ink-muted">
-                Utracone pola
+                Nie znaleziono w tekście
               </h4>
               <div className="flex flex-wrap gap-1">
-                {result.lostFields.map((field) => (
+                {result.notFoundFields.map((field) => (
                   <span key={field} className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
                     {field}
                   </span>
@@ -169,52 +152,47 @@ export const AtsValidationPanel: React.FC<AtsValidationPanelProps> = ({
   report,
   className = '',
 }) => {
-  const overallStatusConfig = STATUS_CONFIG[report.overallStatus];
-
   return (
     <div className={`space-y-3 ${className}`}>
       {/* Header */}
       <div className="flex items-center gap-2">
         <Shield className="h-4 w-4 text-brand-600" />
         <h3 className="text-sm font-bold text-ink">
-          Lokalny test parsowalności PDF
+          Lokalny przegląd tekstu PDF
         </h3>
       </div>
 
-      {/* Ogólny wynik */}
+      {/* Podsumowanie zakresu sprawdzenia, bez niekalibrowanej punktacji */}
       <Card variant="sunken" className="flex items-center gap-4">
-        <ScoreRing
-          value={report.overallScore}
-          size={64}
-          stroke={5}
-          label="Ogólna"
-        />
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${overallStatusConfig.bg} ${overallStatusConfig.color} ${overallStatusConfig.border} border`}>
-              {React.createElement(overallStatusConfig.icon, { className: 'h-3 w-3' })}
-              {overallStatusConfig.label}
+            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-[10px] font-bold text-muted">
+              {report.vendors.length > 0 ? 'Sprawdzono reguły tekstu' : 'Nie wykonano'}
             </span>
             <span className="text-[10px] text-muted">
               {report.vendors.length} profili regułowych
             </span>
           </div>
           <p className="mt-1 text-[11px] text-muted">
-            {report.taggedPdfPresent ? 'Tagged PDF: Tak' : 'Tagged PDF: Nie'}
-            {report.invisibleTextDetected ? ' · Niewidoczny tekst: WYKRYTO' : ''}
+            {report.taggedPdfPresent === null ? 'Tagged PDF: nie sprawdzono' : report.taggedPdfPresent ? 'Tagged PDF: Tak' : 'Tagged PDF: Nie'}
+            {report.invisibleTextDetected === null
+              ? ' · Niewidoczny tekst: nie sprawdzono'
+              : report.invisibleTextDetected
+                ? ' · Niewidoczny tekst: WYKRYTO'
+                : ' · Niewidoczny tekst: nie wykryto'}
           </p>
         </div>
       </Card>
 
       {/* Zalecenia ogólne */}
       {report.generalRecommendations.length > 0 && (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
-          <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">
-            Zalecenia ogólne
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                Zakres i zalecenia
           </h4>
           <ul className="space-y-0.5">
             {report.generalRecommendations.map((rec, i) => (
-              <li key={i} className="text-[11px] text-amber-800">
+              <li key={i} className="text-[11px] text-blue-800">
                 · {rec}
               </li>
             ))}
@@ -224,18 +202,15 @@ export const AtsValidationPanel: React.FC<AtsValidationPanelProps> = ({
 
       {/* Per-vendor karty */}
       <div className="space-y-2">
-        {report.vendors
-          .sort((a, b) => a.parseScore - b.parseScore)
-          .map((vendor) => (
+        {report.vendors.map((vendor) => (
             <VendorCard key={vendor.vendorId} result={vendor} />
-          ))}
+        ))}
       </div>
 
       {/* Footer */}
       <p className="text-[9px] text-muted text-center">
-        To heurystyczna symulacja na wyekstrahowanym tekście. Kierivo nie wysyła
-        dokumentu do Workday, Greenhouse, Lever, iCIMS ani Taleo i nie zna ich
-        konfiguracji u konkretnego pracodawcy.
+        To lokalne reguły na wyekstrahowanym tekście, nie test rzeczywistych
+        parserów Workday, Greenhouse, Lever, iCIMS ani Taleo.
       </p>
     </div>
   );

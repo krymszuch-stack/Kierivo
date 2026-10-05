@@ -19,7 +19,7 @@ export interface HoldoutGold {
   language: 'PL' | 'EN' | 'MIXED';
   title: string;
   company: string;
-  seniority: string;
+  seniority: string | null;
   workMode: 'REMOTE' | 'HYBRID' | 'ON_SITE';
   contractTypes: string[];
   salary: { min: number; max: number; currency: string; period: string; grossNet: string } | null;
@@ -86,11 +86,11 @@ export const HOLDOUT_OFFERS: HoldoutOffer[] = [
   }, `Cała Polska\numowa o pracę lub kontrakt B2B\n14 000 – 19 000 PLN brutto / miesiąc\n100% zdalnie\nregular\nResponsibilities\nBuild accessible web interfaces.\nRequirements\n2 years of experience. TypeScript, JavaScript, React, Next.js, CSS and Git. English (B2).\nNice to have\nGraphQL, Cypress, Tailwind.`),
   offer({
     id: '05-plc', domain: 'IT', language: 'PL', title: 'Inżynier automatyki PLC', company: 'Faktor Machines Sp. z o.o.',
-    seniority: 'MID', workMode: 'ON_SITE', contractTypes: ['umowa o pracę'],
+    seniority: null, workMode: 'ON_SITE', contractTypes: ['umowa o pracę'],
     salary: { min: 12000, max: 17000, currency: 'PLN', period: 'miesiąc', grossNet: 'brutto' },
     location: 'Wrocław', experienceMinYears: 2, languages: [],
     requiredSkills: ['plc', 'siemens', 'scada', 'electrical engineering'],
-    niceSkills: ['t ia portal', 'robotics', 'english'],
+    niceSkills: ['tia portal', 'robotics', 'english'],
     formalRequirements: [{ id: 'experience_years', label: 'Min. 2 lata doświadczenia', required: true }],
   }, `Wrocław\numowa o pracę\n12 000 – 17 000 PLN brutto / miesiąc\npraca stacjonarna\nspecjalista\nTwój zakres obowiązków\nProgramowanie sterowników i uruchomienia.\nNasze wymagania\nMinimum 2 lata doświadczenia. PLC, Siemens, SCADA i electrical engineering.\nMile widziane\nTIA Portal, robotyka, English.`),
   offer({
@@ -110,7 +110,7 @@ export const HOLDOUT_OFFERS: HoldoutOffer[] = [
     formalRequirements: [],
   }, `Łódź\numowa zlecenie\n30 – 34 PLN brutto / godz.\npraca hybrydowa\njunior\nObowiązki\nKontakt z klientami i obsługa zgłoszeń.\nWymagania\nKomunikatywność i praca zespołowa. Angielski (B2).\nMile widziane\nZnajomość CRM.`),
   offer({
-    id: '08-warehouse', domain: 'NON_IT', language: 'PL', title: 'Magazynier - operator wózka widłowego', company: 'LogiPark Polska', seniority: 'ENTRY',
+    id: '08-warehouse', domain: 'NON_IT', language: 'PL', title: 'Magazynier - operator wózka widłowego', company: 'LogiPark Polska', seniority: null,
     workMode: 'ON_SITE', contractTypes: ['umowa o pracę'], salary: { min: 5200, max: 6500, currency: 'PLN', period: 'miesiąc', grossNet: 'brutto' },
     location: 'Katowice', experienceMinYears: null, languages: [], requiredSkills: ['wózki widłowe', 'udt'],
     niceSkills: ['system magazynowy'], formalRequirements: [{ id: 'udt', label: 'Uprawnienia UDT na wózki widłowe', required: true }],
@@ -149,7 +149,7 @@ export const HOLDOUT_OFFERS: HoldoutOffer[] = [
     formalRequirements: [{ id: 'experience_years', label: '3 years of experience', required: true }],
   }, `Wrocław\numowa o pracę\npraca stacjonarna\nmid\nResponsibilities\nDevelop firmware for devices.\nRequirements\n3 years of experience. C, C++, Embedded, Linux and Git. English (B2).\nNice to have\nCANBUS, Qt, Python.`),
   offer({
-    id: '14-digital-marketing', domain: 'NON_IT', language: 'MIXED', title: 'Digital Marketing Specialist', company: 'Market Bloom Sp. z o.o.', seniority: 'MID',
+    id: '14-digital-marketing', domain: 'NON_IT', language: 'MIXED', title: 'Digital Marketing Specialist', company: 'Market Bloom Sp. z o.o.', seniority: null,
     workMode: 'HYBRID', contractTypes: ['umowa o pracę'], salary: { min: 8000, max: 11000, currency: 'PLN', period: 'miesiąc', grossNet: 'brutto' },
     location: 'Poznań', experienceMinYears: 2, languages: ['angielski (B2)'],
     requiredSkills: ['google analytics', 'seo', 'copywriting'], niceSkills: ['google ads', 'meta ads'],
@@ -168,7 +168,7 @@ export const HOLDOUT_OFFERS: HoldoutOffer[] = [
     formalRequirements: [{ id: 'experience_years', label: '3 years of experience', required: true }],
   }, `Warszawa\numowa o pracę\npraca hybrydowa\nregular\nResponsibilities\nMap business processes and system requirements.\nRequirements\n3 years of experience. SQL, Jira, ERP and Agile. English (B2).\nNice to have\nUML, Power BI.`),
   offer({
-    id: '17-procurement', domain: 'NON_IT', language: 'PL', title: 'Specjalista ds. zakupów', company: 'Supply Works S.A.', seniority: 'MID',
+    id: '17-procurement', domain: 'NON_IT', language: 'PL', title: 'Specjalista ds. zakupów', company: 'Supply Works S.A.', seniority: null,
     workMode: 'ON_SITE', contractTypes: ['umowa o pracę'], salary: { min: 8500, max: 11500, currency: 'PLN', period: 'miesiąc', grossNet: 'brutto' },
     location: 'Katowice', experienceMinYears: 2, languages: ['angielski (B2)'],
     requiredSkills: ['negocjacje', 'excel', 'erp'], niceSkills: ['sap'],

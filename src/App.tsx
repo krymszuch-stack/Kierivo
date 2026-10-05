@@ -1,15 +1,18 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { useDeferredPersist } from './hooks/useDeferredPersist';
 import { useUnlocks } from './hooks/useUnlocks';
+import { useAnalysisClock } from './hooks/useAnalysisClock';
 import { MasterVault } from './types';
 import { createEmptyVault } from './lib/sampleVault';
 import { NavTabId, isNavSectionId, resolveTabId } from './lib/navigation';
 import { resolveNextAction } from './lib/nextAction';
+import { cvCopyNotice } from './lib/cvCopyNotice';
 import {
   ANONYMOUS_PROFILE_ID,
   getActiveProfile,
   loadProfileVault,
+  hasRejectedProfileVault,
   saveProfileVault,
   type LocalProfile,
 } from './lib/localProfile';
@@ -29,11 +32,15 @@ import { CommandPalette } from './components/CommandPalette';
 import { Skeleton } from './components/ui/Skeleton';
 import { HomeView } from './views/HomeView';
 import { NextActionCard } from './components/nextaction/NextActionCard';
-import { CvQuestionsCard } from './features/questions/CvQuestionsCard';
 import { fetchCloudVault } from './lib/cloudVault';
+import {
+  applyCloudConflictResultForCurrentOwner,
+  isCloudOperationForCurrentOwner,
+} from './lib/cloudVaultConflictResolution';
 import {
   completeCloudVaultBootstrap,
   enqueueCloudVaultConflict,
+  markCloudVaultUnverified,
   resolvePendingCloudVaultConflict,
 } from './lib/cloudVaultOutbox';
 import {
@@ -49,6 +56,7 @@ import { DrillModeModal } from './features/drill/DrillModeModal';
 import { RecruiterVoiceLabModal } from './features/recruiter/RecruiterVoiceLabModal';
 import { Modal } from './components/ui/Modal';
 import type { AdvisorContext } from './features/advisor/advisorContext';
+import { selectAdvisorContextForProfile } from './lib/advisorAnalysisFreshness';
 
 // Lazy-loaded heavy views for fast initial bundle & LCP
 const JobMatcher = lazy(() => import('./features/matcher/JobMatcher').then((m) => ({ default: m.JobMatcher })));
@@ -91,6 +99,10 @@ function MainApp() {
   } = useAppStore();
 
   const { userVault, saveUserVault, user, isAuthenticated, mode, cloudAvailable, vaultSyncStatus } = useAuth();
+  const currentCloudOwnerRef = useRef<string | null>(user?.id ?? null);
+  useLayoutEffect(() => {
+    currentCloudOwnerRef.current = user?.id ?? null;
+  }, [user?.id]);
 
   const [storedVault, setVault] = useState<MasterVault>(() => {
     const profile = getActiveProfile();
@@ -123,7 +135,8 @@ function MainApp() {
 
   const { applications } = useApplications();
   // Wynik dopasowania jest stanem bieżącej sesji, nie kolejną kopią CV w schowku.
-  const [advisorContext, setAdvisorContext] = useState<AdvisorContext | null>(null);
+  const [advisorContextSnapshot, setAdvisorContextSnapshot] = useState<{ profileId: string; context: AdvisorContext } | null>(null);
+  const advisorContext = selectAdvisorContextForProfile(advisorContextSnapshot, user?.id ?? ANONYMOUS_PROFILE_ID);
 
   /**
    * Prawdziwe uprawnienia pobierane raz na sesję konta i po powrocie z bramki.
@@ -267,7 +280,7 @@ function MainApp() {
     void (async () => {
       try {
         const remoteSnapshot = await fetchCloudVault(user.id);
-        if (!aktywny) return;
+        if (!aktywny || !isCloudOperationForCurrentOwner(currentCloudOwnerRef.current, user.id)) return;
 
         if (remoteSnapshot.pendingConflict) {
           const localSnapshot = remoteSnapshot.vault ?? createEmptyVault(user.name, user.email);
@@ -326,14 +339,16 @@ function MainApp() {
           wynik.shouldUpload,
           remoteSnapshot.remoteUpdatedAt,
         );
+        if (!aktywny || !isCloudOperationForCurrentOwner(currentCloudOwnerRef.current, user.id)) return;
         setVaultProfileId(user.id);
       } catch {
-        if (!aktywny) return;
+        if (!aktywny || !isCloudOperationForCurrentOwner(currentCloudOwnerRef.current, user.id)) return;
         // Nieudany odczyt nie może skasować tego, co użytkownik ma na ekranie —
         // `resolveVaultOnSignIn` nigdy nie dostanie tu pustej chmury „na wszelki
         // wypadek", bo w ogóle nie dochodzi do rozstrzygnięcia.
         syncedForUser.current = null;
         retryCloudBootstrapOnOnline.current = true;
+        markCloudVaultUnverified(user.id);
         showToast('Nie udało się pobrać CV z konta', {
           message: isLocalVaultEligibleForCloudOwner(vaultProfileId, user.id)
             ? 'Pracujesz na wersji z tego urządzenia. Odśwież stronę, żeby spróbować ponownie.'
@@ -367,19 +382,11 @@ function MainApp() {
    * Czas, względem którego liczone są reguły „rozmowa za mniej niż 48 h"
    * i „aplikacja bez odpowiedzi od tygodnia".
    *
-   * Odświeżany przy powrocie na kartę, a nie zegarem co minutę. Karta otwarta
+   * Odświeżany przy powrocie na kartę i zmianie miesiąca, a nie zegarem co minutę. Karta otwarta
    * w tle przez pół dnia i tak nikomu niczego nie przypomni, a przerysowywanie
    * całego drzewa co sześćdziesiąt sekund kosztowałoby więcej niż jest warte.
    */
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState === 'visible') setNow(new Date());
-    };
-    document.addEventListener('visibilitychange', refresh);
-    return () => document.removeEventListener('visibilitychange', refresh);
-  }, []);
+  const now = useAnalysisClock();
 
   const nextAction = useMemo(
     () => resolveNextAction({ vault, applications, now }),
@@ -411,12 +418,22 @@ function MainApp() {
     [setActiveTab, unlocks]
   );
 
+  // Świeżość analizy zależy od rewizji profilu. Aktualizujemy ją tylko przy
+  // zmianach użytkownika, nie podczas ładowania lub synchronizacji snapshotu.
+  const handleVaultUpdate = useCallback((updatedVault: MasterVault) => {
+    const previousTime = Date.parse(updatedVault.updatedAt);
+    const nextTime = Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0);
+    const versionedVault = { ...updatedVault, updatedAt: new Date(nextTime).toISOString() };
+    setVault(versionedVault);
+    return versionedVault;
+  }, []);
+
   // Parser CV dostaje tu kompletny vault po scaleniu ze strategiami z diffu
   // (applyParsedCVToVault) — podstawiamy 1:1. Przepuszczanie tego jeszcze raz
   // przez mergeImportedVault ignorowało wybór „zastąp", bo tamte scalanie
   // zawsze dokłada wpisy.
   const handleApplyVault = (imported: MasterVault) => {
-    setVault(imported);
+    handleVaultUpdate(imported);
   };
 
   const handleOpenAdvisor = (initialQuestion?: string) => {
@@ -427,15 +444,24 @@ function MainApp() {
 
   const resolveCloudVaultConflict = async (chosenVault: MasterVault) => {
     if (!cloudVaultConflict || resolvingCloudVaultConflict) return;
+    const conflict = cloudVaultConflict;
     setResolvingCloudVaultConflict(true);
     try {
-      const status = await resolvePendingCloudVaultConflict(
-        cloudVaultConflict.ownerId,
-        chosenVault,
-        cloudVaultConflict.remoteUpdatedAt,
+      const resolution = await applyCloudConflictResultForCurrentOwner(
+        conflict.ownerId,
+        () => currentCloudOwnerRef.current,
+        () => resolvePendingCloudVaultConflict(
+          conflict.ownerId,
+          chosenVault,
+          conflict.remoteUpdatedAt,
+        ),
+        () => {
+          setVault(chosenVault);
+          setVaultProfileId(conflict.ownerId);
+        },
       );
-      setVault(chosenVault);
-      setVaultProfileId(cloudVaultConflict.ownerId);
+      if (!resolution.applied) return;
+      const status = resolution.result;
       if (status === 'conflict') {
         setCloudVaultConflict(null);
         setCloudVaultConflictOpen(false);
@@ -456,10 +482,12 @@ function MainApp() {
         variant: status === 'cloud' ? 'success' : 'info',
       });
     } catch {
-      showToast('Nie udało się rozstrzygnąć konfliktu', {
-        message: 'Obie wersje pozostają zachowane. Spróbuj ponownie po odświeżeniu połączenia.',
-        variant: 'error',
-      });
+      if (isCloudOperationForCurrentOwner(currentCloudOwnerRef.current, conflict.ownerId)) {
+        showToast('Nie udało się rozstrzygnąć konfliktu', {
+          message: 'Obie wersje pozostają zachowane. Spróbuj ponownie po odświeżeniu połączenia.',
+          variant: 'error',
+        });
+      }
     } finally {
       setResolvingCloudVaultConflict(false);
     }
@@ -480,9 +508,6 @@ function MainApp() {
   const [isDrillOpen, setDrillOpen] = useState(false);
   const [isGlobalCvPreviewOpen, setIsGlobalCvPreviewOpen] = useState(false);
 
-  /** Pusty profil = pierwsza wizyta. Ta sama reguła co w `HomeView`. */
-  const isFirstVisit = !vault.personalInfo.fullName && vault.history.length === 0;
-
   return (
     <GlobalShell
       activeTab={activeTab}
@@ -499,6 +524,12 @@ function MainApp() {
       cloudAvailable={cloudAvailable}
       planStatus={planStatus}
     >
+      {hasRejectedProfileVault(vaultProfileId) && (
+        <div role="alert" className="mb-5 rounded-xl border border-danger/40 bg-danger-soft/60 p-4 text-sm text-danger-fg">
+          Zapisany profil ma nieprawidłową strukturę. Nie pokazujemy go jako prawidłowego CV ani nie nadpisujemy
+          uszkodzonego zapisu. W sekcji Profil zaimportuj pełny, poprawny eksport JSON, aby świadomie go zastąpić.
+        </div>
+      )}
       {visibleCloudVaultConflict && !cloudVaultConflictOpen && (
         <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-soft/60 p-4 text-sm text-ink">
           <p>Dwie wersje CV czekają na wybór. Żadna nie została automatycznie połączona ani nadpisana.</p>
@@ -524,23 +555,7 @@ function MainApp() {
             <HomeView
               vault={vault}
               onNavigate={navigate}
-              onOpenAdvisor={handleOpenAdvisor}
-              lockReasons={unlocks.reasons}
-              actionSlot={
-                !isFirstVisit ? (
-                  <NextActionCard action={nextAction} onNavigate={navigate} />
-                ) : undefined
-              }
-              questionsSlot={
-                !isFirstVisit ? (
-                  <CvQuestionsCard
-                    key={user?.id ?? ANONYMOUS_PROFILE_ID}
-                    profileId={user?.id ?? ANONYMOUS_PROFILE_ID}
-                    vault={vault}
-                    onChange={setVault}
-                  />
-                ) : undefined
-              }
+              actionSlot={<NextActionCard action={nextAction} onNavigate={navigate} />}
             />
           )}
 
@@ -548,8 +563,9 @@ function MainApp() {
             {/* PROFIL — dane, import CV i preferencje jako kroki jednej sekcji */}
             {activeTab === 'profil' && (
               <ProfileSection
+                profileId={user?.id ?? ANONYMOUS_PROFILE_ID}
                 vault={vault}
-                onChangeVault={setVault}
+                onChangeVault={handleVaultUpdate}
                 onApplyVault={handleApplyVault}
                 renderEditor={(props) => <MasterVaultEditor {...props} />}
                 renderParser={(props) => <CVParserModal {...props} />}
@@ -561,8 +577,8 @@ function MainApp() {
             {activeTab === 'aplikuj' && (
               <JobMatcher
                 vault={vault}
-                onUpdateVault={setVault}
-                onAdvisorContext={setAdvisorContext}
+                onUpdateVault={handleVaultUpdate}
+                onAdvisorContext={(context) => setAdvisorContextSnapshot({ profileId: user?.id ?? ANONYMOUS_PROFILE_ID, context })}
               />
             )}
 
@@ -571,10 +587,12 @@ function MainApp() {
               <div className="space-y-4">
                 <DocumentRenderer
                   vault={vault}
-                  onUpdateVault={setVault}
-                  onExported={() => {
-                    showToast('Eksport CV zakończony', {
-                      message: 'Twój dokument PDF został pobrany i zachowany.',
+                  onUpdateVault={handleVaultUpdate}
+                  onExported={(event) => {
+                    const notice = cvCopyNotice(event);
+                    if (!notice) return;
+                    showToast(notice.title, {
+                      message: notice.message,
                       variant: 'success',
                     });
                   }}
@@ -742,11 +760,13 @@ function MainApp() {
           <Suspense fallback={<Skeleton className="h-[600px] w-full rounded-2xl" />}>
             <DocumentRenderer
               vault={vault}
-              onUpdateVault={(updated) => setVault(updated)}
-              onExported={() => {
-                showToast('Eksport CV', {
-                  message: 'Dokument CV został przekazany do druku / zapisu PDF.',
-                  variant: 'info',
+              onUpdateVault={handleVaultUpdate}
+              onExported={(event) => {
+                const notice = cvCopyNotice(event);
+                if (!notice) return;
+                showToast(notice.title, {
+                  message: notice.message,
+                  variant: 'success',
                 });
               }}
             />

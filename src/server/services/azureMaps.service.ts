@@ -19,22 +19,20 @@ export interface RouteCalculationParams {
   origin: string;
   destination: string;
   engineType?: VehicleEngineType;
-  /** ISO datetime lub 'peak' (poranny szczyt 07:45) lub 'smooth' (11:00) */
-  trafficMode?: 'peak' | 'smooth' | string;
+  /** `peak` to historyczna nazwa trybu bieżących danych Azure; `smooth` pomija korki. */
+  trafficMode?: 'peak' | 'smooth';
 }
 
 export interface RouteCalculationResult {
   source: 'azure_maps' | 'local_deterministic';
+  /** Ruch drogowy pochodzi wyłącznie z Azure; model lokalny nie mierzy korków. */
+  trafficDataAvailable: boolean;
   roadDistanceKm: number;
   freeFlowMinutes: number;
   trafficMinutes: number;
   trafficDelayMinutes: number;
-  energyConsumption: {
-    unit: 'liters' | 'kWh';
-    amountPerOneWay: number;
-    amountMonthly: number; // 2 strony * 21 dni
-    costMonthlyPln: number;
-  };
+  /** Brak danych o pojeździe i cenie energii nie pozwala oszacować kosztu. */
+  energyConsumption: null;
   corridorDescription?: string;
   points?: Array<{ lat: number; lon: number }>;
 }
@@ -53,18 +51,32 @@ export interface ReachableRangeResult {
   approxAreaKm2: number;
 }
 
-// Średnie rynkowe ceny energii i paliw w Polsce (założenia jawne, do wglądu)
-const FUEL_PRICE_PLN_PER_LITER = 6.65;
-const ELECTRICITY_PRICE_PLN_PER_KWH = 1.15;
-const AVERAGE_FUEL_CONSUMPTION_L_PER_100KM = 7.2;
-const AVERAGE_EV_CONSUMPTION_KWH_PER_100KM = 17.5;
-const MONTHLY_WORK_DAYS = 21;
+export class MobilityUnavailableError extends Error {
+  readonly statusCode = 501;
+  readonly expose = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'MobilityUnavailableError';
+  }
+}
+
+export class MobilityValidationError extends Error {
+  readonly statusCode = 400;
+  readonly expose = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'MobilityValidationError';
+  }
+}
 
 /**
  * Bezpiecznie odczytuje klucz Azure Maps ze środowiska.
  */
 function getAzureMapsKey(): string | null {
-  const key = process.env.AZURE_MAPS_KEY || process.env.VITE_AZURE_MAPS_KEY;
+  // Prefiks VITE_ publikuje zmienną w bundle klienta; klucz usługi czytamy tylko po stronie serwera.
+  const key = process.env.AZURE_MAPS_KEY;
   return key && key.trim().length > 10 ? key.trim() : null;
 }
 
@@ -74,17 +86,11 @@ function getAzureMapsKey(): string | null {
 function findCoordinates(cityName: string): { lat: number; lon: number; name: string } | null {
   const norm = cityName.toLowerCase().trim();
   const found = POLISH_LOCALITIES.find(
-    (l) => l.name.toLowerCase() === norm || l.id.toLowerCase() === norm
+    (l) => l.name.toLowerCase() === norm || l.id.toLowerCase() === norm ||
+      l.aliases?.some((alias) => alias.toLowerCase() === norm)
   );
   if (found) {
     return { lat: found.lat, lon: found.lng, name: found.name };
-  }
-  // Częściowe dopasowanie
-  const partial = POLISH_LOCALITIES.find(
-    (l) => l.name.toLowerCase().includes(norm) || norm.includes(l.name.toLowerCase())
-  );
-  if (partial) {
-    return { lat: partial.lat, lon: partial.lng, name: partial.name };
   }
   return null;
 }
@@ -99,20 +105,27 @@ export async function calculateRouteWithMobility(
   const originCoord = findCoordinates(params.origin);
   const destCoord = findCoordinates(params.destination);
 
-  // Jeśli brak klucza Azure lub brak koordynatów w bazie, korzystamy z deterministycznego rejestru korytarzy
-  if (!azureKey || !originCoord || !destCoord) {
+  if (!originCoord || !destCoord) {
+    throw new MobilityUnavailableError('Nie znaleziono obu miejscowości w lokalnym rejestrze tras.');
+  }
+
+  // Transport publiczny jest obsługiwany tylko jako lokalna estymacja czasu.
+  // Azure jest tu wyłącznie trasą samochodową, więc nie wolno podpinać jej pod Zbiorkom.
+  if (params.engineType === 'transit' || !azureKey) {
     return fallbackCalculateRoute(params);
   }
 
   try {
     const query = `${originCoord.lat},${originCoord.lon}:${destCoord.lat},${destCoord.lon}`;
     const isPeak = params.trafficMode === 'peak';
-    // Jeśli szczyt: kalkulujemy z traffic=true i departAt = najbliższy wtorek 07:45
+    // Bez departAt Azure liczy trasę dla teraz; nie wolno opisywać wyniku jako prognozy na 07:45.
     const url = new URL('https://atlas.microsoft.com/route/directions/json');
     url.searchParams.set('api-version', '1.0');
     url.searchParams.set('subscription-key', azureKey);
     url.searchParams.set('query', query);
     url.searchParams.set('traffic', 'true');
+    // Bez `all` Azure pomija porównawcze czasy bez ruchu.
+    url.searchParams.set('computeTravelTimeFor', 'all');
     url.searchParams.set('travelMode', 'car');
     url.searchParams.set(
       'vehicleEngineType',
@@ -147,21 +160,22 @@ export async function calculateRouteWithMobility(
       return fallbackCalculateRoute(params);
     }
 
-    const roadDistanceKm = Math.round((route.summary.lengthInMeters / 1000) * 10) / 10;
-    const freeFlowMinutes = Math.round((route.summary.noTrafficTravelTimeInSeconds || route.summary.travelTimeInSeconds) / 60);
-    // W godzinach szczytu uwzględniamy traffic delay
-    const trafficDelayMinutes = Math.round((route.summary.trafficDelayInSeconds || 0) / 60);
-    const trafficMinutes = isPeak ? freeFlowMinutes + trafficDelayMinutes : freeFlowMinutes;
+    const { lengthInMeters, travelTimeInSeconds, noTrafficTravelTimeInSeconds, trafficDelayInSeconds } = route.summary;
+    if (!Number.isFinite(lengthInMeters) || lengthInMeters < 0 ||
+        !Number.isFinite(travelTimeInSeconds) || travelTimeInSeconds < 0 ||
+        typeof noTrafficTravelTimeInSeconds !== 'number' ||
+        !Number.isFinite(noTrafficTravelTimeInSeconds) || noTrafficTravelTimeInSeconds < 0 ||
+        (trafficDelayInSeconds !== undefined &&
+          (!Number.isFinite(trafficDelayInSeconds) || trafficDelayInSeconds < 0))) {
+      return fallbackCalculateRoute(params);
+    }
 
-    const isElectric = params.engineType === 'electric';
-    const amountPerOneWay = isElectric
-      ? Math.round(((roadDistanceKm * AVERAGE_EV_CONSUMPTION_KWH_PER_100KM) / 100) * 10) / 10
-      : Math.round(((roadDistanceKm * AVERAGE_FUEL_CONSUMPTION_L_PER_100KM) / 100) * 10) / 10;
-
-    const amountMonthly = Math.round(amountPerOneWay * 2 * MONTHLY_WORK_DAYS * 10) / 10;
-    const costMonthlyPln = Math.round(
-      amountMonthly * (isElectric ? ELECTRICITY_PRICE_PLN_PER_KWH : FUEL_PRICE_PLN_PER_LITER)
-    );
+    const roadDistanceKm = Math.round((lengthInMeters / 1000) * 10) / 10;
+    const freeFlowMinutes = Math.round(noTrafficTravelTimeInSeconds / 60);
+    // `travelTimeInSeconds` już zawiera ruch; dodanie opóźnienia drugi raz zawyża czas.
+    const measuredTrafficMinutes = Math.round(travelTimeInSeconds / 60);
+    const trafficDelayMinutes = isPeak ? Math.max(0, measuredTrafficMinutes - freeFlowMinutes) : 0;
+    const trafficMinutes = isPeak ? measuredTrafficMinutes : freeFlowMinutes;
 
     const points = (route.legs?.[0]?.points || []).map((p) => ({
       lat: p.latitude,
@@ -170,16 +184,12 @@ export async function calculateRouteWithMobility(
 
     return {
       source: 'azure_maps',
+      trafficDataAvailable: Number.isFinite(noTrafficTravelTimeInSeconds),
       roadDistanceKm,
       freeFlowMinutes,
       trafficMinutes,
       trafficDelayMinutes,
-      energyConsumption: {
-        unit: isElectric ? 'kWh' : 'liters',
-        amountPerOneWay,
-        amountMonthly,
-        costMonthlyPln,
-      },
+      energyConsumption: null,
       points: points.length > 50 ? samplePoints(points, 40) : points,
     };
   } catch {
@@ -197,13 +207,11 @@ export async function calculateReachableRangeWithMobility(
   const centerCoord = findCoordinates(params.centerCity);
 
   if (!centerCoord) {
-    // Domyślnie Warszawa centrum jeśli miasto nieznane
-    const defaultCenter = { lat: 52.2297, lon: 21.0122, name: params.centerCity || 'Warszawa' };
-    return fallbackReachableRange(defaultCenter, params.timeBudgetMinutes, params.trafficMode);
+    throw new MobilityUnavailableError('Nie znaleziono miejscowości w lokalnym rejestrze.');
   }
 
   if (!azureKey) {
-    return fallbackReachableRange(centerCoord, params.timeBudgetMinutes, params.trafficMode);
+    throw new MobilityUnavailableError('Wyznaczanie izochrony wymaga skonfigurowanej usługi Azure Maps.');
   }
 
   try {
@@ -223,7 +231,7 @@ export async function calculateReachableRangeWithMobility(
     clearTimeout(timeout);
 
     if (!resp.ok) {
-      return fallbackReachableRange(centerCoord, params.timeBudgetMinutes, params.trafficMode);
+      throw new MobilityUnavailableError('Azure Maps nie zwrócił izochrony dla tej lokalizacji.');
     }
 
     const data = (await resp.json()) as {
@@ -232,8 +240,11 @@ export async function calculateReachableRangeWithMobility(
       };
     };
     const boundary = data.reachableRange?.boundary;
-    if (!boundary || !Array.isArray(boundary) || boundary.length === 0) {
-      return fallbackReachableRange(centerCoord, params.timeBudgetMinutes, params.trafficMode);
+    if (!boundary || !Array.isArray(boundary) || boundary.length < 3 || !boundary.every((point) =>
+      Number.isFinite(point.latitude) && point.latitude >= -90 && point.latitude <= 90 &&
+      Number.isFinite(point.longitude) && point.longitude >= -180 && point.longitude <= 180
+    )) {
+      throw new MobilityUnavailableError('Azure Maps nie zwrócił izochrony dla tej lokalizacji.');
     }
 
     const boundaryPoints = boundary.map((p) => ({
@@ -249,7 +260,7 @@ export async function calculateReachableRangeWithMobility(
       approxAreaKm2: calculateApproxPolygonAreaKm2(boundaryPoints),
     };
   } catch {
-    return fallbackReachableRange(centerCoord, params.timeBudgetMinutes, params.trafficMode);
+    throw new MobilityUnavailableError('Nie udało się pobrać izochrony z Azure Maps.');
   }
 }
 
@@ -259,73 +270,39 @@ export async function calculateReachableRangeWithMobility(
 
 function fallbackCalculateRoute(params: RouteCalculationParams): RouteCalculationResult {
   const calc = getGeoDistanceRegistry().calculateCommute(params.origin, params.destination);
-  const roadDistanceKm = calc ? calc.roadDistanceKm : 35;
-  const freeFlowMinutes = calc ? calc.estimatedDriveTimeMinutes : 32;
-  const isPeak = params.trafficMode === 'peak';
-  const trafficDelayMinutes = isPeak ? Math.round(freeFlowMinutes * 0.35) : 0;
-  const trafficMinutes = freeFlowMinutes + trafficDelayMinutes;
+  if (!calc) {
+    throw new MobilityUnavailableError('Nie znaleziono trasy w lokalnym rejestrze.');
+  }
 
-  const isElectric = params.engineType === 'electric';
-  const amountPerOneWay = isElectric
-    ? Math.round(((roadDistanceKm * AVERAGE_EV_CONSUMPTION_KWH_PER_100KM) / 100) * 10) / 10
-    : Math.round(((roadDistanceKm * AVERAGE_FUEL_CONSUMPTION_L_PER_100KM) / 100) * 10) / 10;
+  const roadDistanceKm = calc.roadDistanceKm;
+  const isTransit = params.engineType === 'transit';
+  const freeFlowMinutes = isTransit ? calc.estimatedTransitTimeMinutes : calc.estimatedDriveTimeMinutes;
+  // Lokalny rejestr estymuje czas bazowy, ale nie zawiera danych o aktualnych korkach.
+  const trafficDelayMinutes = 0;
+  const trafficMinutes = freeFlowMinutes;
 
-  const amountMonthly = Math.round(amountPerOneWay * 2 * MONTHLY_WORK_DAYS * 10) / 10;
-  const costMonthlyPln = Math.round(
-    amountMonthly * (isElectric ? ELECTRICITY_PRICE_PLN_PER_KWH : FUEL_PRICE_PLN_PER_LITER)
-  );
+  if (isTransit) {
+    return {
+      source: 'local_deterministic',
+      trafficDataAvailable: false,
+      roadDistanceKm,
+      freeFlowMinutes,
+      trafficMinutes,
+      trafficDelayMinutes,
+      energyConsumption: null,
+      corridorDescription: calc.corridorDescription,
+    };
+  }
 
   return {
     source: 'local_deterministic',
+    trafficDataAvailable: false,
     roadDistanceKm,
     freeFlowMinutes,
     trafficMinutes,
     trafficDelayMinutes,
-    energyConsumption: {
-      unit: isElectric ? 'kWh' : 'liters',
-      amountPerOneWay,
-      amountMonthly,
-      costMonthlyPln,
-    },
+    energyConsumption: null,
     corridorDescription: calc?.corridorDescription,
-  };
-}
-
-function fallbackReachableRange(
-  center: { lat: number; lon: number; name: string },
-  timeBudgetMinutes: number,
-  trafficMode?: string
-): ReachableRangeResult {
-  // Prędkość średnia: w szczycie ok 45 km/h, płynnie ok 65 km/h
-  const avgSpeed = trafficMode === 'peak' ? 42 : 62;
-  const radiusKm = (avgSpeed * (timeBudgetMinutes / 60)) * 0.85; // współczynnik krętości
-
-  const pointsCount = 24;
-  const boundaryPoints: Array<{ lat: number; lon: number }> = [];
-
-  for (let i = 0; i < pointsCount; i++) {
-    const angle = (i / pointsCount) * 2 * Math.PI;
-    // Lekkie zróżnicowanie promienia zależnie od kierunku (symulacja arterii)
-    const factor = 0.9 + 0.2 * Math.sin(angle * 3);
-    const r = radiusKm * factor;
-
-    const dLat = (r / 111.32) * Math.cos(angle);
-    const dLon = (r / (111.32 * Math.cos((center.lat * Math.PI) / 180))) * Math.sin(angle);
-
-    boundaryPoints.push({
-      lat: Math.round((center.lat + dLat) * 10000) / 10000,
-      lon: Math.round((center.lon + dLon) * 10000) / 10000,
-    });
-  }
-
-  const approxAreaKm2 = Math.round(Math.PI * radiusKm * radiusKm);
-
-  return {
-    source: 'local_deterministic',
-    center,
-    timeBudgetMinutes,
-    boundaryPoints,
-    approxAreaKm2,
   };
 }
 

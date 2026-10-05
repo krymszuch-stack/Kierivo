@@ -1,9 +1,13 @@
 import { ApplicationStatus, JobApplication, MasterVault } from '../types';
+import { isAtsScoreProvenance } from './atsScoreProvenance';
+import { isValidAtsScoreContext } from './atsScoreEvidence';
+import { normalizeExternalHttpUrl } from './externalHttpUrl';
 import { LocalProfile } from './localProfile';
 import { SavedCVDocument } from './cvLibraryStorage';
 import { PendingCloudVaultSave } from './cloudVaultOutbox';
 import { createEmptyVault } from './sampleVault';
 import { readJson, StorageKeys, writeJson } from './storage';
+import { isValidAtsScore } from './canonicalAts';
 
 /**
  * Aktualna wersja jednolitego schematu danych aplikacji (semantyczna wersja encji).
@@ -74,6 +78,8 @@ export function migrateVault(raw: unknown): MasterVault {
   if (
     raw.schemaVersion === CURRENT_DATA_SCHEMA_VERSION &&
     Array.isArray(raw.claims) &&
+    Array.isArray(raw.history) &&
+    raw.history.every((entry) => isRecord(entry) && Array.isArray(entry.highlights)) &&
     isRecord(raw.personalInfo) &&
     isRecord(raw.skillsMatrix) &&
     isRecord(raw.profiler)
@@ -121,6 +127,8 @@ export function migrateVault(raw: unknown): MasterVault {
       photoUrl: typeof personalInfoRaw.photoUrl === 'string' ? personalInfoRaw.photoUrl : '',
       title: typeof personalInfoRaw.title === 'string' ? personalInfoRaw.title : '',
       summary: typeof personalInfoRaw.summary === 'string' ? personalInfoRaw.summary : '',
+      ...(typeof personalInfoRaw.rodoClause === 'string' ? { rodoClause: personalInfoRaw.rodoClause } : {}),
+      ...(typeof personalInfoRaw.gdprClause === 'string' ? { gdprClause: personalInfoRaw.gdprClause } : {}),
     },
     profiler: {
       flags: Array.isArray(profilerRaw.flags) ? (profilerRaw.flags as any) : empty.profiler.flags,
@@ -141,7 +149,17 @@ export function migrateVault(raw: unknown): MasterVault {
       toolsAndTech,
       certifications: Array.isArray(skillsRaw.certifications) ? (skillsRaw.certifications as any) : [],
     },
-    history: Array.isArray(raw.history) ? (raw.history as any) : [],
+    // W starych wpisach brakowało czasem `highlights`. Zachowujemy doświadczenie,
+    // ale pustą listę traktujemy jako brak potwierdzonych punktów — nie wolno
+    // ani wywrócić kokpitu, ani dorobić użytkownikowi treści CV.
+    history: Array.isArray(raw.history)
+      ? raw.history
+        .filter(isRecord)
+        .map((entry) => ({
+          ...entry,
+          highlights: Array.isArray(entry.highlights) ? entry.highlights : [],
+        })) as any
+      : [],
     education: Array.isArray(raw.education) ? (raw.education as any) : [],
     projects: Array.isArray(raw.projects) ? (raw.projects as any) : [],
     claims: Array.isArray(raw.claims) ? (raw.claims as any) : [],
@@ -210,6 +228,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const status: ApplicationStatus = STATUS_MAPPING[rawStatus] ?? 'Do wysłania';
   const salary = typeof raw.salary === 'string' ? raw.salary.trim() : '';
   const date = normalizeDate(raw.date || (raw as any).applied_at);
+  const jobUrl = normalizeExternalHttpUrl(raw.jobUrl);
 
   let interviewAt = typeof raw.interviewAt === 'string' ? raw.interviewAt : undefined;
   // Reguła: Odrzucona aplikacja nie trzyma terminu rozmowy
@@ -226,8 +245,15 @@ export function migrateApplication(raw: unknown): JobApplication | null {
     date,
     status,
     ...(typeof raw.notes === 'string' ? { notes: raw.notes } : {}),
-    ...(typeof raw.jobUrl === 'string' ? { jobUrl: raw.jobUrl } : {}),
-    ...(typeof raw.atsScore === 'number' ? { atsScore: raw.atsScore } : {}),
+    ...(jobUrl ? { jobUrl } : {}),
+    ...(isValidAtsScore(raw.atsScore) ? { atsScore: raw.atsScore } : {}),
+    ...(isAtsScoreProvenance(raw.atsScoreProvenance) && isValidAtsScore(raw.atsScore)
+      ? { atsScoreProvenance: raw.atsScoreProvenance }
+      : {}),
+    ...(isAtsScoreProvenance(raw.atsScoreProvenance) &&
+      isValidAtsScore(raw.atsScore) && isValidAtsScoreContext(raw.atsScoreContext)
+      ? { atsScoreContext: raw.atsScoreContext }
+      : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),

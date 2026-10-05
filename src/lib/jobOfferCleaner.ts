@@ -9,6 +9,9 @@
  * 4. Title & Company Detection: separacja tytułu i firmy od treści oferty.
  */
 
+import { isKnownSectionHeader } from './jdOptionality';
+import { explicitLocationEntryAt } from './jobOfferMetadata';
+
 export interface CleanedOfferResult {
   title: string;
   company: string;
@@ -226,17 +229,16 @@ export function cleanPastedJobOffer(rawText: string): CleanedOfferResult {
       continue;
     }
 
-    // Klucze dwuliniowe OLX
+    // Klucze dwuliniowe OLX i jawne lokalizacje z innych portali.
     if (/^wynagrodzenie:?$/i.test(line) && i + 1 < bodyLines.length) {
       salary = bodyLines[i + 1];
       i += 2;
       continue;
     }
-    if (/^lokalizacja:?$/i.test(line) && i + 1 < bodyLines.length) {
-      if (!location) {
-        location = bodyLines[i + 1];
-      }
-      i += 2;
+    const locationEntry = explicitLocationEntryAt(bodyLines, i);
+    if (locationEntry) {
+      if (!location) location = locationEntry.value;
+      i += locationEntry.lineCount;
       continue;
     }
     if (/^wymiar pracy:?$/i.test(line) && i + 1 < bodyLines.length) {
@@ -295,7 +297,14 @@ export function cleanPastedJobOffer(rawText: string): CleanedOfferResult {
         // Czy kolejna linia to nazwa firmy (np. "SVBL Tomasz Ziemiński", "JobmanGroup...")?
         if (remainingBody.length > 0) {
           const nextCandidate = remainingBody[0];
-          const isSectionStart = /^(?:opis|o nas|oferujemy|wymagania|zakres|obowiązki|twoje|nasze|co oferujemy|czego oczekujemy)\b/i.test(nextCandidate);
+          const candidateHeader = nextCandidate.split(':', 1)[0].trim();
+          // Angielskie nagłówki (np. Requirements, Responsibilities) i polskie
+          // etykiety lokalizacji nie są dowodem nazwy pracodawcy. Wspólna
+          // klasyfikacja sekcji zapobiega drugiej, rozjeżdżającej się liście.
+          const isSectionStart = isKnownSectionHeader(nextCandidate) ||
+            isKnownSectionHeader(candidateHeader) ||
+            /^(?:opis|o nas|oferujemy|wymagania|zakres|obowiązki|twoje|nasze|co oferujemy|czego oczekujemy)\b/i.test(nextCandidate) ||
+            /^(?:lokalizacja|miejsce pracy|location)\s*:?/i.test(nextCandidate);
           const isNoise = HEAD_NOISE_PATTERNS.some((p) => p.test(nextCandidate));
           if (!isSectionStart && !isNoise && nextCandidate.length < 80) {
             company = nextCandidate.replace(/\s*dowiedz się więcej\s*$/i, '').trim();

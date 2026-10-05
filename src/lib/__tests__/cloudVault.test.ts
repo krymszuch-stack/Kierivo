@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyVault } from '../sampleVault';
 import { enqueueCloudVaultSave } from '../cloudVaultOutbox';
+import { cloudVaultOutboxKeyFor } from '../cloudVaultKeys';
+import { writeJson } from '../storage';
 import { resetLastGoodCache } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 
@@ -50,6 +52,53 @@ describe('saveCloudVault — właściciel sesji', () => {
     expect(update.mock.calls[0][0]).toMatchObject({ data: expect.any(Object) });
     expect(eqOwner).toHaveBeenCalledWith('user_id', 'konto-a');
     expect(eqUpdatedAt).toHaveBeenCalledWith('updated_at', 'rev-1');
+  });
+
+  it('odrzuca niekompletny Vault ze schematu bieżącego bez migracyjnego uzupełniania pól', async () => {
+    const malformed = createEmptyVault('Uszkodzony profil');
+    malformed.schemaVersion = 1;
+    malformed.history = [{ id: 'bad' } as never];
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { data: malformed, updated_at: 'rev-1' }, error: null });
+    mocks.client = {
+      auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'konto-a' } } } }) },
+      from: vi.fn().mockReturnValue({ select: () => ({ maybeSingle }) }),
+    };
+
+    await expect((await import('../cloudVault')).fetchCloudVault('konto-a'))
+      .rejects.toThrow('nieprawidłowy format');
+  });
+
+  it('nie nadpisuje ani nie wysyła niepoprawnego pendingu', async () => {
+    const ownerId = 'konto-bad-pending';
+    const malformed = createEmptyVault('Uszkodzony lokalny profil');
+    malformed.schemaVersion = 1;
+    malformed.history = [{ id: 'bad' } as never];
+    writeJson(cloudVaultOutboxKeyFor(ownerId), {
+      ownerId, revision: 1, queuedAt: new Date().toISOString(), baseUpdatedAt: null, vault: malformed,
+    });
+    const from = vi.fn();
+    mocks.client = {
+      auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: ownerId } } } }) },
+      from,
+    };
+
+    await expect((await import('../cloudVault')).fetchCloudVault(ownerId))
+      .rejects.toThrow('Lokalny zapis CV ma nieprawidłowy format');
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('nie wysyła błędnego snapshotu do Supabase', async () => {
+    const malformed = createEmptyVault('Uszkodzony profil');
+    malformed.schemaVersion = 1;
+    malformed.history = [{ id: 'bad' } as never];
+    const from = vi.fn();
+    mocks.client = {
+      auth: { getSession: vi.fn().mockResolvedValue({ data: { session: { user: { id: 'konto-a' } } } }) },
+      from,
+    };
+
+    await expect(saveCloudVault(malformed, 'konto-a', null)).rejects.toThrow('snapshot ma nieprawidłowy format');
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('zatrzymuje zapis, gdy rewizja w chmurze zmieniła się po odczycie', async () => {

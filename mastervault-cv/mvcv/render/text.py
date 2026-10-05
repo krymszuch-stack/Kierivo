@@ -12,14 +12,31 @@ def text_width(text: str, font: str, size: float, char_space: float = 0.0) -> fl
 
 
 def wrap_text(text: str, font: str, size: float, max_width: float,
-              char_space: float = 0.0) -> list[str]:
-    """Zawijanie po słowach. Długie słowa przekraczające max_width są przycinane z elipsą."""
+              char_space: float = 0.0, *, break_long_words: bool = False) -> list[str]:
+    """Zawija tekst; opcjonalnie dzieli długie tokeny zamiast je skracać."""
     lines: list[str] = []
     for paragraph in text.split("\n"):
         words = paragraph.split()
         if not words:
             lines.append("")
             continue
+        if break_long_words:
+            expanded: list[str] = []
+            for word in words:
+                if text_width(word, font, size, char_space) <= max_width:
+                    expanded.append(word)
+                    continue
+                chunk = ""
+                for character in word:
+                    candidate = chunk + character
+                    if chunk and text_width(candidate, font, size, char_space) > max_width:
+                        expanded.append(chunk)
+                        chunk = character
+                    else:
+                        chunk = candidate
+                if chunk:
+                    expanded.append(chunk)
+            words = expanded
         cur = words[0]
         for w in words[1:]:
             cand = f"{cur} {w}"

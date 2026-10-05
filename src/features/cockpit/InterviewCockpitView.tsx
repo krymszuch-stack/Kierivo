@@ -309,7 +309,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
 
       {/* SECTION 2: TRENER STAR (AI COACH) */}
       {activeSection === 'ai_coach' && (
-        <StarCoachSection vault={vault} />
+        <StarCoachSection key={profileId} vault={vault} />
       )}
 
       {/* SECTION 3: SKILL BRIDGING */}
@@ -640,7 +640,7 @@ export const InterviewCockpitView: React.FC<InterviewCockpitViewProps> = ({
                       </span>
                     </div>
                     <span className="font-mono font-bold text-brand-600">
-                      {attempt.scorecard.overallScore}/100 pkt
+                      Ocena całościowa: nie jest mierzona
                     </span>
                   </div>
                 ))}

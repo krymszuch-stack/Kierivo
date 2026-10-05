@@ -1,6 +1,8 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ClientErrorEvent } from '../types/contracts';
+import { clientErrorEventSchema } from '../types/contracts';
+import { z } from 'zod';
 import { loadConfig } from './config';
 import { getSupabase } from './supabase';
 
@@ -102,6 +104,14 @@ interface LocalStatusEntry {
   resolvedAt?: string;
 }
 
+const localStatusEntrySchema = z.object({
+  status: z.enum(['open', 'triaged', 'resolved']),
+  resolvedAt: z.iso.datetime().optional(),
+});
+const storedClientErrorSchema = clientErrorEventSchema.extend({
+  receivedAt: z.iso.datetime().optional(),
+});
+
 function localStatusPath(): string {
   return `${localSinkPath()}.status.json`;
 }
@@ -109,7 +119,15 @@ function localStatusPath(): string {
 async function readLocalStatuses(): Promise<Record<string, LocalStatusEntry>> {
   try {
     const raw = await readFile(localStatusPath(), 'utf8');
-    return JSON.parse(raw) as Record<string, LocalStatusEntry>;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const statuses: Record<string, LocalStatusEntry> = {};
+    for (const [fingerprint, value] of Object.entries(parsed)) {
+      const entry = localStatusEntrySchema.safeParse(value);
+      if (/^[0-9a-f]{16}$/.test(fingerprint) && entry.success) statuses[fingerprint] = entry.data;
+    }
+    return statuses;
   } catch {
     return {};
   }
@@ -131,7 +149,9 @@ export async function listLocalErrorGroups(): Promise<ErrorGroup[]> {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      const event = JSON.parse(trimmed) as ClientErrorEvent & { receivedAt?: string };
+      const result = storedClientErrorSchema.safeParse(JSON.parse(trimmed));
+      if (!result.success) continue;
+      const event = result.data;
       const existing = groups.get(event.fingerprint);
       if (!existing) {
         const local = statuses[event.fingerprint];
@@ -243,8 +263,8 @@ export async function pruneClientErrors(policy: RetentionPolicy): Promise<{ remo
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      const event = JSON.parse(trimmed) as { fingerprint?: string };
-      if (event.fingerprint && keepSet.has(event.fingerprint)) survivingLines.push(trimmed);
+      const result = storedClientErrorSchema.safeParse(JSON.parse(trimmed));
+      if (result.success && keepSet.has(result.data.fingerprint)) survivingLines.push(trimmed);
     } catch {
       /* uszkodzone linie przy okazji znikają */
     }

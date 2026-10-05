@@ -1,7 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { runQuickAtsCheck, extractTopThreeProblems, QuickCheckError, MIN_CV_CHARS } from '../quickAtsCheck';
 import { calculateJobMatch } from '../jobMatcherEngine';
+import { mapJdKeywords } from '../jdKeywordMapper';
 import type { JobOffer } from '../../types';
+
+// Równoważność dwóch ścieżek porównujemy przy tym samym czasie obliczenia.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-02T12:00:00.000Z'));
+});
+afterEach(() => vi.useRealTimers());
 
 const CV = `
 Anna Kowalska
@@ -35,6 +43,65 @@ Oferujemy pracę zdalną i pakiet medyczny.
 `;
 
 describe('Szybkie sprawdzenie CV pod ofertę', () => {
+  it('nie pokazuje zera ani nie obwinia pustego CV, gdy parser nie wydobył treści z wklejonego dokumentu', () => {
+    const rawCv = 'SYNTHETIC TEST PROFILE\nIT Support Technician\nDoświadczenie: rozwiązywanie zgłoszeń, obsługa Microsoft 365, diagnoza Windows 11 i eskalacje do II linii.';
+    const jd = 'We are looking for a colleague to join our friendly company team. This is an office-based role with onboarding and support. Apply now and talk to us.';
+    const result = runQuickAtsCheck(rawCv, jd);
+
+    expect(result.canonicalResult.state).toBe('INSUFFICIENT_CV');
+    expect(result.canonicalResult.score).toBeNull();
+    expect(result.canonicalResult.reason).toContain('sprawdź odczyt CV');
+  });
+
+  it('odrzuca zbyt długie CV przed liczeniem wyniku i wskazuje pole CV', () => {
+    const longCv = `${CV}${' dodatkowy opis'.repeat(14_000)}`;
+
+    try {
+      runQuickAtsCheck(longCv, JD);
+      throw new Error('Oczekiwano QuickCheckError dla CV przekraczającego limit.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(QuickCheckError);
+      expect(error).toMatchObject({ field: 'cv' });
+      expect((error as Error).message).toMatch(/przekracza limit 200.?000 znaków/i);
+    }
+  });
+
+  it('szybki start nie zgłasza alternatywnej Jiry i wykrywa triage z obowiązków', () => {
+    const cv = `MAJA NOWAK\nIT Support Specialist\nPodsumowanie\nWsparcie użytkowników w środowisku Microsoft 365. Diagnozowanie problemów, obsługa zgłoszeń i komunikacja z użytkownikami.\nDoświadczenie\nIT Support Specialist — Example Helpdesk, Warszawa | 2022–2025\n• Obsługa 25–30 zgłoszeń dziennie w ServiceNow; kategoryzowanie, ustalanie priorytetu i przekazywanie incydentów do zespołów L2.\n• Pilnowanie terminów SLA oraz informowanie użytkowników o postępie rozwiązania.\n• Resetowanie haseł, konfiguracja kont i skrzynek w Microsoft 365 / Exchange Online.\n• Dokumentowanie rozwiązań w bazie wiedzy i wdrażanie nowych użytkowników.\nUmiejętności\nServiceNow, Microsoft 365, Exchange Online, Active Directory, Windows 10/11, diagnostyka, obsługa klienta.`;
+    const jd = `Support Engineer — Example Support Ltd\nRequired\n• Experience with ticketing systems such as ServiceNow or Jira Service Management.\n• Incident triage, prioritization and escalation to L2.\n• Customer-facing technical support.\n• Microsoft Exchange Online administration.\n• PowerShell scripting experience.\nPreferred\n• Microsoft Intune device management.`;
+    const result = runQuickAtsCheck(cv, jd);
+
+    expect(result.canonicalResult.missingRequirements).not.toContain('jira');
+    expect(result.canonicalResult.matchedRequirements).toContain('incident triage');
+    expect(result.canonicalResult.matchedRequirements).toContain('customer-facing support');
+    expect(result.canonicalResult.missingRequirements).toContain('powershell');
+    expect(result.missingSkills).not.toContain('jira');
+
+    // Regresja caĹ‚ej Ĺ›cieĹĽki: parser CV, szybki wynik, matcher szczegĂłĹ‚owy i rachunek dowodĂłw
+    // muszÄ… zachowaÄ‡ to samo rozumienie jawnie opisanych obowiÄ…zkĂłw.
+    const offer: JobOffer = {
+      id: 'synthetic-support-evidence',
+      title: 'Support Engineer',
+      company: 'Example Support Ltd',
+      salary: '',
+      location: '',
+      description: jd,
+      requirements: [],
+      remote: false,
+      portal: 'synthetic-test',
+      techStack: [],
+    };
+    const detailed = calculateJobMatch(result.vault, offer);
+    expect(detailed.canonicalResult).toEqual(result.canonicalResult);
+
+    const evidence = mapJdKeywords(jd, result.vault, detailed.tailoredResume);
+    const findKeyword = (term: string) => evidence.keywords.find((item) => item.term.toLowerCase() === term.toLowerCase());
+    expect(findKeyword('incident triage')?.status).toBe('MATCHED_IN_CV');
+    expect(findKeyword('customer-facing support')?.status).toBe('MATCHED_IN_CV');
+    expect(findKeyword('powershell')?.status).toBe('MISSING_IN_VAULT');
+    expect(findKeyword('incident triage')?.foundInCvEvidence?.join(' ')).toMatch(/kategoryz|priorytet|incydent/i);
+  });
+
   it('zwraca wynik liczbowy w sensownym zakresie', () => {
     const { ats } = runQuickAtsCheck(CV, JD);
 
@@ -67,6 +134,18 @@ Oferujemy stabilne zatrudnienie i pakiet benefitów.`;
     expect(result.missingSkills.map((item) => item.toLowerCase()))
       .toEqual(expect.arrayContaining(['windows 11', 'microsoft 365', 'tcp/ip']));
     expect(result.canonicalResult.components.skills).toBeLessThan(100);
+  });
+
+  it('nie traktuje słowa Required z nagłówka oferty jako wymaganej umiejętności', () => {
+    const jd = `Helpdesk Analyst
+Required qualifications
+Microsoft Exchange Online administration is required for daily mailbox support.
+ServiceNow ticket management is required.`;
+    const result = runQuickAtsCheck(CV, jd);
+
+    expect(result.missingSkills.map((item) => item.toLowerCase())).not.toContain('required');
+    expect(result.missingSkills.map((item) => item.toLowerCase())).toContain('exchange online');
+    expect(result.canonicalResult.missingRequirements.map((item) => item.toLowerCase())).not.toContain('required');
   });
 
   it('NIE zgłasza jako brakującej umiejętności, którą CV wprost zawiera', () => {
@@ -134,12 +213,13 @@ Oferujemy stabilne zatrudnienie i pakiet benefitów.`;
 Alicja Testowa
 alicia@example.test
 Specjalistka wsparcia operacyjnego
+Podsumowanie: Nie znam SAP ani AWS. Jestem w trakcie nauki Kubernetes.
 
 Doświadczenie zawodowe:
 SAP Polska - Specjalistka obsługi klienta, 2021 - 2025
 Obsługa zgłoszeń, organizacja dokumentacji oraz kontakt z klientami.
 
-Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy.
+Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy, w trakcie nauki Kubernetes.
 
 Wykształcenie:
 AWS Academy Kraków - Technik logistyk, 2017 - 2021
@@ -155,13 +235,18 @@ Doświadczenie we wsparciu użytkowników i sprawnej komunikacji z zespołem.`;
     expect(result.vault.skillsMatrix.toolsAndTech).not.toContain('SAP');
     expect(result.vault.skillsMatrix.hardSkills).not.toContain('AWS');
     expect(result.vault.skillsMatrix.toolsAndTech).not.toContain('AWS');
+    expect(result.vault.skillsMatrix.hardSkills).not.toContain('Kubernetes');
+    expect(result.vault.skillsMatrix.toolsAndTech).not.toContain('Kubernetes');
+    expect(result.vault.skillsMatrix.hardSkills.map((skill) => skill.toLowerCase())).not.toEqual(
+      expect.arrayContaining(['i do not know sap or aws', 'currently learning kubernetes'])
+    );
     expect(result.missingSkills.map((skill) => skill.toLowerCase())).toEqual(expect.arrayContaining(['sap', 'aws']));
     const problemText = extractTopThreeProblems(result).map((problem) => problem.title.toLowerCase()).join(' ');
     expect(problemText).toContain('sap');
     expect(problemText).toContain('aws');
 
     const cvWithExplicitEvidence = cv.replace(
-      'Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy.',
+      'Umiejętności: obsługa klienta, dokumentacja, komunikacja, organizacja pracy, w trakcie nauki Kubernetes.',
       'Umiejętności: SAP, AWS, obsługa klienta, dokumentacja, komunikacja, organizacja pracy.'
     );
     const matchedResult = runQuickAtsCheck(cvWithExplicitEvidence, jd);
@@ -183,8 +268,8 @@ Doświadczenie we wsparciu użytkowników i sprawnej komunikacji z zespołem.`;
   it('lepiej dopasowane CV dostaje wyższy wynik', () => {
     const better = `${CV}\nDodatkowe umiejętności: Kubernetes, Terraform, AWS`;
 
-    expect(runQuickAtsCheck(better, JD).ats.overallScore).toBeGreaterThanOrEqual(
-      runQuickAtsCheck(CV, JD).ats.overallScore
+    expect(runQuickAtsCheck(better, JD).ats.overallScore!).toBeGreaterThanOrEqual(
+      runQuickAtsCheck(CV, JD).ats.overallScore!
     );
   });
 

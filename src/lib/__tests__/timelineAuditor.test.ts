@@ -7,11 +7,18 @@ import {
   hasMeasurableMetric,
   isRemoteOrFlexibleWork,
   calculateMonthsBetween,
+  parseYearMonthToNumbers,
   GOOGLE_XYZ_TEMPLATE,
 } from '../consistencyGuard/timelineAuditor';
 import { WorkExperience } from '../../types';
 
 describe('TimelineAuditor & Logic Validator', () => {
+  it('nie normalizuje niepoprawnych dat do innego miesiąca', () => {
+    expect(parseYearMonthToNumbers('2020-02-30')).toBeNull();
+    expect(parseYearMonthToNumbers('03/04/2020')).toBeNull();
+    expect(parseYearMonthToNumbers('2020-02-29')).toEqual({ year: 2020, month: 2 });
+  });
+
   describe('calculateMonthsBetween & pomocnicze', () => {
     it('poprawnie oblicza liczbę miesięcy przerwy', () => {
       // 2022-04 do 2022-05 -> 0 miesięcy przerwy
@@ -132,6 +139,15 @@ describe('TimelineAuditor & Logic Validator', () => {
       const gaps = detectCareerGaps(history);
       expect(gaps).toHaveLength(0);
     });
+
+    it('nie zgłasza luki na podstawie niepoprawnej podanej daty końcowej', () => {
+      const history: WorkExperience[] = [
+        { id: 'bad-date', company: 'Firma A', role: 'Dev', location: 'Kraków', startDate: '2020-01', endDate: '2020-02-30', isCurrent: false, highlights: [] },
+        { id: 'later', company: 'Firma B', role: 'Dev', location: 'Kraków', startDate: '2021-01', endDate: '2022-01', isCurrent: false, highlights: [] },
+      ];
+
+      expect(detectCareerGaps(history)).toHaveLength(0);
+    });
   });
 
   describe('detectOverlappingExperiences (Kolizje lokalizacji i nakładanie dat)', () => {
@@ -224,6 +240,15 @@ describe('TimelineAuditor & Logic Validator', () => {
       const overlapAlert = alerts.find((a) => a.type === 'OVERLAPPING_EXPERIENCE');
       expect(overlapAlert).toBeDefined();
       expect(overlapAlert?.severity).toBe('WARNING');
+    });
+
+    it('nie zgłasza nakładania na podstawie niepoprawnej daty końcowej', () => {
+      const history: WorkExperience[] = [
+        { id: 'bad-date', company: 'Firma A', role: 'Dev', location: 'Kraków', startDate: '2020-01', endDate: '2020-02-30', isCurrent: false, highlights: [] },
+        { id: 'later', company: 'Firma B', role: 'Dev', location: 'Kraków', startDate: '2020-03', endDate: '2020-05', isCurrent: false, highlights: [] },
+      ];
+
+      expect(detectOverlappingExperiences(history)).toHaveLength(0);
     });
   });
 

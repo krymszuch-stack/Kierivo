@@ -1,27 +1,28 @@
 import { ApplicationStatus } from '../../types';
 
-export interface ApplicationProgressMetric {
-  /** null oznacza brak wysłanych/aktywnych aplikacji, czyli brak mianownika. */
+export interface CurrentApplicationStageShare {
+  /** null means there are no submitted applications, so there is no denominator. */
   percent: number | null;
-  eligibleCount: number;
-  progressedCount: number;
+  submittedCount: number;
+  currentAdvancedStageCount: number;
 }
 
 /**
- * Mierzy przejście od wysłania do rozmowy/oferty, nie ogólny odzew.
- * Szkice nie są wysłane, a „Odrzucona” nie rozróżnia decyzji pracodawcy od
- * rezygnacji kandydata, więc żaden z tych stanów nie daje wiarygodnego mianownika.
+ * Pokazuje udzial rekordow, ktorych aktualny status to rozmowa lub oferta.
+ * Tracker przechowuje biezacy status, nie pelna historie etapow; po zamknieciu
+ * procesu nie da sie ustalic, czy wczesniej byla rozmowa. Dlatego tej liczby
+ * nie opisujemy jako historycznej konwersji ani odpowiedzi pracodawcow.
  */
-export function calculateApplicationProgress(
+export function calculateCurrentApplicationStageShare(
   statuses: readonly ApplicationStatus[],
-): ApplicationProgressMetric {
-  const eligibleStatuses: readonly ApplicationStatus[] = ['Wysłana', 'Rozmowa', 'Oferta', 'Odrzucona'];
-  const eligibleCount = statuses.filter((status) => eligibleStatuses.includes(status)).length;
-  const progressedCount = statuses.filter((status) => status === 'Rozmowa' || status === 'Oferta').length;
+): CurrentApplicationStageShare {
+  const submittedStatuses: readonly ApplicationStatus[] = ['Wys\u0142ana', 'Rozmowa', 'Oferta', 'Odrzucona'];
+  const submittedCount = statuses.filter((status) => submittedStatuses.includes(status)).length;
+  const currentAdvancedStageCount = statuses.filter((status) => status === 'Rozmowa' || status === 'Oferta').length;
 
   return {
-    percent: eligibleCount === 0 ? null : Math.round((progressedCount / eligibleCount) * 100),
-    eligibleCount,
-    progressedCount,
+    percent: submittedCount === 0 ? null : Math.round((currentAdvancedStageCount / submittedCount) * 100),
+    submittedCount,
+    currentAdvancedStageCount,
   };
 }

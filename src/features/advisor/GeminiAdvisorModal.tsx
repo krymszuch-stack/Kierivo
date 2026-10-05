@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import { createAdvisorRequestGuard } from './advisorRequestGuard';
 import {
   Sparkles,
   Send,
@@ -18,6 +19,9 @@ import { Button } from '../../components/ui/Button';
 import { ApiError, api } from '../../lib/apiClient';
 import { trackProductInsight } from '../../lib/productInsights';
 import type { AdvisorContext } from './advisorContext';
+import { getAnalysisFreshnessDetails } from '../../lib/analysisFreshness';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
+import { Card } from '../../components/ui/Card';
 import type { NavTabId } from '../../lib/navigation';
 import { SectionRewriterView } from './SectionRewriterView';
 import { useAuth } from '../../context/AuthContext';
@@ -172,11 +176,24 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   isOpen,
   onClose,
   initialQuestion,
-  advisorContext,
+  advisorContext: storedAdvisorContext,
+  vault,
   onNavigate,
 }) => {
-  const { user } = useAuth();
+  const analysisNow = useAnalysisClock();
+  const contextFreshness = getAnalysisFreshnessDetails(storedAdvisorContext, vault?.updatedAt, analysisNow);
+  const advisorContext = contextFreshness.state === 'current' ? storedAdvisorContext : null;
+  const contextNotice = storedAdvisorContext && contextFreshness.state !== 'current' ? (
+    <Card tone="flat" className="mb-4 border-warning/40 p-4 text-sm" role="status">
+      <p className="font-semibold text-warning-fg">Kontekst analizy wymaga odświeżenia</p>
+      <p className="mt-2 text-muted">{contextFreshness.note}</p>
+      <p className="mt-2 text-muted">Doradca nie dołączy poprzedniego wyniku ani listy braków do pytania.</p>
+      <Button variant="outline" className="mt-3" onClick={() => { onNavigate?.('aplikuj'); onClose(); }}>Przejdź do ponownej analizy</Button>
+    </Card>
+  ) : null;
+  const { user, mode, session } = useAuth();
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
+  const authScope = useMemo(() => ({ profileId, mode, session }), [profileId, mode, session]);
   const [initialCache] = useState(() => readAdvisorConversation(profileId));
   const [conversationProfileId, setConversationProfileId] = useState(profileId);
   const [messages, setMessages] = useState<AdvisorChatMessage[]>(() => {
@@ -189,7 +206,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   const [inputVal, setInputVal] = useState(() => initialCache.draft);
   const visibleInput = conversationProfileId === profileId ? inputVal : '';
   const [isTyping, setIsTyping] = useState(false);
-  const [healthState, setHealthState] = useState<AdvisorAvailabilityState>('checking');
+  const [azureConsent, setAzureConsent] = useState(false);
   const [selectedFaq, setSelectedFaq] = useState(FAQ_ENTRIES[0]);
   const [advisorTab, setAdvisorTab] = useState<'chat' | 'rewriter'>('rewriter');
   const userSelectedTabRef = useRef(false);
@@ -201,6 +218,8 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
     setMessages(cache.messages.length > 0 ? cache.messages : [createWelcomeMessage()]);
     setInputVal(cache.draft);
     setConversationProfileId(profileId);
+    setAzureConsent(false);
+    setIsTyping(false);
   }, [conversationProfileId, profileId]);
 
   const handleTabChange = (tab: 'chat' | 'rewriter') => {
@@ -208,35 +227,53 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
     setAdvisorTab(tab);
   };
 
-  const [advisorStatus, setAdvisorStatus] = useState<{
+  const [advisorStatusSnapshot, setAdvisorStatus] = useState<{
+    scope: typeof authScope;
+    state: AdvisorAvailabilityState;
     checked: boolean;
     connected: boolean;
     models: Array<{ name: string }>;
     activeModel: string;
     error?: string;
   }>({
+    scope: authScope,
+    state: 'checking',
     checked: false,
     connected: false,
     models: [],
     activeModel: '',
   });
-
-  const [azureConsent, setAzureConsent] = useState(false);
+  // Poprzedni status przestaje obowiązywać już w renderze nowej sesji,
+  // zanim efekt rozpocznie ponowne sprawdzanie.
+  const advisorStatus = advisorStatusSnapshot.scope === authScope
+    ? advisorStatusSnapshot
+    : { ...advisorStatusSnapshot, checked: false, connected: false, state: 'checking' as const, error: undefined };
+  const healthState = advisorStatus.state;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const advisorRequestInFlightRef = useRef(false);
+  const [advisorRequestGuard] = useState(createAdvisorRequestGuard);
+  const [advisorStatusGuard] = useState(createAdvisorRequestGuard);
+  useLayoutEffect(() => () => advisorStatusGuard.invalidate(), [advisorStatusGuard, authScope, isOpen]);
+  // Cleanup przy zmianie profilu działa w fazie commit, przed obsługą obietnic.
+  // Sama zgodność ID nie wystarcza dla przejścia A → B → A.
+  useLayoutEffect(() => () => advisorRequestGuard.invalidate(), [advisorRequestGuard, profileId]);
   const handledInitialQuestionRef = useRef<string | undefined>(undefined);
 
   const checkAdvisor = useCallback(async () => {
-    setHealthState('checking');
+    // Ponowne sprawdzenie zastępuje poprzednie; spóźniony wynik nie ma pierwszeństwa.
+    advisorStatusGuard.invalidate();
+    const statusToken = advisorStatusGuard.begin()!;
+    setAdvisorStatus({ scope: authScope, state: 'checking', checked: false, connected: false, models: [], activeModel: '' });
     try {
       const res = await checkAdvisorWithTimeout(
         (signal) => api.get<AdvisorStatusResponse>('/advisor/status', { signal }),
         5000
       );
 
-      setHealthState(res.state);
+      if (!advisorStatusGuard.isCurrent(statusToken)) return;
       setAdvisorStatus({
+        scope: authScope,
+        state: res.state,
         checked: true,
         connected: Boolean(res.connected),
         models: res.models || [],
@@ -249,8 +286,10 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         setAdvisorTab(resolveDefaultAdvisorTab(res.state));
       }
     } catch (err: unknown) {
-      setHealthState('unavailable');
+      if (!advisorStatusGuard.isCurrent(statusToken)) return;
       setAdvisorStatus({
+        scope: authScope,
+        state: 'unavailable',
         checked: true,
         connected: false,
         models: [],
@@ -264,23 +303,30 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       if (!userSelectedTabRef.current) {
         setAdvisorTab('rewriter');
       }
+    } finally {
+      advisorStatusGuard.finish(statusToken);
     }
-  }, []);
+  }, [advisorStatusGuard, authScope]);
 
   useEffect(() => {
     if (isOpen) {
-      userSelectedTabRef.current = false;
       void checkAdvisor();
-      trackProductInsight('advisor_opened');
     }
   }, [isOpen, checkAdvisor]);
+  useEffect(() => {
+    if (isOpen) {
+      userSelectedTabRef.current = false;
+      trackProductInsight('advisor_opened');
+    }
+  }, [isOpen]);
 
   const handleSend = useCallback(
     async (textToSend?: string) => {
       const query = textToSend || inputVal;
-      if (conversationProfileId !== profileId || !query.trim() || !advisorStatus.connected || !azureConsent || advisorRequestInFlightRef.current) return;
+      if (conversationProfileId !== profileId || !query.trim() || !advisorStatus.connected || !azureConsent) return;
       // Blokada refem zamyka wyścig dwóch kliknięć przed następnym renderem Reacta.
-      advisorRequestInFlightRef.current = true;
+      const requestToken = advisorRequestGuard.begin();
+      if (!requestToken) return;
 
       const userMsg: AdvisorChatMessage = {
         id: `m-${Date.now()}`,
@@ -299,10 +345,13 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         const res = await api.post<AdvisorChatResponse>('/advisor/chat', {
           query: query.trim(),
           history: messages.slice(-10),
-          context: advisorContext ?? undefined,
+          // Ponowna kontrola przy wysłaniu zamyka okno między renderem a kliknięciem.
+          context: getAnalysisFreshnessDetails(storedAdvisorContext, vault?.updatedAt).state === 'current'
+            ? storedAdvisorContext ?? undefined : undefined,
           consentToAzure: true,
         });
 
+        if (!advisorRequestGuard.isCurrent(requestToken)) return;
         if (res && res.success && res.reply) {
           const aiMsg: AdvisorChatMessage = {
             id: `m-${Date.now() + 1}`,
@@ -317,6 +366,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         }
         throw new Error('Azure OpenAI nie zwróciło odpowiedzi.');
       } catch (err: unknown) {
+        if (!advisorRequestGuard.isCurrent(requestToken)) return;
         const errDetail = err instanceof Error ? err.message : 'brak połączenia';
         const aiMsg: AdvisorChatMessage = {
           id: `m-${Date.now() + 1}`,
@@ -326,11 +376,10 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         };
         setMessages((prev) => [...prev, aiMsg]);
       } finally {
-        advisorRequestInFlightRef.current = false;
-        setIsTyping(false);
+        if (advisorRequestGuard.finish(requestToken)) setIsTyping(false);
       }
     },
-    [advisorContext, azureConsent, conversationProfileId, inputVal, messages, profileId, advisorStatus.connected]
+    [storedAdvisorContext, vault, azureConsent, conversationProfileId, inputVal, messages, profileId, advisorStatus.connected, advisorRequestGuard]
   );
 
   useEffect(() => {
@@ -339,7 +388,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
   }, [conversationProfileId, inputVal, messages, profileId]);
 
   const handleNewConversation = () => {
-    if (advisorRequestInFlightRef.current) return;
+    if (advisorRequestGuard.isBusy()) return;
     clearAdvisorConversation(profileId);
     setMessages([createWelcomeMessage()]);
     setInputVal('');
@@ -381,6 +430,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         size="lg"
       >
         <div className="space-y-4">
+          {contextNotice}
           {/* Zakładki główne Doradcy */}
           <div className="flex items-center gap-2 border-b border-line pb-2.5">
             <button
@@ -413,6 +463,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
           {advisorTab === 'rewriter' ? (
             <div className="space-y-6">
               <SectionRewriterView
+                key={profileId}
                 initialRole={advisorContext?.offerTitle}
                 azureAvailable={advisorStatus.connected}
                 onNavigateToProfile={() => {
@@ -499,6 +550,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
       size="lg"
     >
       <div className="flex h-[560px] flex-col">
+        {contextNotice}
         {/* Zakładki główne Doradcy */}
         <div className="flex items-center gap-2 border-b border-line pb-2.5 mb-2">
           <button
@@ -531,6 +583,7 @@ export const GeminiAdvisorModal: React.FC<GeminiAdvisorModalProps> = ({
         {advisorTab === 'rewriter' ? (
           <div className="flex-1 overflow-y-auto space-y-6 p-1">
             <SectionRewriterView
+              key={profileId}
               initialRole={advisorContext?.offerTitle}
               azureAvailable={advisorStatus.connected}
               onNavigateToProfile={() => {

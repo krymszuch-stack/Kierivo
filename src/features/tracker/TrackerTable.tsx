@@ -19,6 +19,7 @@ import { StatusSelect, ApplicationStatus } from './StatusSelect';
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { getApplicationDisplayInfo } from './applicationDisplay';
+import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
 
 export interface TrackerTableProps {
   applications: JobApplication[];
@@ -98,6 +99,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
       <div className="space-y-2">
         <AnimatePresence mode="popLayout">
           {applications.map((app) => {
+            const safeJobUrl = normalizeExternalHttpUrl(app.jobUrl);
             const {
               companyMissing: companyIsPlaceholder,
               companyLabel,
@@ -133,9 +135,9 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                         <span className="truncate font-sans text-sm font-bold text-ink block">
                           {companyLabel}
                         </span>
-                        {app.jobUrl && (
+                        {safeJobUrl && (
                           <a
-                            href={app.jobUrl}
+                            href={safeJobUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 font-mono text-[10px] text-muted hover:text-brand-fg"
@@ -204,9 +206,9 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                           <span className="truncate font-sans text-sm font-bold text-ink">
                             {companyLabel}
                           </span>
-                          {app.jobUrl && (
+                          {safeJobUrl && (
                             <a
-                              href={app.jobUrl}
+                              href={safeJobUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 font-mono text-[10px] text-muted hover:text-brand-fg"

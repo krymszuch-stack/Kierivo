@@ -25,7 +25,6 @@ import {
   buildNegotiationTactics,
   calculateFeasibility,
   canShowFeasibilityResult,
-  compareOfferWithAnother,
   detectBenefits,
   effectiveOfficeDays,
   type ContractType,
@@ -39,6 +38,7 @@ import { Tooltip } from '../../components/ui/Tooltip';
 import { Button } from '../../components/ui/Button';
 import { showToast } from '../../store/useToastStore';
 import { useApplications } from '../../store/useApplications';
+import { copyTextAndNotifySuccess } from '../../lib/copyTextAndNotifySuccess';
 import { ReachableRangeMap } from '../../components/mobility/ReachableRangeMap';
 import {
   fetchRouteMobility,
@@ -85,8 +85,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
   const [routeResult, setRouteResult] = useState<RouteCalculationResult | null>(null);
   const [rangeResult, setRangeResult] = useState<ReachableRangeResult | null>(null);
   const [isLoadingMobility, setIsLoadingMobility] = useState(false);
+  const [mobilityUnavailable, setMobilityUnavailable] = useState(false);
 
-  const homeCity = prefs.homeCity || 'Moja lokalizacja';
+  const homeCity = prefs.homeCity || '';
   const officeCity = prefs.officeCity || offer.location || 'Lokalizacja pracy';
 
   const benefits = useMemo(
@@ -120,13 +121,20 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
     let isCancelled = false;
 
     async function loadAzureMobility() {
-      if (prefs.workMode === 'REMOTE' || officeDays === 0) return;
+      // Geokodujemy wyłącznie miasta podane przez użytkownika; etykiety
+      // zastępcze nie są adresem i nie mogą uruchamiać prawdziwego zapytania.
+      if (!homeCity || !prefs.homeCity || !offer.location || prefs.workMode === 'REMOTE' || officeDays === 0) {
+        setRouteResult(null);
+        setRangeResult(null);
+        setMobilityUnavailable(false);
+        return;
+      }
       setIsLoadingMobility(true);
       try {
         const [route, range] = await Promise.all([
           fetchRouteMobility({
             origin: homeCity,
-            destination: officeCity,
+            destination: prefs.officeCity || offer.location,
             engineType,
             trafficMode: isPeak ? 'peak' : 'smooth',
           }).catch(() => null),
@@ -138,16 +146,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
         ]);
 
         if (!isCancelled) {
-          if (route) {
-            setRouteResult(route);
-            // Jeśli użytkownik nie wpisał własnego kosztu, podpowiedz wyliczony przez model
-            if (prefs.monthlyCommuteCost === 300 && route.energyConsumption.costMonthlyPln > 0) {
-              patch({ monthlyCommuteCost: route.energyConsumption.costMonthlyPln });
-            }
-          }
-          if (range) {
-            setRangeResult(range);
-          }
+          setRouteResult(route);
+          setRangeResult(range);
+          setMobilityUnavailable(!route && !range);
         }
       } finally {
         if (!isCancelled) setIsLoadingMobility(false);
@@ -161,14 +162,19 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
     };
   }, [homeCity, officeCity, engineType, isPeak, prefs.oneWayMinutes, prefs.workMode, officeDays]);
 
-  const handleCopyTactic = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedTacticId(id);
-    showToast('Skopiowano taktykę do schowka', {
-      message: 'Możesz wkleić ten argument podczas rozmowy lub odpisywania rekruterowi.',
-      variant: 'success',
-    });
-    setTimeout(() => setCopiedTacticId(null), 2500);
+  const handleCopyTactic = async (id: string, text: string) => {
+    try {
+      await copyTextAndNotifySuccess(text, () => {
+        setCopiedTacticId(id);
+        showToast('Skopiowano taktykę do schowka', {
+          message: 'Możesz wkleić ten argument podczas rozmowy lub odpisywania rekruterowi.',
+          variant: 'success',
+        });
+        setTimeout(() => setCopiedTacticId(null), 2500);
+      });
+    } catch {
+      showToast('Nie udało się skopiować', { message: 'Zaznacz treść taktyki i skopiuj ją ręcznie.', variant: 'error' });
+    }
   };
 
   // Porównanie z inną aplikacją z Trackera
@@ -179,22 +185,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
   }, [applications, offer.company]);
 
   const [selectedCompareAppId, setSelectedCompareAppId] = useState<string | null>(null);
-  const comparisonSummary = useMemo(() => {
-    if (!result || comparisonOptions.length === 0) return null;
-    const target = comparisonOptions.find((a) => a.id === selectedCompareAppId) || comparisonOptions[0];
-    if (!target) return null;
-
-    // Przeliczenie uproszczone dla innej oferty
-    const numericSalary = parseInt(target.salary?.replace(/\D/g, '') || '8000', 10) || 8000;
-    return compareOfferWithAnother(result, {
-      company: target.company,
-      role: target.position,
-      salaryNet: Math.round(numericSalary * 0.72),
-      commuteMinutes: 25,
-      officeDays: 3,
-      commuteCost: 260,
-    });
-  }, [result, comparisonOptions, selectedCompareAppId]);
+  const selectedCompareApp = comparisonOptions.find((app) => app.id === selectedCompareAppId) || comparisonOptions[0] || null;
 
   return (
     <section
@@ -211,9 +202,9 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
               <span className="inline-flex items-center gap-1.5 rounded-full border border-[#155EEF]/30 bg-[#155EEF]/10 px-2.5 py-0.5 font-mono text-[10px] font-extrabold uppercase tracking-wider text-[#155EEF]">
                 <Sparkles className="h-3 w-3" /> Mobility Intelligence
               </span>
-              {routeResult?.source === 'azure_maps' && (
+              {routeResult && (
                 <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-                  Azure Maps API Active
+                  {routeResult.source === 'azure_maps' ? 'Azure Maps' : 'Szacunek z lokalnego rejestru'}
                 </span>
               )}
             </div>
@@ -310,6 +301,12 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
             <span>Zatwierdzam parametry (pokaż wynik)</span>
           </label>
         </div>
+        <p role="note" className="text-[11px] leading-relaxed text-muted">
+          UoP: średnia miesięczna dla 2026 r. przy stałej pensji przez 12 miesięcy, jednej umowie,
+          standardowych KUP 250 zł/mies. i pełnym PIT-2; uwzględnia próg 32% i roczny limit składek
+          emerytalno-rentowych. Bez innych dochodów opodatkowanych skalą, PPK i ulg. Miesięczna
+          wypłata może się różnić. B2B: wpisz kwotę po podatkach i składkach.
+        </p>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -422,7 +419,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
           />
         )}
 
-        {officeDays > 0 && (
+            {officeDays > 0 && (
           <div className="grid gap-3 sm:grid-cols-2 pt-1">
             <Slider
               label="Dojazd w jedną stronę"
@@ -430,9 +427,14 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
               min={10}
               max={90}
               step={5}
-              value={prefs.oneWayMinutes}
+              value={prefs.oneWayMinutes >= 10 ? prefs.oneWayMinutes : 10}
               onChange={(oneWayMinutes) => patch({ oneWayMinutes })}
             />
+            {prefs.oneWayMinutes < 10 && (
+              <p role="note" className="mt-1 text-[10px] leading-relaxed text-warning-fg">
+                Ustaw rzeczywisty czas dojazdu. Widoczne 10 min jest tylko początkiem skali i nie liczy się do wyniku, dopóki go nie zatwierdzisz.
+              </p>
+            )}
             <Slider
               label="Koszt miesięczny transportu"
               unit="zł"
@@ -522,7 +524,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                 >
                   <span>Warunki:</span>
                   <span className={isPeak ? 'text-amber-500 font-bold' : 'text-emerald-500 font-bold'}>
-                    {isPeak ? 'Poranny szczyt (07:45)' : 'Płynny przejazd'}
+                    {isPeak ? 'Ruch teraz' : 'Czas bez korków'}
                   </span>
                 </button>
               </div>
@@ -536,6 +538,7 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                 isPeakTraffic={isPeak}
                 engineType={engineType}
                 isLoading={isLoadingMobility}
+                dataUnavailable={mobilityUnavailable}
               />
             </div>
           )}
@@ -582,12 +585,12 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
           )}
 
           {/* Zawartość Zakładki 3: PORÓWNYWARKA OFERT */}
-          {activeTab === 'COMPARE' && comparisonSummary && (
+          {activeTab === 'COMPARE' && selectedCompareApp && (
             <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-ink">Porównanie z inną aplikacją z Trackera:</span>
+                <span className="text-xs font-bold text-ink">Por?wnanie z inn? aplikacj? z Trackera:</span>
                 <select
-                  value={selectedCompareAppId || ''}
+                  value={selectedCompareApp.id}
                   onChange={(e) => setSelectedCompareAppId(e.target.value)}
                   className="rounded-lg border border-line bg-surface px-2 py-1 text-xs font-mono text-ink"
                 >
@@ -598,32 +601,15 @@ export const JobFeasibilityAdvisor: React.FC<JobFeasibilityAdvisorProps> = ({
                   ))}
                 </select>
               </div>
-
-              <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="rounded-xl border border-[#155EEF]/30 bg-[#155EEF]/5 p-3">
-                  <span className="block text-[11px] font-bold text-[#155EEF]">Bieżąca oferta</span>
-                  <span className="font-mono text-2xl font-black text-ink">
-                    {result?.realHourlyRate.toFixed(2)} zł/h
-                  </span>
-                  <span className="block text-[10px] text-muted">{offer.company}</span>
-                </div>
-
-                <div className="rounded-xl border border-line bg-sunken/60 p-3">
-                  <span className="block text-[11px] font-bold text-muted">Inna oferta</span>
-                  <span className="font-mono text-2xl font-black text-ink">
-                    {comparisonSummary.otherRealHourlyRate.toFixed(2)} zł/h
-                  </span>
-                  <span className="block text-[10px] text-muted">{comparisonSummary.otherCompanyName}</span>
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-[#155EEF]/10 border border-[#155EEF]/20 p-3 text-xs leading-relaxed text-ink">
-                <strong>Werdykt opłacalności:</strong> {comparisonSummary.verdictText}
-              </div>
+              <p role="note" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+                Nie pokazujemy porównania stawki godzinowej. Tracker nie przechowuje dla tej aplikacji potwierdzonej formy umowy ani czasu i kosztu dojazdu; obliczenie wymagałoby zgadywania tych danych.
+              </p>
+              <p className="text-xs text-muted">
+                Wybrana aplikacja: <strong className="text-ink">{selectedCompareApp.company}</strong> — {selectedCompareApp.position}.
+              </p>
             </div>
           )}
 
-          {/* Zawartość Zakładki 4: PAKIET BENEFITÓW */}
           {activeTab === 'BENEFITS' && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">

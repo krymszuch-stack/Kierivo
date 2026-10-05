@@ -28,7 +28,7 @@ import { LiveTrackerView } from '../../components/loop/LiveTrackerView';
 import { PostCallDebriefView } from '../../components/loop/PostCallDebriefView';
 import { Button } from '../../components/ui/Button';
 import { Chip } from '../../components/ui/Chip';
-import { useAuth } from '../../context/AuthContext';
+import { useOptionalAuth } from '../../context/AuthContext';
 import { ANONYMOUS_PROFILE_ID } from '../../lib/localProfile';
 
 export interface InterviewLoopModalProps {
@@ -46,7 +46,7 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
   vault,
   jobOffer,
 }) => {
-  const { user } = useAuth();
+  const user = useOptionalAuth()?.user ?? null;
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
   const [activeTab, setActiveTab] = useState<LoopSubSkillTab>('CHECKLIST');
   const [sessionsState, setSessionsState] = useState<{ profileId: string; items: InterviewLoopSession[] }>({ profileId, items: [] });
@@ -63,8 +63,8 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
       } else {
         // Jeśli brak sesji, utwórz nową na bazie bieżącej oferty lub profilu
         const newSession = createInterviewSession(
-          jobOffer?.company || 'Firma Rekrutująca',
-          jobOffer?.title || vault.personalInfo?.title || 'Stanowisko Docelowe',
+          jobOffer?.company || '',
+          jobOffer?.title || vault.personalInfo?.title || '',
           undefined,
           jobOffer?.id
         );
@@ -87,8 +87,8 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
 
   const handleCreateNewSession = () => {
     const newSession = createInterviewSession(
-      'Nowa Rozmowa',
-      vault.personalInfo?.title || 'Stanowisko'
+      '',
+      vault.personalInfo?.title || ''
     );
     saveInterviewSession(profileId, newSession);
     setSessionsState((prev) => ({ profileId, items: [newSession, ...(prev.profileId === profileId ? prev.items : [])] }));
@@ -101,8 +101,8 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
     const remaining = sessions.filter((s) => s.id !== id);
     if (remaining.length === 0) {
       const freshSession = createInterviewSession(
-        'Nowa Rozmowa',
-        vault.personalInfo?.title || 'Stanowisko'
+        '',
+        vault.personalInfo?.title || ''
       );
       saveInterviewSession(profileId, freshSession);
       setSessionsState({ profileId, items: [freshSession] });
@@ -117,7 +117,7 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !activeSession) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
@@ -175,7 +175,7 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
                   onClick={() => setActiveSessionId(sess.id)}
                   className="truncate max-w-[140px]"
                 >
-                  {sess.companyName} ({sess.roleTitle})
+                  {sess.companyName || 'Firma do uzupełnienia'} ({sess.roleTitle || 'Stanowisko do uzupełnienia'})
                 </button>
                 {sessions.length > 1 && (
                   <button
@@ -199,6 +199,27 @@ export const InterviewLoopModal: React.FC<InterviewLoopModalProps> = ({
           >
             Nowa Rozmowa
           </Button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Dane rozmowy">
+          <label className="space-y-1 text-xs font-medium text-muted">
+            <span>Firma (opcjonalnie)</span>
+            <input
+              value={activeSession.companyName}
+              onChange={(event) => handleUpdateSession({ ...activeSession, companyName: event.target.value })}
+              className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 focus:border-brand-500/50 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              placeholder="Wpisz firmę, jeśli jest znana"
+            />
+          </label>
+          <label className="space-y-1 text-xs font-medium text-muted">
+            <span>Stanowisko (opcjonalnie)</span>
+            <input
+              value={activeSession.roleTitle}
+              onChange={(event) => handleUpdateSession({ ...activeSession, roleTitle: event.target.value })}
+              className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/60 focus:border-brand-500/50 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              placeholder="Wpisz stanowisko, jeśli jest znane"
+            />
+          </label>
         </div>
 
         {/* Nawigacja Sub-skilli */}

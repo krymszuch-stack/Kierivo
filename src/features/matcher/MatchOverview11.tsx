@@ -14,10 +14,8 @@ import {
   AlertTriangle,
   Layers,
   Sparkles,
-  ArrowRight,
   ChevronDown,
   ChevronUp,
-  ShieldCheck,
   Plus,
   Check,
   Info,
@@ -26,16 +24,20 @@ import {
 } from 'lucide-react';
 import type { MasterVault, JobOffer, AtsCheckResult, TailoredResume } from '../../types';
 import type { CanonicalAtsScore } from '../../lib/canonicalAts';
+import { getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, getUnmetBlockingRequirements, hasCareerEvidence, isRequirementUnconfirmed } from '../../lib/canonicalAts';
+import { getMatchInterpretation, hasLimitedMatchEvidence, shouldDisplayMappedEvidence } from '../../lib/matchInterpretation';
 import {
   mapJdKeywords,
-  ExtractedKeyword,
   KeywordSuggestion,
-  KeywordMatchStatus,
 } from '../../lib/jdKeywordMapper';
 import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
+import { parseJobDescriptionLocal } from '../../lib/jdParser';
+import { hasPreferredRequirementMention } from '../../lib/jdOptionality';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { showToast } from '../../store/useToastStore';
+import { dismissUnappliedSuggestion } from '../../lib/suggestionActions';
+import { OfferFactsSummary } from './OfferFactsSummary';
 
 export interface MatchOverview11Props {
   vault: MasterVault;
@@ -43,7 +45,7 @@ export interface MatchOverview11Props {
   atsResult: AtsCheckResult;
   canonicalResult?: CanonicalAtsScore;
   tailoredResume: TailoredResume;
-  onApplySuggestion?: (suggestion: KeywordSuggestion) => void;
+  onApplySuggestion?: (suggestion: KeywordSuggestion, apply: boolean) => void;
   onGoToCv?: () => void;
   onSaveApplication?: () => void;
   className?: string;
@@ -64,7 +66,8 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
   const [expandedKeywordId, setExpandedKeywordId] = useState<string | null>(null);
   // Lista pominiętych lub zastosowanych sugestii (lokalny stan widoku)
   const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<Set<string>>(new Set());
-  const [appliedSuggestionIds, setAppliedSuggestionIds] = useState<Set<string>>(new Set());
+  const [appliedSuggestions, setAppliedSuggestions] = useState<Map<string, KeywordSuggestion>>(new Map());
+  const [proposalDrafts, setProposalDrafts] = useState<Map<string, string>>(new Map());
 
   // 1. Dokładna analiza słów kluczowych i ukrytych kompetencji w MasterVault
   const mappingResult = useMemo(() => {
@@ -72,62 +75,136 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
   }, [jobOffer.description, vault, tailoredResume]);
 
   const { keywords, suggestions, counts } = mappingResult;
+  const parsedOffer = useMemo(
+    () => parseJobDescriptionLocal(jobOffer.description || ''),
+    [jobOffer.description]
+  );
+  // Atuty są informacją z oferty, a nie brakami obowiązkowymi. Pokazujemy
+  // oryginalne linie pracodawcy, zamiast przerabiać je na pozornie wymagane skille.
+  const niceToHaveLines = useMemo(() => {
+    const lines = parsedOffer.sourceSections?.niceToHave ?? [];
+    const optionalTerms = [...(parsedOffer.niceToHaveHardSkills ?? []), ...(parsedOffer.niceToHaveSoftSkills ?? [])];
+    const postfixOptionalLines = (parsedOffer.sourceSections?.required ?? []).filter((line) =>
+      optionalTerms.some((term) => hasPreferredRequirementMention(line, term))
+    );
+    return Array.from(new Set([...lines, ...postfixOptionalLines].map((line) => line.replace(/^[-*•]\s*/, '').trim()).filter(Boolean)));
+  }, [parsedOffer]);
+  const optionalSkillTerms = useMemo(
+    () => new Set([
+      ...(parsedOffer.niceToHaveHardSkills ?? []),
+      ...(parsedOffer.niceToHaveSoftSkills ?? []),
+    ].map((term) => term.toLocaleLowerCase('pl-PL'))),
+    [parsedOffer]
+  );
+  const visibleKeywords = useMemo(
+    () => shouldDisplayMappedEvidence(canonicalResult?.state)
+      ? keywords.filter((keyword) =>
+          !isRequirementUnconfirmed(canonicalResult, keyword.term) &&
+          !optionalSkillTerms.has(keyword.term.toLocaleLowerCase('pl-PL'))
+        )
+      : [],
+    [canonicalResult, keywords, optionalSkillTerms]
+  );
 
   // 2. Wynik dopasowania i wiarygodność danych
-  const score = canonicalResult?.score ?? atsResult.overallScore;
-  const matchedRequirements = canonicalResult?.matchedRequirements?.length ?? counts.matchedInCv ?? 8;
+  // Wyniku legacy nie pokazujemy, gdy kanon nie ma podstaw do oceny.
+  const score = canonicalResult?.state === 'SCORABLE' ? canonicalResult.score : null;
+  const matchedRequirements = canonicalResult?.matchedRequirements?.length ?? counts.matchedInCv;
   const totalRequirements = canonicalResult
-    ? (canonicalResult.matchedRequirements.length + canonicalResult.missingRequirements.length)
-    : (counts.total ?? 10);
-
+    ? (canonicalResult.matchedRequirements.length + canonicalResult.missingRequirements.length + canonicalResult.unconfirmedRequirements.length)
+    : counts.total;
+  const blockingRequirements = useMemo(
+    () => getUnmetBlockingRequirements(canonicalResult),
+    [canonicalResult]
+  );
+  const unconfirmedRequirements = useMemo(
+    () => canonicalResult?.unconfirmedRequirements ?? [],
+    [canonicalResult]
+  );
   // Jakość profilu użytkownika
   const vaultCompleteness = useMemo(() => {
     return measureVaultCompleteness(vault).percent;
   }, [vault]);
+  const limitedMatchEvidence = hasLimitedMatchEvidence({
+    profileCompleteness: vaultCompleteness,
+    totalRequirementCount: totalRequirements,
+    fitEvidenceAvailable: hasCareerEvidence(vault),
+    blockingRequirements,
+    unconfirmedRequirements,
+  });
 
-  const confidenceLevel = vaultCompleteness >= 80 ? 'wysoka' : vaultCompleteness >= 50 ? 'średnia' : 'wstępna';
-
-  // 3. Spójna interpretacja biznesowa procentu
-  const interpretationText = useMemo(() => {
-    const mainGap = canonicalResult?.missingRequirements?.[0] || keywords.find((k) => k.status === 'MISSING_IN_VAULT')?.term;
-    if (score >= 85) {
-      return mainGap
-        ? `Możesz śmiało aplikować bez dużych zmian. Największą luką do zaadresowania jest ${mainGap}.`
-        : 'Świetne dopasowanie! Twój profil pokrywa kluczowe wymagania pracodawcy.';
-    }
-    if (score >= 70) {
-      return mainGap
-        ? `Dobre dopasowanie. Warto przed wysłaniem podkreślić w CV doświadczenie z: ${mainGap}.`
-        : 'Dobre dopasowanie. Zastosuj poniższe sugestie, aby zwiększyć szanse na rozmowę.';
-    }
-    return mainGap
-      ? `Widoczne luki w wymaganiach formalnych (np. ${mainGap}). Rozważ most kompetencyjny lub uzupełnienie profilu.`
-      : 'Uzupełnij profil o brakujące technologie lub uprawnienia przed wysłaniem CV.';
-  }, [score, canonicalResult, keywords]);
 
   // 4. Filtrowanie aktywnych sugestii WOW (niepominiętych)
   const activeSuggestions = useMemo(() => {
-    return suggestions.filter((s) => !dismissedSuggestionIds.has(s.id));
-  }, [suggestions, dismissedSuggestionIds]);
+    const currentSuggestions = [...suggestions];
+    for (const applied of appliedSuggestions.values()) {
+      if (!currentSuggestions.some((suggestion) => suggestion.id === applied.id)) {
+        currentSuggestions.push(applied);
+      }
+    }
+    return (shouldDisplayMappedEvidence(canonicalResult?.state) ? currentSuggestions : []).filter((suggestion) =>
+      !dismissedSuggestionIds.has(suggestion.id) &&
+      (appliedSuggestions.has(suggestion.id) ||
+        visibleKeywords.some((keyword) => keyword.status === 'IN_VAULT_NOT_IN_CV' && keyword.term === suggestion.keyword))
+    );
+  }, [suggestions, dismissedSuggestionIds, visibleKeywords, appliedSuggestions, canonicalResult?.state]);
+
+  // Opis wyniku odnosi się tylko do luk i sugestii obecnych w tym widoku.
+  const interpretationText = useMemo(() => {
+    const mainGap = canonicalResult?.missingRequirements?.[0] || visibleKeywords.find((k) => k.status === 'MISSING_IN_VAULT')?.term;
+    return getMatchInterpretation({
+      score,
+      reason: canonicalResult?.reason,
+      mainGap,
+      activeSuggestionCount: activeSuggestions.length,
+      profileCompleteness: vaultCompleteness,
+      matchedRequirementCount: matchedRequirements,
+      totalRequirementCount: totalRequirements,
+      fitEvidenceAvailable: hasCareerEvidence(vault),
+      blockingRequirements,
+      unconfirmedRequirements,
+    });
+  }, [score, canonicalResult, visibleKeywords, activeSuggestions.length, vaultCompleteness, matchedRequirements, totalRequirements, blockingRequirements, unconfirmedRequirements]);
 
   // Grupowanie słów kluczowych do 3 sekcji
-  const matchedKeywords = useMemo(() => keywords.filter((k) => k.status === 'MATCHED_IN_CV'), [keywords]);
-  const hiddenInVaultKeywords = useMemo(() => keywords.filter((k) => k.status === 'IN_VAULT_NOT_IN_CV'), [keywords]);
-  const missingKeywords = useMemo(() => keywords.filter((k) => k.status === 'MISSING_IN_VAULT'), [keywords]);
-
-  const handleApply = (sug: KeywordSuggestion) => {
-    setAppliedSuggestionIds((prev) => new Set(prev).add(sug.id));
-    if (onApplySuggestion) {
-      onApplySuggestion(sug);
-    }
-    showToast('Zastosowano sugestię w dokumencie', {
-      message: `Dodano „${sug.keyword}” do CV.`,
-      variant: 'success',
-    });
-  };
+  const matchedKeywords = useMemo(() => visibleKeywords.filter((k) => k.status === 'MATCHED_IN_CV'), [visibleKeywords]);
+  const hiddenInVaultKeywords = useMemo(() => visibleKeywords.filter((k) => k.status === 'IN_VAULT_NOT_IN_CV'), [visibleKeywords]);
+  const missingKeywords = useMemo(() => visibleKeywords.filter((keyword) =>
+    keyword.status === 'MISSING_IN_VAULT' &&
+    (!canonicalResult || canonicalResult.missingRequirements.some((requirement) =>
+      requirement.toLocaleLowerCase('pl-PL') === keyword.term.toLocaleLowerCase('pl-PL')
+    ))
+  ), [canonicalResult, visibleKeywords]);
 
   const handleDismiss = (id: string) => {
-    setDismissedSuggestionIds((prev) => new Set(prev).add(id));
+    setDismissedSuggestionIds((prev) => dismissUnappliedSuggestion(prev, appliedSuggestions, id));
+  };
+
+  const handleSuggestionChange = (suggestion: KeywordSuggestion) => {
+    if (!onApplySuggestion) return;
+    const wasApplied = appliedSuggestions.has(suggestion.id);
+    const appliedSuggestion = appliedSuggestions.get(suggestion.id);
+    const suggestionWithDraft = wasApplied
+      ? (appliedSuggestion ?? suggestion)
+      : {
+          ...suggestion,
+          proposedText: suggestion.sourceExperienceId
+            ? proposalDrafts.get(suggestion.id) ?? suggestion.sourceEvidence
+            : undefined,
+        };
+    onApplySuggestion(suggestionWithDraft, !wasApplied);
+    setAppliedSuggestions((previous) => {
+      const next = new Map(previous);
+      if (wasApplied) next.delete(suggestion.id);
+      else next.set(suggestion.id, suggestionWithDraft);
+      return next;
+    });
+    showToast(wasApplied ? 'Cofnięto zmianę w wersji CV' : 'Dodano do wersji CV', {
+      message: wasApplied
+        ? `Usunięto „${suggestion.keyword}” z listy umiejętności tego dokumentu.`
+        : `Dodano „${suggestion.keyword}” do listy umiejętności tego dokumentu. Profil źródłowy pozostał bez zmian.`,
+      variant: 'success',
+    });
   };
 
   return (
@@ -137,36 +214,41 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 border-b border-line pb-6">
           <div className="space-y-1.5">
             <span className="font-mono text-xs font-bold uppercase tracking-wider text-muted">
-              Ocena zgodności profilu z ofertą
+              Wynik zbiorczy profilu dla oferty
             </span>
             <div className="flex items-baseline gap-3">
               <span className="text-5xl sm:text-6xl font-extrabold font-mono tracking-tight text-brand-fg">
-                {score}%
+                {score === null ? '—' : `${score}%`}
               </span>
               <div className="space-y-0.5">
                 <span className="text-lg font-bold text-ink block">
-                  {score >= 80 ? 'Dobre dopasowanie' : score >= 60 ? 'Umiarkowane dopasowanie' : 'Wymaga uzupełnienia'}
+                  {score === null
+                    ? 'Brak podstaw do oceny'
+                    : blockingRequirements.length > 0
+                      ? 'Niepotwierdzony wymóg obowiązkowy'
+                      : limitedMatchEvidence
+                      ? 'Wynik wstępny — ograniczone dane'
+                      : CANONICAL_SCORE_BAND_LABELS[getCanonicalScoreBand(score)]}
                 </span>
                 <span className="text-xs text-muted font-medium">
-                  {matchedRequirements} / {totalRequirements} wymagań znajduje potwierdzenie w Twoim profilu
+                  {score === null
+                    ? 'Nie pokazujemy zastępczego wyniku ATS.'
+                    : `${matchedRequirements} / ${totalRequirements} wymagań znajduje potwierdzenie w Twoim profilu`}
                 </span>
+                {score !== null && (
+                  <span className="block max-w-xl text-xs leading-relaxed text-muted">
+                    Procent łączy pokrycie wymagań, staż, strukturę CV i kryteria formalne. Licznik obok pokazuje osobno wymagania wykryte w ofercie.
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Jakość danych & pewność */}
+          {/* Kompletność profilu pomaga ocenić zakres dostępnych danych. */}
           <div className="rounded-xl border border-line bg-surface p-4 text-xs space-y-2 min-w-[200px]">
             <div className="flex items-center justify-between gap-2">
               <span className="text-muted font-medium">Twój profil:</span>
-              <span className="font-mono font-bold text-ink">{vaultCompleteness}% kompletny</span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-muted font-medium">Pewność analizy:</span>
-              <span className={`font-bold capitalize ${
-                confidenceLevel === 'wysoka' ? 'text-success-fg' : 'text-warning-fg'
-              }`}>
-                {confidenceLevel}
-              </span>
+              <span className="font-mono font-bold text-ink">{vaultCompleteness}% sekcji uzupełnionych</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken">
               <div
@@ -184,7 +266,32 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
             {interpretationText}
           </p>
         </div>
+        {vaultCompleteness < 50 && (
+          <p role="note" className="rounded-xl border border-warning/30 bg-warning-soft/40 p-4 text-sm leading-relaxed text-warning-fg">
+            Uzupełniono mniej niż połowę ważonych sekcji profilu. Wynik opiera się na dostępnych wpisach i może się zmienić po dodaniu brakujących informacji. Sprawdź też, czy parser poprawnie odczytał CV.
+          </p>
+        )}
       </Card>
+
+      <OfferFactsSummary
+        seniorityLevel={parsedOffer.seniorityLevel}
+        workModel={parsedOffer.workModel}
+        contractTypes={parsedOffer.contractTypes}
+      />
+
+      {niceToHaveLines.length > 0 && (
+        <Card tone="flat" className="space-y-3 border border-line p-5">
+          <div>
+            <h3 className="text-sm font-bold text-ink">Mile widziane w ofercie ({niceToHaveLines.length})</h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted">
+              To atuty wskazane przez pracodawcę. Nie zwiększają liczby brakujących wymagań.
+            </p>
+          </div>
+          <ul className="space-y-1.5 text-sm text-ink">
+            {niceToHaveLines.map((line, index) => <li key={`${index}-${line}`}>• {line}</li>)}
+          </ul>
+        </Card>
+      )}
 
       {/* ---------------------------------- BLOK WOW: UKRYTE KOMPETENCJE W MASTERVAULT */}
       {activeSuggestions.length > 0 && (
@@ -205,7 +312,9 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
 
           <div className="space-y-3 pt-2">
             {activeSuggestions.map((sug) => {
-              const isApplied = appliedSuggestionIds.has(sug.id);
+              const source = visibleKeywords.find((keyword) => keyword.term === sug.keyword);
+              const isApplied = appliedSuggestions.has(sug.id);
+              const proposalText = proposalDrafts.get(sug.id) ?? sug.sourceEvidence ?? '';
 
               return (
                 <div
@@ -223,40 +332,63 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {isApplied ? (
-                        <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-success-fg">
-                          <Check className="h-3.5 w-3.5" />
-                          Zastosowano
-                        </span>
-                      ) : (
-                        <>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDismiss(sug.id)}
-                            className="text-xs text-muted hover:text-ink cursor-pointer"
-                          >
-                            Pomiń
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="primary"
-                            size="sm"
-                            icon={Plus}
-                            onClick={() => handleApply(sug)}
-                            className="font-bold cursor-pointer"
-                          >
-                            Zastosuj w CV
-                          </Button>
-                        </>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDismiss(sug.id)}
+                        disabled={isApplied}
+                        className="text-xs text-muted hover:text-ink cursor-pointer"
+                      >
+                        Pomiń
+                      </Button>
+                      {onApplySuggestion && sug.category !== 'LICENSE' && (
+                        <Button
+                          type="button"
+                          variant={isApplied ? 'outline' : 'primary'}
+                          size="sm"
+                          icon={isApplied ? Check : Plus}
+                          onClick={() => handleSuggestionChange(sug)}
+                          className="font-bold cursor-pointer"
+                        >
+                          {isApplied ? 'Cofnij zmianę' : sug.sourceExperienceId ? 'Dodaj punkt do CV' : 'Dodaj do wersji CV'}
+                        </Button>
                       )}
                     </div>
                   </div>
 
-                  <p className="text-xs leading-relaxed text-ink-muted">
-                    {sug.message}
+                  {source?.jobRequirementEvidence && (
+                    <p className="text-xs leading-relaxed text-ink-muted">
+                      <strong className="text-ink">Oferta:</strong> „{source.jobRequirementEvidence}”
+                    </p>
+                  )}
+                  {source?.foundInVaultEvidence?.map((evidence, index) => (
+                    <p key={`proof-${index}`} className="text-xs leading-relaxed text-ink-muted">
+                      <strong className="text-ink">Dowód w profilu:</strong> „{evidence}”
+                    </p>
+                  ))}
+                  <p className="text-[11px] text-muted">
+                    Źródło: {source?.foundInVaultLocations.join(', ') || 'brak wskazanego miejsca'}
                   </p>
+                  {sug.sourceExperienceId && sug.sourceEvidence ? (
+                    <div className="space-y-2 rounded-lg border border-line bg-surface-raised p-3">
+                      <p className="text-xs text-muted">W bieżącym CV ten punkt nie jest pokazany. Propozycja wykorzystuje treść z profilu; możesz ją poprawić przed dodaniem.</p>
+                      <label className="block text-xs font-semibold text-ink" htmlFor={`proposal-${sug.id}`}>Proponowany punkt CV</label>
+                      <textarea
+                        id={`proposal-${sug.id}`}
+                        value={proposalText}
+                        disabled={isApplied}
+                        onChange={(event) => setProposalDrafts((previous) => new Map(previous).set(sug.id, event.target.value))}
+                        rows={3}
+                        className="w-full resize-y rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink disabled:opacity-70"
+                      />
+                      <p className="text-[11px] text-muted">Profil źródłowy nie zostanie zmieniony. Cofnięcie usuwa wyłącznie ten punkt z roboczej wersji CV.</p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink-muted">
+                      Propozycja: dodaj „{sug.keyword}” do listy umiejętności tej wersji CV. Profil źródłowy nie zostanie zmieniony.
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -309,6 +441,10 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
                         <div className="pt-2 border-t border-line/60 space-y-1.5 text-[11px] text-ink-muted">
                           <p><strong className="text-ink">Oferta:</strong> Wymagana fraza kluczowa ({kw.occurrencesInJd} wystąpień w ogłoszeniu)</p>
                           <p><strong className="text-ink">Twoje CV:</strong> Potwierdzone w: {kw.foundInCvLocations?.join(', ') || 'Treść dokumentu'}</p>
+                          {kw.jobRequirementEvidence && <p><strong className="text-ink">Wymóg:</strong> „{kw.jobRequirementEvidence}”</p>}
+                          {kw.foundInCvEvidence?.map((evidence, index) => (
+                            <p key={`cv-${index}`}><strong className="text-ink">Dowód w CV:</strong> „{evidence}”</p>
+                          ))}
                           <p className="text-success-fg font-semibold">Wniosek: potwierdzone</p>
                         </div>
                       )}
@@ -350,8 +486,11 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
 
                       {isExpanded && (
                         <div className="pt-2 border-t border-line/60 space-y-1.5 text-[11px] text-ink-muted">
-                          <p><strong className="text-ink">Oferta:</strong> Wymóg ogłoszenia</p>
+                          <p><strong className="text-ink">Oferta:</strong> {kw.jobRequirementEvidence || 'Wymaganie rozpoznane w treści oferty.'}</p>
                           <p><strong className="text-ink">Twój profil:</strong> Odnaleziono w: {kw.foundInVaultLocations.join(', ')}</p>
+                          {kw.foundInVaultEvidence?.map((evidence, index) => (
+                            <p key={`vault-${index}`}><strong className="text-ink">Dowód:</strong> „{evidence}”</p>
+                          ))}
                           <p className="text-brand-fg font-semibold">Wniosek: częściowe potwierdzenie — warto dodać do CV</p>
                         </div>
                       )}
@@ -393,7 +532,7 @@ export const MatchOverview11: React.FC<MatchOverview11Props> = ({
 
                       {isExpanded && (
                         <div className="pt-2 border-t border-line/60 space-y-1.5 text-[11px] text-ink-muted">
-                          <p><strong className="text-ink">Oferta:</strong> Wymóg formalny ({kw.importance === 'CRITICAL' ? 'krytyczny' : 'istotny'})</p>
+                          <p><strong className="text-ink">Oferta:</strong> {kw.jobRequirementEvidence || `Wymóg formalny (${kw.importance === 'CRITICAL' ? 'krytyczny' : 'istotny'}).`}</p>
                           <p><strong className="text-ink">Twój profil:</strong> Brak wzmianki w MasterVault</p>
                           <p className="text-danger-fg font-semibold">Wniosek: brak potwierdzenia — przygotuj odpowiedź lub uzupełnij profil</p>
                         </div>

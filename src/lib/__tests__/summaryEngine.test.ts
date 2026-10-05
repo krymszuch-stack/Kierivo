@@ -91,6 +91,23 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
     });
   });
 
+  it('bierze domyślny tytuł i główny punkt z najnowszej pracy, nie z pierwszego wiersza', () => {
+    const vault = {
+      ...sampleVault,
+      personalInfo: { ...sampleVault.personalInfo, title: '' },
+      history: [
+        { ...sampleVault.history[1], highlights: [{ id: 'old-h', text: 'Starsze osiągnięcie', action: '', target: '', tool: '', metric: '8 starszych sztuk', keywords: [] }] },
+        { ...sampleVault.history[0], highlights: [{ id: 'new-h', text: 'Nowsze osiągnięcie', action: '', target: '', tool: '', metric: '120 nowych zgłoszeń', keywords: [] }] },
+      ],
+    };
+
+    const profile = extractProfileFromVault(vault);
+
+    expect(profile.title).toBe('Senior Frontend Engineer');
+    expect(profile.sourceHighlight).toBe('Nowsze osiągnięcie');
+    expect(generateSummarySuggestions(vault, 4).some((item) => item.text.includes('Nowsze osiągnięcie'))).toBe(true);
+  });
+
   it('nie podwaja stażu przy równoległych okresach zatrudnienia (unia przedziałów)', () => {
     const parallelHistory: MasterVault['history'] = [
       {
@@ -164,6 +181,32 @@ describe('Beztokenowy silnik generowania podsumowań (SummaryEngine)', () => {
         sug.text.toLowerCase().includes('react')
       ).toBe(true);
     }
+  });
+
+  it('nie zamienia listy umiejętności w twierdzenie o praktycznym użyciu lub doświadczeniu', () => {
+    const skillsOnly = {
+      ...sampleVault,
+      personalInfo: { ...sampleVault.personalInfo, title: '' },
+      history: [],
+      skillsMatrix: { ...sampleVault.skillsMatrix, hardSkills: ['Kubernetes', 'Terraform'] },
+    };
+
+    const suggestions = generateSummarySuggestions(skillsOnly, 4);
+    const allText = suggestions.map((suggestion) => suggestion.text).join('\n');
+
+    expect(suggestions.length).toBeGreaterThan(0);
+    expect(allText).toContain('W profilu wymieniono');
+    expect(allText).not.toMatch(/doświadczenie w bezpośrednim stosowaniu|w codziennej pracy wykorzystuję|doświadczenie zawodowe oparte na znajomości|praktyczna znajomość/i);
+  });
+
+  it('opisuje staż jako łączny wynik dat CV, bez przypisywania go roli lub wymienionym narzędziom', () => {
+    const suggestions = generateSummarySuggestions(sampleVault, 4);
+    const allText = suggestions.map((suggestion) => suggestion.text).join('\n');
+
+    expect(allText).toContain('6 pełnych lat łącznego stażu zawodowego');
+    expect(allText).not.toContain('Senior Frontend Engineer z 6');
+    expect(allText).not.toContain('Doświadczenie w bezpośrednim stosowaniu');
+    expect(allText).not.toContain('W codziennej pracy wykorzystuję');
   });
 
   it('generuje identyczne wyniki dla tego samego profilu (determinizm)', () => {

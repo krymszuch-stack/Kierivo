@@ -1,7 +1,8 @@
 import { MasterVault } from '../types';
 import { isKnownLicenseId } from '../data/licenses';
-import { hasPositiveSkillEvidence } from './skillEvidence';
-import { hasPreferredRequirementMarker, preferredRequirementMarkerIndex, requirementSectionContextAt } from './jdOptionality';
+import { buildCandidateEvidenceCorpora } from './candidateEvidence';
+import { getPersonalClaimBounds, hasPositiveSkillEvidence } from './skillEvidence';
+import { hasExplicitRequiredMarker, isNegatedRequirementAt, isPreferredRequirementAt, requirementSectionContextAt } from './jdOptionality';
 
 /**
  * Kryteria zerojedynkowe — to, co odsiewa kandydata, zanim ktokolwiek przeczyta
@@ -81,7 +82,7 @@ function isClauseBoundary(text: string, index: number): boolean {
   return false;
 }
 
-function clauseAround(text: string, matchIndex: number): { before: string; whole: string } {
+function clauseAround(text: string, matchIndex: number): { before: string; whole: string; start: number; end: number } {
   let start = 0;
   let end = text.length;
 
@@ -101,7 +102,15 @@ function clauseAround(text: string, matchIndex: number): { before: string; whole
     }
   }
 
-  return { before: text.slice(start, matchIndex), whole: text.slice(start, end) };
+  return { before: text.slice(start, matchIndex), whole: text.slice(start, end), start, end };
+}
+
+function candidateClauseAround(text: string, matchIndex: number) {
+  const clause = clauseAround(text, matchIndex);
+  const bounds = getPersonalClaimBounds(clause.whole, matchIndex - clause.start);
+  const start = clause.start + bounds.start;
+  const end = clause.start + bounds.end;
+  return { before: text.slice(start, matchIndex), whole: text.slice(start, end), start, end };
 }
 
 /** Nagłówek wymogu może obejmować kilka pozycji rozdzielonych przecinkami lub nową linią. */
@@ -132,9 +141,6 @@ function sentenceAround(text: string, matchIndex: number): string {
  * tylko `wymagan*` (z `n`) i dosłowne `wymagamy`, więc najczęstsze
  * `Stanowisko nie wymaga prawa jazdy` dawało fałszywy knock-out (F9).
  */
-const NEGATION_PATTERN = /\b(?:nie\s+(?:jest\s+)?(?:wymagan\w*|wymaga(?:ją)?\b|konieczn\w*|musisz|wymagamy|trzeba|potrzeb\w*)|bez\s+(?:konieczno\w*|wymogu|posiadania))\b/i;
-const REQUIRED_REQUIREMENT_PATTERN = /\b(?:wymagan\w*|wymaga(?:ją)?|must\s+have|required|obowi[ąa]zkow\w*|konieczn\w*)\b/i;
-
 /** E/D to osobne stanowiska kwalifikacyjne; nie wnioskujemy jednego z drugiego. */
 function createSepScopePatterns(group: 1 | 2 | 3, scope: 'e' | 'd'): RegExp[] {
   const groupPattern = '\\bg\\s*-?\\s*' + group + '\\b';
@@ -474,6 +480,8 @@ export interface KnockoutFinding {
   ruleId: string;
   label: string;
   severity: KnockoutSeverity;
+  /** `unknown` means the profile does not contain enough data to decide. */
+  status?: 'satisfied' | 'unsatisfied' | 'unknown';
   /** `true`, gdy profil spełnia wymaganie. */
   satisfied: boolean;
   /** Skąd wiemy, że spełnia — przydaje się w interfejsie i w testach. */
@@ -488,7 +496,7 @@ const CANDIDATE_PROFILE_FACT = /\b(?:kandydat\w*\s+(?:w\s+(?:swoim\s+)?(?:cv|pro
 
 /** Sam opis wykonywania pracy nie jest dowodem posiadania wymaganego dokumentu. */
 function isExperienceWithoutCredential(text: string, matchIndex: number): boolean {
-  const { whole } = clauseAround(text, matchIndex);
+  const { whole } = candidateClauseAround(text, matchIndex);
   return EXPERIENCE_CONTEXT.test(whole) && !CREDENTIAL_CONTEXT.test(whole);
 }
 
@@ -500,7 +508,7 @@ function hasPositiveTextEvidence(patterns: RegExp[], text: string, requireCreden
     const matcher = new RegExp(pattern.source, `${flags}g`);
     for (const match of text.matchAll(matcher)) {
       if (requireCredentialEvidence && isExperienceWithoutCredential(text, match.index)) continue;
-      const { before, whole } = clauseAround(text, match.index);
+      const { before, whole } = candidateClauseAround(text, match.index);
       // Wzmianka po „bez certyfikatu / książeczki / uprawnień” nie jest
       // dowodem posiadania. Kanoniczny matcher umiejętności nie zna tych
       // nazw dokumentów, więc odrzucamy bezpośrednie zaprzeczenie tutaj.
@@ -545,7 +553,7 @@ function hasPositiveCertificateEvidence(patterns: RegExp[], text: string): boole
     const matcher = new RegExp(pattern.source, `${pattern.flags.replace(/[gy]/g, '')}g`);
     for (const match of text.matchAll(matcher)) {
       if (isExperienceWithoutCredential(text, match.index)) continue;
-      const { whole } = clauseAround(text, match.index);
+      const { whole } = candidateClauseAround(text, match.index);
       if (certificateNegation.test(whole)) continue;
       if (hasPositiveSkillEvidence(text, match[0])) return true;
     }
@@ -563,18 +571,7 @@ function hasPositiveSepG3Evidence(text: string): boolean {
   const matcher = /\bsep\b[^.!?;\n]{0,60}\bg\s*-?\s*3\b/gi;
   for (const match of text.matchAll(matcher)) {
     if (isExperienceWithoutCredential(text, match.index)) continue;
-    const clauseStart = Math.max(
-      text.lastIndexOf('\n', match.index),
-      text.lastIndexOf(';', match.index),
-      text.lastIndexOf('.', match.index),
-      text.lastIndexOf('!', match.index),
-      text.lastIndexOf('?', match.index),
-    ) + 1;
-    const clauseEndCandidates = ['\n', ';', '.', '!', '?']
-      .map((boundary) => text.indexOf(boundary, match.index))
-      .filter((index) => index >= 0);
-    const clauseEnd = clauseEndCandidates.length > 0 ? Math.min(...clauseEndCandidates) : text.length;
-    const clause = text.slice(clauseStart, clauseEnd);
+    const { whole: clause } = candidateClauseAround(text, match.index);
     if (/\b(?:bez|brak|brakuje|nie\s+(?:mam|posiadam|ma|posiada))\b[^.!?;\n]{0,30}\bg\s*-?\s*3\b/i.test(clause)) {
       continue;
     }
@@ -591,32 +588,14 @@ export interface KnockoutReport {
   optional: KnockoutFinding[];
   /** Wzmianki o kwalifikacji bez sygnału, że jest wymagana lub mile widziana. */
   unclassified: KnockoutFinding[];
+  /** Wymagania obowiązkowe, których nie da się rozstrzygnąć z zapisanych danych. */
+  unconfirmed: KnockoutFinding[];
   satisfiedCount: number;
   /** `0`, gdy ogłoszenie nie stawia żadnych wymagań formalnych. */
   requirementCount: number;
 }
 
 /** Zbiera tekst vaultu tam, gdzie użytkownik mógł opisać uprawnienie własnymi słowami. */
-function collectVaultText(vault: MasterVault | Partial<MasterVault> | undefined | null): string {
-  if (!vault) return '';
-  const parts: string[] = [
-    vault.personalInfo?.summary || '',
-    vault.personalInfo?.title || '',
-    ...(vault.skillsMatrix?.hardSkills ?? []),
-    ...(vault.skillsMatrix?.softSkills ?? []),
-    ...(vault.skillsMatrix?.toolsAndTech ?? []),
-    ...(vault.skillsMatrix?.certifications ?? []).flatMap((cert) => [cert?.name || '', cert?.issuer || '']),
-    ...(vault.history ?? []).flatMap((exp) => [
-      exp?.role || ('title' in (exp || {}) ? String((exp as { title?: unknown })?.title || '') : ''),
-      exp?.description ?? '',
-      ...(exp?.highlights ?? []).map((highlight) => typeof highlight === 'string' ? highlight : (highlight?.text || '')),
-    ]),
-    ...(vault.education ?? []).flatMap((edu) => [edu?.degree || '', edu?.fieldOfStudy || '', edu?.description ?? '']),
-    ...(vault.profiler?.languages ?? []).map((lang) => `${lang?.language || ''} ${lang?.level || ''}`),
-  ];
-
-  return parts.filter(Boolean).join(' \n ');
-}
 
 /**
  * Sprawdza, czy ogłoszenie stawia dane wymaganie.
@@ -628,21 +607,30 @@ function collectVaultText(vault: MasterVault | Partial<MasterVault> | undefined 
 function detectRequirement(
   rule: KnockoutRule,
   jdText: string
-): { required: boolean; softened: boolean; explicitlyRequired: boolean; mentioned: boolean } {
+): {
+  required: boolean;
+  softened: boolean;
+  explicitlyRequired: boolean;
+  mentioned: boolean;
+  requiredClauses: Array<{ start: number; end: number; whole: string }>;
+} {
   let softenedMatch = false;
   let unclassifiedMatch = false;
+  let explicitlyRequiredMatch = false;
+  const requiredClauses: Array<{ start: number; end: number; whole: string }> = [];
 
   for (const pattern of rule.detect) {
     // `matchAll` na wypadek, gdy ta sama rzecz pada w ogłoszeniu dwa razy —
     // raz w zdaniu przeczącym, raz jako realne wymaganie.
     for (const match of jdText.matchAll(new RegExp(pattern.source, pattern.flags + 'g'))) {
-      const { before, whole } = clauseAround(jdText, match.index);
+      const clause = clauseAround(jdText, match.index);
+      const { before, whole } = clause;
 
-      if (NEGATION_PATTERN.test(before)) continue;
+      if (isNegatedRequirementAt(whole, before.length)) continue;
       // Parser nie może zamienić wzmianki „kandydat ma SEP G1” w wymóg SEP G1.
       // Gdy zdanie zawiera jawny nakaz/wymóg, zachowujemy go — odrzucamy tylko
       // opis profilu, który nie stawia kwalifikacji jako warunku oferty.
-      if (CANDIDATE_PROFILE_FACT.test(whole) && !REQUIRED_REQUIREMENT_PATTERN.test(whole)) continue;
+      if (CANDIDATE_PROFILE_FACT.test(whole) && !hasExplicitRequiredMarker(whole)) continue;
 
       // G1/G2/G3 jest wymogiem ogólnym tylko wtedy, gdy oferta nie podała
       // stanowiska E/D. Wymóg szczegółowy zastępuje ogólny, żeby nie pokazać
@@ -660,7 +648,7 @@ function detectRequirement(
 
       // Opcjonalność dotyczy trafienia po znaczniku, nie całego zdania.
       // „Wymagane Windows 11, mile widziane Entra ID” ma dwa różne statusy.
-      let optionalForThisMatch = hasPreferredRequirementMarker(before);
+      let optionalForThisMatch = isPreferredRequirementAt(whole, before.length);
       if (/^sep_g[123]_[ed](?:_1kv)?$/.test(rule.id)) {
         // Wymóg obejmujący SEP i E1/D1 może mieć znacznik opcjonalności
         // między grupą a stanowiskiem, np. „Wymagane G1, mile widziane D1”.
@@ -670,9 +658,8 @@ function detectRequirement(
           ? new RegExp('\\b(?:e\\s*-?\\s*' + scopeGroup + '\\b|eksploatacj\\w*)', 'ig')
           : new RegExp('\\b(?:d\\s*-?\\s*' + scopeGroup + '\\b|doz[oó]r\\w*)', 'ig');
         const scopeOffset = [...match[0].matchAll(scopePattern)].at(-1)?.index;
-        const markerOffset = preferredRequirementMarkerIndex(whole);
         if (scopeOffset !== undefined) {
-          optionalForThisMatch = markerOffset >= 0 && markerOffset < before.length + scopeOffset;
+          optionalForThisMatch = isPreferredRequirementAt(whole, before.length + scopeOffset);
         }
       }
       if (/^sep_g[123]$/.test(rule.id)) {
@@ -682,9 +669,8 @@ function detectRequirement(
         const groupPattern = new RegExp(`\\bg\\s*-?\\s*${groupDigit}\\b`, 'ig');
         const groupMatches = [...match[0].matchAll(groupPattern)];
         const groupOffset = groupMatches.at(-1)?.index;
-        const markerOffset = preferredRequirementMarkerIndex(whole);
         if (groupOffset !== undefined) {
-          optionalForThisMatch = markerOffset >= 0 && markerOffset < before.length + groupOffset;
+          optionalForThisMatch = isPreferredRequirementAt(whole, before.length + groupOffset);
         }
       }
 
@@ -697,8 +683,8 @@ function detectRequirement(
 
       const sectionContext = requirementSectionContextAt(jdText, match.index);
       const explicitlyRequired = sectionContext === 'required' ||
-        REQUIRED_REQUIREMENT_PATTERN.test(whole) ||
-        REQUIRED_REQUIREMENT_PATTERN.test(sentenceAround(jdText, match.index));
+        hasExplicitRequiredMarker(whole) ||
+        hasExplicitRequiredMarker(sentenceAround(jdText, match.index));
       if (sectionContext === 'optional' && !explicitlyRequired) {
         softenedMatch = true;
         continue;
@@ -711,20 +697,26 @@ function detectRequirement(
         continue;
       }
 
-      return {
-        required: true,
-        softened: false,
-        explicitlyRequired,
-        mentioned: true,
-      };
+      requiredClauses.push({ start: clause.start, end: clause.end, whole: clause.whole });
+      explicitlyRequiredMatch ||= explicitlyRequired;
     }
   }
 
+  if (requiredClauses.length > 0) {
+    return {
+      required: true,
+      softened: false,
+      explicitlyRequired: explicitlyRequiredMatch,
+      mentioned: true,
+      requiredClauses,
+    };
+  }
+
   return softenedMatch
-    ? { required: true, softened: true, explicitlyRequired: false, mentioned: true }
+    ? { required: true, softened: true, explicitlyRequired: false, mentioned: true, requiredClauses }
     : unclassifiedMatch
-      ? { required: false, softened: false, explicitlyRequired: false, mentioned: true }
-      : { required: false, softened: false, explicitlyRequired: false, mentioned: false };
+      ? { required: false, softened: false, explicitlyRequired: false, mentioned: true, requiredClauses }
+      : { required: false, softened: false, explicitlyRequired: false, mentioned: false, requiredClauses };
 }
 
 /**
@@ -758,6 +750,45 @@ function expandHeldLicensesWithHierarchy(heldLicenses: Set<string>): Set<string>
 }
 
 /**
+ * Aktualnosc moze byc dopisana w kolejnym zdaniu. Laczymy je tylko wtedy,
+ * gdy zaczyna sie od jawnego odniesienia do dokumentu, zeby nie przenosic
+ * warunku z innego wymagania, np. aktualnego prawa jazdy na SEP.
+ */
+function requiresCurrentCredential(
+  jobDescription: string,
+  rule: KnockoutRule,
+  requiredClauses: Array<{ start: number; end: number; whole: string }>,
+  credentialRule: boolean,
+): boolean {
+  if (!credentialRule || requiredClauses.length === 0) return false;
+  const validityPattern = /\b(?:aktualn\w*|wa[zż]n\w*|valid\w*|unexpired|not\s+expired)\b/i;
+  const explicitDocumentReference = /^\s*(?:(?:ten|ta|te|the|these|those)\s+)?(?:dokument\w*|uprawnien\w*|certyfikat\w*|zaświadczen\w*|orzeczen\w*|license\w*|licence\w*|credential\w*|certificate\w*)\b/i;
+  const englishPronounReference = /^\s*(?:it|they)\s+(?:must|should|has to|have to)\s+(?:(?:remain|stay)\s+)?(?:current|valid|unexpired)\b/i;
+  const polishImpliedSubject = /^\s*(?:musi|muszą|powinien|powinna|powinno|powinny)\s+(?:pozostać|być)\s+(?:aktualn\w*|ważn\w*)\s*$/i;
+
+  return requiredClauses.some((clause) => {
+    if (validityPattern.test(clause.whole)) return true;
+    let followUpStart = clause.end + 1;
+    while (/\s/.test(jobDescription[followUpStart] ?? '')) followUpStart++;
+    if (followUpStart >= jobDescription.length) return false;
+    const followUpSentence = clauseAround(jobDescription, followUpStart).whole;
+    const namesThisCredential = rule.detect.some((pattern) =>
+      new RegExp(pattern.source, pattern.flags.replace('g', '')).test(followUpSentence)
+    );
+    const namesAnotherCredential = KNOCKOUT_RULES.some((candidate) =>
+      candidate.id !== rule.id && candidate.detect.some((pattern) =>
+        new RegExp(pattern.source, pattern.flags.replace('g', '')).test(followUpSentence)
+      )
+    );
+    return validityPattern.test(followUpSentence) && (
+      (explicitDocumentReference.test(followUpSentence) && (!namesAnotherCredential || namesThisCredential)) ||
+      englishPronounReference.test(followUpSentence) ||
+      polishImpliedSubject.test(followUpSentence)
+    );
+  });
+}
+
+/**
  * Porównuje wymagania ogłoszenia z profilem kandydata.
  *
  * Wyłącznie lokalnie, bez sieci i bez modelu — dlatego ta funkcja może stać za
@@ -765,14 +796,14 @@ function expandHeldLicensesWithHierarchy(heldLicenses: Set<string>): Set<string>
  */
 export function auditKnockouts(jobDescription: string, vault: MasterVault): KnockoutReport {
   const jdText = jobDescription ?? '';
-  const vaultText = collectVaultText(vault);
+  const vaultText = buildCandidateEvidenceCorpora(vault).formal;
   const rawLicenses = new Set(vault.profiler?.licenses ?? []);
   const heldLicenses = expandHeldLicensesWithHierarchy(rawLicenses);
 
   const findings: KnockoutFinding[] = [];
 
   for (const rule of KNOCKOUT_RULES) {
-    const { required, softened, explicitlyRequired, mentioned } = detectRequirement(rule, jdText);
+    const { required, softened, explicitlyRequired, mentioned, requiredClauses } = detectRequirement(rule, jdText);
     if (!required && !mentioned) continue;
 
     const severity: KnockoutSeverity = !required
@@ -796,6 +827,12 @@ export function auditKnockouts(jobDescription: string, vault: MasterVault): Knoc
 
     // Uprawnienie zaznaczone w profilu liczy się przed tekstem: to jest
     // deklaracja wprost, a nie domysł z opisu stanowiska.
+    // Formularz uprawnien i wpis certyfikatu nie przechowuja daty wygasniecia.
+    const credentialRule = rule.id.startsWith('license_') || rule.id.startsWith('sep_') || rule.id.startsWith('udt_') ||
+      ['fgas', 'welding', 'sanepid', 'haccp', 'medical_clearance', 'height_work', 'cloud_cert', 'scrum_master', 'cisco_ccna']
+        .some((id) => rule.id === id || rule.id.startsWith(`${id}_`));
+    const validityRequired = requiresCurrentCredential(jdText, rule, requiredClauses, credentialRule);
+
     const weldingMethods = rule.id === 'welding' ? extractWeldingMethods(jdText) : [];
     const applicableLicenseIds = rule.id === 'welding' && weldingMethods.length === 0
       ? ['welding_tig_mig', ...rule.satisfiedByLicenseIds]
@@ -806,43 +843,54 @@ export function auditKnockouts(jobDescription: string, vault: MasterVault): Knoc
     // fałszywe zaliczenie, gdy kandydat zaznaczył np. TIG, a oferta wymagała
     // jednocześnie TIG i MAG. Przy ogólnym wymogu nadal wystarcza dowolny
     // konkretny wpis spawalniczy.
-    const byLicense = rule.id === 'welding' && weldingMethods.length > 0
+    const licenseEvidence = rule.id === 'welding' && weldingMethods.length > 0
       ? weldingMethods.every((method) => heldLicenses.has(`welding_${method}`))
       : applicableLicenseIds.some((id) => heldLicenses.has(id));
     // Historia pracy nie dowodzi, że wymagane uprawnienie nadal jest ważne.
     // Dotyczy to także prawa jazdy opisanego przy nazwie stanowiska kierowcy.
     const formalQualification = rule.id.startsWith('license_') || rule.id.startsWith('sep_') || rule.id.startsWith('udt_') ||
       ['fgas', 'welding', 'sanepid', 'haccp', 'medical_clearance', 'height_work'].includes(rule.id);
-    const byText = !byLicense && (rule.id === 'sep_g3'
+    const textEvidence = rule.id === 'sep_g3'
       ? hasPositiveSepG3Evidence(vaultText)
       : rule.id === 'welding'
         ? hasPositiveWeldingEvidence(jdText, vaultText)
         : (rule.id.startsWith('cloud_cert') || ['scrum_master', 'cisco_ccna', 'fgas'].includes(rule.id))
         ? hasPositiveCertificateEvidence(rule.satisfiedByText, vaultText)
-        : hasPositiveTextEvidence(rule.satisfiedByText, vaultText, formalQualification));
+        : hasPositiveTextEvidence(rule.satisfiedByText, vaultText, formalQualification);
+    // UNKNOWN ma sens tylko, gdy profil potwierdza właściwy dokument, ale nie
+    // jego termin. Brak dokumentu albo zły zakres pozostaje znanym brakiem.
+    const validityUnconfirmed = validityRequired && (licenseEvidence || textEvidence);
+    const byLicense = licenseEvidence && !validityUnconfirmed;
+    const byText = !licenseEvidence && textEvidence && !validityUnconfirmed;
 
     findings.push({
       ruleId: rule.id,
-      label: rule.label,
+      label: validityUnconfirmed ? `${rule.label} (termin waznosci niepotwierdzony)` : rule.label,
       // „Mile widziane” w treści ogłoszenia obniża wagę nawet wtedy, gdy sama
       // reguła jest twarda — inaczej straszylibyśmy użytkownika wymaganiem,
       // którego pracodawca sam nie traktuje jako obowiązkowe.
       severity,
+      status: validityUnconfirmed ? 'unknown' : byLicense || byText ? 'satisfied' : 'unsatisfied',
       satisfied: byLicense || byText,
       matchedVia: byLicense ? 'license' : byText ? 'text' : null,
-      hint: rule.hint,
+      hint: validityUnconfirmed
+        ? 'Profil nie przechowuje terminu waznosci tego dokumentu, wiec nie mozna potwierdzic jego aktualnosci.'
+        : rule.hint,
     });
   }
 
-  const unmet = findings.filter((finding) => !finding.satisfied);
+  const unconfirmed = findings.filter((finding) => finding.status === 'unknown');
+  const known = findings.filter((finding) => finding.status !== 'unknown');
+  const unmet = known.filter((finding) => !finding.satisfied);
 
   return {
     findings,
     blocking: unmet.filter((finding) => finding.severity === 'knockout'),
     optional: unmet.filter((finding) => finding.severity === 'preferred'),
     unclassified: findings.filter((finding) => finding.severity === 'information'),
-    satisfiedCount: findings.filter((finding) => finding.severity !== 'information' && finding.satisfied).length,
-    requirementCount: findings.filter((finding) => finding.severity !== 'information').length,
+    unconfirmed,
+    satisfiedCount: known.filter((finding) => finding.severity !== 'information' && finding.satisfied).length,
+    requirementCount: known.filter((finding) => finding.severity !== 'information').length,
   };
 }
 

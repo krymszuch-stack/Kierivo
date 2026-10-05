@@ -1,4 +1,4 @@
-import { FREE_DAILY_AI_USES } from '../store/useEntitlements';
+import { AI_QUOTA_RESET_TIME, FREE_DAILY_AI_USES } from './aiQuotaPolicy';
 
 /**
  * Moduł centralizujący logikę formatowania i komunikacji o limitach
@@ -70,8 +70,8 @@ export function formatModelQuotaFeedback(
   const shortBadge = `${safeRemaining}/${maxDaily}`;
 
   const details = isExhausted
-    ? `Dzienny limit operacji AI (${maxDaily} zapytań/dobę) został wyczerpany. Pula odnowi się automatycznie o północy. Podstawowy audyt regułowy i edycja profilu pozostają dostępne bez modelu AI.`
-    : `Darmowy dobowy przydział w Public Pre-Beta (0 zł). Pozostało ${safeRemaining} z ${maxDaily} zapytań AI. Pula odnawia się każdej nocy o 00:00.`;
+    ? `Dzienny limit operacji AI (${maxDaily} zapytań/dobę) został wyczerpany. Pula odnowi się automatycznie o ${AI_QUOTA_RESET_TIME}. Podstawowy audyt regułowy i edycja profilu pozostają dostępne bez modelu AI.`
+    : `Darmowy dobowy przydział w Public Pre-Beta (0 zł). Pozostało ${safeRemaining} z ${maxDaily} zapytań AI. Pula odnawia się codziennie o ${AI_QUOTA_RESET_TIME}.`;
 
   return {
     label,
@@ -105,7 +105,7 @@ export function getModelGracefulDegradationNotice(
       return {
         title: 'Limit analiz AI na dziś wyczerpany',
         message:
-          'Dzienna pula wywołań modelu została wykorzystana (odnowi się o północy). Ogłoszenie zostanie przeanalizowane przez wbudowany, deterministyczny silnik regułowy Kierivo.',
+          `Dzienna pula wywołań modelu została wykorzystana (odnowi się o ${AI_QUOTA_RESET_TIME}). Ogłoszenie zostanie przeanalizowane przez wbudowany, deterministyczny silnik regułowy Kierivo.`,
         fallbackActionName: 'Analizuj silnikiem regułowym',
         fallbackDescription:
           'Dostępna pozostaje lokalna ekstrakcja słów kluczowych, lematyzacja i ocena dopasowania według reguł Kierivo. Nie obejmuje ona analizy modelu AI.',
@@ -115,7 +115,7 @@ export function getModelGracefulDegradationNotice(
       return {
         title: 'Limit symulacji AI na dziś osiągnięty',
         message:
-          'Generowanie pytań i ocena odpowiedzi przez model Azure OpenAI odnowią się o północy.',
+          `Generowanie pytań i ocena odpowiedzi przez skonfigurowany model AI odnowią się o ${AI_QUOTA_RESET_TIME}.`,
         fallbackActionName: 'Użyj pytań wbudowanych',
         fallbackDescription:
           'Możesz swobodnie ćwiczyć odpowiedzi w formule STAR na bogatej bazie pytań rekrutacyjnych ze stoperem czasu.',
@@ -125,7 +125,7 @@ export function getModelGracefulDegradationNotice(
       return {
         title: 'Weryfikator AI niedostępny (wyczerpany limit)',
         message:
-          'Trójstopniowa weryfikacja z modelem LLM odnowi się po północy wraz z nową dobową pulą.',
+          `Trójstopniowa weryfikacja z modelem LLM odnowi się o ${AI_QUOTA_RESET_TIME} wraz z nową dobową pulą.`,
         fallbackActionName: 'Otwórz Laboratorium Audytu ATS',
         fallbackDescription:
           'Lokalne laboratorium pokazuje wybrane cechy struktury i treści. Nie odtwarza konfiguracji ani wyniku konkretnego zewnętrznego ATS.',
@@ -136,7 +136,7 @@ export function getModelGracefulDegradationNotice(
       return {
         title: 'Dzisiejszy limit operacji modelowych wyczerpany',
         message:
-          'Wykorzystano przydział zapytań AI na dziś. Nowa pula zostanie przyznana automatycznie o północy.',
+          `Wykorzystano przydział zapytań AI na dziś. Nowa pula zostanie przyznana automatycznie o ${AI_QUOTA_RESET_TIME}.`,
         fallbackActionName: 'Przejdź do trybu regułowego',
         fallbackDescription:
           'Wszystkie podstawowe funkcjonalności przygotowywania dokumentów, eksportu PDF i audytu działają nieprzerwanie bez modelu.',

@@ -1,8 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { standardApiLimiter } from '../middleware/rateLimiter';
+import { mobilityEndpointsLimiter } from '../middleware/rateLimiter';
 import {
   calculateRouteWithMobility,
   calculateReachableRangeWithMobility,
+  MobilityValidationError,
   RouteCalculationParams,
   ReachableRangeParams,
 } from '../services/azureMaps.service';
@@ -17,16 +18,23 @@ export const mobilityRouter = Router();
  */
 mobilityRouter.post(
   '/mobility/route',
-  standardApiLimiter,
+  mobilityEndpointsLimiter,
   async (req: Request<unknown, unknown, RouteCalculationParams>, res: Response, next: NextFunction) => {
     try {
       const { origin, destination, engineType, trafficMode } = req.body || {};
 
       if (!origin || typeof origin !== 'string' || !destination || typeof destination !== 'string') {
-        return res.status(400).json({
-          success: false,
-          error: 'Podaj miejscowość początkową (origin) oraz docelową (destination).',
-        });
+        throw new MobilityValidationError('Podaj miejscowość początkową (origin) oraz docelową (destination).');
+      }
+
+      if (!origin.trim() || !destination.trim()) {
+        throw new MobilityValidationError('Lokalizacje nie mogą być puste.');
+      }
+      if (engineType !== undefined && !['combustion', 'electric', 'transit'].includes(engineType)) {
+        throw new MobilityValidationError('Nieobsługiwany rodzaj transportu.');
+      }
+      if (trafficMode !== undefined && !['peak', 'smooth'].includes(trafficMode)) {
+        throw new MobilityValidationError('Wybierz tryb ruchu: peak albo smooth.');
       }
 
       const result = await calculateRouteWithMobility({
@@ -54,21 +62,27 @@ mobilityRouter.post(
  */
 mobilityRouter.post(
   '/mobility/range',
-  standardApiLimiter,
+  mobilityEndpointsLimiter,
   async (req: Request<unknown, unknown, ReachableRangeParams>, res: Response, next: NextFunction) => {
     try {
       const { centerCity, timeBudgetMinutes = 45, trafficMode = 'peak' } = req.body || {};
 
       if (!centerCity || typeof centerCity !== 'string') {
-        return res.status(400).json({
-          success: false,
-          error: 'Podaj miasto centralne (centerCity) do wyznaczenia zasięgu.',
-        });
+        throw new MobilityValidationError('Podaj miasto centralne (centerCity) do wyznaczenia zasięgu.');
       }
 
-      const budget = [30, 45, 60].includes(Number(timeBudgetMinutes))
-        ? (Number(timeBudgetMinutes) as 30 | 45 | 60)
-        : 45;
+      if (!centerCity.trim()) {
+        throw new MobilityValidationError('Miasto centralne nie może być puste.');
+      }
+
+      if (timeBudgetMinutes !== undefined && ![30, 45, 60].includes(Number(timeBudgetMinutes))) {
+        throw new MobilityValidationError('Czas zasięgu musi wynosić 30, 45 albo 60 minut.');
+      }
+      if (trafficMode !== undefined && !['peak', 'smooth'].includes(trafficMode)) {
+        throw new MobilityValidationError('Wybierz tryb ruchu: peak albo smooth.');
+      }
+
+      const budget = (Number(timeBudgetMinutes ?? 45) as 30 | 45 | 60);
 
       const result = await calculateReachableRangeWithMobility({
         centerCity: centerCity.trim(),

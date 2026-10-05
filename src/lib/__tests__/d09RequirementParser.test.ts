@@ -64,6 +64,45 @@ Wymagania:
     expect(byId(result.requirements, 'license-driving-c')?.kind).toBe('FORMAL_REFERENCE');
   });
 
+  it('nie traktuje zaprzeczonego kryterium jako MUST, nawet gdy zaprzeczenie stoi po nazwie', async () => {
+    const result = await extractD09Requirements(`
+Wymagania:
+- Prawo jazdy kat. B nie jest wymagane.
+- Angielski nie jest wymagany.
+- Nie wymagamy znajomości Java.
+`);
+
+    expect(byId(result.requirements, 'license-driving-b')).toBeUndefined();
+    expect(byId(result.requirements, 'language-english')).toBeUndefined();
+    expect(byId(result.requirements, 'java')).toBeUndefined();
+  });
+
+  it('nie uznaje „no requirement”, „not necessary” ani „not needed” za MUST', async () => {
+    const result = await extractD09Requirements(`
+Requirements:
+- No requirement for PowerShell.
+- AWS is not necessary.
+- JavaScript is not needed.
+- Python is required.
+`);
+
+    expect(byId(result.requirements, 'powershell')).toBeUndefined();
+    expect(byId(result.requirements, 'aws')).toBeUndefined();
+    expect(byId(result.requirements, 'javascript')).toBeUndefined();
+    expect(byId(result.requirements, 'python')?.priority).toBeDefined();
+  });
+
+  it('zachowuje osobne pozytywne wystąpienie tego samego kryterium', async () => {
+    const result = await extractD09Requirements(`
+Wymagania:
+- Prawo jazdy kat. B nie jest wymagane.
+- Do wyjazdów serwisowych wymagane prawo jazdy kat. B.
+`);
+
+    expect(byId(result.requirements, 'license-driving-b')?.priority).toBe('MUST');
+    expect(byId(result.requirements, 'license-driving-b')?.sourceText).toContain('wymagane prawo jazdy');
+  });
+
   it('resetuje kontekst MUST po wejściu w Zakres obowiązków', async () => {
     const result = await extractD09Requirements(`
 Wymagania:

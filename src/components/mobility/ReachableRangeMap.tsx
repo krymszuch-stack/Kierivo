@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Compass, Car, Zap, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Compass, Car, Zap, Clock } from 'lucide-react';
 import type { ReachableRangeResult, RouteCalculationResult } from '../../lib/mobilityClient';
+import { projectReachableRange } from '../../lib/reachableRangeProjection';
 
 export interface ReachableRangeMapProps {
   rangeData?: ReachableRangeResult | null;
@@ -11,6 +12,7 @@ export interface ReachableRangeMapProps {
   isPeakTraffic: boolean;
   engineType: 'combustion' | 'electric' | 'transit';
   isLoading?: boolean;
+  dataUnavailable?: boolean;
 }
 
 export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
@@ -22,53 +24,13 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
   isPeakTraffic,
   engineType,
   isLoading = false,
+  dataUnavailable = false,
 }) => {
-  // Obliczenie bounding box dla SVG
   const mapProjection = useMemo(() => {
-    const defaultCenter = { lat: 52.2297, lon: 21.0122 };
-    const center = rangeData?.center || defaultCenter;
-
-    const points = rangeData?.boundaryPoints || [];
-    let minLat = center.lat - 0.5;
-    let maxLat = center.lat + 0.5;
-    let minLon = center.lon - 0.7;
-    let maxLon = center.lon + 0.7;
-
-    if (points.length > 0) {
-      minLat = Math.min(minLat, ...points.map((p) => p.lat));
-      maxLat = Math.max(maxLat, ...points.map((p) => p.lat));
-      minLon = Math.min(minLon, ...points.map((p) => p.lon));
-      maxLon = Math.max(maxLon, ...points.map((p) => p.lon));
-    }
-
-    // Dodaj margines
-    const padLat = (maxLat - minLat) * 0.15 || 0.2;
-    const padLon = (maxLon - minLon) * 0.15 || 0.2;
-    minLat -= padLat;
-    maxLat += padLat;
-    minLon -= padLon;
-    maxLon += padLon;
-
-    const width = 480;
-    const height = 280;
-
-    const project = (lat: number, lon: number) => {
-      const x = ((lon - minLon) / (maxLon - minLon)) * width;
-      // Odwrócona oś Y (lat rośnie w górę)
-      const y = height - ((lat - minLat) / (maxLat - minLat)) * height;
-      return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
-    };
-
-    const centerPt = project(center.lat, center.lon);
-    const polygonPts = points
-      .map((p) => {
-        const pt = project(p.lat, p.lon);
-        return `${pt.x},${pt.y}`;
-      })
-      .join(' ');
-
-    return { width, height, centerPt, polygonPts };
-  }, [rangeData]);
+    const center = rangeData?.center ?? { lat: 0, lon: 0 };
+    const actualRoute = routeData?.source === 'azure_maps' ? routeData.points ?? [] : [];
+    return projectReachableRange(center, rangeData?.boundaryPoints ?? [], actualRoute);
+  }, [rangeData, routeData]);
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-line bg-surface/90 shadow-card-glass">
@@ -76,12 +38,14 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 bg-sunken/40 px-3.5 py-2 text-xs">
         <div className="flex items-center gap-1.5 font-bold text-ink">
           <Compass className="h-4 w-4 text-[#155EEF]" />
-          <span>Izochrona Czasu Życia (Zasięg {timeBudget} min)</span>
+          <span>Obszar w zasięgu {timeBudget} min</span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-muted">
           <span className="inline-flex items-center gap-1">
             <span className={`h-2 w-2 rounded-full ${isPeakTraffic ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-            {isPeakTraffic ? 'Szczyt poranny (korki)' : 'Ruch płynny'}
+            {routeData?.trafficDataAvailable
+              ? (isPeakTraffic ? 'Ruch teraz — dane Azure' : 'Czas bez korków')
+              : (isPeakTraffic ? 'Ruch teraz — brak danych' : 'Czas bazowy — bez danych o ruchu')}
           </span>
           <span className="text-line">•</span>
           <span className="inline-flex items-center gap-1 font-mono">
@@ -101,7 +65,16 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
         {isLoading ? (
           <div className="flex h-full w-full items-center justify-center gap-2 text-xs text-muted">
             <Clock className="h-4 w-4 animate-spin text-[#155EEF]" />
-            <span>Kalkulacja trasy i izochrony w Azure Maps...</span>
+            <span>Obliczanie czasu przejazdu i zasięgu...</span>
+          </div>
+        ) : !rangeData ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-muted">
+            <Compass className="h-7 w-7 opacity-60" />
+            <span>{dataUnavailable
+              ? 'Nie udało się uzyskać danych dla tej lokalizacji. Sprawdź nazwę miasta lub dostępność Azure Maps.'
+              : routeData
+                ? 'Brak danych izochrony — mapa zasięgu nie jest rysowana.'
+                : 'Podaj miasto zamieszkania, aby obliczyć zasięg dojazdu.'}</span>
           </div>
         ) : (
           <svg
@@ -123,9 +96,9 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
             <rect width="100%" height="100%" fill="url(#grid)" />
 
             {/* Obszar izochrony (zasięg w minutach) */}
-            {mapProjection.polygonPts && (
+            {mapProjection.boundary && (
               <polygon
-                points={mapProjection.polygonPts}
+                points={mapProjection.boundary}
                 fill="url(#rangeGrad)"
                 stroke="#155EEF"
                 strokeWidth="1.5"
@@ -134,10 +107,21 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
               />
             )}
 
+            {mapProjection.route && (
+              <polyline
+                points={mapProjection.route}
+                fill="none"
+                stroke="var(--color-brand-600)"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
             {/* Okrąg koncentryczny orientacyjny */}
             <circle
-              cx={mapProjection.centerPt.x}
-              cy={mapProjection.centerPt.y}
+              cx={mapProjection.center.x}
+              cy={mapProjection.center.y}
               r="65"
               fill="none"
               stroke="currentColor"
@@ -147,7 +131,7 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
             />
 
             {/* Punkt centralny (Dom kandydata) */}
-            <g transform={`translate(${mapProjection.centerPt.x}, ${mapProjection.centerPt.y})`}>
+            <g transform={`translate(${mapProjection.center.x}, ${mapProjection.center.y})`}>
               <circle r="8" fill="#155EEF" fillOpacity="0.25" className="animate-ping" />
               <circle r="5" fill="#155EEF" stroke="#ffffff" strokeWidth="1.5" />
               <text x="8" y="4" className="fill-ink font-mono text-[10px] font-bold">
@@ -155,24 +139,13 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
               </text>
             </g>
 
-            {/* Punkt docelowy (Biuro/Praca) */}
-            {destinationName && (
-              <g transform={`translate(${mapProjection.centerPt.x + 85}, ${mapProjection.centerPt.y - 45})`}>
+            {/* Lokalizację celu pokazujemy wyłącznie na końcu rzeczywistej geometrii trasy Azure. */}
+            {mapProjection.destination && destinationName && (
+              <g transform={`translate(${mapProjection.destination.x}, ${mapProjection.destination.y})`}>
                 <circle r="5" fill="#047857" stroke="#ffffff" strokeWidth="1.5" />
                 <text x="8" y="4" className="fill-ink font-mono text-[10px] font-bold">
                   {destinationName}
                 </text>
-                {/* Linia łącząca */}
-                <line
-                  x1={-(85)}
-                  y1={45}
-                  x2={0}
-                  y2={0}
-                  stroke="#155EEF"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeDasharray="4 4"
-                />
               </g>
             )}
           </svg>
@@ -186,7 +159,8 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
                 Odległość: <strong className="font-mono text-ink">{routeData.roadDistanceKm} km</strong>
               </span>
               <span>
-                Czas trasy: <strong className="font-mono text-ink">{routeData.trafficMinutes} min</strong>
+                {routeData.trafficDataAvailable ? 'Czas trasy:' : 'Szacowany czas bazowy:'}{' '}
+                <strong className="font-mono text-ink">{routeData.trafficMinutes} min</strong>
                 {routeData.trafficDelayMinutes > 0 && (
                   <span className="ml-1 text-amber-600 dark:text-amber-400 font-medium">
                     (+{routeData.trafficDelayMinutes} min zator)
@@ -194,9 +168,8 @@ export const ReachableRangeMap: React.FC<ReachableRangeMapProps> = ({
                 )}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 font-mono">
-              <span className="text-muted">Szacowany koszt paliwa/prądu:</span>
-              <strong className="text-ink">{routeData.energyConsumption.costMonthlyPln} zł/msc</strong>
+            <div className="text-muted">
+              Koszt wymaga danych o pojeździe i cenie energii/paliwa.
             </div>
           </div>
         )}

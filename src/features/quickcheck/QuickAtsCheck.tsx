@@ -15,10 +15,17 @@ import { motion } from 'motion/react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Textarea } from '../../components/ui/Field';
-import { extractTextFromAnyFile } from '../../lib/cvUniversalParser';
+import { extractTextFromAnyFile, InvalidDocxError, UnsupportedLegacyDocFormatError, UnsupportedMasterVaultJsonCvError } from '../../lib/cvUniversalParser';
 import { runQuickAtsCheck, QuickCheckError, type QuickCheckResult, getQuickCheckScoreTone } from '../../lib/quickAtsCheck';
+import { getCanonicalScoreMetricLabel, getMatchInterpretation, hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { getScoreRingTrackDashArray } from '../../lib/scoreRingPresentation';
+import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 import { showToast } from '../../store/useToastStore';
 import { MasterVault } from '../../types';
+import { getUnmetBlockingRequirements, hasCareerEvidence } from '../../lib/canonicalAts';
+import { useAnalysisClock } from '../../hooks/useAnalysisClock';
+import { getCalculationTimeFreshness } from '../../lib/analysisPeriod';
+import { AnalysisTimeNotice } from '../../components/ui/AnalysisTimeNotice';
 
 export interface QuickAtsCheckProps {
   onSaveProfile: (vault: MasterVault) => void;
@@ -34,7 +41,9 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
   const [cvText, setCvText] = useState('');
   const [jdText, setJdText] = useState('');
   const [cvFormat, setCvFormat] = useState('TXT');
-  const [result, setResult] = useState<QuickCheckResult | null>(null);
+  const [storedResult, setResult] = useState<QuickCheckResult | null>(null);
+  const now = useAnalysisClock();
+  const result = storedResult && getCalculationTimeFreshness(storedResult.canonicalResult, now) === 'current' ? storedResult : null;
   const [error, setError] = useState<{ message: string; field: 'cv' | 'jd' } | null>(null);
   const [isReadingFile, setIsReadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,9 +61,11 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
         message: `Plik odczytany w przeglądarce (${format}). Nie został nigdzie wysłany.`,
         variant: 'success',
       });
-    } catch {
+    } catch (error) {
       setError({
-        message: 'Nie udało się odczytać tego pliku. Skopiuj treść CV i wklej ją poniżej.',
+        message: error instanceof InvalidDocxError || error instanceof UnsupportedLegacyDocFormatError || error instanceof UnsupportedMasterVaultJsonCvError
+          ? error.message
+          : 'Nie udało się odczytać tego pliku. Skopiuj treść CV i wklej ją poniżej.',
         field: 'cv',
       });
     } finally {
@@ -87,11 +98,40 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
   const canonicalScore = result?.canonicalResult.state === 'SCORABLE'
     ? result.canonicalResult.score
     : null;
+  const detectedRequirementCount = result
+    ? result.canonicalResult.matchedRequirements.length + result.canonicalResult.missingRequirements.length + result.canonicalResult.unconfirmedRequirements.length
+    : undefined;
+  const profileCompleteness = result ? measureVaultCompleteness(result.vault).percent : undefined;
+  const careerEvidenceAvailable = result ? hasCareerEvidence(result.vault) : true;
+  const blockingRequirements = getUnmetBlockingRequirements(result?.canonicalResult);
+  const unconfirmedRequirements = result?.canonicalResult.unconfirmedRequirements;
+  const limitedMatchEvidence = hasLimitedMatchEvidence({
+    profileCompleteness,
+    totalRequirementCount: detectedRequirementCount,
+    fitEvidenceAvailable: result ? careerEvidenceAvailable : undefined,
+    blockingRequirements,
+    unconfirmedRequirements,
+  });
+  const limitedMatchNote = result && canonicalScore !== null
+    ? getMatchInterpretation({
+        score: canonicalScore,
+        reason: result.canonicalResult.reason,
+        mainGap: result.canonicalResult.missingRequirements[0],
+        activeSuggestionCount: 0,
+        profileCompleteness,
+        matchedRequirementCount: result.canonicalResult.matchedRequirements.length,
+        totalRequirementCount: detectedRequirementCount,
+        fitEvidenceAvailable: careerEvidenceAvailable,
+        blockingRequirements,
+        unconfirmedRequirements,
+      })
+    : undefined;
   const tone = canonicalScore === null ? null : getQuickCheckScoreTone(canonicalScore);
   const circumference = 2 * Math.PI * 42;
 
   return (
     <Card variant="elevated" className={`space-y-5 p-5 sm:p-6 ${className}`}>
+      {storedResult && !result && <AnalysisTimeNotice score={storedResult.canonicalResult.score} onRefresh={handleCheck} />}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-grad text-on-brand">
@@ -123,7 +163,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.rtf,.txt"
+              accept=".pdf,.docx,.rtf,.txt"
               className="hidden"
               onChange={(e) => handleFile(e.target.files?.[0])}
             />
@@ -180,7 +220,7 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
         </div>
       </div>
 
-      {result && tone && (
+      {result && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -191,7 +231,15 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
             <div className="relative h-[104px] w-[104px] shrink-0">
               <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-                <circle cx="50" cy="50" r="42" className="stroke-line" strokeWidth="8" fill="none" />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  className="stroke-line"
+                  strokeWidth="8"
+                  fill="none"
+                  strokeDasharray={getScoreRingTrackDashArray(canonicalScore)}
+                />
                 <motion.circle
                   cx="50"
                   cy="50"
@@ -210,23 +258,37 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                 <span className={`font-mono text-2xl font-bold ${tone?.text ?? 'text-muted'}`}>
                   {canonicalScore === null ? '—' : `${canonicalScore}%`}
                 </span>
-                <span className="text-[9px] uppercase tracking-wide text-subtle">Dopasowanie</span>
+                <span className="text-[9px] uppercase tracking-wide text-subtle">{canonicalScore === null ? 'Brak wyniku' : getCanonicalScoreMetricLabel(limitedMatchEvidence, 'Dopasowanie')}</span>
               </div>
             </div>
 
             <div className="min-w-0 flex-1 space-y-3">
               <div>
                 <p className={`text-sm font-bold ${tone?.text ?? 'text-muted'}`}>
-                  {tone?.label ?? 'Nie wyliczono wyniku dopasowania'}
+                  {canonicalScore !== null && limitedMatchEvidence
+                    ? careerEvidenceAvailable ? 'Wynik wstępny — ograniczone dane' : 'Wynik wstępny — brak merytorycznego opisu kariery'
+                    : tone?.label ?? 'Nie wyliczono wyniku dopasowania'}
                 </p>
+                {canonicalScore !== null && limitedMatchEvidence && (
+                  <p role="note" className="mt-0.5 text-xs text-warning-fg">
+                    {limitedMatchNote}
+                  </p>
+                )}
                 {canonicalScore === null && (
                   <p role="note" className="mt-0.5 text-xs text-warning-fg">
                     {result.canonicalResult.reason}
                   </p>
                 )}
                 <p className="mt-0.5 text-xs text-muted">
-                  Pokrycie umiejętności {result.canonicalResult.components.skills === null ? '—' : `${result.canonicalResult.components.skills}%`} · struktura dokumentu {result.canonicalResult.components.structure === null ? '—' : `${result.canonicalResult.components.structure}%`} · formatowanie (symulacja) {result.ats.formattingScore}%
+                  Pokrycie umiejętności {result.canonicalResult.components.skills === null ? '—' : `${result.canonicalResult.components.skills}%`} · struktura dokumentu {result.canonicalResult.components.structure === null ? '—' : `${result.canonicalResult.components.structure}%`} · braki kontaktowe {result.ats.ocrWarnings.length} · błędne daty {result.ats.badDateFormats.length}
                 </p>
+                {result.canonicalResult.unconfirmedRequirements.length > 0 &&
+                  result.canonicalResult.state !== 'UNCONFIRMED_REQUIREMENTS' &&
+                  (canonicalScore === null || !limitedMatchEvidence) && (
+                  <p role="note" className="mt-1 text-xs text-warning-fg">
+                    Nie można potwierdzić: {result.canonicalResult.unconfirmedRequirements.join(', ')}. Te wymogi nie są zaliczone ani traktowane jako braki bez wiarygodnych danych.
+                  </p>
+                )}
               </div>
 
               {result.missingSkills.length > 0 ? (
@@ -255,20 +317,27 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                     potwierdzone w profilu {result.knockouts.satisfiedCount} z {result.knockouts.requirementCount} wymagań lub atutów
                   </span>
                 )}
+                {result.knockouts.unconfirmed.length > 0 && (
+                  <span className="font-mono text-[10px] text-warning-fg">
+                    niepotwierdzone: {result.knockouts.unconfirmed.length}
+                  </span>
+                )}
               </div>
               <ul className="space-y-1.5">
                 {result.knockouts.findings.map((finding) => (
                   <li
                     key={finding.ruleId}
                     className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-xs ${
-                      finding.severity === 'information'
+                      finding.status === 'unknown'
+                        ? 'border-warning/30 bg-warning-soft/40 text-warning-fg'
+                        : finding.severity === 'information'
                         ? 'border-line bg-sunken text-muted'
                         : finding.satisfied
                         ? 'border-success/30 bg-success-soft text-success-fg'
                         : 'border-line bg-sunken text-muted'
                     }`}
                   >
-                    {finding.severity === 'information' ? (
+                    {finding.status === 'unknown' || finding.severity === 'information' ? (
                       <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     ) : finding.satisfied ? (
                       <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -277,12 +346,15 @@ export const QuickAtsCheck: React.FC<QuickAtsCheckProps> = ({
                     )}
                     <div>
                       <p className="font-semibold">{finding.label}</p>
-                      {finding.severity === 'information' ? (
+                      {finding.status === 'unknown' ? (
+                        <p className="mt-0.5 text-[11px]">Nieznany status — brak danych do potwierdzenia aktualności; nie liczymy go jako spełnionego ani niespełnionego.</p>
+                      ) : finding.severity === 'information' ? (
                         <p className="mt-0.5 text-[11px]">Wzmianka bez określonego statusu — system nie zalicza jej jako wymagania ani braku.</p>
                       ) : finding.severity === 'preferred' ? (
                         <p className="mt-0.5 text-[11px]">Mile widziane — brak nie obniża wyniku.</p>
                       ) : null}
-                      {!finding.satisfied && finding.severity !== 'information' && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
+                      {!finding.satisfied && finding.status !== 'unknown' && finding.severity !== 'information' && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
+                      {finding.status === 'unknown' && finding.hint && <p className="mt-0.5 text-[11px]">{finding.hint}</p>}
                     </div>
                   </li>
                 ))}

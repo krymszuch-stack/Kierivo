@@ -1,5 +1,5 @@
 /**
- * Skrypt kompleksowego audytu funkcjonalności sprawdzania CV (10 wywołań API / silnika).
+ * Lokalny audyt 10 syntetycznych scenariuszy CV i oferty.
  *
  * Testuje 10 zróżnicowanych profili branżowych (prace fizyczne, techniczne, specjalistyczne, IT)
  * zgodnie z Regułą 8 (monter, spawacz, magazynier obok programisty)
@@ -10,9 +10,8 @@ import { performance } from 'perf_hooks';
 import type { MasterVault, HighlightMetric, LanguageProficiency } from '../src/types';
 import { scoreCanonicalAts } from '../src/lib/canonicalAts';
 import { stripSensitiveFields, identifyingValues, pseudonymize, assertNoPii } from '../src/server/pseudonymize';
-import { SqliteGraphRepository } from '../labs/semantic-work-graph/src/repositories/SqliteGraphRepository';
-import { LexiconImporter } from '../labs/semantic-work-graph/src/seed/LexiconImporter';
-import { LinguisticEngine } from '../labs/semantic-work-graph/src/services/LinguisticEngine';
+import type { SqliteGraphRepository } from '../labs/semantic-work-graph/src/repositories/SqliteGraphRepository';
+import type { LinguisticEngine } from '../labs/semantic-work-graph/src/services/LinguisticEngine';
 
 function createHighlight(id: string, text: string, metric = ''): HighlightMetric {
   return {
@@ -627,44 +626,81 @@ export interface AuditResult {
   role: string;
   category: string;
   latencyMs: number;
-  canonicalScore: number;
+  canonicalScore: number | null;
   components: {
-    skills: number;
-    experience: number;
-    structure: number;
-    formal: number;
+    skills: number | null;
+    experience: number | null;
+    structure: number | null;
+    formal: number | null;
   };
   matchedRequirementsCount: number;
   missingRequirementsCount: number;
-  semanticCoveragePct: number;
-  piiProtectionPassed: boolean;
-  tripleLoopScore: number;
-  verdict: string;
+  semanticCoveragePct: number | null;
+  summaryPseudonymizationPassed: boolean;
+}
+
+/** Błąd pomiaru lub pseudonimizacji ma zatrzymać audyt, nie tylko zmienić etykietę w tabeli. */
+export function getAuditResultFailures(results: readonly AuditResult[]): string[] {
+  const failures: string[] = [];
+  for (const result of results) {
+    const percentages: Array<[string, unknown]> = [
+      ['Kanon ATS', result.canonicalScore],
+      ['Skills', result.components.skills],
+      ['Doświadczenie', result.components.experience],
+      ['Struktura', result.components.structure],
+      ['Formalia', result.components.formal],
+      ['Semantyka', result.semanticCoveragePct],
+    ];
+    for (const [label, value] of percentages) {
+      if (value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100)) {
+        failures.push(`Scenariusz ${result.scenarioId} (${result.role}): ${label} poza zakresem 0-100.`);
+      }
+    }
+    if (!Number.isFinite(result.latencyMs) || result.latencyMs < 0) {
+      failures.push(`Scenariusz ${result.scenarioId} (${result.role}): nieprawidłowy pomiar czasu.`);
+    }
+    if (!result.summaryPseudonymizationPassed) {
+      failures.push(`Scenariusz ${result.scenarioId} (${result.role}): pseudonimizacja podsumowania nie przeszła kontroli.`);
+    }
+  }
+  return failures;
 }
 
 export async function runFullAudit(): Promise<AuditResult[]> {
-  console.log('Rozpoczynam audyt funkcjonalności aplikacji i 10 wywołań weryfikacji CV...\n');
+  console.log('Rozpoczynam lokalny audyt 10 syntetycznych scenariuszy CV i ofert...\n');
 
-  // Inicjalizacja silnika semantycznego
-  const repo = new SqliteGraphRepository(':memory:');
-  const importer = new LexiconImporter(repo, { offline: true });
-  importer.seedOfflineCorpus();
-  const linguisticEngine = new LinguisticEngine(repo);
+  // Pakiet grafu ma osobne zależności. Jego brak nie może blokować
+  // niezależnego audytu ATS ani powodować zastępczego wyniku semantyki.
+  let repo: SqliteGraphRepository | null = null;
+  let linguisticEngine: LinguisticEngine | null = null;
+  try {
+    const [{ SqliteGraphRepository: Repository }, { LexiconImporter }, { LinguisticEngine: Engine }] = await Promise.all([
+      import('../labs/semantic-work-graph/src/repositories/SqliteGraphRepository'),
+      import('../labs/semantic-work-graph/src/seed/LexiconImporter'),
+      import('../labs/semantic-work-graph/src/services/LinguisticEngine'),
+    ]);
+    repo = new Repository(':memory:');
+    new LexiconImporter(repo, { offline: true }).seedOfflineCorpus();
+    linguisticEngine = new Engine(repo);
+  } catch (error) {
+    console.warn(`Pokrycie semantyczne nie zostało zmierzone: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const results: AuditResult[] = [];
 
   for (const s of SCENARIOS) {
     const t0 = performance.now();
 
-    // 1. Sprawdzenie ochrony RODO (Zero PII leakage)
+    // Ten lokalny skrypt sprawdza wyłącznie pseudonimizację podsumowania.
+    // Nie wysyła danych i nie ocenia całego ładunku ani zgodności z RODO.
     const safeVault = stripSensitiveFields(s.candidate);
     const names = identifyingValues(s.candidate);
     const pseudonymizedSummary = pseudonymize(safeVault.personalInfo?.summary || '', names);
-    let piiPassed = true;
+    let summaryPseudonymizationPassed = true;
     try {
       assertNoPii(pseudonymizedSummary.text);
     } catch {
-      piiPassed = false;
+      summaryPseudonymizationPassed = false;
     }
 
     // 2. Kanoniczny scoring ATS
@@ -672,24 +708,10 @@ export async function runFullAudit(): Promise<AuditResult[]> {
 
     // 3. Sprawdzenie pokrycia semantycznego w semantic-work-graph
     const highlightsText = (s.candidate.history?.[0]?.highlights || []).map((h) => (typeof h === 'string' ? h : h.text)).join(' ');
-    const semanticCoverage = linguisticEngine.calculateLemmaCoverage(
+    const semanticCoverage = linguisticEngine?.calculateLemmaCoverage(
       s.jobOffer.description,
       `${s.candidate.personalInfo?.summary || ''} ${(s.candidate.skillsMatrix?.hardSkills || []).join(' ')} ${highlightsText}`
-    );
-
-    // 4. Symulacja potrójnej pętli weryfikacyjnej (Triple Loop AI Gate)
-    const hasNumbersInHighlights = (s.candidate.history?.[0]?.highlights || []).some((h) => {
-      const txt = typeof h === 'string' ? h : h.text;
-      return /\d+%|\d+\s*(ton|km|pomiarów|tys|godzin|linii|m2)/.test(txt);
-    });
-    const recruiterScore = hasNumbersInHighlights ? 88 : 65;
-    const atsLoopScore = Math.round(canonical.score * 0.95);
-    const complianceScore = (canonical.formalFindings.every((f) => f.satisfied) && piiPassed) ? 95 : 70;
-    const tripleLoopScore = Math.round((atsLoopScore * 0.4) + (recruiterScore * 0.35) + (complianceScore * 0.25));
-
-    let verdict = 'READY_TO_APPLY';
-    if (tripleLoopScore < 70) verdict = 'CRITICAL_FIXES_NEEDED';
-    else if (tripleLoopScore < 82) verdict = 'MINOR_IMPROVEMENTS';
+    ) ?? null;
 
     const t1 = performance.now();
     const latencyMs = Math.round(t1 - t0);
@@ -703,21 +725,19 @@ export async function runFullAudit(): Promise<AuditResult[]> {
       components: canonical.components,
       matchedRequirementsCount: canonical.matchedRequirements.length,
       missingRequirementsCount: canonical.missingRequirements.length,
-      semanticCoveragePct: Math.round(semanticCoverage * 100),
-      piiProtectionPassed: piiPassed,
-      tripleLoopScore,
-      verdict,
+      semanticCoveragePct: semanticCoverage === null ? null : Math.round(semanticCoverage * 100),
+      summaryPseudonymizationPassed,
     });
   }
 
-  await repo.close();
+  await repo?.close();
   return results;
 }
 
 // Uruchomienie bezpośrednie, jeśli skrypt jest plikiem wejściowym
 if (process.argv[1]?.includes('audit-cv-suite')) {
   runFullAudit().then((res) => {
-    console.log('\n=== WYNIKI 10 WYWOŁAŃ WERYFIKACJI CV ===\n');
+    console.log('\n=== WYNIKI 10 LOKALNYCH SCENARIUSZY CV ===\n');
     console.table(res.map((r) => ({
       ID: r.scenarioId,
       Rola: r.role,
@@ -728,10 +748,14 @@ if (process.argv[1]?.includes('audit-cv-suite')) {
       'Doświadczenie': r.components.experience,
       'Struktura': r.components.structure,
       'Formalia': r.components.formal,
-      'Semantyka %': `${r.semanticCoveragePct}%`,
-      'RODO OK': r.piiProtectionPassed ? 'TAK' : 'NIE',
-      'Pętla 360°': r.tripleLoopScore,
-      'Werdykt': r.verdict,
+      'Semantyka %': r.semanticCoveragePct === null ? 'NIEZMIERZONA' : `${r.semanticCoveragePct}%`,
+      'Pseudonimizacja podsumowania': r.summaryPseudonymizationPassed ? 'OK' : 'BŁĄD',
     })));
+    const failures = getAuditResultFailures(res);
+    if (failures.length > 0) {
+      console.error('\nAudyt wykrył nieprawidłowe wyniki:');
+      for (const failure of failures) console.error(`- ${failure}`);
+      process.exitCode = 1;
+    }
   });
 }

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useScopedAsyncOperation } from '../../hooks/useScopedAsyncOperation';
 import {
   Plus,
   Search,
@@ -6,7 +7,6 @@ import {
   Briefcase,
   TrendingUp,
   Award,
-  CheckCircle2,
   Clock,
   Layers,
   FileText,
@@ -33,7 +33,7 @@ import { getPipelineFilters, matchesStatusFilter } from './trackerStatusConfig';
 import { resolveApplicationJobOffer, resolveApplicationVault } from '../../lib/applicationSnapshot';
 import { InterviewCheatSheetView } from '../matcher/InterviewCheatSheetView';
 import { getApplicationDisplayInfo } from './applicationDisplay';
-import { calculateApplicationProgress } from './applicationMetrics';
+import { ApplicationProgressTile } from './ApplicationProgressTile';
 
 
 /**
@@ -74,7 +74,10 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     setStatus,
     hasUnassignedLegacyApplications,
     claimLegacyApplications,
+    rejectedApplicationsCount,
+    rejectedLegacyApplicationsCount,
   } = useApplications();
+  const claimOperation = useScopedAsyncOperation(claimLegacyApplications);
   const {
     highlightedApplicationId,
     setHighlightedApplicationId,
@@ -124,7 +127,6 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const inInterviews = applications.filter((a) => a?.status === 'Rozmowa').length;
   const offersReceived = applications.filter((a) => a?.status === 'Oferta').length;
   const exportedCvCount = applications.filter((a) => a?.documentSnapshot?.exportedCv).length;
-  const applicationProgress = calculateApplicationProgress(applications.map((app) => app.status));
 
   // Filtry dostosowane do trybu: na starcie 4 zredukowane stany, w zaawansowanym pełne rozbicie
   const filterButtons = useMemo(() => {
@@ -197,7 +199,8 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     showToast('Notatka zapisana', { message: `${getApplicationDisplayInfo(notesApp).contextLabel}.` });
   };
 
-  const handleClaimLegacyApplications = () => {
+  const handleClaimLegacyApplications = async () => {
+    if (claimOperation.isBusy) return;
     if (
       !window.confirm(
         'Przypisać starszą historię aplikacji do bieżącego profilu? Wybierz tę opcję tylko, jeśli rozpoznajesz te dane jako swoje.'
@@ -206,12 +209,17 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       return;
     }
 
-    const claimed = claimLegacyApplications();
-    if (claimed > 0) {
-      showToast('Historia została przypisana', {
-        message: `Przeniesiono ${claimed} ${claimed === 1 ? 'zgłoszenie' : 'zgłoszeń'} do bieżącego profilu.`,
-      });
-    }
+    const token = claimOperation.begin();
+    if (!token) return;
+    try {
+      const claimed = await claimLegacyApplications();
+      if (!claimOperation.isCurrent(token)) return;
+      if (claimed > 0) {
+        showToast('Historia została przypisana', {
+          message: `Przeniesiono ${claimed} ${claimed === 1 ? 'zgłoszenie' : 'zgłoszeń'} do bieżącego profilu.`,
+        });
+      } else showToast('Nie ukończono przypisania', { message: 'Starsza historia została zachowana. Sprawdź poprawność danych i możliwość ich zapisu, a następnie spróbuj ponownie.', variant: 'error' });
+    } finally { claimOperation.finish(token); }
   };
 
   return (
@@ -245,10 +253,27 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
                 Dane z wcześniejszej wersji nie są automatycznie pokazywane w profilu. Przypisz je tylko, jeśli są Twoje.
               </p>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={handleClaimLegacyApplications}>
-              Przypisz do bieżącego profilu
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleClaimLegacyApplications}
+                disabled={rejectedLegacyApplicationsCount > 0 || claimOperation.isBusy}
+              >
+              {claimOperation.isBusy ? 'Przypisywanie…' : 'Przypisz do bieżącego profilu'}
             </Button>
           </div>
+        </Card>
+      )}
+
+      {(rejectedApplicationsCount > 0 || rejectedLegacyApplicationsCount > 0) && (
+        <Card tone="raised" className="border-l-4 border-l-amber-500" role="status">
+          <h2 className="font-semibold text-ink">Część zapisanej historii wymaga sprawdzenia</h2>
+          <p className="mt-1 text-sm text-muted">
+            Wadliwe rekordy — bieżący profil: {rejectedApplicationsCount}, starsza historia:{' '}
+            {rejectedLegacyApplicationsCount}. Nie są pokazywane ani uwzględniane w statystykach; oryginalne dane
+            pozostają zapisane. Przypisanie starszej historii jest wyłączone, gdy zawiera ona wadliwe rekordy.
+          </p>
         </Card>
       )}
 
@@ -288,14 +313,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           subtext="Końcowe propozycje"
         />
 
-        <StatTile
-          label="Przejście do rozmowy/oferty"
-          value={applicationProgress.percent === null ? '—' : `${applicationProgress.percent}%`}
-          icon={CheckCircle2}
-          subtext={applicationProgress.eligibleCount === 0
-            ? 'Brak wysłanych aplikacji'
-            : `${applicationProgress.progressedCount} z ${applicationProgress.eligibleCount} wysłanych / aktywnych`}
-        />
+        <ApplicationProgressTile statuses={applications.map((app) => app.status)} />
 
         <StatTile
           label="CV przy aplikacji"

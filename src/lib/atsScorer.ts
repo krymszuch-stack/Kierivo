@@ -7,7 +7,9 @@ import {
   containsPhrase,
   countPhraseOccurrences,
 } from './skillEvidence';
-import { unionExperienceYears } from './experience';
+import { employmentIntervalForJob, unionExperienceYears } from './experience';
+import { buildCandidateEvidenceCorpora } from './candidateEvidence';
+import { getAtsHeuristicReadiness } from './atsHeuristicReadiness';
 
 /**
  * Silnik telemetrii ATS — raport śledczy oparty na mierzalnych cechach.
@@ -48,25 +50,26 @@ export interface MatchedLemma {
 }
 
 export interface AtsTelemetryReport {
-  overallScore: number;
+  overallScore: number | null;
   formulaBreakdown: {
     /** Waga 40%: ważone pokrycie twardych lematów ogłoszenia. */
-    hardSkillsScore: number;
+    hardSkillsScore: number | null;
     /** Waga 25%: staż, gęstość metryk STAR, liczba punktorów na rolę. */
-    experienceScore: number;
+    experienceScore: number | null;
     /** Waga 20%: kolejność czytania, hierarchia nagłówków, tabele, znaki. */
     structureScore: number;
     /** Waga 15%: udział zdań z czasownikiem dokonanym. */
-    actionVerbsScore: number;
+    actionVerbsScore: number | null;
     /** 0–100 pkt odjęte za niespełnione twarde wymagania (knockouts). */
     knockoutPenalties: number;
+    assessedWeightPercent: number;
   };
   linguisticTelemetry: {
     totalExtractedTokens: number;
     matchedLemmas: MatchedLemma[];
     missingCriticalLemmas: string[];
     /** 0–1: odsetek zdań dokumentu z czasownikiem dokonanym. */
-    actionVerbRatio: number;
+    actionVerbRatio: number | null;
   };
   structuralTelemetry: {
     readingOrderIntegrity: 'STABLE' | 'CORRUPTED';
@@ -77,7 +80,8 @@ export interface AtsTelemetryReport {
   heuristicProfiles: Array<{
     profileId: 'Struktura_Odczyt' | 'Frazy_Gestosc' | 'Jezyk_Formularz';
     profileCategory: 'Układ i parsowalność' | 'Frazy i sygnały tekstowe' | 'Polska fleksja i formularze';
-    score: number;
+    score: number | null;
+    unavailableReason: string | null;
     criticalRisks: string[];
     complianceReasons: string[];
   }>;
@@ -167,9 +171,9 @@ function hasPerfectiveVerb(sentence: string): boolean {
 }
 
 /** Udział zdań z czasownikiem dokonanym; pusty dokument to 0, nie NaN. */
-export function computeActionVerbRatio(text: string): number {
+export function computeActionVerbRatio(text: string): number | null {
   const sentences = splitSentences(text);
-  if (sentences.length === 0) return 0;
+  if (sentences.length === 0) return null;
   const withVerb = sentences.filter(hasPerfectiveVerb).length;
   return withVerb / sentences.length;
 }
@@ -268,28 +272,28 @@ export function computeTenureYears(vault: MasterVault): number {
   return unionExperienceYears(vault.history);
 }
 
-function computeExperienceScore(vault: MasterVault): number {
+function computeExperienceScore(vault: MasterVault): number | null {
   const history = vault.history ?? [];
-  if (history.length === 0) return 0;
+  if (history.length === 0) return null;
 
-  // Staż z unii przedziałów: nakładające się etaty liczą się raz, bieżące
-  // kończą się dziś (wcześniej: suma naiwna + `isCurrent → 0 lat`, F5).
-  // Nieczytelne/przyszłe/odwrócone daty wypadają w `employmentIntervalForJob`.
-  const years = unionExperienceYears(history);
-  const tenurePts = (Math.min(MAX_COUNTED_YEARS, years) / MAX_COUNTED_YEARS) * 50;
+  // Brak poprawnych dat pomija sam wymiar sta?u; nie jest automatycznie zerem lat.
+  const datedHistory = history.filter((job) =>
+    employmentIntervalForJob(job) !== null && (job.isCurrent === true || Boolean(job.endDate?.trim()))
+  );
+  if (datedHistory.length === 0) return null;
+  const tenurePts = datedHistory.length > 0
+    ? (Math.min(MAX_COUNTED_YEARS, unionExperienceYears(datedHistory)) / MAX_COUNTED_YEARS) * 50
+    : null;
 
   const highlights = history.flatMap((job) => job.highlights ?? []);
-  const metricsPts =
-    highlights.length === 0
-      ? 0
-      : (highlights.filter((highlight) => (highlight?.metric ?? '').trim().length > 0).length /
-          highlights.length) *
-        25;
-
+  const metricsPts = highlights.length === 0
+    ? null
+    : (highlights.filter((highlight) => (highlight?.metric ?? '').trim().length > 0).length / highlights.length) * 25;
   const bulletsPerRole = highlights.length / history.length;
   const depthPts = Math.min(1, bulletsPerRole / 3) * 25;
+  const availableWeight = (tenurePts === null ? 0 : 0.5) + (metricsPts === null ? 0 : 0.25) + 0.25;
 
-  return Math.round(tenurePts + metricsPts + depthPts);
+  return availableWeight === 0 ? null : Math.round(((tenurePts ?? 0) + (metricsPts ?? 0) + depthPts) / availableWeight);
 }
 
 // ---------------------------------------------------------------------------
@@ -297,21 +301,30 @@ function computeExperienceScore(vault: MasterVault): number {
 // ---------------------------------------------------------------------------
 
 interface SystemVerdictInput {
-  hardSkillsScore: number;
-  experienceScore: number;
+  hardSkillsScore: number | null;
+  experienceScore: number | null;
   structureScore: number;
-  actionVerbsScore: number;
+  actionVerbsScore: number | null;
   knockoutPenalties: number;
   readingOrder: 'STABLE' | 'CORRUPTED';
   headingValid: boolean;
   tableCount: number;
   unsupportedCharactersCount: number;
   /** Mediana densityRatio trafionych lematów — detektor upychania słów. */
-  medianDensityRatio: number;
+  medianDensityRatio: number | null;
+  readiness: ReturnType<typeof getAtsHeuristicReadiness>;
 }
 
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function weightedAvailableScore(parts: Array<{ score: number | null; weight: number }>): number {
+  const available = parts.filter((part): part is { score: number; weight: number } => part.score !== null);
+  const totalWeight = available.reduce((sum, part) => sum + part.weight, 0);
+  return totalWeight === 0
+    ? 0
+    : clampPercent(available.reduce((sum, part) => sum + part.score * part.weight, 0) / totalWeight);
 }
 
 function buildHeuristicProfiles(
@@ -372,17 +385,17 @@ function buildHeuristicProfiles(
       criticalRisks.push('Hierarchia nagłówków bez jasnego tytułu głównego utrudnia segmentację sekcji.');
     }
 
-    const score = clampPercent(
-      input.structureScore * 0.45 +
-        input.hardSkillsScore * 0.35 +
-        (100 - input.knockoutPenalties) * 0.2 -
-        penalty
-    );
+    const score = clampPercent(weightedAvailableScore([
+      { score: input.structureScore, weight: 0.45 },
+      { score: input.hardSkillsScore, weight: 0.35 },
+      { score: 100 - input.knockoutPenalties, weight: 0.2 },
+    ]) - penalty);
 
     results.push({
       profileId: 'Struktura_Odczyt',
       profileCategory: 'Układ i parsowalność',
       score,
+      unavailableReason: null,
       criticalRisks,
       complianceReasons,
     });
@@ -394,12 +407,12 @@ function buildHeuristicProfiles(
     const complianceReasons: string[] = [];
 
     let penalty = 0;
-    if (input.medianDensityRatio > STUFFING_DENSITY_THRESHOLD) {
+    if (input.medianDensityRatio !== null && input.medianDensityRatio > STUFFING_DENSITY_THRESHOLD) {
       penalty += 12;
       criticalRisks.push(
         `Gęstość trafionych fraz ${input.medianDensityRatio.toFixed(1)}x względem ogłoszenia — wzorzec wygląda na sztuczne upychanie słów kluczowych.`
       );
-    } else {
+    } else if (input.medianDensityRatio !== null) {
       complianceReasons.push('Gęstość słów kluczowych pozostaje proporcjonalna do treści ogłoszenia.');
     }
 
@@ -413,18 +426,18 @@ function buildHeuristicProfiles(
       criticalRisks.push('Niespełnione twarde wymagania formalne obniżają ocenę niezależnie od dopasowania fraz.');
     }
 
-    const score = clampPercent(
-      input.hardSkillsScore * 0.4 +
-        input.actionVerbsScore * 0.25 +
-        input.structureScore * 0.2 +
-        (100 - input.knockoutPenalties) * 0.15 -
-        penalty
-    );
+    const score = clampPercent(weightedAvailableScore([
+      { score: input.hardSkillsScore, weight: 0.4 },
+      { score: input.actionVerbsScore, weight: 0.25 },
+      { score: input.structureScore, weight: 0.2 },
+      { score: 100 - input.knockoutPenalties, weight: 0.15 },
+    ]) - penalty);
 
     results.push({
       profileId: 'Frazy_Gestosc',
       profileCategory: 'Frazy i sygnały tekstowe',
       score,
+      unavailableReason: null,
       criticalRisks,
       complianceReasons,
     });
@@ -453,34 +466,50 @@ function buildHeuristicProfiles(
       );
     }
 
-    if (input.experienceScore < 25) {
+    if (input.experienceScore !== null && input.experienceScore < 25) {
       penalty += 8;
       criticalRisks.push('Niska czytelność stażu i metryk utrudnia szybkie odczytanie doświadczenia.');
     }
 
-    const score = clampPercent(
-      input.hardSkillsScore * 0.35 +
-        input.structureScore * 0.3 +
-        input.experienceScore * 0.2 +
-        input.actionVerbsScore * 0.15 -
-        penalty -
-        input.knockoutPenalties * 0.3
-    );
+    const score = clampPercent(weightedAvailableScore([
+      { score: input.hardSkillsScore, weight: 0.35 },
+      { score: input.structureScore, weight: 0.3 },
+      { score: input.experienceScore, weight: 0.2 },
+      { score: input.actionVerbsScore, weight: 0.15 },
+    ]) - penalty - input.knockoutPenalties * 0.3);
 
     results.push({
       profileId: 'Jezyk_Formularz',
       profileCategory: 'Polska fleksja i formularze',
       score,
+      unavailableReason: null,
       criticalRisks,
       complianceReasons,
     });
   }
 
-  return results;
+  return results.map((profile) => {
+    const profileReadiness = input.readiness[
+      profile.profileId === 'Struktura_Odczyt'
+        ? 'structure'
+        : profile.profileId === 'Frazy_Gestosc'
+          ? 'phrases'
+          : 'language'
+    ];
+    return profileReadiness.available
+      ? { ...profile, unavailableReason: null }
+      : {
+          ...profile,
+          score: null,
+          unavailableReason: profileReadiness.reason,
+          criticalRisks: [],
+          complianceReasons: [],
+        };
+  });
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
@@ -533,6 +562,8 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     ),
   ];
   const analysisCorpus = corpusParts.filter(Boolean).join('\n');
+  const evidenceCorpora = buildCandidateEvidenceCorpora(vault);
+  const evidenceCorpus = evidenceCorpora.skills;
 
   const readingOrderIntegrity = detectReadingOrder(cvRawText);
   const tableCount = countTables(cvRawText);
@@ -554,10 +585,17 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     )
   );
 
-  const corpusTokens = tokenizeLower(analysisCorpus);
+  const corpusTokens = tokenizeLower(evidenceCorpus);
   const jdTokenCount = tokenizeLower(jobDescription).length;
 
   const extraction = extractDynamicJdPhrases(jobDescription);
+  const hasCandidateDocumentEvidence = Boolean(
+    evidenceCorpora.skills.trim() || evidenceCorpora.formal.trim() || vault.personalInfo?.title?.trim()
+  );
+  const readiness = getAtsHeuristicReadiness({
+    hasCandidateDocumentEvidence,
+    hasKeywordRequirementDenominator: extraction.hardSkills.length > 0,
+  });
 
   const matchedLemmas: MatchedLemma[] = [];
   const missingCriticalLemmas: Array<{ term: string; weight: number }> = [];
@@ -568,8 +606,8 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     totalWeighted += weight;
     // Pokrycie = pozytywny dowód (negacje/nauka/wyciek nie liczą się, F1),
     // liczniki = granice słów (wcześniej `indexOf` liczył `cit` w `city`, F2).
-    const hasEvidence = hasPositiveSkillEvidence(analysisCorpus, phrase);
-    const countInCv = countPhraseOccurrences(analysisCorpus, phrase);
+    const hasEvidence = hasPositiveSkillEvidence(evidenceCorpus, phrase);
+    const countInCv = countPhraseOccurrences(evidenceCorpus, phrase);
     const countInJd = Math.max(1, countPhraseOccurrences(jobDescription, phrase));
 
     if (!hasEvidence) {
@@ -598,41 +636,38 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     (a, b) => b.countInJd - a.countInJd || b.countInCv - a.countInCv || a.term.localeCompare(b.term, 'pl')
   );
 
-  const actionVerbRatio = computeActionVerbRatio(analysisCorpus);
+  const actionVerbRatio = computeActionVerbRatio(evidenceCorpora.narrative);
 
-  // Puste ogłoszenie to brak mianownika (0), nie 100 z próżni (F4).
-  // Kanoniczny stan niedostępności raportuje `canonicalAts.ts`; tu liczba
-  // spada do zera, żeby nie udawać pewności.
+  // Bez twardych wymagań nie ma mianownika pokrycia; brak danych nie jest 0%.
   const hardSkillsScore =
     totalWeighted === 0
-      ? 0
+      ? null
       : Math.round((matchedWeighted / totalWeighted) * 100);
 
   const knockoutReport = auditKnockouts(jobDescription, vault);
   const knockoutPenalties = Math.min(100, knockoutReport.blocking.length * 25);
 
   const experienceScore = computeExperienceScore(vault);
-  const actionVerbsScore = Math.round(actionVerbRatio * 100);
+  const actionVerbsScore = actionVerbRatio === null ? null : Math.round(actionVerbRatio * 100);
 
-  // Brak wykrytych wymagań = brak mianownika: wynik 0, nie suma stażu
-  // i struktury z niczego (F4; symulator robi tak samo).
+  // Brak wykrytych wymagań = brak mianownika, więc wyniku nie wyliczamy
+  // z samego stażu i struktury dokumentu (F4; symulator robi tak samo).
   const noRequirements =
     totalWeighted === 0 && knockoutReport.requirementCount === 0;
-  const overallScore = noRequirements
-    ? 0
-    : Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round(
-            hardSkillsScore * FORMULA_WEIGHTS.hardSkills +
-              experienceScore * FORMULA_WEIGHTS.experience +
-              structureScore * FORMULA_WEIGHTS.structure +
-              actionVerbsScore * FORMULA_WEIGHTS.actionVerbs -
-              knockoutPenalties
-          )
-        )
-      );
+  const assessedWeight =
+    (hardSkillsScore === null ? 0 : FORMULA_WEIGHTS.hardSkills) +
+    (experienceScore === null ? 0 : FORMULA_WEIGHTS.experience) +
+    FORMULA_WEIGHTS.structure +
+    (actionVerbsScore === null ? 0 : FORMULA_WEIGHTS.actionVerbs);
+  const assessedWeightPercent = Math.round(assessedWeight * 100);
+  const overallScore = noRequirements || experienceScore === null || assessedWeight === 0
+    ? null
+    : clampPercent(weightedAvailableScore([
+        { score: hardSkillsScore, weight: FORMULA_WEIGHTS.hardSkills },
+        { score: experienceScore, weight: FORMULA_WEIGHTS.experience },
+        { score: structureScore, weight: FORMULA_WEIGHTS.structure },
+        { score: actionVerbsScore, weight: FORMULA_WEIGHTS.actionVerbs },
+      ]) - knockoutPenalties);
 
   const medianDensityRatio = median(matchedLemmas.map((lemma) => lemma.densityRatio));
 
@@ -647,6 +682,7 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
     tableCount,
     unsupportedCharactersCount,
     medianDensityRatio,
+    readiness,
   });
 
   return {
@@ -657,6 +693,7 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
       structureScore,
       actionVerbsScore,
       knockoutPenalties,
+      assessedWeightPercent,
     },
     linguisticTelemetry: {
       totalExtractedTokens: corpusTokens.length,
@@ -665,7 +702,7 @@ export function buildAtsTelemetryReport(input: TelemetryInput): AtsTelemetryRepo
         .sort((a, b) => b.weight - a.weight || a.term.localeCompare(b.term, 'pl'))
         .slice(0, 8)
         .map((item) => item.term),
-      actionVerbRatio: Math.round(actionVerbRatio * 100) / 100,
+      actionVerbRatio: actionVerbRatio === null ? null : Math.round(actionVerbRatio * 100) / 100,
     },
     structuralTelemetry: {
       readingOrderIntegrity,
