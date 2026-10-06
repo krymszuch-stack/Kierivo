@@ -559,7 +559,9 @@ export function validateConsistency(
     }
   }
 
-  const isConsistent = alerts.filter((a) => a.severity === 'ALERT').length === 0;
+  // Brak źródła nie dowodzi sprzeczności, ale uniemożliwia potwierdzenie.
+  // Ostrzeżenia o lukach lub metrykach nadal nie są automatycznym błędem faktów.
+  const isConsistent = !alerts.some((a) => a.severity === 'ALERT' || a.type === 'CLAIM_NOT_FOUND');
 
   return {
     isConsistent,
@@ -569,15 +571,25 @@ export function validateConsistency(
   };
 }
 
+/** Jeden fakt ma jednego właściciela ID. Alias i powtórzona referencja nie
+ * mogą mnożyć pozycji CV, wyników, liczników ani zdań o doświadczeniu. */
+function selectUniqueClaims(vault: MasterVault, claimIds?: string[]): Claim[] {
+  const allClaims = extractClaimsFromVault(vault);
+  if (!claimIds?.length) return allClaims;
+  const selected = new Map<string, Claim>();
+  for (const id of claimIds) {
+    const claim = allClaims.find(c => c.id === id || c.id === `claim_exp_${id}` || c.id === `claim_proj_${id}`);
+    if (claim) selected.set(claim.id, claim);
+  }
+  return Array.from(selected.values());
+}
+
 /**
  * RENDERER 1: CV Renderer
  * Pobiera dane wyłącznie z MasterVault na podstawie podanych `claimIds`.
  */
 export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const experiencesSection: CvRendererSection = {
     id: 'cv_experience',
@@ -591,10 +603,7 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
     items: [],
   };
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     const dateRangeDisplay = formatClaimDateRange(claim.dateRange);
 
     const item = {
@@ -627,18 +636,12 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
  * Pobiera dane z MasterVault przez `claimIds` i generuje wskaźniki telemetryczne profilu.
  */
 export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): HudRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const verifiedMetrics: HudMetricItem[] = [];
   const skillCountMap = new Map<string, { count: number; claimIds: string[] }>();
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     // Metryki
     if (claim.metric) {
       verifiedMetrics.push({
@@ -704,15 +707,11 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
     }))
     .sort((a, b) => b.count - a.count);
 
-  const validation = validateConsistency(vault, { claimIdsToCheck: effectiveClaimIds });
-  const consistencyScore = validation.isConsistent ? 100 : Math.max(20, 100 - validation.alerts.length * 25);
-
   return {
-    activeClaimsCount: effectiveClaimIds.length,
+    activeClaimsCount: claims.length,
     verifiedMetrics,
     skillsRadar,
     timelineCoverageYears: Math.round(totalYears * 10) / 10,
-    consistencyScore,
   };
 }
 
@@ -726,19 +725,13 @@ export function renderPitchFromClaims(
   targetRole?: string,
   variantIndex?: number
 ): PitchRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const profileStatements: ProfileClaimStatement[] = [];
   const candidateName = vault.personalInfo?.fullName?.trim() || '';
   const role = targetRole || vault.personalInfo?.title || '';
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     profileStatements.push({
       claimId: claim.id,
       statement: describeProfileClaim(claim),
@@ -777,22 +770,15 @@ export function renderPitchFromClaims(
 
 /**
  * Renderer LinkedIn: Buduje profil zawodowy z podsumowaniem i pozycjami doświadczenia
- * bezpośrednio zidentyfikowanymi przez zweryfikowane ClaimId z MasterVault.
+ * z wpisów MasterVault. Referencja ID nie potwierdza prawdziwości ani biegłości.
  */
 export function renderLinkedInFromClaims(
   vault: MasterVault,
   claimIds?: string[]
 ): LinkedInRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
-
-  const claims = effectiveClaimIds
-    .map((id) => getClaimById(vault, id))
-    .filter((c): c is Claim => Boolean(c));
+  const claims = selectUniqueClaims(vault, claimIds);
   const candidateName = vault.personalInfo?.fullName || 'Kandydat';
-  const role = vault.personalInfo?.title || 'Specjalista';
+  const role = vault.personalInfo?.title?.trim() || 'Profil zawodowy';
 
   const experience: LinkedInExperienceItem[] = claims.map((claim) => {
     const rangeDisplay = !claim.dateRange
@@ -806,9 +792,7 @@ export function renderLinkedInFromClaims(
       title: role,
       company: claim.sourceProject,
       dateRange: rangeDisplay,
-      description: claim.metric
-        ? `Główny projekt: ${claim.sourceProject}. Osiągnięcie: ${claim.metric}. Technologie: ${claim.tags.join(', ')}.`
-        : `Projekt: ${claim.sourceProject}. Technologie: ${claim.tags.join(', ')}.`,
+      description: describeProfileClaim(claim),
       skills: claim.tags,
     };
   });
@@ -816,8 +800,8 @@ export function renderLinkedInFromClaims(
   const allSkills = Array.from(new Set(claims.flatMap((c) => c.tags)));
 
   return {
-    headline: `${role} | Ekspert w: ${allSkills.slice(0, 4).join(', ')}`,
-    about: `Profil zawodowy ${candidateName} — ${role}. Doświadczenie w kluczowych wdrożeniach: ${experience.map((e) => e.company).join(', ')}. Spójność danych zweryfikowana przez ConsistencyGuard.`,
+    headline: role,
+    about: `Szkic profilu ${candidateName}. Wpisy użyte w szkicu: ${experience.map((e) => e.company).join(', ') || 'brak'}. Nazwy i tagi wpisów nie potwierdzają poziomu biegłości ani prawdziwości osiągnięć.`,
     experience,
     skills: allSkills,
   };

@@ -96,7 +96,6 @@ export interface HudRendererOutput {
   verifiedMetrics: HudMetricItem[];
   skillsRadar: HudSkillStat[];
   timelineCoverageYears: number;
-  consistencyScore: number; // 0 - 100%
 }
 
 export interface ProfileClaimStatement {

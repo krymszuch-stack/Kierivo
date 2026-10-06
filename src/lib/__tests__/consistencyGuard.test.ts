@@ -188,6 +188,18 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Główny walidator (validateConsistency)', () => {
+    it.each(['cv', 'hud', 'pitch'])('nie potwierdza całości, gdy sekcja %s odwołuje się do brakującego faktu', (sectionId) => {
+      const result = validateConsistency(createEmptyVault(), { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'missing',
+      }] });
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('nie potwierdza listy nieistniejących faktów', () => {
+      const result = validateConsistency(createEmptyVault(), { claimIdsToCheck: ['missing'] });
+      expect(result.isConsistent).toBe(false);
+    });
     it.each(['cv', 'hud', 'pitch'])('odrzuca zmienioną metrykę projekcji %s', (sectionId) => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
@@ -318,6 +330,31 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Renderery pobierające dane z MasterVault przez claimId', () => {
+    it('każdy renderer wybiera fakt tylko raz także po aliasie, bez brakujących ID', () => {
+      const vault = createMockVault();
+      const ids = ['claim_exp_exp_1', 'exp_1', 'missing'];
+      expect(renderCvFromClaims(vault, ids).sections.flatMap(section => section.items)).toHaveLength(1);
+      expect(renderHudFromClaims(vault, ids).verifiedMetrics).toHaveLength(1);
+      expect(renderPitchFromClaims(vault, ids).profileStatements).toHaveLength(1);
+      expect(renderLinkedInFromClaims(vault, ids).experience).toHaveLength(1);
+    });
+
+    it('szkic LinkedIn nie wywodzi biegłości ani weryfikacji z obecności tagów', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tag-only', sourceProject: 'Projekt testowy', tags: ['SEP', 'Java'] }];
+      const output = renderLinkedInFromClaims(vault);
+      expect(output.headline).toBe('Profil zawodowy');
+      expect(output.about).not.toMatch(/zweryfikowan|kluczowych wdrożeniach/);
+      expect(output.headline).not.toContain('Ekspert');
+      expect(output.experience[0].description).toContain('W profilu');
+    });
+    it('HUD liczy wyłącznie unikalne odnalezione fakty i nie wytwarza procentu spójności', () => {
+      const vault = createMockVault();
+      const output = renderHudFromClaims(vault, ['claim_exp_exp_1', 'claim_exp_exp_1', 'missing']);
+      expect(output.activeClaimsCount).toBe(1);
+      expect(output).not.toHaveProperty('consistencyScore');
+      expect(renderHudFromClaims(createEmptyVault(), ['missing']).activeClaimsCount).toBe(0);
+    });
     it('renderCvFromClaims tworzy sekcje CV oparte na powiązaniach claimId', () => {
       const vault = createMockVault();
       const cvOutput = renderCvFromClaims(vault, ['claim_exp_exp_1', 'claim_proj_proj_1']);
@@ -336,7 +373,7 @@ describe('ConsistencyGuard Engine', () => {
       expect(hudOutput.activeClaimsCount).toBe(2);
       expect(hudOutput.timelineCoverageYears).toBeGreaterThanOrEqual(3.0);
       expect(hudOutput.skillsRadar.some((s) => s.skill === 'TypeScript')).toBe(true);
-      expect(hudOutput.consistencyScore).toBe(100);
+      expect(hudOutput).not.toHaveProperty('consistencyScore');
     });
 
     it('renderPitchFromClaims generuje pitch z jawnie wskazanych wpisów profilu', () => {
