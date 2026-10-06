@@ -6,6 +6,7 @@ export type Claim = MasterVaultClaim;
 
 export type ConsistencyAlertType =
   | 'DATE_MISMATCH'
+  | 'METRIC_MISMATCH'
   | 'SKILL_CONTRADICTION'
   | 'CLAIM_NOT_FOUND'
   | 'INVALID_DATE_RANGE'

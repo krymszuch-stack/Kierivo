@@ -114,6 +114,15 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Ekstrakcja claimów z MasterVault', () => {
+    it('nie zamienia numeru wersji ani daty w metrykę osiągnięcia', () => {
+      const vault = createMockVault();
+      vault.history[0].highlights[0].text = 'Obsługa Windows 11 od 2022 roku.';
+      vault.history[0].highlights[0].metric = '';
+      const claim = extractClaimsFromVault(vault).find(item => item.id === 'hl_1');
+      expect(claim?.metric).toBeUndefined();
+      vault.history[0].highlights[0].metric = '20%';
+      expect(extractClaimsFromVault(vault).find(item => item.id === 'hl_1')?.metric).toBe('20%');
+    });
     it('ekstrahuje powiązane claimy z historii i projektów', () => {
       const vault = createMockVault();
       const claims = extractClaimsFromVault(vault);
@@ -179,6 +188,34 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Główny walidator (validateConsistency)', () => {
+    it.each(['cv', 'hud', 'pitch'])('odrzuca zmienioną metrykę projekcji %s', (sectionId) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'metric', claimedMetric: '40%',
+      }] });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it('nie potwierdza metryki dopisanej do claimu bez wyniku źródłowego', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [] }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId: 'cv', sectionName: 'CV', claimId: 'metric', claimedMetric: '40%',
+      }] });
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('akceptuje identyczny zapis metryki po normalizacji odstępów', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20 sztuk dziennie' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId: 'cv', sectionName: 'CV', claimId: 'metric', claimedMetric: ' 20  sztuk\n dziennie ',
+      }] });
+      expect(result.isConsistent).toBe(true);
+    });
     it('nie potwierdza dodanych w projekcji dat, gdy źródło nie podało okresu', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'undated', sourceProject: 'Projekt testowy', tags: [] }];

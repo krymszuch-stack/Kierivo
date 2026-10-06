@@ -105,6 +105,7 @@
     "test:e2e:consistency-pitch-grounded": "node scripts/e2e-consistency-pitch-grounded.mjs",
     "test:e2e:consistency-projected-dates": "node scripts/e2e-consistency-projected-dates.mjs",
     "test:e2e:consistency-negated-tags": "node scripts/e2e-consistency-negated-tags.mjs",
+    "test:e2e:consistency-projected-metrics": "node scripts/e2e-consistency-projected-metrics.mjs",
     "test:e2e:cover-letter-profile-only": "node scripts/e2e-cover-letter-profile-only.mjs",
     "test:e2e:follow-up-email-grounded": "node scripts/e2e-follow-up-email-grounded.mjs",
     "test:e2e:payroll-estimate-2026": "node scripts/e2e-payroll-estimate-2026.mjs",

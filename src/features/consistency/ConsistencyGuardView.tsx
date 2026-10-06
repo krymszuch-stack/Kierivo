@@ -48,6 +48,7 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       claimId: c.id,
       ...(c.dateRange ? { claimedDateRange: c.dateRange } : {}),
       claimedTags: c.tags,
+      ...(c.metric !== undefined ? { claimedMetric: c.metric } : {}),
     }));
   }, [vaultClaims]);
 

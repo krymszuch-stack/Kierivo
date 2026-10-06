@@ -167,8 +167,11 @@ export function extractClaimsFromVault(vault: MasterVault): Claim[] {
           const hlId = typeof hl === 'object' && hl !== null ? hl.id : undefined;
           const hlClaimId = hlId || `claim_hl_${exp.id}_${idx}`;
           if (!claimsMap.has(hlClaimId)) {
-            const hlText = typeof hl === 'string' ? hl : (hl?.text || '');
-            const hlMetric = (typeof hl === 'object' && hl !== null ? hl.metric : undefined) || (hlText ? hlText.match(/\d+[%kKmM+xX]?/)?.[0] : undefined);
+            // Pierwsza liczba może być wersją narzędzia, datą albo numerem normy.
+            // Claim przenosi jawny wynik użytkownika, nie zgaduje jego metryki.
+            const hlMetric = typeof hl === 'object' && hl !== null && typeof hl.metric === 'string'
+              ? hl.metric.trim() || undefined
+              : undefined;
             const hlKeywords = typeof hl === 'object' && hl !== null && Array.isArray(hl.keywords) ? hl.keywords : [];
             const dateRange = claimDateRangeFromProfile(
               exp.startDate,
@@ -340,6 +343,7 @@ export interface ProjectedClaimItem {
  *    oraz czy oba zakresy można w ogóle odczytać.
  * 2. Czy istnieją sprzeczności w umiejętnościach (skill contradictions).
  * 3. Czy każdy odpytany claimId istnieje w MasterVault.
+ * 4. Czy jawna metryka podglądu odpowiada zapisowi źródłowemu.
  */
 export function validateConsistency(
   vault: MasterVault,
@@ -472,6 +476,31 @@ export function validateConsistency(
             sectionsMap[secKey].alerts.push(dateAlert);
             sectionsMap[secKey].isConsistent = false;
           }
+        }
+      }
+
+      // Bez porównania metryk podgląd mógł zmieniać liczby bez naruszenia
+      // statusu spójności. Normalizujemy tylko odstępy, bez zgadywania jednostek.
+      if (item.claimedMetric !== undefined) {
+        const sourceMetric = typeof sourceClaim.metric === 'string'
+          ? sourceClaim.metric.trim().replace(/\s+/g, ' ')
+          : '';
+        const projectedMetric = typeof item.claimedMetric === 'string'
+          ? item.claimedMetric.trim().replace(/\s+/g, ' ')
+          : null;
+        if (projectedMetric === null || sourceMetric !== projectedMetric) {
+          const metricAlert: ConsistencyAlert = {
+            id: `alert_metric_${item.claimId}`,
+            claimId: item.claimId,
+            sectionId: secKey,
+            type: 'METRIC_MISMATCH',
+            severity: 'ALERT',
+            title: 'Metryka podglądu wymaga sprawdzenia ze źródłem',
+            message: `Wynik dla „${sourceClaim.sourceProject}” nie odpowiada zapisowi profilu. W profilu: ${sourceMetric || 'brak metryki'}; w podglądzie: ${projectedMetric ?? 'nieczytelna metryka'}. Sprawdź wartości i jednostki przed użyciem dokumentu.`,
+          };
+          alerts.push(metricAlert);
+          sectionsMap[secKey].alerts.push(metricAlert);
+          sectionsMap[secKey].isConsistent = false;
         }
       }
 
