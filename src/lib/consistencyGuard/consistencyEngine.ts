@@ -24,12 +24,18 @@ import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
 import { parseDateToYearMonth } from '../dateUtils';
 import { claimDateRangeFromProfile } from './claimDateRange';
 import { describeProfileClaim } from './pitchStatements';
+import { hasPositiveSkillEvidence, stripDiacriticsLower } from '../skillEvidence';
 
 /**
  * Stała określająca maksymalną dopuszczalną rozbieżność czasu trwania (w latach).
  * Powyżej 0.5 roku (6 miesięcy) walidator ConsistencyGuard podnosi alert spójności.
  */
 export const MAX_ALLOWED_YEAR_DIFFERENCE = 0.5;
+
+function formatClaimDateRange(range: ClaimDateRange | string | undefined): string {
+  if (!range) return 'Daty niepodane w profilu';
+  return typeof range === 'string' ? range : `${range.start} – ${range.end}`;
+}
 
 /**
  * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
@@ -52,9 +58,17 @@ export function parseDateRangeToYears(
   let endStr: string | undefined;
 
   if (typeof dateRange === 'string') {
-    const parts = dateRange.split(/\s*[-–—/]\s*/);
-    startStr = parts[0];
-    endStr = parts[1] || parts[0];
+    // Myślnik i ukośnik należą też do daty. Podział wolno przyjąć dopiero,
+    // gdy oba końce przejdą wspólny parser; pojedyncze ISO nie jest zakresem.
+    if (parseDateToDecimalYear(dateRange) !== null) {
+      startStr = endStr = dateRange;
+    } else {
+      const candidates = Array.from(dateRange.matchAll(/[-–—/]/g))
+        .map(match => [dateRange.slice(0, match.index).trim(), dateRange.slice(match.index + 1).trim()])
+        .filter(([start, end]) => parseDateToDecimalYear(start) !== null && parseDateToDecimalYear(end) !== null);
+      if (candidates.length !== 1) return null;
+      [startStr, endStr] = candidates[0];
+    }
   } else {
     startStr = dateRange.start;
     endStr = dateRange.end;
@@ -63,16 +77,16 @@ export function parseDateRangeToYears(
   const startYear = parseDateToDecimalYear(startStr);
   const endYear = parseDateToDecimalYear(endStr);
 
-  if (startYear === null || endYear === null) {
+  if (startYear === null || endYear === null || endYear < startYear) {
     return null;
   }
 
-  // Czas trwania to różnica końcowego i początkowego roku (minimum 1 miesiąc = 0.08 roku)
-  const durationYears = Math.max(0.08, Math.abs(endYear - startYear));
+  // Odwróconego okresu nie normalizujemy do pozornie poprawnej historii.
+  const durationYears = Math.max(1 / 12, endYear - startYear);
 
   return {
-    startYear: Math.min(startYear, endYear),
-    endYear: Math.max(startYear, endYear),
+    startYear,
+    endYear,
     durationYears,
   };
 }
@@ -80,10 +94,9 @@ export function parseDateRangeToYears(
 /**
  * Oblicza bezwzględną różnicę w latach pomiędzy dwoma zakresami dat.
  *
- * @deprecated Nie używać do stażu — pojedyncze daty (`2020-01`) parsuje jako
- * przedziały (19 lat) i wynik zgadza się tylko przez przypadkowe skasowanie
- * dwóch błędów. Staż liczy `unionExperienceYears` (`lib/experience.ts`).
- * Zostaje dla kompatybilności testów spójności rendererów.
+ * Porównuje tylko długości, nie zgodność dat rozpoczęcia i zakończenia.
+ * Nie używać do stażu ani walidacji projekcji. Staż liczy `unionExperienceYears`
+ * (`lib/experience.ts`), a walidator porównuje oba końce okresów.
  */
 export function calculateYearsDifference(
   rangeA: ClaimDateRange | string | undefined,
@@ -206,17 +219,17 @@ export function getClaimById(vault: MasterVault, claimId: string): Claim | undef
  */
 const KNOWN_SKILL_CONTRADICTIONS: Array<{ tagA: RegExp; tagB: RegExp; reason: string }> = [
   {
-    tagA: /\b(?:brak|no|bez)\s+(?:znajomości\s+)?(?:sql|baz\s+danych)\b/i,
+    tagA: /\b(?:brak|no|bez)\s+(?:znajomosci\s+)?(?:sql|baz\s+danych)\b/i,
     tagB: /\b(?:sql|postgresql|mysql|oracle|database\s+expert)\b/i,
     reason: 'Deklaracja braku znajomości SQL stoi w sprzeczności z tagiem technologii bazodanowej SQL.',
   },
   {
-    tagA: /\b(?:tylko\s+junior|junior\s+only|brak\s+doświadczenia|entry\s+level\s+only)\b/i,
+    tagA: /\b(?:tylko\s+junior|junior\s+only|brak\s+doswiadczenia|entry\s+level\s+only)\b/i,
     tagB: /\b(?:senior|lead|architect|principal|kierownik|architekt)\b/i,
     reason: 'Deklaracja profilu wyłącznie Junior / początkującego kłóci się z rolą Senior/Lead/Architect.',
   },
   {
-    tagA: /\b(?:brak\s+uprawnień|bez\s+sep)\b/i,
+    tagA: /\b(?:brak\s+uprawnien|bez\s+sep)\b/i,
     tagB: /\b(?:sep|sep\s+g1|sep\s+g2|sep\s+g3|udt|f-gaz)\b/i,
     reason: 'Deklaracja braku uprawnień technicznych jest sprzeczna z certyfikatem uprawnień SEP/UDT.',
   },
@@ -226,6 +239,24 @@ const KNOWN_SKILL_CONTRADICTIONS: Array<{ tagA: RegExp; tagB: RegExp; reason: st
     reason: 'Deklaracja braku prawa jazdy stoi w sprzeczności z wpisem o posiadaniu prawa jazdy lub roli kierowcy.',
   },
 ];
+
+const NEGATED_TAG_PREFIX = /^(?:brak|no|nie\s+znam|bez)\s+/i;
+
+/** Negacja nie może być jednocześnie dowodem dodatnim. Średnik rozdziela
+ * niezależne deklaracje; granice i aliasy kompetencji rozstrzyga wspólny matcher. */
+function positiveTagClauses(tags: string[]): string[] {
+  return tags.flatMap(tag => stripDiacriticsLower(tag).split(/[;\n]/))
+    .map(tag => tag.trim())
+    .filter(tag => !NEGATED_TAG_PREFIX.test(tag)
+      && !KNOWN_SKILL_CONTRADICTIONS.some(rule => rule.tagA.test(tag)));
+}
+
+function hasPositiveRuleTag(tags: string[], rule: typeof KNOWN_SKILL_CONTRADICTIONS[number]): boolean {
+  return positiveTagClauses(tags).some(tag => {
+    const matches = tag.match(new RegExp(rule.tagB.source, `${rule.tagB.flags}g`)) || [];
+    return matches.some(phrase => hasPositiveSkillEvidence(tag, phrase));
+  });
+}
 
 /**
  * Wykrywa sprzeczności w umiejętnościach i tagach danego claimu względem pozostałych claimów lub bazy MasterVault.
@@ -240,8 +271,8 @@ export function detectSkillContradictions(
 
   // 1. Sprawdzenie wewnętrznych wykluczeń w obrębie tagów danego claimu
   for (const rule of KNOWN_SKILL_CONTRADICTIONS) {
-    const hasA = claimTags.some((t) => rule.tagA.test(t));
-    const hasB = claimTags.some((t) => rule.tagB.test(t));
+    const hasA = claimTags.some((t) => rule.tagA.test(stripDiacriticsLower(t)));
+    const hasB = hasPositiveRuleTag(claimTags, rule);
     if (hasA && hasB) {
       issues.push(rule.reason);
     }
@@ -263,8 +294,8 @@ export function detectSkillContradictions(
 
     if (datesOverlap) {
       for (const rule of KNOWN_SKILL_CONTRADICTIONS) {
-        const claimHasA = claimTags.some((t) => rule.tagA.test(t));
-        const otherHasB = otherTags.some((t) => rule.tagB.test(t));
+        const claimHasA = claimTags.some((t) => rule.tagA.test(stripDiacriticsLower(t)));
+        const otherHasB = hasPositiveRuleTag(otherTags, rule);
         if (claimHasA && otherHasB) {
           issues.push(
             `Sprzeczność między projektem „${claim.sourceProject}” a „${otherClaim.sourceProject}”: ${rule.reason}`
@@ -276,9 +307,10 @@ export function detectSkillContradictions(
 
   // 3. Sprawdzenie deklaracji zaprzeczających głównemu zestawowi umiejętności MasterVault
   for (const tag of claimTags) {
-    if (/\b(?:brak|no|nie\s+znam)\b/i.test(tag)) {
-      const normalizedSkill = tag.replace(/\b(?:brak|no|nie\s+znam|znajomości)\b/gi, '').trim().toLowerCase();
-      if (normalizedSkill && masterVaultSkills.some((s) => s.toLowerCase().includes(normalizedSkill))) {
+    const normalizedTag = stripDiacriticsLower(tag).trim();
+    if (NEGATED_TAG_PREFIX.test(normalizedTag)) {
+      const normalizedSkill = normalizedTag.replace(NEGATED_TAG_PREFIX, '').replace(/^znajomosci\s+/i, '').trim();
+      if (normalizedSkill && positiveTagClauses(masterVaultSkills).some((s) => hasPositiveSkillEvidence(s, normalizedSkill))) {
         issues.push(
           `Claim zawiera tag wykluczający „${tag}”, podczas gdy MasterVault deklaruje kompetencję w tej dziedzinie.`
         );
@@ -304,7 +336,8 @@ export interface ProjectedClaimItem {
 /**
  * Główny walidator modułu ConsistencyGuard.
  * Sprawdza:
- * 1. Czy różnica w latach pomiędzy claimem a źródłem w MasterVault przekracza 0.5 roku.
+ * 1. Czy daty początku, końca lub długość okresu różnią się od źródła o ponad 0.5 roku,
+ *    oraz czy oba zakresy można w ogóle odczytać.
  * 2. Czy istnieją sprzeczności w umiejętnościach (skill contradictions).
  * 3. Czy każdy odpytany claimId istnieje w MasterVault.
  */
@@ -392,13 +425,33 @@ export function validateConsistency(
         continue;
       }
 
-      // Sprawdzenie różnicy w latach > 0.5 roku
+      // Porównanie dat z faktami źródłowymi, bez potwierdzania nieczytelnych danych.
       if (item.claimedDateRange) {
         const sourceYears = parseDateRangeToYears(sourceClaim.dateRange);
         const projectedYears = parseDateRangeToYears(item.claimedDateRange);
 
+        if (!sourceYears || !projectedYears) {
+          const invalidAlert: ConsistencyAlert = {
+            id: `alert_invalid_date_${item.claimId}`,
+            claimId: item.claimId,
+            sectionId: secKey,
+            type: 'INVALID_DATE_RANGE',
+            severity: 'ALERT',
+            title: 'Nie można potwierdzić zgodności dat',
+            message: `Zakres dat źródła lub projekcji dla „${sourceClaim.sourceProject}” jest niepełny, nieczytelny albo odwrócony. Sprawdź daty przed użyciem dokumentu.`,
+          };
+          alerts.push(invalidAlert);
+          sectionsMap[secKey].alerts.push(invalidAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
         if (sourceYears && projectedYears) {
-          const diff = Math.abs(sourceYears.durationYears - projectedYears.durationYears);
+          // Ta sama długość po przesunięciu całej historii nie oznacza tych
+          // samych faktów. Próg obejmuje oba końce i zmianę długości okresu.
+          const diff = Math.max(
+            Math.abs(sourceYears.durationYears - projectedYears.durationYears),
+            Math.abs(sourceYears.startYear - projectedYears.startYear),
+            Math.abs(sourceYears.endYear - projectedYears.endYear),
+          );
           if (diff > MAX_ALLOWED_YEAR_DIFFERENCE) {
             const dateAlert: ConsistencyAlert = {
               id: `alert_date_${item.claimId}`,
@@ -407,11 +460,7 @@ export function validateConsistency(
               type: 'DATE_MISMATCH',
               severity: 'ALERT',
               title: 'Rozbieżność dat > 0.5 roku',
-              message: `Różnica czasu trwania dla „${sourceClaim.sourceProject}” wynosi ${diff.toFixed(
-                1
-              )} lat (oczekiwano ${sourceYears.durationYears.toFixed(1)} lat, zadeklarowano ${projectedYears.durationYears.toFixed(
-                1
-              )} lat).`,
+              message: `Daty rozpoczęcia, zakończenia lub długość okresu dla „${sourceClaim.sourceProject}” różnią się o maksymalnie ${diff.toFixed(1)} lat. W profilu: ${formatClaimDateRange(sourceClaim.dateRange)}; w podglądzie: ${formatClaimDateRange(item.claimedDateRange)}.`,
               details: {
                 claimedDurationYears: projectedYears.durationYears,
                 sourceDurationYears: sourceYears.durationYears,
@@ -517,11 +566,7 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
     const claim = getClaimById(vault, claimId);
     if (!claim) continue;
 
-    const dateRangeDisplay = !claim.dateRange
-      ? 'Daty niepodane w profilu'
-      : typeof claim.dateRange === 'string'
-        ? claim.dateRange
-        : `${claim.dateRange.start} – ${claim.dateRange.end}`;
+    const dateRangeDisplay = formatClaimDateRange(claim.dateRange);
 
     const item = {
       claimId: claim.id,
