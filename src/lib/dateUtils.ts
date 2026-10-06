@@ -23,6 +23,12 @@ export const POLISH_MONTHS = [
   'grudzień',
 ] as const;
 
+/** Wspólna skala miesięczna dla porównania dat i unii okresów zatrudnienia. */
+export function parseDateToDecimalYear(dateStr: string | undefined, now = new Date()): number | null {
+  const parsed = parseDateToYearMonth(dateStr, now);
+  return parsed ? parsed.year + (parsed.month - 0.5) / 12 : null;
+}
+
 export const POLISH_MONTHS_SHORT = [
   'sty',
   'lut',

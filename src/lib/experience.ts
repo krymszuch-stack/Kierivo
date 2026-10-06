@@ -1,4 +1,4 @@
-import { parseDateToDecimalYear } from './consistencyGuard/consistencyEngine';
+import { parseDateToDecimalYear } from './dateUtils';
 
 /**
  * Kanoniczna matematyka stażu — unia przedziałów (reguła: T = miara unii).
@@ -43,7 +43,8 @@ export function employmentIntervalForJob(job: {
 
   const now = toDecimal('Obecnie', referenceDate);
   const endRaw = job?.isCurrent ? 'Obecnie' : (job?.endDate ?? '').trim();
-  const end = endRaw ? toDecimal(endRaw, referenceDate) : start;
+  // Brak końca zakończonej roli nie potwierdza zerowego okresu.
+  const end = toDecimal(endRaw, referenceDate);
   if (end === null) return null;
 
   if (start > end) return null;

@@ -21,7 +21,8 @@ import {
   selectVariantIndex,
 } from '../phrasingVariations';
 import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
-import { parseDateToYearMonth } from '../dateUtils';
+import { parseDateToDecimalYear } from '../dateUtils';
+import { employmentIntervalForJob, unionYears } from '../experience';
 import { claimDateRangeFromProfile } from './claimDateRange';
 import { describeProfileClaim } from './pitchStatements';
 import { hasPositiveSkillEvidence, stripDiacriticsLower } from '../skillEvidence';
@@ -40,10 +41,7 @@ function formatClaimDateRange(range: ClaimDateRange | string | undefined): strin
 /**
  * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
  */
-export function parseDateToDecimalYear(dateStr: string | undefined, now = new Date()): number | null {
-  const parsed = parseDateToYearMonth(dateStr, now);
-  return parsed ? parsed.year + (parsed.month - 0.5) / 12 : null;
-}
+export { parseDateToDecimalYear } from '../dateUtils';
 
 /**
  * Parsuje strukturę ClaimDateRange lub ciąg tekstowy zakresu dat ("2020 - 2022")
@@ -667,37 +665,13 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
   // Wcześniej każdy punktor dokładał pełny czas roli (2 lata × 5 punktorów
   // + claim główny = 12 lat za 2 lata pracy) — F5. Projekty nie mają dat
   // zatrudnienia (claimy projektów nie zawierają dat), więc ich nie liczymy do
-  // stażu. (Unia liczona lokalnie, żeby nie zapętlać importów
-  // z `lib/experience.ts`, który sam korzysta z `parseDateToDecimalYear` stąd.)
-  const employmentSpans: Array<{ start: number; end: number }> = [];
-  for (const exp of vault.history ?? []) {
-    if (!exp?.startDate) continue;
-    // Bezpośrednio na datach dziesiętnych: `parseDateRangeToYears` normalizuje
-    // min/max, więc odwrócenie wykrywamy przed nim (F5/F13).
-    const startYear = parseDateToDecimalYear(exp.startDate);
-    const endYear = parseDateToDecimalYear(exp.isCurrent ? 'Obecnie' : exp.endDate || exp.startDate);
-    if (startYear === null || endYear === null) continue;
-    const nowYear = parseDateToDecimalYear('Obecnie');
-    if (nowYear !== null && startYear > nowYear + 1 / 12) continue;
-    if (startYear > endYear) continue;
-    employmentSpans.push({ start: startYear, end: endYear });
-  }
-  employmentSpans.sort((a, b) => a.start - b.start);
-  let totalYears = 0;
-  if (employmentSpans.length > 0) {
-    let curStart = employmentSpans[0].start;
-    let curEnd = employmentSpans[0].end;
-    for (let k = 1; k < employmentSpans.length; k++) {
-      const next = employmentSpans[k];
-      if (next.start <= curEnd) curEnd = Math.max(curEnd, next.end);
-      else {
-        totalYears += curEnd - curStart;
-        curStart = next.start;
-        curEnd = next.end;
-      }
-    }
-    totalYears += curEnd - curStart;
-  }
+  // stażu. Wspólna unia odrzuca przyszłe końce, a brak okresów nie udaje zera.
+  const history = Array.isArray(vault.history) ? vault.history : [];
+  const referenceDate = new Date();
+  const employmentSpans = history
+    .map(exp => employmentIntervalForJob(exp, referenceDate))
+    .filter((span): span is NonNullable<typeof span> => span !== null);
+  const totalYears = employmentSpans.length > 0 ? unionYears(employmentSpans) : null;
 
   const skillsRadar: HudSkillStat[] = Array.from(skillCountMap.entries())
     .map(([skill, data]) => ({
@@ -711,7 +685,8 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
     activeClaimsCount: claims.length,
     verifiedMetrics,
     skillsRadar,
-    timelineCoverageYears: Math.round(totalYears * 10) / 10,
+    timelineCoverageYears: totalYears === null ? null : Math.round(totalYears * 10) / 10,
+    timelineExcludedEntries: history.length - employmentSpans.length,
   };
 }
 

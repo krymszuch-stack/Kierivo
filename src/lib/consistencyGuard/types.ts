@@ -95,7 +95,8 @@ export interface HudRendererOutput {
   activeClaimsCount: number;
   verifiedMetrics: HudMetricItem[];
   skillsRadar: HudSkillStat[];
-  timelineCoverageYears: number;
+  timelineCoverageYears: number | null;
+  timelineExcludedEntries: number;
 }
 
 export interface ProfileClaimStatement {

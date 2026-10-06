@@ -201,11 +201,14 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
             </Card>
 
             <Card className="p-4 space-y-1">
-              <span className="text-xs text-muted font-semibold">Lata doświadczenia z profilu</span>
+              <span className="text-xs text-muted font-semibold">Zakres zatrudnienia z dat profilu</span>
               <div className="text-2xl font-black text-brand-600 font-mono">
-                {hudOutput.timelineCoverageYears} lat
+                {hudOutput.timelineCoverageYears === null ? 'Brak danych do obliczenia' : `${hudOutput.timelineCoverageYears} lat`}
               </div>
-              <div className="text-meta text-muted font-mono">Zakres wynikający z wpisanych dat</div>
+              <div className="text-meta text-muted font-mono">Unia czytelnych, kompletnych okresów zatrudnienia</div>
+              {hudOutput.timelineExcludedEntries > 0 && (
+                <p className="text-xs text-muted">Pominięte wpisy z niekompletnymi lub niepoprawnymi datami: {hudOutput.timelineExcludedEntries}. To nie jest pełny staż profilu.</p>
+              )}
             </Card>
 
           </div>

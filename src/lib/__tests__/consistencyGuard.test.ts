@@ -16,6 +16,30 @@ import { MasterVault } from '../../types';
 import { createEmptyVault } from '../sampleVault';
 
 describe('ConsistencyGuard Engine', () => {
+  it('HUD odróżnia brak czytelnych okresów od zerowego stażu', () => {
+    expect(renderHudFromClaims(createEmptyVault()).timelineCoverageYears).toBeNull();
+    const vault = createMockVault();
+    vault.history = [{ ...vault.history[0], startDate: 'nie wiem', endDate: '2022-01' }];
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+    expect(renderHudFromClaims(vault).timelineExcludedEntries).toBe(1);
+  });
+
+  it('HUD nie dopisuje końca niekompletnej roli ani przyszłego stażu', () => {
+    const vault = createMockVault();
+    vault.history = [{ ...vault.history[0], startDate: '2020-01', endDate: '' }];
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+    vault.history[0].endDate = '2099-01';
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+  });
+
+  it('HUD ujawnia pominięcie nieczytelnego wpisu przy częściowo policzalnym zakresie', () => {
+    const vault = createMockVault();
+    vault.history[1].startDate = 'nie wiem';
+    const hud = renderHudFromClaims(vault);
+    expect(hud.timelineCoverageYears).toBe(2);
+    expect(hud.timelineExcludedEntries).toBe(1);
+  });
+
   it('odrzuca niepoprawne miesiące i dni zamiast obcinać je do zakresu', () => {
     for (const invalid of ['2020-00', '2020-13', '2020-13-99', '2020-02-30']) {
       expect(parseDateToDecimalYear(invalid)).toBeNull();
