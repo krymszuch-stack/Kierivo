@@ -269,9 +269,47 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       expect(metricsEngine.score).toBe(50);
       expect(metricsEngine.status).toBe('RISKY');
       expect(timelineEngine.score).toBeNull();
-      expect(timelineEngine.status).toBe('RISKY');
+      expect(timelineEngine.status).toBe('REVIEW_REQUIRED');
       expect(timelineEngine.penaltiesAndFlags.length).toBeGreaterThan(0);
       expect(timelineEngine.penaltiesAndFlags.join(' ')).toMatch(/nieopisany okres/i);
+    });
+
+    it('moduł osi czasu nie ukrywa nieczytelnego wpisu obok dwóch poprawnych', () => {
+      const vault = createEmptyVault();
+      const job = (id: string, startDate: string, endDate: string) => ({
+        id, company: `Firma ${id}`, role: 'Monter', location: 'Kraków', startDate, endDate,
+        isCurrent: false, highlights: [],
+      });
+      vault.history = [job('a', '2020-01', '2021-01'), job('b', '2021-02', '2022-01'), job('c', 'nie wiem', '2023-01')];
+      const engine = simulateMultiEngineATS(vault, 'Wymagany SEP G1.', 'Monter').engines.find(item => item.id === 'spojnosc_profilu')!;
+      expect(engine.status).toBe('NOT_ASSESSED');
+      expect(engine.score).toBeNull();
+      expect(engine.penaltiesAndFlags.join(' ')).toContain('Nie można sprawdzić okresu');
+      expect(engine.keyStrengths.join(' ')).toContain('niepotwierdzona');
+    });
+
+    it('moduł osi czasu odrzuca przyszłe i odwrócone daty zamiast wysokiego wyniku', () => {
+      for (const dates of [['2020-01', '2099-01'], ['2023-01', '2020-01']]) {
+        const vault = createEmptyVault();
+        vault.history = [
+          { id: 'a', company: 'Firma A', role: 'Spawacz', location: '', startDate: '2018-01', endDate: '2019-01', isCurrent: false, highlights: [] },
+          { id: 'b', company: 'Firma B', role: 'Spawacz', location: '', startDate: dates[0], endDate: dates[1], isCurrent: false, highlights: [] },
+        ];
+        const engine = simulateMultiEngineATS(vault, 'Wymagane spawanie TIG.', 'Spawacz').engines.find(item => item.id === 'spojnosc_profilu')!;
+        expect(engine.status).toBe('NOT_ASSESSED');
+        expect(engine.penaltiesAndFlags.join(' ')).toContain('Nie można sprawdzić okresu');
+      }
+    });
+
+    it('brak uwag chronologicznych ma status opisowy bez wysokiego wyniku liczbowego', () => {
+      const vault = createEmptyVault();
+      vault.history = [
+        { id: 'a', company: 'Firma A', role: 'Magazynier', location: '', startDate: '2018-01', endDate: '2019-01', isCurrent: false, highlights: [] },
+        { id: 'b', company: 'Firma B', role: 'Magazynier', location: '', startDate: '2019-02', endDate: '2020-01', isCurrent: false, highlights: [] },
+      ];
+      const engine = simulateMultiEngineATS(vault, 'Wymagane UDT.', 'Magazynier').engines.find(item => item.id === 'spojnosc_profilu')!;
+      expect(engine.score).toBeNull();
+      expect(engine.status).toBe('NO_SIGNALS');
     });
 
     it('sprawdza dowód umiejętności w opisie, a nie samą listę profilu', () => {
