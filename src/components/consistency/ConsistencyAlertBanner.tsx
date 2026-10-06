@@ -84,7 +84,7 @@ export const ConsistencyAlertBanner: React.FC<ConsistencyAlertBannerProps> = ({
                 <div className="mt-2 rounded-lg bg-surface/80 p-2 text-[11px] font-mono text-muted space-y-0.5 border border-line">
                   {alert.details.gapMonths !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span>Okres przerwy:</span>
+                      <span>Okres bez pokrycia wpisami:</span>
                       <span className="font-bold text-warning-fg">
                         ~{alert.details.gapMonths} mies. ({alert.details.gapStart} – {alert.details.gapEnd})
                       </span>
@@ -92,8 +92,8 @@ export const ConsistencyAlertBanner: React.FC<ConsistencyAlertBannerProps> = ({
                   )}
                   {alert.details.conflictingCompany && (
                     <div className="flex items-center justify-between">
-                      <span>Konflikt z firmą:</span>
-                      <span className="font-bold text-danger-fg">
+                      <span>Porównanie lokalizacji z wpisem:</span>
+                      <span className="font-bold text-warning-fg">
                         {alert.details.conflictingCompany} {alert.details.conflictingLocation ? `(${alert.details.conflictingLocation})` : ''}
                       </span>
                     </div>

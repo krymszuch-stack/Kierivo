@@ -13,6 +13,47 @@ import {
 import { WorkExperience } from '../../types';
 
 describe('TimelineAuditor & Logic Validator', () => {
+  const job = (id: string, startDate: string, endDate: string, location = 'Kraków'): WorkExperience => ({
+    id, company: `Firma ${id}`, role: 'Monter', startDate, endDate, location, isCurrent: false,
+    highlights: [{ id: `hl-${id}`, text: 'Wynik 20%', metric: '20%', action: '', target: '', tool: '', keywords: [] }],
+  });
+
+  it('nie wyprowadza luki ani nakładania z wymyślonego końca zakończonej roli', () => {
+    const missingEnd = job('unknown', '2020-01', '');
+    expect(detectCareerGaps([missingEnd, job('later', '2022-01', '2023-01')])).toHaveLength(0);
+    expect(detectOverlappingExperiences([missingEnd, job('other', '2020-01', '2021-01')])).toHaveLength(0);
+  });
+
+  it('przyszły koniec nie potwierdza nakładania i brak problemów nie ukrywa błędnych dat', () => {
+    const future = job('future', '2020-01', '2099-01');
+    expect(detectOverlappingExperiences([future, job('other', '2022-01', '2023-01')])).toHaveLength(0);
+    const result = auditExperienceTimelineAndMetrics([future]);
+    expect(result.isHealthy).toBe(false);
+    expect(result.alerts.some(alert => alert.type === 'INVALID_DATE_RANGE')).toBe(true);
+  });
+
+  it('sam brak końca lub nieczytelna data uniemożliwia zdrowy wynik audytu', () => {
+    for (const exp of [job('missing', '2020-01', ''), job('invalid', 'nie wiem', '2022-01')]) {
+      const result = auditExperienceTimelineAndMetrics([exp]);
+      expect(result.isHealthy).toBe(false);
+      expect(result.alerts.some(alert => alert.type === 'INVALID_DATE_RANGE')).toBe(true);
+    }
+  });
+
+  it('różne lokalizacje przy dokładności miesiąca nie dowodzą sprzeczności etatów', () => {
+    const alerts = detectOverlappingExperiences([job('a', '2020-01', '2021-01', 'Kraków'), job('b', '2021-01', '2022-01', 'Warszawa')]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('WARNING');
+    expect(alerts[0].message).not.toContain('stacjonarnie');
+    expect(alerts[0].message).toContain('nie potwierdzają');
+  });
+
+  it('odstęp wpisów nie fabrykuje bezrobocia ani oczekiwań rekrutera', () => {
+    const alerts = detectCareerGaps([job('a', '2020-01', '2021-01'), job('b', '2022-01', '2023-01')]);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].message).toContain('nie potwierdza');
+    expect(alerts[0].message).not.toContain('Rekruterzy');
+  });
   it('nie normalizuje niepoprawnych dat do innego miesiąca', () => {
     expect(parseYearMonthToNumbers('2020-02-30')).toBeNull();
     expect(parseYearMonthToNumbers('03/04/2020')).toBeNull();
@@ -178,7 +219,7 @@ describe('TimelineAuditor & Logic Validator', () => {
       const alerts = detectOverlappingExperiences(history);
       const locationConflict = alerts.find((a) => a.type === 'LOCATION_CONFLICT');
       expect(locationConflict).toBeDefined();
-      expect(locationConflict?.severity).toBe('ALERT');
+      expect(locationConflict?.severity).toBe('WARNING');
       expect(locationConflict?.message).toContain('Warszawa');
       expect(locationConflict?.message).toContain('Gdańsk');
     });

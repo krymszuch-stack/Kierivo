@@ -271,7 +271,7 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       expect(timelineEngine.score).toBeNull();
       expect(timelineEngine.status).toBe('RISKY');
       expect(timelineEngine.penaltiesAndFlags.length).toBeGreaterThan(0);
-      expect(timelineEngine.penaltiesAndFlags.join(' ')).toMatch(/luka/i);
+      expect(timelineEngine.penaltiesAndFlags.join(' ')).toMatch(/nieopisany okres/i);
     });
 
     it('sprawdza dowód umiejętności w opisie, a nie samą listę profilu', () => {

@@ -1,6 +1,7 @@
 import { WorkExperience } from '../../types';
 import { ConsistencyAlert } from './types';
 import { formatMonthYear, parseDateToYearMonth } from '../dateUtils';
+import { employmentIntervalForJob } from '../experience';
 
 /**
  * Zwraca znormalizowany rok i miesiąc z ciągu daty (np. '2022-05', '2022.05', '05.2022', '2022', 'Obecnie').
@@ -10,13 +11,13 @@ export function parseYearMonthToNumbers(dateStr: string | undefined | null): { y
 }
 
 function experiencePeriod(exp: WorkExperience): { start: { year: number; month: number }; end: { year: number; month: number } } | null {
+  // Ta sama granica kompletności i przyszłych dat co w HUD i scorerze.
+  // Brak końca nie jest dowodem jednodniowej ani miesięcznej roli.
+  if (!employmentIntervalForJob(exp)) return null;
   const start = parseYearMonthToNumbers(exp.startDate);
-  const hasExplicitEnd = Boolean(exp.endDate?.trim());
   const end = exp.isCurrent
     ? parseYearMonthToNumbers('obecnie')
-    : hasExplicitEnd
-      ? parseYearMonthToNumbers(exp.endDate)
-      : start;
+    : parseYearMonthToNumbers(exp.endDate);
   if (!start || !end || end.year * 12 + end.month < start.year * 12 + start.month) return null;
   return { start, end };
 }
@@ -121,12 +122,12 @@ export function detectCareerGaps(history: WorkExperience[]): ConsistencyAlert[] 
           sectionId: 'experience',
           type: 'CAREER_GAP',
           severity: 'WARNING',
-          title: `Luka w zatrudnieniu (~${gapMonths} mies.)`,
-          message: `Wykryto ${gapMonths}-miesięczną przerwę między stanowiskiem w „${runningLastExp.company}” (${formatMonthYear(
+          title: `Nieopisany okres między wpisami (~${gapMonths} mies.)`,
+          message: `Między kompletnymi wpisami w „${runningLastExp.company}” (${formatMonthYear(
             gapStartFormatted
           )}) a „${current.experience.company}” (${formatMonthYear(
             gapEndFormatted
-          )}). Rekruterzy zwracają uwagę na przerwy > 6 mies. Warto uzupełnić ten okres wpisem o kursach, freelance lub urlopie.`,
+          )}) jest ${gapMonths} miesięcy bez pokrycia tymi wpisami. Brak wpisu nie potwierdza przerwy w pracy ani błędu. Sprawdź pozostałą historię; jeśli chcesz wyjaśnić okres, wpisz wyłącznie rzeczywiste informacje.`,
           details: {
             gapMonths,
             gapStart: gapStartFormatted,
@@ -188,15 +189,16 @@ export function detectOverlappingExperiences(history: WorkExperience[]): Consist
         const locA = (a.exp.location || '').trim();
         const locB = (b.exp.location || '').trim();
 
-        // Jeśli oba stanowiska mają zdefiniowaną fizyczną lokalizację, miasta się różnią i żadne nie jest zdalne
+        // Nazwy lokalizacji i miesiące nie potwierdzają obecności w dwóch
+        // miejscach w tych samych godzinach ani trybu pracy.
         if (locA && locB && !isARemote && !isBRemote && locA.toLowerCase() !== locB.toLowerCase()) {
           alerts.push({
             id: `alert_location_conflict_${a.exp.id}_${b.exp.id}`,
             sectionId: 'experience',
             type: 'LOCATION_CONFLICT',
-            severity: 'ALERT',
-            title: 'Kolizja lokalizacji w nakładających się terminach',
-            message: `Stanowiska w „${a.exp.company}” (${locA}) oraz „${b.exp.company}” (${locB}) trwają równolegle w różnych miastach stacjonarnie. Jeśli jedno z nich było zdalne lub hybrydowe, dopisz „(Zdalnie)” w lokalizacji, aby wyeliminować podejrzenie błędu.`,
+            severity: 'WARNING',
+            title: 'Różne lokalizacje w nakładających się miesiącach — do sprawdzenia',
+            message: `Wpisy w „${a.exp.company}” (${locA}) oraz „${b.exp.company}” (${locB}) obejmują wspólne miesiące. Daty miesięczne i lokalizacje nie potwierdzają jednoczesnej pracy w dwóch miejscach. Sprawdź dokładne daty i rzeczywisty tryb współpracy; nie zmieniaj lokalizacji tylko po to, aby usunąć uwagę.`,
             details: {
               sourceProject: a.exp.company,
               conflictingCompany: b.exp.company,
@@ -205,14 +207,14 @@ export function detectOverlappingExperiences(history: WorkExperience[]): Consist
             },
           });
         } else if (!isARemote && !isBRemote) {
-          // Nakładające się pełne etaty bez oznaczenia B2B/freelance/zdalnie
+          // Brak oznaczenia elastycznej pracy nie potwierdza pełnego etatu.
           alerts.push({
             id: `alert_overlap_${a.exp.id}_${b.exp.id}`,
             sectionId: 'experience',
             type: 'OVERLAPPING_EXPERIENCE',
             severity: 'WARNING',
             title: 'Nakładające się okresy zatrudnienia',
-            message: `Równoległe zatrudnienie w „${a.exp.company}” i „${b.exp.company}”. Rekruterzy mogą dopytywać o jednoczesne etaty — warto doprecyzować formę współpracy (np. B2B, część etatu, zlecenie).`,
+            message: `Wpisy w „${a.exp.company}” i „${b.exp.company}” obejmują wspólne miesiące. Nie oznacza to automatycznie sprzeczności ani jednoczesnych pełnych etatów. Jeśli potrzebne jest wyjaśnienie, podaj rzeczywiste daty lub formę współpracy.`,
             details: {
               sourceProject: a.exp.company,
               conflictingCompany: b.exp.company,
@@ -279,7 +281,20 @@ export function auditExperienceTimelineAndMetrics(history: WorkExperience[]): {
   const overlappingExperiences = locationConflictsAndOverlaps.filter((a) => a.type === 'OVERLAPPING_EXPERIENCE');
   const missingMetrics = detectMissingMetrics(history);
 
-  const allAlerts = [...locationConflicts, ...overlappingExperiences, ...careerGaps, ...missingMetrics];
+  // Pominięcie nieczytelnego wpisu nie może zmienić niepełnego audytu w zdrowy wynik.
+  const invalidDateRanges: ConsistencyAlert[] = (history ?? [])
+    .filter(exp => (exp.company || exp.role || exp.startDate || exp.endDate) && !experiencePeriod(exp))
+    .map(exp => ({
+      id: `alert_timeline_dates_${exp.id}`,
+      claimId: `claim_exp_${exp.id}`,
+      sectionId: 'experience',
+      type: 'INVALID_DATE_RANGE',
+      severity: 'ALERT',
+      title: 'Nie można sprawdzić okresu zatrudnienia',
+      message: `Wpis „${exp.role || 'Stanowisko'}” w „${exp.company || 'Firma'}” ma niekompletne, nieczytelne, odwrócone lub przyszłe daty. Nie uwzględniono go w porównaniu okresów; nie potwierdzono pełnej chronologii.`,
+      details: { experienceId: exp.id, sourceProject: exp.company },
+    }));
+  const allAlerts = [...invalidDateRanges, ...locationConflicts, ...overlappingExperiences, ...careerGaps, ...missingMetrics];
 
   return {
     alerts: allAlerts,
