@@ -38,12 +38,14 @@ async def main():
                 'missing-date': ('const dateRangeDisplay = formatClaimDateRange(claim.dateRange);', 'const dateRangeDisplay = "Daty niepodane w profilu";'),
                 'hud-count': ('activeClaimsCount: claims.length,', 'activeClaimsCount: 0,'),
                 'hud-duplicate': ('verifiedMetrics.push({', 'verifiedMetrics.push({claimId:claim.id, label:claim.sourceProject, value:"40%", sourceProject:claim.sourceProject}); verifiedMetrics.push({'),
+                'cv-duplicate': ('experiencesSection.items.push(item);', 'experiencesSection.items.push(item, item);'),
+                'pitch-duplicate': ('const hookCtx = {', 'profileStatements.push(...profileStatements); const hookCtx = {'),
             }
             marker, replacement = mutations[scenario]
             assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
             body = body.replace(marker, replacement, 1)
             await route.fulfill(response=response, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate'] for old in [True, False]]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()

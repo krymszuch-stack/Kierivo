@@ -344,17 +344,21 @@ export function projectRendererOutputs(
   pitch: PitchRendererOutput,
   activeClaimIds: string[],
 ): ProjectedClaimItem[] {
-  const hudMetricCounts = new Map<string, number>();
-  for (const item of hud.verifiedMetrics) {
-    hudMetricCounts.set(item.claimId, (hudMetricCounts.get(item.claimId) || 0) + 1);
-  }
+  const countIds = (ids: string[]) => {
+    const counts = new Map<string, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) || 0) + 1);
+    return counts;
+  };
+  const hudMetricCounts = countIds(hud.verifiedMetrics.map(item => item.claimId));
   // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
   const hudClaimIds = new Set([...activeClaimIds, ...hudMetricCounts.keys()]);
   const hudCountMismatch = hud.activeClaimsCount !== new Set(activeClaimIds).size;
   // Sam licznik również może fabrykować fakty przy pustym wejściu.
   if (hudCountMismatch && hudClaimIds.size === 0) hudClaimIds.add('');
-  const cvClaimIds = new Set(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
-  const pitchClaimIds = new Set(pitch.profileStatements.map(item => item.claimId));
+  const cvCounts = countIds(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
+  const pitchCounts = countIds(pitch.profileStatements.map(item => item.claimId));
+  const cvClaimIds = new Set(cvCounts.keys());
+  const pitchClaimIds = new Set(pitchCounts.keys());
   const missingItems = (sectionId: string, sectionName: string, emittedIds: Set<string>): ProjectedClaimItem[] =>
     [...new Set(activeClaimIds)].filter(id => !emittedIds.has(id)).map(claimId => ({
       sectionId, sectionName, claimId, projectionMissing: true,
@@ -365,6 +369,7 @@ export function projectRendererOutputs(
       sectionName: section.title,
       claimId: item.claimId,
       claimedDateRange: item.dateRangeDisplay === 'Daty niepodane w profilu' ? '' : item.dateRangeDisplay,
+      projectionDuplicate: (cvCounts.get(item.claimId) || 0) > 1,
       claimedTags: item.tags,
       claimedMetric: item.metric,
     }))),
@@ -389,6 +394,7 @@ export function projectRendererOutputs(
       sectionId: 'pitch',
       sectionName: 'Renderer Pitch',
       claimId: item.claimId,
+      projectionDuplicate: (pitchCounts.get(item.claimId) || 0) > 1,
       claimedTags: item.tags,
       claimedMetric: item.metric,
     })),

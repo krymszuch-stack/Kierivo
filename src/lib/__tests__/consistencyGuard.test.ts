@@ -345,6 +345,20 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.sections.hud.isConsistent).toBe(false);
     });
 
+    it.each(['cv', 'pitch'])('wykrywa powtórzony fakt także w %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const cv = renderCvFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections[0].items.push({ ...cv.sections[0].items[0] });
+      else pitch.profileStatements.push({ ...pitch.profileStatements[0] });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), pitch, ['plain']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'PROJECTION_DUPLICATE')).toBe(true);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];

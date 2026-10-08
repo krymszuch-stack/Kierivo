@@ -75,6 +75,30 @@
       "expected_alert_present": true
     },
     {
+      "case": "cv-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-duplicate",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-duplicate",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
       "case": "Actual AchievementEditor callback",
       "metric": "25%",
       "passed": true,
