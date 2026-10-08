@@ -222,6 +222,18 @@ export const AchievementEditor: React.FC<AchievementEditorProps> = ({
                       placeholder={contextConfig.placeholder}
                       className="text-xs"
                     />
+                    <label className="mt-2 block text-xs text-muted">
+                      Potwierdzony wynik lub skala (opcjonalnie)
+                      <Textarea
+                        aria-label={`Metryka osiągnięcia ${index + 1}`}
+                        rows={1}
+                        value={hl.metric}
+                        onChange={(e) => onChange(highlights.map(item => item.id === hl.id
+                          ? { ...item, metric: e.target.value } : item))}
+                        placeholder="Wpisz własny wynik wraz z jednostką"
+                        className="mt-1 text-xs"
+                      />
+                    </label>
                   </div>
 
                   <div className="flex items-center gap-1 mt-1">

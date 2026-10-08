@@ -334,6 +334,43 @@ export interface ProjectedClaimItem {
   claimedMetric?: string;
 }
 
+/** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
+export function projectRendererOutputs(
+  cv: CvRendererOutput,
+  hud: HudRendererOutput,
+  pitch: PitchRendererOutput,
+  activeClaimIds: string[],
+): ProjectedClaimItem[] {
+  const hudMetrics = new Map(hud.verifiedMetrics.map(item => [item.claimId, item.value]));
+  // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
+  const hudClaimIds = new Set([...activeClaimIds, ...hudMetrics.keys()]);
+  return [
+    ...cv.sections.flatMap(section => section.items.map(item => ({
+      sectionId: section.id,
+      sectionName: section.title,
+      claimId: item.claimId,
+      ...(item.dateRangeDisplay === 'Daty niepodane w profilu'
+        ? {} : { claimedDateRange: item.dateRangeDisplay }),
+      claimedTags: item.tags,
+      claimedMetric: item.metric,
+    }))),
+    ...Array.from(hudClaimIds, claimId => ({
+      sectionId: 'hud',
+      sectionName: 'Renderer HUD',
+      claimId,
+      claimedMetric: hudMetrics.get(claimId),
+      claimedTags: hud.skillsRadar.filter(item => item.claimIds.includes(claimId)).map(item => item.skill),
+    })),
+    ...pitch.profileStatements.map(item => ({
+      sectionId: 'pitch',
+      sectionName: 'Renderer Pitch',
+      claimId: item.claimId,
+      claimedTags: item.tags,
+      claimedMetric: item.metric,
+    })),
+  ];
+}
+
 /**
  * Główny walidator modułu ConsistencyGuard.
  * Sprawdza:
@@ -479,13 +516,13 @@ export function validateConsistency(
 
       // Bez porównania metryk podgląd mógł zmieniać liczby bez naruszenia
       // statusu spójności. Normalizujemy tylko odstępy, bez zgadywania jednostek.
-      if (item.claimedMetric !== undefined) {
+      if (item.claimedMetric !== undefined || sourceClaim.metric !== undefined) {
         const sourceMetric = typeof sourceClaim.metric === 'string'
           ? sourceClaim.metric.trim().replace(/\s+/g, ' ')
           : '';
         const projectedMetric = typeof item.claimedMetric === 'string'
           ? item.claimedMetric.trim().replace(/\s+/g, ' ')
-          : null;
+          : item.claimedMetric === undefined ? '' : null;
         if (projectedMetric === null || sourceMetric !== projectedMetric) {
           const metricAlert: ConsistencyAlert = {
             id: `alert_metric_${item.claimId}`,

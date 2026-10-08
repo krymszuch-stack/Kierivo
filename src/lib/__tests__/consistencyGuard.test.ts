@@ -9,6 +9,7 @@ import {
   renderHudFromClaims,
   renderPitchFromClaims,
   renderLinkedInFromClaims,
+  projectRendererOutputs,
   extractClaimsFromVault,
   MAX_ALLOWED_YEAR_DIFFERENCE,
 } from '../consistencyGuard';
@@ -235,6 +236,53 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
     });
 
+    it.each(['cv', 'hud', 'pitch'])('odrzuca usuniętą metrykę projekcji %s', (sectionId) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'metric',
+      }] });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it.each(['cv', 'hud', 'pitch'])('sprawdza rzeczywistą metrykę wyjścia renderera %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections[0].items[0].metric = '40%';
+      if (renderer === 'hud') hud.verifiedMetrics[0].value = '40%';
+      if (renderer === 'pitch') pitch.profileStatements[0].metric = '40%';
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, hud, pitch, ['metric']),
+      });
+      expect(result.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it('nie ukrywa usuniętej metryki przez brak pozycji w HUD', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics = [];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
+    it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), renderHudFromClaims(vault), renderPitchFromClaims(vault), ['plain']),
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
     it('nie potwierdza metryki dopisanej do claimu bez wyniku źródłowego', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [] }];
@@ -294,6 +342,7 @@ describe('ConsistencyGuard Engine', () => {
             claimId: 'claim_exp_exp_1',
             claimedDateRange: { start: '2021-01', end: '2023-01' }, // 2.0 lata (zgodne z exp_1)
             claimedTags: ['TypeScript', 'Node.js'],
+            claimedMetric: '+40% TPS',
           },
         ],
       });

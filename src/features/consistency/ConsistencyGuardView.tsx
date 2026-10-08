@@ -14,6 +14,7 @@ import {
   renderCvFromClaims,
   renderHudFromClaims,
   renderPitchFromClaims,
+  projectRendererOutputs,
   ConsistencyValidationResult,
   ProjectedClaimItem,
 } from '../../lib/consistencyGuard';
@@ -40,17 +41,14 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
   const vaultClaims = useMemo(() => extractClaimsFromVault(vault), [vault]);
   const activeClaimIds = useMemo(() => vaultClaims.map((c) => c.id), [vaultClaims]);
 
-  // Przygotowanie projekcji dla walidatora
+  // Walidacja musi korzystać z tych samych wyników, które pokazują zakładki.
+  const cvOutput = useMemo(() => renderCvFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+  const hudOutput = useMemo(() => renderHudFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+  const pitchOutput = useMemo(() => renderPitchFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+
   const projectedItems: ProjectedClaimItem[] = useMemo(() => {
-    return vaultClaims.map((c, index) => ({
-      sectionId: index % 2 === 0 ? 'cv_experience' : 'cv_projects',
-      sectionName: index % 2 === 0 ? 'Doświadczenie Zawodowe' : 'Projekty i Osiągnięcia',
-      claimId: c.id,
-      ...(c.dateRange ? { claimedDateRange: c.dateRange } : {}),
-      claimedTags: c.tags,
-      ...(c.metric !== undefined ? { claimedMetric: c.metric } : {}),
-    }));
-  }, [vaultClaims]);
+    return projectRendererOutputs(cvOutput, hudOutput, pitchOutput, activeClaimIds);
+  }, [cvOutput, hudOutput, pitchOutput, activeClaimIds]);
 
   // Walidacja spójności
   const validationResult: ConsistencyValidationResult = useMemo(() => {
@@ -59,11 +57,6 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       projectedItems,
     });
   }, [vault, activeClaimIds, projectedItems]);
-
-  // Renderery oparte na claimId
-  const cvOutput = useMemo(() => renderCvFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
-  const hudOutput = useMemo(() => renderHudFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
-  const pitchOutput = useMemo(() => renderPitchFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
 
   const tabs = [
     { id: 'cv' as ConsistencyTabId, label: 'Renderer CV', icon: FileText },

@@ -1,0 +1,24 @@
+{
+  "evidence": "LOCAL Playwright real components + controlled renderer fault injection",
+  "production_verified": false,
+  "results": [
+    {
+      "case": "CV renderer changes 20% to 40%",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "CV renderer changes 20% to 40%",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "Actual AchievementEditor callback",
+      "metric": "25%",
+      "passed": true,
+      "storage_and_reload_verified": false
+    }
+  ]
+}

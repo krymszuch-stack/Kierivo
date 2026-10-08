@@ -106,6 +106,7 @@
     "test:e2e:consistency-projected-dates": "node scripts/e2e-consistency-projected-dates.mjs",
     "test:e2e:consistency-negated-tags": "node scripts/e2e-consistency-negated-tags.mjs",
     "test:e2e:consistency-projected-metrics": "node scripts/e2e-consistency-projected-metrics.mjs",
+    "test:e2e:consistency-renderer-review": "python scripts/e2e-consistency-renderer-review.py",
     "test:e2e:consistency-missing-sources": "node scripts/e2e-consistency-missing-sources.mjs",
     "test:e2e:consistency-timeline-unknown": "node scripts/e2e-consistency-timeline-unknown.mjs",
     "test:e2e:consistency-timeline-evidence": "node scripts/e2e-consistency-timeline-evidence.mjs",
