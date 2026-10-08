@@ -37,12 +37,13 @@ async def main():
                 'missing-pitch': ('profileStatements.push({', 'if (false) profileStatements.push({'),
                 'missing-date': ('const dateRangeDisplay = formatClaimDateRange(claim.dateRange);', 'const dateRangeDisplay = "Daty niepodane w profilu";'),
                 'hud-count': ('activeClaimsCount: claims.length,', 'activeClaimsCount: 0,'),
+                'hud-duplicate': ('verifiedMetrics.push({', 'verifiedMetrics.push({claimId:claim.id, label:claim.sourceProject, value:"40%", sourceProject:claim.sourceProject}); verifiedMetrics.push({'),
             }
             marker, replacement = mutations[scenario]
             assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
             body = body.replace(marker, replacement, 1)
             await route.fulfill(response=response, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count'] for old in [True, False]]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()
@@ -58,7 +59,7 @@ async def main():
                 ]);
                 const vault = createEmptyVault();
                 vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:[],
-                    ...(scenario === 'metric' ? {metric:'20%'} : {}),
+                    ...(['metric','hud-duplicate'].includes(scenario) ? {metric:'20%'} : {}),
                     ...(scenario === 'missing-date' ? {dateRange:'2020-2022'} : {})}];
                 document.body.innerHTML = '<main id="release-proof"></main>';
                 (ReactDOM.createRoot ?? ReactDOM.default.createRoot)(document.getElementById('release-proof')).render(

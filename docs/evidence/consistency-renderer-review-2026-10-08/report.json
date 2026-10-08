@@ -63,6 +63,18 @@
       "expected_alert_present": true
     },
     {
+      "case": "hud-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-duplicate",
+      "baseline": false,
+      "alert_count": 2,
+      "expected_alert_present": true
+    },
+    {
       "case": "Actual AchievementEditor callback",
       "metric": "25%",
       "passed": true,

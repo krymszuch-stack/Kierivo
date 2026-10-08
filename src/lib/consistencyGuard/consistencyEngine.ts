@@ -334,6 +334,7 @@ export interface ProjectedClaimItem {
   claimedMetric?: string;
   projectionMissing?: boolean;
   projectionCountMismatch?: boolean;
+  projectionDuplicate?: boolean;
 }
 
 /** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
@@ -343,9 +344,12 @@ export function projectRendererOutputs(
   pitch: PitchRendererOutput,
   activeClaimIds: string[],
 ): ProjectedClaimItem[] {
-  const hudMetrics = new Map(hud.verifiedMetrics.map(item => [item.claimId, item.value]));
+  const hudMetricCounts = new Map<string, number>();
+  for (const item of hud.verifiedMetrics) {
+    hudMetricCounts.set(item.claimId, (hudMetricCounts.get(item.claimId) || 0) + 1);
+  }
   // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
-  const hudClaimIds = new Set([...activeClaimIds, ...hudMetrics.keys()]);
+  const hudClaimIds = new Set([...activeClaimIds, ...hudMetricCounts.keys()]);
   const hudCountMismatch = hud.activeClaimsCount !== new Set(activeClaimIds).size;
   // Sam licznik również może fabrykować fakty przy pustym wejściu.
   if (hudCountMismatch && hudClaimIds.size === 0) hudClaimIds.add('');
@@ -365,13 +369,21 @@ export function projectRendererOutputs(
       claimedMetric: item.metric,
     }))),
     ...missingItems('cv', 'Renderer CV', cvClaimIds),
-    ...Array.from(hudClaimIds, claimId => ({
+    ...hud.verifiedMetrics.map(item => ({
+      sectionId: 'hud',
+      sectionName: 'Renderer HUD',
+      claimId: item.claimId,
+      claimedMetric: item.value,
+      projectionDuplicate: (hudMetricCounts.get(item.claimId) || 0) > 1,
+      projectionCountMismatch: hudCountMismatch,
+      claimedTags: hud.skillsRadar.filter(skill => skill.claimIds.includes(item.claimId)).map(skill => skill.skill),
+    })),
+    ...Array.from(hudClaimIds).filter(claimId => !hudMetricCounts.has(claimId)).map(claimId => ({
       sectionId: 'hud',
       sectionName: 'Renderer HUD',
       claimId,
-      claimedMetric: hudMetrics.get(claimId),
       projectionCountMismatch: hudCountMismatch,
-      claimedTags: hud.skillsRadar.filter(item => item.claimIds.includes(claimId)).map(item => item.skill),
+      claimedTags: hud.skillsRadar.filter(skill => skill.claimIds.includes(claimId)).map(skill => skill.skill),
     })),
     ...pitch.profileStatements.map(item => ({
       sectionId: 'pitch',
@@ -508,6 +520,22 @@ export function validateConsistency(
         sectionsMap[secKey].alerts.push(missingProjection);
         sectionsMap[secKey].isConsistent = false;
         continue;
+      }
+
+      if (item.projectionDuplicate && !sectionsMap[secKey].alerts.some(alert =>
+        alert.type === 'PROJECTION_DUPLICATE' && alert.claimId === item.claimId)) {
+        const duplicateAlert: ConsistencyAlert = {
+          id: `alert_projection_duplicate_${secKey}_${item.claimId}`,
+          claimId: item.claimId,
+          sectionId: secKey,
+          type: 'PROJECTION_DUPLICATE',
+          severity: 'ALERT',
+          title: 'Powtórzony fakt w podglądzie',
+          message: `Podgląd powtarza fakt „${sourceClaim.sourceProject}”. Sprawdź wszystkie wyświetlone pozycje.`,
+        };
+        alerts.push(duplicateAlert);
+        sectionsMap[secKey].alerts.push(duplicateAlert);
+        sectionsMap[secKey].isConsistent = false;
       }
 
       // Jawnie pusty zakres CV porównujemy z datami źródła. HUD/Pitch nie projektują dat.

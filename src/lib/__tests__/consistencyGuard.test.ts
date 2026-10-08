@@ -322,6 +322,29 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.sections.hud.isConsistent).toBe(false);
     });
 
+    it('sprawdza błędną metrykę HUD także przed poprawnym duplikatem', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics.unshift({ ...hud.verifiedMetrics[0], value: '40%' });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it('nie potwierdza poprawnych ale powtórzonych pozycji HUD', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics.push({ ...hud.verifiedMetrics[0] });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
