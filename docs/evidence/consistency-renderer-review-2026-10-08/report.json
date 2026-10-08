@@ -3,13 +3,49 @@
   "production_verified": false,
   "results": [
     {
-      "case": "CV renderer changes 20% to 40%",
+      "case": "metric",
       "baseline": true,
       "alert_count": 0,
       "expected_alert_present": false
     },
     {
-      "case": "CV renderer changes 20% to 40%",
+      "case": "metric",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-cv",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-cv",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-pitch",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-pitch",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-date",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-date",
       "baseline": false,
       "alert_count": 1,
       "expected_alert_present": true

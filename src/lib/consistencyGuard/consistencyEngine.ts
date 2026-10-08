@@ -332,6 +332,7 @@ export interface ProjectedClaimItem {
   claimedDateRange?: ClaimDateRange | string;
   claimedTags?: string[];
   claimedMetric?: string;
+  projectionMissing?: boolean;
 }
 
 /** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
@@ -344,16 +345,22 @@ export function projectRendererOutputs(
   const hudMetrics = new Map(hud.verifiedMetrics.map(item => [item.claimId, item.value]));
   // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
   const hudClaimIds = new Set([...activeClaimIds, ...hudMetrics.keys()]);
+  const cvClaimIds = new Set(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
+  const pitchClaimIds = new Set(pitch.profileStatements.map(item => item.claimId));
+  const missingItems = (sectionId: string, sectionName: string, emittedIds: Set<string>): ProjectedClaimItem[] =>
+    [...new Set(activeClaimIds)].filter(id => !emittedIds.has(id)).map(claimId => ({
+      sectionId, sectionName, claimId, projectionMissing: true,
+    }));
   return [
     ...cv.sections.flatMap(section => section.items.map(item => ({
       sectionId: section.id,
       sectionName: section.title,
       claimId: item.claimId,
-      ...(item.dateRangeDisplay === 'Daty niepodane w profilu'
-        ? {} : { claimedDateRange: item.dateRangeDisplay }),
+      claimedDateRange: item.dateRangeDisplay === 'Daty niepodane w profilu' ? '' : item.dateRangeDisplay,
       claimedTags: item.tags,
       claimedMetric: item.metric,
     }))),
+    ...missingItems('cv', 'Renderer CV', cvClaimIds),
     ...Array.from(hudClaimIds, claimId => ({
       sectionId: 'hud',
       sectionName: 'Renderer HUD',
@@ -368,6 +375,7 @@ export function projectRendererOutputs(
       claimedTags: item.tags,
       claimedMetric: item.metric,
     })),
+    ...missingItems('pitch', 'Renderer Pitch', pitchClaimIds),
   ];
 }
 
@@ -464,8 +472,24 @@ export function validateConsistency(
         continue;
       }
 
-      // Porównanie dat z faktami źródłowymi, bez potwierdzania nieczytelnych danych.
-      if (item.claimedDateRange) {
+      if (item.projectionMissing) {
+        const missingProjection: ConsistencyAlert = {
+          id: `alert_projection_missing_${secKey}_${item.claimId}`,
+          claimId: item.claimId,
+          sectionId: secKey,
+          type: 'PROJECTION_MISSING',
+          severity: 'ALERT',
+          title: 'Brak faktu w podglądzie',
+          message: `Podgląd pomija aktywny fakt „${sourceClaim.sourceProject}”. Sprawdź dokument przed użyciem.`,
+        };
+        alerts.push(missingProjection);
+        sectionsMap[secKey].alerts.push(missingProjection);
+        sectionsMap[secKey].isConsistent = false;
+        continue;
+      }
+
+      // Jawnie pusty zakres CV porównujemy z datami źródła. HUD/Pitch nie projektują dat.
+      if (item.claimedDateRange !== undefined && (item.claimedDateRange || sourceClaim.dateRange)) {
         const sourceYears = parseDateRangeToYears(sourceClaim.dateRange);
         const projectedYears = parseDateRangeToYears(item.claimedDateRange);
 

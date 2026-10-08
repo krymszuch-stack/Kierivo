@@ -274,6 +274,32 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.sections.hud.isConsistent).toBe(false);
     });
 
+    it.each(['cv', 'pitch'])('wykrywa usunięcie całego faktu bez metryki z %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const cv = renderCvFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections = [];
+      else pitch.profileStatements = [];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), pitch, ['plain']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('wykrywa usunięcie daty CV zamiast traktować sentinel jako brak kontroli', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'dated', sourceProject: 'Projekt testowy', tags: [], dateRange: '2020-2022' }];
+      const cv = renderCvFromClaims(vault);
+      cv.sections[0].items[0].dateRangeDisplay = 'Daty niepodane w profilu';
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), renderPitchFromClaims(vault), ['dated']),
+      });
+      expect(result.sections.cv.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'INVALID_DATE_RANGE')).toBe(true);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];

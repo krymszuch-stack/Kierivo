@@ -31,16 +31,22 @@ async def main():
         async def changed_renderer(route):
             response = await route.fetch()
             body = await response.text()
-            marker = "metric: claim.metric,"
-            assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderer CV"
-            body = body.replace(marker, 'metric: claim.metric === "20%" ? "40%" : claim.metric,', 1)
+            mutations = {
+                'metric': ('metric: claim.metric,', 'metric: claim.metric === "20%" ? "40%" : claim.metric,'),
+                'missing-cv': ('sections: [experiencesSection, projectsSection]', 'sections: []'),
+                'missing-pitch': ('profileStatements.push({', 'if (false) profileStatements.push({'),
+                'missing-date': ('const dateRangeDisplay = formatClaimDateRange(claim.dateRange);', 'const dateRangeDisplay = "Daty niepodane w profilu";'),
+            }
+            marker, replacement = mutations[scenario]
+            assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
+            body = body.replace(marker, replacement, 1)
             await route.fulfill(response=response, body=body)
-        for baseline in [True, False]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()
             await page.goto(BASE, wait_until="domcontentloaded")
-            await page.evaluate("""async (baseline) => {
+            await page.evaluate("""async ({baseline, scenario}) => {
                 const [React, ReactDOM, view, {createEmptyVault}] = await Promise.all([
                     import('/node_modules/.vite/deps/react.js'),
                     import('/node_modules/.vite/deps/react-dom_client.js'),
@@ -50,16 +56,20 @@ async def main():
                     import('/src/lib/sampleVault.ts')
                 ]);
                 const vault = createEmptyVault();
-                vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:[], metric:'20%'}];
+                vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:[],
+                    ...(scenario === 'metric' ? {metric:'20%'} : {}),
+                    ...(scenario === 'missing-date' ? {dateRange:'2020-2022'} : {})}];
                 document.body.innerHTML = '<main id="release-proof"></main>';
                 (ReactDOM.createRoot ?? ReactDOM.default.createRoot)(document.getElementById('release-proof')).render(
                     (React.createElement ?? React.default.createElement)(view.ConsistencyGuardView, {vault}));
-            }""", baseline)
+            }""", {'baseline':baseline, 'scenario':scenario})
             await page.get_by_role("heading", name="Kontrola danych", exact=True).wait_for()
-            await page.get_by_text("40%", exact=True).first.wait_for()
+            if scenario == 'metric':
+                await page.get_by_text("40%", exact=True).first.wait_for()
             count = await page.get_by_role("alert").count()
-            await page.screenshot(path=str(OUT / ("before.png" if baseline else "after.png")), full_page=True)
-            results.append({"case": "CV renderer changes 20% to 40%",
+            filename = ("before" if baseline else "after") + ('' if scenario == 'metric' else '-'+scenario) + '.png'
+            await page.screenshot(path=str(OUT / filename), full_page=True)
+            results.append({"case": scenario,
                             "baseline": baseline, "alert_count": count,
                             "expected_alert_present": count > 0})
             assert (count == 0) if baseline else (count > 0)
