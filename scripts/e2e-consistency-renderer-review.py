@@ -40,12 +40,16 @@ async def main():
                 'hud-duplicate': ('verifiedMetrics.push({', 'verifiedMetrics.push({claimId:claim.id, label:claim.sourceProject, value:"40%", sourceProject:claim.sourceProject}); verifiedMetrics.push({'),
                 'cv-duplicate': ('experiencesSection.items.push(item);', 'experiencesSection.items.push(item, item);'),
                 'pitch-duplicate': ('const hookCtx = {', 'profileStatements.push(...profileStatements); const hookCtx = {'),
+                'missing-tags': ('tags: claim.tags || [],', 'tags: [],'),
+                'changed-tags': ('tags: claim.tags || [],', 'tags: ["UDT"],'),
+                'hud-skill-count': ('count: data.count,', 'count: 99,'),
+                'hud-skill-duplicate': ('skillsRadar,', 'skillsRadar: [...skillsRadar, ...skillsRadar],'),
             }
             marker, replacement = mutations[scenario]
             assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
             body = body.replace(marker, replacement, 1)
             await route.fulfill(response=response, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate'] for old in [True, False]]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate', 'missing-tags', 'changed-tags', 'hud-skill-count', 'hud-skill-duplicate'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()
@@ -60,7 +64,7 @@ async def main():
                     import('/src/lib/sampleVault.ts')
                 ]);
                 const vault = createEmptyVault();
-                vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:[],
+                vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:['missing-tags','changed-tags','hud-skill-count','hud-skill-duplicate'].includes(scenario) ? ['SEP'] : [],
                     ...(['metric','hud-duplicate'].includes(scenario) ? {metric:'20%'} : {}),
                     ...(scenario === 'missing-date' ? {dateRange:'2020-2022'} : {})}];
                 document.body.innerHTML = '<main id="release-proof"></main>';

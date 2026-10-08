@@ -359,6 +359,66 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.alerts.some(item => item.type === 'PROJECTION_DUPLICATE')).toBe(true);
     });
 
+    it.each(['cv', 'hud', 'pitch'].flatMap(renderer => ['missing', 'changed'].map(fault => [renderer, fault])))('wykrywa %s tagi: %s', (renderer, fault) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP'] }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      const tags = fault === 'missing' ? [] : ['UDT'];
+      if (renderer === 'cv') cv.sections[0].items[0].tags = tags;
+      else if (renderer === 'pitch') pitch.profileStatements[0].tags = tags;
+      else hud.skillsRadar = tags.map(skill => ({ skill, count: 1, claimIds: ['tagged'] }));
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, hud, pitch, ['tagged']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'TAGS_MISMATCH')).toBe(true);
+    });
+
+    it.each(['count', 'duplicate', 'claimIds'])('wykrywa błędny radar HUD: %s', fault => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP'] }];
+      const hud = renderHudFromClaims(vault);
+      if (fault === 'count') hud.skillsRadar[0].count = 99;
+      else if (fault === 'duplicate') hud.skillsRadar.push({ ...hud.skillsRadar[0] });
+      else hud.skillsRadar[0].claimIds.push('tagged');
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['tagged']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'SKILL_RADAR_MISMATCH')).toBe(true);
+    });
+
+    it('radar zachowuje liczbę wystąpień tagu i unikalne źródła', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP', 'SEP'] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), renderHudFromClaims(vault), renderPitchFromClaims(vault), ['tagged']),
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
+    it('akceptuje tagi po normalizacji wielkości liter, odstępów i kolejności', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP', 'UDT'] }];
+      const result = validateConsistency(vault, {
+        projectedItems: [{ sectionId: 'cv', sectionName: 'CV', claimId: 'tagged', claimedTags: [' udt ', 'sep'] }],
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
+    it('odrzuca zmyślony radar również dla pustego profilu', () => {
+      const vault = createEmptyVault();
+      const hud = renderHudFromClaims(vault);
+      hud.skillsRadar = [{ skill: 'SEP', count: 1, claimIds: [] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), []),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.sections.hud.claimsCount).toBe(0);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
@@ -426,7 +486,7 @@ describe('ConsistencyGuard Engine', () => {
             sectionName: 'Doświadczenie CV',
             claimId: 'claim_exp_exp_1',
             claimedDateRange: { start: '2021-01', end: '2023-01' }, // 2.0 lata (zgodne z exp_1)
-            claimedTags: ['TypeScript', 'Node.js'],
+            claimedTags: ['TypeScript', 'Node.js', 'PostgreSQL'],
             claimedMetric: '+40% TPS',
           },
         ],

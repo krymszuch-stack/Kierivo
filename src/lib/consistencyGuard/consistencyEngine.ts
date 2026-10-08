@@ -335,6 +335,8 @@ export interface ProjectedClaimItem {
   projectionMissing?: boolean;
   projectionCountMismatch?: boolean;
   projectionDuplicate?: boolean;
+  claimedSkillStats?: HudSkillStat[];
+  activeSourceClaimIds?: string[];
 }
 
 /** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
@@ -354,7 +356,7 @@ export function projectRendererOutputs(
   const hudClaimIds = new Set([...activeClaimIds, ...hudMetricCounts.keys()]);
   const hudCountMismatch = hud.activeClaimsCount !== new Set(activeClaimIds).size;
   // Sam licznik również może fabrykować fakty przy pustym wejściu.
-  if (hudCountMismatch && hudClaimIds.size === 0) hudClaimIds.add('');
+  if ((hudCountMismatch || hud.skillsRadar.length > 0) && hudClaimIds.size === 0) hudClaimIds.add('');
   const cvCounts = countIds(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
   const pitchCounts = countIds(pitch.profileStatements.map(item => item.claimId));
   const cvClaimIds = new Set(cvCounts.keys());
@@ -363,7 +365,7 @@ export function projectRendererOutputs(
     [...new Set(activeClaimIds)].filter(id => !emittedIds.has(id)).map(claimId => ({
       sectionId, sectionName, claimId, projectionMissing: true,
     }));
-  return [
+  const projected: ProjectedClaimItem[] = [
     ...cv.sections.flatMap(section => section.items.map(item => ({
       sectionId: section.id,
       sectionName: section.title,
@@ -400,6 +402,12 @@ export function projectRendererOutputs(
     })),
     ...missingItems('pitch', 'Renderer Pitch', pitchClaimIds),
   ];
+  const hudItem = projected.find(item => item.sectionId === 'hud');
+  if (hudItem) {
+    hudItem.claimedSkillStats = hud.skillsRadar;
+    hudItem.activeSourceClaimIds = activeClaimIds;
+  }
+  return projected;
 }
 
 /**
@@ -477,6 +485,29 @@ export function validateConsistency(
 
       if (item.claimId) sectionsMap[secKey].claimsCount += 1;
 
+      if (item.claimedSkillStats !== undefined) {
+        const expected = new Map<string, string[]>();
+        for (const id of new Set(item.activeSourceClaimIds || [])) {
+          const claim = getClaimById(vault, id);
+          for (const tag of claim?.tags || []) expected.set(tag, [...(expected.get(tag) || []), id]);
+        }
+        const rows = item.claimedSkillStats;
+        const mismatch = rows.length !== expected.size || new Set(rows.map(row => row.skill)).size !== rows.length || rows.some(row => {
+          const ids = expected.get(row.skill);
+          return !ids || row.count !== ids.length || JSON.stringify([...row.claimIds].sort()) !== JSON.stringify([...new Set(ids)].sort());
+        });
+        if (mismatch) {
+          const radarAlert: ConsistencyAlert = {
+            id: 'alert_hud_skill_radar', sectionId: secKey, type: 'SKILL_RADAR_MISMATCH', severity: 'ALERT',
+            title: 'Radar kompetencji wymaga sprawdzenia',
+            message: 'Liczby, źródła lub wiersze radaru nie odpowiadają aktywnym faktom profilu.',
+          };
+          alerts.push(radarAlert);
+          sectionsMap[secKey].alerts.push(radarAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
+      }
+
       if (item.projectionCountMismatch) {
         const countAlert: ConsistencyAlert = {
           id: `alert_projection_count_${secKey}`,
@@ -493,6 +524,7 @@ export function validateConsistency(
         sectionsMap[secKey].isConsistent = false;
         if (!item.claimId) continue;
       }
+      if (!item.claimId) continue;
 
       // Sprawdzenie istnienia claimu w MasterVault
       const sourceClaim = getClaimById(vault, item.claimId);
@@ -615,6 +647,21 @@ export function validateConsistency(
           };
           alerts.push(metricAlert);
           sectionsMap[secKey].alerts.push(metricAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
+      }
+
+      // Pusty zbiór również może oznaczać usunięcie kompetencji ze źródła.
+      if (item.claimedTags !== undefined) {
+        const normalizeTags = (tags: string[]) => [...new Set(tags.map(tag => stripDiacriticsLower(tag).trim()))].sort();
+        if (JSON.stringify(normalizeTags(item.claimedTags)) !== JSON.stringify(normalizeTags(sourceClaim.tags || []))) {
+          const tagsAlert: ConsistencyAlert = {
+            id: `alert_tags_${secKey}_${item.claimId}`, claimId: item.claimId, sectionId: secKey,
+            type: 'TAGS_MISMATCH', severity: 'ALERT', title: 'Kompetencje podglądu różnią się od profilu',
+            message: `Tagi faktu „${sourceClaim.sourceProject}” zmieniono, usunięto lub dopisano. Sprawdź podgląd przed użyciem.`,
+          };
+          alerts.push(tagsAlert);
+          sectionsMap[secKey].alerts.push(tagsAlert);
           sectionsMap[secKey].isConsistent = false;
         }
       }
