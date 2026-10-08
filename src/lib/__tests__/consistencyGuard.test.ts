@@ -300,6 +300,28 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.alerts.some(item => item.type === 'INVALID_DATE_RANGE')).toBe(true);
     });
 
+    it.each([0, 2, NaN])('odrzuca niezgodny licznik HUD %s dla faktu bez metryki i tagów', (count) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const hud = renderHudFromClaims(vault);
+      hud.activeClaimsCount = count;
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['plain']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('odrzuca licznik HUD zmyślonych faktów przy pustym profilu', () => {
+      const vault = createEmptyVault();
+      const hud = renderHudFromClaims(vault);
+      hud.activeClaimsCount = 1;
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), []),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];

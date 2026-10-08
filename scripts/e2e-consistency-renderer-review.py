@@ -36,12 +36,13 @@ async def main():
                 'missing-cv': ('sections: [experiencesSection, projectsSection]', 'sections: []'),
                 'missing-pitch': ('profileStatements.push({', 'if (false) profileStatements.push({'),
                 'missing-date': ('const dateRangeDisplay = formatClaimDateRange(claim.dateRange);', 'const dateRangeDisplay = "Daty niepodane w profilu";'),
+                'hud-count': ('activeClaimsCount: claims.length,', 'activeClaimsCount: 0,'),
             }
             marker, replacement = mutations[scenario]
             assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
             body = body.replace(marker, replacement, 1)
             await route.fulfill(response=response, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date'] for old in [True, False]]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()

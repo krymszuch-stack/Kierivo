@@ -333,6 +333,7 @@ export interface ProjectedClaimItem {
   claimedTags?: string[];
   claimedMetric?: string;
   projectionMissing?: boolean;
+  projectionCountMismatch?: boolean;
 }
 
 /** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
@@ -345,6 +346,9 @@ export function projectRendererOutputs(
   const hudMetrics = new Map(hud.verifiedMetrics.map(item => [item.claimId, item.value]));
   // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
   const hudClaimIds = new Set([...activeClaimIds, ...hudMetrics.keys()]);
+  const hudCountMismatch = hud.activeClaimsCount !== new Set(activeClaimIds).size;
+  // Sam licznik również może fabrykować fakty przy pustym wejściu.
+  if (hudCountMismatch && hudClaimIds.size === 0) hudClaimIds.add('');
   const cvClaimIds = new Set(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
   const pitchClaimIds = new Set(pitch.profileStatements.map(item => item.claimId));
   const missingItems = (sectionId: string, sectionName: string, emittedIds: Set<string>): ProjectedClaimItem[] =>
@@ -366,6 +370,7 @@ export function projectRendererOutputs(
       sectionName: 'Renderer HUD',
       claimId,
       claimedMetric: hudMetrics.get(claimId),
+      projectionCountMismatch: hudCountMismatch,
       claimedTags: hud.skillsRadar.filter(item => item.claimIds.includes(claimId)).map(item => item.skill),
     })),
     ...pitch.profileStatements.map(item => ({
@@ -452,7 +457,24 @@ export function validateConsistency(
         };
       }
 
-      sectionsMap[secKey].claimsCount += 1;
+      if (item.claimId) sectionsMap[secKey].claimsCount += 1;
+
+      if (item.projectionCountMismatch) {
+        const countAlert: ConsistencyAlert = {
+          id: `alert_projection_count_${secKey}`,
+          sectionId: secKey,
+          type: 'PROJECTION_COUNT_MISMATCH',
+          severity: 'ALERT',
+          title: 'Niezgodna liczba faktów w podglądzie',
+          message: 'Licznik podglądu nie odpowiada liczbie unikalnych aktywnych faktów. Sprawdź podgląd przed użyciem.',
+        };
+        if (!sectionsMap[secKey].alerts.some(alert => alert.type === countAlert.type)) {
+          alerts.push(countAlert);
+          sectionsMap[secKey].alerts.push(countAlert);
+        }
+        sectionsMap[secKey].isConsistent = false;
+        if (!item.claimId) continue;
+      }
 
       // Sprawdzenie istnienia claimu w MasterVault
       const sourceClaim = getClaimById(vault, item.claimId);
