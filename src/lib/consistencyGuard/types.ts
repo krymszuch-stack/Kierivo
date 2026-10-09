@@ -6,8 +6,16 @@ export type Claim = MasterVaultClaim;
 
 export type ConsistencyAlertType =
   | 'DATE_MISMATCH'
+  | 'METRIC_MISMATCH'
   | 'SKILL_CONTRADICTION'
   | 'CLAIM_NOT_FOUND'
+  | 'PROJECTION_MISSING'
+  | 'PROJECTION_COUNT_MISMATCH'
+  | 'PROJECTION_DUPLICATE'
+  | 'TAGS_MISMATCH'
+  | 'SKILL_RADAR_MISMATCH'
+  | 'PROJECTION_CONTENT_MISMATCH'
+  | 'TIMELINE_MISMATCH'
   | 'INVALID_DATE_RANGE'
   | 'CAREER_GAP'
   | 'LOCATION_CONFLICT'
@@ -94,8 +102,8 @@ export interface HudRendererOutput {
   activeClaimsCount: number;
   verifiedMetrics: HudMetricItem[];
   skillsRadar: HudSkillStat[];
-  timelineCoverageYears: number;
-  consistencyScore: number; // 0 - 100%
+  timelineCoverageYears: number | null;
+  timelineExcludedEntries: number;
 }
 
 export interface ProfileClaimStatement {

@@ -21,7 +21,8 @@ import {
   selectVariantIndex,
 } from '../phrasingVariations';
 import { auditExperienceTimelineAndMetrics } from './timelineAuditor';
-import { parseDateToYearMonth } from '../dateUtils';
+import { parseDateToDecimalYear } from '../dateUtils';
+import { employmentIntervalForJob, unionYears } from '../experience';
 import { claimDateRangeFromProfile } from './claimDateRange';
 import { describeProfileClaim } from './pitchStatements';
 import { hasPositiveSkillEvidence, stripDiacriticsLower } from '../skillEvidence';
@@ -40,10 +41,7 @@ function formatClaimDateRange(range: ClaimDateRange | string | undefined): strin
 /**
  * Parsuje ciąg daty (YYYY, YYYY-MM, MM.YYYY, MM/YYYY, ISO, "Obecnie", "Present") na liczbę zmiennoprzecinkową reprezentującą rok.
  */
-export function parseDateToDecimalYear(dateStr: string | undefined, now = new Date()): number | null {
-  const parsed = parseDateToYearMonth(dateStr, now);
-  return parsed ? parsed.year + (parsed.month - 0.5) / 12 : null;
-}
+export { parseDateToDecimalYear } from '../dateUtils';
 
 /**
  * Parsuje strukturę ClaimDateRange lub ciąg tekstowy zakresu dat ("2020 - 2022")
@@ -167,8 +165,11 @@ export function extractClaimsFromVault(vault: MasterVault): Claim[] {
           const hlId = typeof hl === 'object' && hl !== null ? hl.id : undefined;
           const hlClaimId = hlId || `claim_hl_${exp.id}_${idx}`;
           if (!claimsMap.has(hlClaimId)) {
-            const hlText = typeof hl === 'string' ? hl : (hl?.text || '');
-            const hlMetric = (typeof hl === 'object' && hl !== null ? hl.metric : undefined) || (hlText ? hlText.match(/\d+[%kKmM+xX]?/)?.[0] : undefined);
+            // Pierwsza liczba może być wersją narzędzia, datą albo numerem normy.
+            // Claim przenosi jawny wynik użytkownika, nie zgaduje jego metryki.
+            const hlMetric = typeof hl === 'object' && hl !== null && typeof hl.metric === 'string'
+              ? hl.metric.trim() || undefined
+              : undefined;
             const hlKeywords = typeof hl === 'object' && hl !== null && Array.isArray(hl.keywords) ? hl.keywords : [];
             const dateRange = claimDateRangeFromProfile(
               exp.startDate,
@@ -331,6 +332,98 @@ export interface ProjectedClaimItem {
   claimedDateRange?: ClaimDateRange | string;
   claimedTags?: string[];
   claimedMetric?: string;
+  projectionMissing?: boolean;
+  projectionCountMismatch?: boolean;
+  projectionDuplicate?: boolean;
+  claimedSkillStats?: HudSkillStat[];
+  activeSourceClaimIds?: string[];
+  claimedProject?: string;
+  claimedLabel?: string;
+  claimedText?: string;
+  claimedCvHeader?: Pick<CvRendererOutput, 'title' | 'candidateName'>;
+  claimedPitchHeader?: Pick<PitchRendererOutput, 'hook' | 'callToAction'>;
+  pitchTargetRole?: string;
+  claimedTimeline?: Pick<HudRendererOutput, 'timelineCoverageYears' | 'timelineExcludedEntries'>;
+}
+
+/** Walidujemy dane wyjściowe, bo porównanie dwóch kopii źródła ukrywa błąd renderera. */
+export function projectRendererOutputs(
+  cv: CvRendererOutput,
+  hud: HudRendererOutput,
+  pitch: PitchRendererOutput,
+  activeClaimIds: string[],
+  pitchTargetRole?: string,
+): ProjectedClaimItem[] {
+  const countIds = (ids: string[]) => {
+    const counts = new Map<string, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) || 0) + 1);
+    return counts;
+  };
+  const hudMetricCounts = countIds(hud.verifiedMetrics.map(item => item.claimId));
+  // W HUD brak pozycji jest również brakiem metryki, nie powodem pominięcia kontroli.
+  const hudClaimIds = new Set([...activeClaimIds, ...hudMetricCounts.keys()]);
+  const hudCountMismatch = hud.activeClaimsCount !== new Set(activeClaimIds).size;
+  // Sam licznik również może fabrykować fakty przy pustym wejściu.
+  if ((hudCountMismatch || hud.skillsRadar.length > 0 || hud.timelineCoverageYears !== null || hud.timelineExcludedEntries !== 0) && hudClaimIds.size === 0) hudClaimIds.add('');
+  const cvCounts = countIds(cv.sections.flatMap(section => section.items.map(item => item.claimId)));
+  const pitchCounts = countIds(pitch.profileStatements.map(item => item.claimId));
+  const cvClaimIds = new Set(cvCounts.keys());
+  const pitchClaimIds = new Set(pitchCounts.keys());
+  const missingItems = (sectionId: string, sectionName: string, emittedIds: Set<string>): ProjectedClaimItem[] =>
+    [...new Set(activeClaimIds)].filter(id => !emittedIds.has(id)).map(claimId => ({
+      sectionId, sectionName, claimId, projectionMissing: true,
+    }));
+  const projected: ProjectedClaimItem[] = [
+    {sectionId:'cv',sectionName:'Renderer CV',claimId:'',claimedCvHeader:{title:cv.title,candidateName:cv.candidateName}},
+    {sectionId:'pitch',sectionName:'Renderer Pitch',claimId:'',claimedPitchHeader:{hook:pitch.hook,callToAction:pitch.callToAction},pitchTargetRole},
+    ...cv.sections.flatMap(section => section.items.map(item => ({
+      sectionId: section.id,
+      sectionName: section.title,
+      claimId: item.claimId,
+      claimedDateRange: item.dateRangeDisplay === 'Daty niepodane w profilu' ? '' : item.dateRangeDisplay,
+      projectionDuplicate: (cvCounts.get(item.claimId) || 0) > 1,
+      claimedTags: item.tags,
+      claimedMetric: item.metric,
+      claimedProject: item.project,
+      claimedText: item.summary,
+    }))),
+    ...missingItems('cv', 'Renderer CV', cvClaimIds),
+    ...hud.verifiedMetrics.map(item => ({
+      sectionId: 'hud',
+      sectionName: 'Renderer HUD',
+      claimId: item.claimId,
+      claimedMetric: item.value,
+      claimedProject: item.sourceProject,
+      claimedLabel: item.label,
+      projectionDuplicate: (hudMetricCounts.get(item.claimId) || 0) > 1,
+      projectionCountMismatch: hudCountMismatch,
+      claimedTags: hud.skillsRadar.filter(skill => skill.claimIds.includes(item.claimId)).map(skill => skill.skill),
+    })),
+    ...Array.from(hudClaimIds).filter(claimId => !hudMetricCounts.has(claimId)).map(claimId => ({
+      sectionId: 'hud',
+      sectionName: 'Renderer HUD',
+      claimId,
+      projectionCountMismatch: hudCountMismatch,
+      claimedTags: hud.skillsRadar.filter(skill => skill.claimIds.includes(claimId)).map(skill => skill.skill),
+    })),
+    ...pitch.profileStatements.map(item => ({
+      sectionId: 'pitch',
+      sectionName: 'Renderer Pitch',
+      claimId: item.claimId,
+      projectionDuplicate: (pitchCounts.get(item.claimId) || 0) > 1,
+      claimedTags: item.tags,
+      claimedMetric: item.metric,
+      claimedText: item.statement,
+    })),
+    ...missingItems('pitch', 'Renderer Pitch', pitchClaimIds),
+  ];
+  const hudItem = projected.find(item => item.sectionId === 'hud');
+  if (hudItem) {
+    hudItem.claimedSkillStats = hud.skillsRadar;
+    hudItem.activeSourceClaimIds = activeClaimIds;
+    hudItem.claimedTimeline = { timelineCoverageYears: hud.timelineCoverageYears, timelineExcludedEntries: hud.timelineExcludedEntries };
+  }
+  return projected;
 }
 
 /**
@@ -340,6 +433,7 @@ export interface ProjectedClaimItem {
  *    oraz czy oba zakresy można w ogóle odczytać.
  * 2. Czy istnieją sprzeczności w umiejętnościach (skill contradictions).
  * 3. Czy każdy odpytany claimId istnieje w MasterVault.
+ * 4. Czy jawna metryka podglądu odpowiada zapisowi źródłowemu.
  */
 export function validateConsistency(
   vault: MasterVault,
@@ -405,7 +499,81 @@ export function validateConsistency(
         };
       }
 
-      sectionsMap[secKey].claimsCount += 1;
+      if (item.claimId) sectionsMap[secKey].claimsCount += 1;
+
+      const cvHeaderMismatch = item.claimedCvHeader !== undefined && (
+        item.claimedCvHeader.candidateName !== (vault.personalInfo?.fullName || 'Kandydat') ||
+        item.claimedCvHeader.title !== (vault.personalInfo?.title || 'Profil Kandydata')
+      );
+      const pitchContext = {candidateName:vault.personalInfo?.fullName?.trim() || '', roleTitle:item.pitchTargetRole || vault.personalInfo?.title || ''};
+      const pitchHeaderMismatch = item.claimedPitchHeader !== undefined && (
+        !getPitchHookVariations(pitchContext).includes(item.claimedPitchHeader.hook) ||
+        !getPitchCtaVariations(pitchContext).includes(item.claimedPitchHeader.callToAction)
+      );
+      if (cvHeaderMismatch || pitchHeaderMismatch) {
+        const headerAlert: ConsistencyAlert = {
+          id:`alert_header_${secKey}`,sectionId:secKey,type:'PROJECTION_CONTENT_MISMATCH',severity:'ALERT',
+          title:'Nagłówek podglądu wymaga sprawdzenia',
+          message:'Dane kandydata lub wypowiedź nagłówka nie odpowiadają źródłowemu profilowi.',
+        };
+        alerts.push(headerAlert); sectionsMap[secKey].alerts.push(headerAlert); sectionsMap[secKey].isConsistent=false;
+      }
+
+      if (item.claimedTimeline !== undefined) {
+        const expected = sourceEmploymentTimeline(vault);
+        if (item.claimedTimeline.timelineCoverageYears !== expected.timelineCoverageYears ||
+            item.claimedTimeline.timelineExcludedEntries !== expected.timelineExcludedEntries) {
+          const timelineAlert: ConsistencyAlert = {
+            id: 'alert_hud_timeline', sectionId: secKey, type: 'TIMELINE_MISMATCH', severity: 'ALERT',
+            title: 'Oś czasu nie odpowiada historii zatrudnienia',
+            message: 'Staż lub liczba pominiętych wpisów w podglądzie różni się od unii przedziałów źródłowych.',
+          };
+          alerts.push(timelineAlert);
+          sectionsMap[secKey].alerts.push(timelineAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
+      }
+
+      if (item.claimedSkillStats !== undefined) {
+        const expected = new Map<string, string[]>();
+        for (const id of new Set(item.activeSourceClaimIds || [])) {
+          const claim = getClaimById(vault, id);
+          for (const tag of claim?.tags || []) expected.set(tag, [...(expected.get(tag) || []), id]);
+        }
+        const rows = item.claimedSkillStats;
+        const mismatch = rows.length !== expected.size || new Set(rows.map(row => row.skill)).size !== rows.length || rows.some(row => {
+          const ids = expected.get(row.skill);
+          return !ids || row.count !== ids.length || JSON.stringify([...row.claimIds].sort()) !== JSON.stringify([...new Set(ids)].sort());
+        });
+        if (mismatch) {
+          const radarAlert: ConsistencyAlert = {
+            id: 'alert_hud_skill_radar', sectionId: secKey, type: 'SKILL_RADAR_MISMATCH', severity: 'ALERT',
+            title: 'Radar kompetencji wymaga sprawdzenia',
+            message: 'Liczby, źródła lub wiersze radaru nie odpowiadają aktywnym faktom profilu.',
+          };
+          alerts.push(radarAlert);
+          sectionsMap[secKey].alerts.push(radarAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
+      }
+
+      if (item.projectionCountMismatch) {
+        const countAlert: ConsistencyAlert = {
+          id: `alert_projection_count_${secKey}`,
+          sectionId: secKey,
+          type: 'PROJECTION_COUNT_MISMATCH',
+          severity: 'ALERT',
+          title: 'Niezgodna liczba faktów w podglądzie',
+          message: 'Licznik podglądu nie odpowiada liczbie unikalnych aktywnych faktów. Sprawdź podgląd przed użyciem.',
+        };
+        if (!sectionsMap[secKey].alerts.some(alert => alert.type === countAlert.type)) {
+          alerts.push(countAlert);
+          sectionsMap[secKey].alerts.push(countAlert);
+        }
+        sectionsMap[secKey].isConsistent = false;
+        if (!item.claimId) continue;
+      }
+      if (!item.claimId) continue;
 
       // Sprawdzenie istnienia claimu w MasterVault
       const sourceClaim = getClaimById(vault, item.claimId);
@@ -425,8 +593,54 @@ export function validateConsistency(
         continue;
       }
 
-      // Porównanie dat z faktami źródłowymi, bez potwierdzania nieczytelnych danych.
-      if (item.claimedDateRange) {
+      if (item.projectionMissing) {
+        const missingProjection: ConsistencyAlert = {
+          id: `alert_projection_missing_${secKey}_${item.claimId}`,
+          claimId: item.claimId,
+          sectionId: secKey,
+          type: 'PROJECTION_MISSING',
+          severity: 'ALERT',
+          title: 'Brak faktu w podglądzie',
+          message: `Podgląd pomija aktywny fakt „${sourceClaim.sourceProject}”. Sprawdź dokument przed użyciem.`,
+        };
+        alerts.push(missingProjection);
+        sectionsMap[secKey].alerts.push(missingProjection);
+        sectionsMap[secKey].isConsistent = false;
+        continue;
+      }
+
+      if (item.projectionDuplicate && !sectionsMap[secKey].alerts.some(alert =>
+        alert.type === 'PROJECTION_DUPLICATE' && alert.claimId === item.claimId)) {
+        const duplicateAlert: ConsistencyAlert = {
+          id: `alert_projection_duplicate_${secKey}_${item.claimId}`,
+          claimId: item.claimId,
+          sectionId: secKey,
+          type: 'PROJECTION_DUPLICATE',
+          severity: 'ALERT',
+          title: 'Powtórzony fakt w podglądzie',
+          message: `Podgląd powtarza fakt „${sourceClaim.sourceProject}”. Sprawdź wszystkie wyświetlone pozycje.`,
+        };
+        alerts.push(duplicateAlert);
+        sectionsMap[secKey].alerts.push(duplicateAlert);
+        sectionsMap[secKey].isConsistent = false;
+      }
+
+      const expectedText = secKey === 'cv' ? describeCvClaim(sourceClaim) : describeProfileClaim(sourceClaim);
+      if ((item.claimedProject !== undefined && item.claimedProject !== sourceClaim.sourceProject) ||
+          (item.claimedLabel !== undefined && item.claimedLabel !== sourceClaim.sourceProject) ||
+          (item.claimedText !== undefined && item.claimedText !== expectedText)) {
+        const contentAlert: ConsistencyAlert = {
+          id: `alert_content_${secKey}_${item.claimId}`, claimId: item.claimId, sectionId: secKey,
+          type: 'PROJECTION_CONTENT_MISMATCH', severity: 'ALERT', title: 'Treść lub źródło faktu różni się od profilu',
+          message: `Podgląd zmienia treść lub pochodzenie faktu „${sourceClaim.sourceProject}”. Sprawdź dokument przed użyciem.`,
+        };
+        alerts.push(contentAlert);
+        sectionsMap[secKey].alerts.push(contentAlert);
+        sectionsMap[secKey].isConsistent = false;
+      }
+
+      // Jawnie pusty zakres CV porównujemy z datami źródła. HUD/Pitch nie projektują dat.
+      if (item.claimedDateRange !== undefined && (item.claimedDateRange || sourceClaim.dateRange)) {
         const sourceYears = parseDateRangeToYears(sourceClaim.dateRange);
         const projectedYears = parseDateRangeToYears(item.claimedDateRange);
 
@@ -472,6 +686,46 @@ export function validateConsistency(
             sectionsMap[secKey].alerts.push(dateAlert);
             sectionsMap[secKey].isConsistent = false;
           }
+        }
+      }
+
+      // Bez porównania metryk podgląd mógł zmieniać liczby bez naruszenia
+      // statusu spójności. Normalizujemy tylko odstępy, bez zgadywania jednostek.
+      if (item.claimedMetric !== undefined || sourceClaim.metric !== undefined) {
+        const sourceMetric = typeof sourceClaim.metric === 'string'
+          ? sourceClaim.metric.trim().replace(/\s+/g, ' ')
+          : '';
+        const projectedMetric = typeof item.claimedMetric === 'string'
+          ? item.claimedMetric.trim().replace(/\s+/g, ' ')
+          : item.claimedMetric === undefined ? '' : null;
+        if (projectedMetric === null || sourceMetric !== projectedMetric) {
+          const metricAlert: ConsistencyAlert = {
+            id: `alert_metric_${item.claimId}`,
+            claimId: item.claimId,
+            sectionId: secKey,
+            type: 'METRIC_MISMATCH',
+            severity: 'ALERT',
+            title: 'Metryka podglądu wymaga sprawdzenia ze źródłem',
+            message: `Wynik dla „${sourceClaim.sourceProject}” nie odpowiada zapisowi profilu. W profilu: ${sourceMetric || 'brak metryki'}; w podglądzie: ${projectedMetric ?? 'nieczytelna metryka'}. Sprawdź wartości i jednostki przed użyciem dokumentu.`,
+          };
+          alerts.push(metricAlert);
+          sectionsMap[secKey].alerts.push(metricAlert);
+          sectionsMap[secKey].isConsistent = false;
+        }
+      }
+
+      // Pusty zbiór również może oznaczać usunięcie kompetencji ze źródła.
+      if (item.claimedTags !== undefined) {
+        const normalizeTags = (tags: string[]) => [...new Set(tags.map(tag => stripDiacriticsLower(tag).trim()))].sort();
+        if (JSON.stringify(normalizeTags(item.claimedTags)) !== JSON.stringify(normalizeTags(sourceClaim.tags || []))) {
+          const tagsAlert: ConsistencyAlert = {
+            id: `alert_tags_${secKey}_${item.claimId}`, claimId: item.claimId, sectionId: secKey,
+            type: 'TAGS_MISMATCH', severity: 'ALERT', title: 'Kompetencje podglądu różnią się od profilu',
+            message: `Tagi faktu „${sourceClaim.sourceProject}” zmieniono, usunięto lub dopisano. Sprawdź podgląd przed użyciem.`,
+          };
+          alerts.push(tagsAlert);
+          sectionsMap[secKey].alerts.push(tagsAlert);
+          sectionsMap[secKey].isConsistent = false;
         }
       }
 
@@ -530,7 +784,9 @@ export function validateConsistency(
     }
   }
 
-  const isConsistent = alerts.filter((a) => a.severity === 'ALERT').length === 0;
+  // Brak źródła nie dowodzi sprzeczności, ale uniemożliwia potwierdzenie.
+  // Ostrzeżenia o lukach lub metrykach nadal nie są automatycznym błędem faktów.
+  const isConsistent = !alerts.some((a) => a.severity === 'ALERT' || a.type === 'CLAIM_NOT_FOUND');
 
   return {
     isConsistent,
@@ -540,15 +796,31 @@ export function validateConsistency(
   };
 }
 
+/** Jeden fakt ma jednego właściciela ID. Alias i powtórzona referencja nie
+ * mogą mnożyć pozycji CV, wyników, liczników ani zdań o doświadczeniu. */
+function selectUniqueClaims(vault: MasterVault, claimIds?: string[]): Claim[] {
+  const allClaims = extractClaimsFromVault(vault);
+  if (!claimIds?.length) return allClaims;
+  const selected = new Map<string, Claim>();
+  for (const id of claimIds) {
+    const claim = allClaims.find(c => c.id === id || c.id === `claim_exp_${id}` || c.id === `claim_proj_${id}`);
+    if (claim) selected.set(claim.id, claim);
+  }
+  return Array.from(selected.values());
+}
+
 /**
  * RENDERER 1: CV Renderer
  * Pobiera dane wyłącznie z MasterVault na podstawie podanych `claimIds`.
  */
+function describeCvClaim(claim: Claim): string {
+  return claim.metric
+    ? `Realizacja zadań w ramach „${claim.sourceProject}” z wynikiem: ${claim.metric}. Kluczowe technologie: ${claim.tags.join(', ')}.`
+    : `Działania projektowe w „${claim.sourceProject}”. Zastosowane technologie i kompetencje: ${claim.tags.join(', ')}.`;
+}
+
 export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const experiencesSection: CvRendererSection = {
     id: 'cv_experience',
@@ -562,10 +834,7 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
     items: [],
   };
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     const dateRangeDisplay = formatClaimDateRange(claim.dateRange);
 
     const item = {
@@ -574,9 +843,7 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
       dateRangeDisplay,
       metric: claim.metric,
       tags: claim.tags || [],
-      summary: claim.metric
-        ? `Realizacja zadań w ramach „${claim.sourceProject}” z wynikiem: ${claim.metric}. Kluczowe technologie: ${claim.tags.join(', ')}.`
-        : `Działania projektowe w „${claim.sourceProject}”. Zastosowane technologie i kompetencje: ${claim.tags.join(', ')}.`,
+      summary: describeCvClaim(claim),
     };
 
     if (claim.id.includes('proj')) {
@@ -597,19 +864,24 @@ export function renderCvFromClaims(vault: MasterVault, claimIds?: string[]): CvR
  * RENDERER 2: HUD Renderer (Career & Competence Head-Up Display)
  * Pobiera dane z MasterVault przez `claimIds` i generuje wskaźniki telemetryczne profilu.
  */
+function sourceEmploymentTimeline(vault: MasterVault): Pick<HudRendererOutput, 'timelineCoverageYears' | 'timelineExcludedEntries'> {
+  const history = Array.isArray(vault.history) ? vault.history : [];
+  const referenceDate = new Date();
+  const spans = history.map(exp => employmentIntervalForJob(exp, referenceDate))
+    .filter((span): span is NonNullable<typeof span> => span !== null);
+  return {
+    timelineCoverageYears: spans.length > 0 ? Math.round(unionYears(spans) * 10) / 10 : null,
+    timelineExcludedEntries: history.length - spans.length,
+  };
+}
+
 export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): HudRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const verifiedMetrics: HudMetricItem[] = [];
   const skillCountMap = new Map<string, { count: number; claimIds: string[] }>();
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     // Metryki
     if (claim.metric) {
       verifiedMetrics.push({
@@ -635,37 +907,7 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
   // Wcześniej każdy punktor dokładał pełny czas roli (2 lata × 5 punktorów
   // + claim główny = 12 lat za 2 lata pracy) — F5. Projekty nie mają dat
   // zatrudnienia (claimy projektów nie zawierają dat), więc ich nie liczymy do
-  // stażu. (Unia liczona lokalnie, żeby nie zapętlać importów
-  // z `lib/experience.ts`, który sam korzysta z `parseDateToDecimalYear` stąd.)
-  const employmentSpans: Array<{ start: number; end: number }> = [];
-  for (const exp of vault.history ?? []) {
-    if (!exp?.startDate) continue;
-    // Bezpośrednio na datach dziesiętnych: `parseDateRangeToYears` normalizuje
-    // min/max, więc odwrócenie wykrywamy przed nim (F5/F13).
-    const startYear = parseDateToDecimalYear(exp.startDate);
-    const endYear = parseDateToDecimalYear(exp.isCurrent ? 'Obecnie' : exp.endDate || exp.startDate);
-    if (startYear === null || endYear === null) continue;
-    const nowYear = parseDateToDecimalYear('Obecnie');
-    if (nowYear !== null && startYear > nowYear + 1 / 12) continue;
-    if (startYear > endYear) continue;
-    employmentSpans.push({ start: startYear, end: endYear });
-  }
-  employmentSpans.sort((a, b) => a.start - b.start);
-  let totalYears = 0;
-  if (employmentSpans.length > 0) {
-    let curStart = employmentSpans[0].start;
-    let curEnd = employmentSpans[0].end;
-    for (let k = 1; k < employmentSpans.length; k++) {
-      const next = employmentSpans[k];
-      if (next.start <= curEnd) curEnd = Math.max(curEnd, next.end);
-      else {
-        totalYears += curEnd - curStart;
-        curStart = next.start;
-        curEnd = next.end;
-      }
-    }
-    totalYears += curEnd - curStart;
-  }
+  // stażu. Wspólna unia odrzuca przyszłe końce, a brak okresów nie udaje zera.
 
   const skillsRadar: HudSkillStat[] = Array.from(skillCountMap.entries())
     .map(([skill, data]) => ({
@@ -675,15 +917,11 @@ export function renderHudFromClaims(vault: MasterVault, claimIds?: string[]): Hu
     }))
     .sort((a, b) => b.count - a.count);
 
-  const validation = validateConsistency(vault, { claimIdsToCheck: effectiveClaimIds });
-  const consistencyScore = validation.isConsistent ? 100 : Math.max(20, 100 - validation.alerts.length * 25);
-
   return {
-    activeClaimsCount: effectiveClaimIds.length,
+    activeClaimsCount: claims.length,
     verifiedMetrics,
     skillsRadar,
-    timelineCoverageYears: Math.round(totalYears * 10) / 10,
-    consistencyScore,
+    ...sourceEmploymentTimeline(vault),
   };
 }
 
@@ -697,19 +935,13 @@ export function renderPitchFromClaims(
   targetRole?: string,
   variantIndex?: number
 ): PitchRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
+  const claims = selectUniqueClaims(vault, claimIds);
 
   const profileStatements: ProfileClaimStatement[] = [];
   const candidateName = vault.personalInfo?.fullName?.trim() || '';
   const role = targetRole || vault.personalInfo?.title || '';
 
-  for (const claimId of effectiveClaimIds) {
-    const claim = getClaimById(vault, claimId);
-    if (!claim) continue;
-
+  for (const claim of claims) {
     profileStatements.push({
       claimId: claim.id,
       statement: describeProfileClaim(claim),
@@ -748,22 +980,15 @@ export function renderPitchFromClaims(
 
 /**
  * Renderer LinkedIn: Buduje profil zawodowy z podsumowaniem i pozycjami doświadczenia
- * bezpośrednio zidentyfikowanymi przez zweryfikowane ClaimId z MasterVault.
+ * z wpisów MasterVault. Referencja ID nie potwierdza prawdziwości ani biegłości.
  */
 export function renderLinkedInFromClaims(
   vault: MasterVault,
   claimIds?: string[]
 ): LinkedInRendererOutput {
-  const effectiveClaimIds =
-    claimIds && claimIds.length > 0
-      ? claimIds
-      : extractClaimsFromVault(vault).map((c) => c.id);
-
-  const claims = effectiveClaimIds
-    .map((id) => getClaimById(vault, id))
-    .filter((c): c is Claim => Boolean(c));
+  const claims = selectUniqueClaims(vault, claimIds);
   const candidateName = vault.personalInfo?.fullName || 'Kandydat';
-  const role = vault.personalInfo?.title || 'Specjalista';
+  const role = vault.personalInfo?.title?.trim() || 'Profil zawodowy';
 
   const experience: LinkedInExperienceItem[] = claims.map((claim) => {
     const rangeDisplay = !claim.dateRange
@@ -777,9 +1002,7 @@ export function renderLinkedInFromClaims(
       title: role,
       company: claim.sourceProject,
       dateRange: rangeDisplay,
-      description: claim.metric
-        ? `Główny projekt: ${claim.sourceProject}. Osiągnięcie: ${claim.metric}. Technologie: ${claim.tags.join(', ')}.`
-        : `Projekt: ${claim.sourceProject}. Technologie: ${claim.tags.join(', ')}.`,
+      description: describeProfileClaim(claim),
       skills: claim.tags,
     };
   });
@@ -787,8 +1010,8 @@ export function renderLinkedInFromClaims(
   const allSkills = Array.from(new Set(claims.flatMap((c) => c.tags)));
 
   return {
-    headline: `${role} | Ekspert w: ${allSkills.slice(0, 4).join(', ')}`,
-    about: `Profil zawodowy ${candidateName} — ${role}. Doświadczenie w kluczowych wdrożeniach: ${experience.map((e) => e.company).join(', ')}. Spójność danych zweryfikowana przez ConsistencyGuard.`,
+    headline: role,
+    about: `Szkic profilu ${candidateName}. Wpisy użyte w szkicu: ${experience.map((e) => e.company).join(', ') || 'brak'}. Nazwy i tagi wpisów nie potwierdzają poziomu biegłości ani prawdziwości osiągnięć.`,
     experience,
     skills: allSkills,
   };

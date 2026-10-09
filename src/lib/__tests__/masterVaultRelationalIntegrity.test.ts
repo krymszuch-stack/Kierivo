@@ -301,7 +301,7 @@ describe('MasterVault Relational Data Integrity & Multi-Module Interoperability'
 
     const hudRender = renderHudFromClaims(vault);
     expect(hudRender.verifiedMetrics.length).toBeGreaterThan(0);
-    expect(hudRender.consistencyScore).toBeGreaterThanOrEqual(90);
+    expect(hudRender).not.toHaveProperty('consistencyScore');
 
     const pitchRender = renderPitchFromClaims(vault);
     expect(pitchRender.profileStatements.length).toBeGreaterThan(0);

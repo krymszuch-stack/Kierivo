@@ -10,7 +10,8 @@ import { hasCareerEvidence } from './careerEvidence';
 import { buildCandidateEvidenceCorpora } from './candidateEvidence';
 import { hasRequiredRequirementMention, stripPreferredRequirementText } from './jdOptionality';
 import { stripInferredPastedOfferHeader } from './jobOfferPreprocessor';
-import { hasMeasurableMetric, detectCareerGaps, detectOverlappingExperiences, parseYearMonthToNumbers } from './consistencyGuard/timelineAuditor';
+import { hasMeasurableMetric, auditExperienceTimelineAndMetrics, parseYearMonthToNumbers } from './consistencyGuard/timelineAuditor';
+import { employmentIntervalForJob } from './experience';
 import { parseDateToDecimalYear } from './consistencyGuard/consistencyEngine';
 import { hasAtsDiagnosticContent } from './atsDiagnosticReadiness';
 import { isPlausibleEmailAddress } from './emailAddress';
@@ -810,7 +811,7 @@ export interface AtsEngineResult {
   component: string;
   category: string;
   score: number | null;
-  status: 'OPTIMAL' | 'ACCEPTABLE' | 'RISKY' | 'REJECTED' | 'NOT_ASSESSED';
+  status: 'OPTIMAL' | 'ACCEPTABLE' | 'RISKY' | 'REJECTED' | 'NOT_ASSESSED' | 'REVIEW_REQUIRED' | 'NO_SIGNALS';
   keyStrengths: string[];
   penaltiesAndFlags: string[];
   recommendation: string;
@@ -897,10 +898,7 @@ export function simulateMultiEngineATS(
   const hasCandidateTitleEvidence = /[\p{L}\p{N}]/u.test([safeVault.personalInfo.title, ...(safeVault.history || []).map((experience) => experience.role || '')].join(' '));
   const hasCareerEvidenceInProfile = hasCareerEvidence(safeVault);
   const missingHardCount = baseResult.missingHardSkills.length;
-  const datedExperiences = (safeVault.history || []).filter((experience) =>
-    Boolean(parseYearMonthToNumbers(experience.startDate))
-      && Boolean(experience.isCurrent || parseYearMonthToNumbers(experience.endDate))
-  );
+  const datedExperiences = (safeVault.history || []).filter(experience => employmentIntervalForJob(experience) !== null);
   const hasRecencyEvidence = datedExperiences.length > 0
     && baseResult.layer2Nlp.lemmatizedMatches.some((match) => match.category === 'HARD_SKILL');
 
@@ -1141,36 +1139,40 @@ export function simulateMultiEngineATS(
   };
 
   // 8. Moduł Spójności Dat i Faktów (consistencyGuard)
-  const hasTimelineEvidence = datedExperiences.length >= 2;
-  const timelineAlerts = hasTimelineEvidence
-    ? [...detectCareerGaps(datedExperiences), ...detectOverlappingExperiences(datedExperiences)]
-    : [];
+  // Audyt dostaje całą historię: wcześniejszy filtr ukrywał nieczytelne wpisy
+  // i zmieniał częściowe porównanie w pozornie wysoki wynik.
+  const timelineAudit = auditExperienceTimelineAndMetrics(safeVault.history || []);
+  const timelineAlerts = timelineAudit.alerts.filter(alert => alert.type !== 'MISSING_METRICS');
+  const hasInvalidTimelineDates = timelineAlerts.some(alert => alert.type === 'INVALID_DATE_RANGE');
+  const hasTimelineEvidence = datedExperiences.length >= 2 && !hasInvalidTimelineDates;
   const consistencyStatus: AtsEngineResult['status'] = !hasTimelineEvidence
     ? 'NOT_ASSESSED'
-    : timelineAlerts.some((alert) => alert.severity === 'ALERT')
-      ? 'REJECTED'
-      : timelineAlerts.some((alert) => alert.severity === 'WARNING')
-        ? 'RISKY'
-        : 'OPTIMAL';
+    : timelineAlerts.length > 0 ? 'REVIEW_REQUIRED' : 'NO_SIGNALS';
   const engine8: AtsEngineResult = {
     id: 'spojnosc_profilu',
     name: 'Strażnik spójności i ciągłości zatrudnienia',
     component: 'consistencyGuard/timelineAuditor.ts (audyt zapisanej historii)',
-    category: 'Wykryte luki i nakładanie się okresów',
+    category: 'Kompletność dat i sygnały chronologiczne',
     score: null,
     status: consistencyStatus,
     weightsFocus: hasTimelineEvidence
-      ? 'Reguły luk w zatrudnieniu i nakładania się okresów'
-      : 'Nie oceniono — potrzeba co najmniej dwóch wpisów z czytelnymi datami',
+      ? 'Porównanie kompletnych okresów; uwagi nie są oceną jakości kariery ani karą punktową'
+      : hasInvalidTimelineDates
+        ? 'Nie oceniono pełnej chronologii — część wpisów ma niekompletne lub niepoprawne daty'
+        : 'Nie oceniono — potrzeba co najmniej dwóch wpisów z czytelnymi, kompletnymi datami',
     keyStrengths: [
-      !hasTimelineEvidence
+      hasInvalidTimelineDates
+        ? 'Pełna chronologia niepotwierdzona; pominięte okresy są wskazane w uwagach'
+        : !hasTimelineEvidence
         ? 'Za mało wpisów z datami, aby porównać ciągłość zatrudnienia'
         : timelineAlerts.length === 0
           ? 'Nie wykryto luk ani nakładania się okresów w sprawdzonych wpisach'
           : `Wykryto ${timelineAlerts.length} sygnałów wymagających sprawdzenia`,
     ],
     penaltiesAndFlags: timelineAlerts.map((alert) => alert.title),
-    recommendation: !hasTimelineEvidence
+    recommendation: hasInvalidTimelineDates
+      ? 'Sprawdź wskazane daty w dokumentach. Nie wpisuj domyślnego końca ani przyszłego okresu, aby uzyskać ocenę.'
+      : !hasTimelineEvidence
       ? 'Uzupełnij co najmniej dwa rzeczywiste wpisy z datami, jeśli chcesz sprawdzić ich chronologię.'
       : timelineAlerts.length > 0
         ? 'Sprawdź wykryte sygnały z dokumentami i doprecyzuj okresy tylko wtedy, gdy daty są nieprawidłowe.'

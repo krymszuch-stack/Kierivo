@@ -9,6 +9,7 @@ import {
   renderHudFromClaims,
   renderPitchFromClaims,
   renderLinkedInFromClaims,
+  projectRendererOutputs,
   extractClaimsFromVault,
   MAX_ALLOWED_YEAR_DIFFERENCE,
 } from '../consistencyGuard';
@@ -16,6 +17,30 @@ import { MasterVault } from '../../types';
 import { createEmptyVault } from '../sampleVault';
 
 describe('ConsistencyGuard Engine', () => {
+  it('HUD odróżnia brak czytelnych okresów od zerowego stażu', () => {
+    expect(renderHudFromClaims(createEmptyVault()).timelineCoverageYears).toBeNull();
+    const vault = createMockVault();
+    vault.history = [{ ...vault.history[0], startDate: 'nie wiem', endDate: '2022-01' }];
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+    expect(renderHudFromClaims(vault).timelineExcludedEntries).toBe(1);
+  });
+
+  it('HUD nie dopisuje końca niekompletnej roli ani przyszłego stażu', () => {
+    const vault = createMockVault();
+    vault.history = [{ ...vault.history[0], startDate: '2020-01', endDate: '' }];
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+    vault.history[0].endDate = '2099-01';
+    expect(renderHudFromClaims(vault).timelineCoverageYears).toBeNull();
+  });
+
+  it('HUD ujawnia pominięcie nieczytelnego wpisu przy częściowo policzalnym zakresie', () => {
+    const vault = createMockVault();
+    vault.history[1].startDate = 'nie wiem';
+    const hud = renderHudFromClaims(vault);
+    expect(hud.timelineCoverageYears).toBe(2);
+    expect(hud.timelineExcludedEntries).toBe(1);
+  });
+
   it('odrzuca niepoprawne miesiące i dni zamiast obcinać je do zakresu', () => {
     for (const invalid of ['2020-00', '2020-13', '2020-13-99', '2020-02-30']) {
       expect(parseDateToDecimalYear(invalid)).toBeNull();
@@ -114,6 +139,15 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Ekstrakcja claimów z MasterVault', () => {
+    it('nie zamienia numeru wersji ani daty w metrykę osiągnięcia', () => {
+      const vault = createMockVault();
+      vault.history[0].highlights[0].text = 'Obsługa Windows 11 od 2022 roku.';
+      vault.history[0].highlights[0].metric = '';
+      const claim = extractClaimsFromVault(vault).find(item => item.id === 'hl_1');
+      expect(claim?.metric).toBeUndefined();
+      vault.history[0].highlights[0].metric = '20%';
+      expect(extractClaimsFromVault(vault).find(item => item.id === 'hl_1')?.metric).toBe('20%');
+    });
     it('ekstrahuje powiązane claimy z historii i projektów', () => {
       const vault = createMockVault();
       const claims = extractClaimsFromVault(vault);
@@ -179,6 +213,276 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Główny walidator (validateConsistency)', () => {
+    it.each(['cv', 'hud', 'pitch'])('nie potwierdza całości, gdy sekcja %s odwołuje się do brakującego faktu', (sectionId) => {
+      const result = validateConsistency(createEmptyVault(), { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'missing',
+      }] });
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('nie potwierdza listy nieistniejących faktów', () => {
+      const result = validateConsistency(createEmptyVault(), { claimIdsToCheck: ['missing'] });
+      expect(result.isConsistent).toBe(false);
+    });
+    it.each(['cv', 'hud', 'pitch'])('odrzuca zmienioną metrykę projekcji %s', (sectionId) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'metric', claimedMetric: '40%',
+      }] });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it.each(['cv', 'hud', 'pitch'])('odrzuca usuniętą metrykę projekcji %s', (sectionId) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId, sectionName: sectionId, claimId: 'metric',
+      }] });
+      expect(result.isConsistent).toBe(false);
+      expect(result.sections[sectionId].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it.each(['cv', 'hud', 'pitch'])('sprawdza rzeczywistą metrykę wyjścia renderera %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections[0].items[0].metric = '40%';
+      if (renderer === 'hud') hud.verifiedMetrics[0].value = '40%';
+      if (renderer === 'pitch') pitch.profileStatements[0].metric = '40%';
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, hud, pitch, ['metric']),
+      });
+      expect(result.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it('nie ukrywa usuniętej metryki przez brak pozycji w HUD', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics = [];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
+    it.each(['cv', 'pitch'])('wykrywa usunięcie całego faktu bez metryki z %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const cv = renderCvFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections = [];
+      else pitch.profileStatements = [];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), pitch, ['plain']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('wykrywa usunięcie daty CV zamiast traktować sentinel jako brak kontroli', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'dated', sourceProject: 'Projekt testowy', tags: [], dateRange: '2020-2022' }];
+      const cv = renderCvFromClaims(vault);
+      cv.sections[0].items[0].dateRangeDisplay = 'Daty niepodane w profilu';
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), renderPitchFromClaims(vault), ['dated']),
+      });
+      expect(result.sections.cv.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'INVALID_DATE_RANGE')).toBe(true);
+    });
+
+    it.each([0, 2, NaN])('odrzuca niezgodny licznik HUD %s dla faktu bez metryki i tagów', (count) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const hud = renderHudFromClaims(vault);
+      hud.activeClaimsCount = count;
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['plain']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('odrzuca licznik HUD zmyślonych faktów przy pustym profilu', () => {
+      const vault = createEmptyVault();
+      const hud = renderHudFromClaims(vault);
+      hud.activeClaimsCount = 1;
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), []),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
+    it('sprawdza błędną metrykę HUD także przed poprawnym duplikatem', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics.unshift({ ...hud.verifiedMetrics[0], value: '40%' });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'METRIC_MISMATCH')).toBe(true);
+    });
+
+    it('nie potwierdza poprawnych ale powtórzonych pozycji HUD', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20%' }];
+      const hud = renderHudFromClaims(vault);
+      hud.verifiedMetrics.push({ ...hud.verifiedMetrics[0] });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['metric']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+    });
+
+    it.each(['cv', 'pitch'])('wykrywa powtórzony fakt także w %s', (renderer) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const cv = renderCvFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (renderer === 'cv') cv.sections[0].items.push({ ...cv.sections[0].items[0] });
+      else pitch.profileStatements.push({ ...pitch.profileStatements[0] });
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, renderHudFromClaims(vault), pitch, ['plain']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'PROJECTION_DUPLICATE')).toBe(true);
+    });
+
+    it.each(['cv', 'hud', 'pitch'].flatMap(renderer => ['missing', 'changed'].map(fault => [renderer, fault])))('wykrywa %s tagi: %s', (renderer, fault) => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP'] }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      const tags = fault === 'missing' ? [] : ['UDT'];
+      if (renderer === 'cv') cv.sections[0].items[0].tags = tags;
+      else if (renderer === 'pitch') pitch.profileStatements[0].tags = tags;
+      else hud.skillsRadar = tags.map(skill => ({ skill, count: 1, claimIds: ['tagged'] }));
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(cv, hud, pitch, ['tagged']),
+      });
+      expect(result.sections[renderer].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'TAGS_MISMATCH')).toBe(true);
+    });
+
+    it.each(['count', 'duplicate', 'claimIds'])('wykrywa błędny radar HUD: %s', fault => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP'] }];
+      const hud = renderHudFromClaims(vault);
+      if (fault === 'count') hud.skillsRadar[0].count = 99;
+      else if (fault === 'duplicate') hud.skillsRadar.push({ ...hud.skillsRadar[0] });
+      else hud.skillsRadar[0].claimIds.push('tagged');
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), ['tagged']),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'SKILL_RADAR_MISMATCH')).toBe(true);
+    });
+
+    it('radar zachowuje liczbę wystąpień tagu i unikalne źródła', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP', 'SEP'] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), renderHudFromClaims(vault), renderPitchFromClaims(vault), ['tagged']),
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
+    it('akceptuje tagi po normalizacji wielkości liter, odstępów i kolejności', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tagged', sourceProject: 'Projekt testowy', tags: ['SEP', 'UDT'] }];
+      const result = validateConsistency(vault, {
+        projectedItems: [{ sectionId: 'cv', sectionName: 'CV', claimId: 'tagged', claimedTags: [' udt ', 'sep'] }],
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
+    it('odrzuca zmyślony radar również dla pustego profilu', () => {
+      const vault = createEmptyVault();
+      const hud = renderHudFromClaims(vault);
+      hud.skillsRadar = [{ skill: 'SEP', count: 1, claimIds: [] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), []),
+      });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.sections.hud.claimsCount).toBe(0);
+    });
+
+    it.each(['cv-project', 'cv-summary', 'hud-label', 'hud-source', 'pitch-statement'])('wykrywa zmienioną treść lub źródło: %s', fault => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Firma źródłowa', tags: [], metric: '20%' }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (fault === 'cv-project') cv.sections[0].items[0].project = 'Inna firma';
+      if (fault === 'cv-summary') cv.sections[0].items[0].summary = 'Wymyślony fakt';
+      if (fault === 'hud-label') hud.verifiedMetrics[0].label = 'Inna firma';
+      if (fault === 'hud-source') hud.verifiedMetrics[0].sourceProject = 'Inna firma';
+      if (fault === 'pitch-statement') pitch.profileStatements[0].statement = 'Wymyślony fakt';
+      const section = fault.split('-')[0];
+      const result = validateConsistency(vault, { projectedItems: projectRendererOutputs(cv, hud, pitch, ['metric']) });
+      expect(result.sections[section].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'PROJECTION_CONTENT_MISMATCH')).toBe(true);
+    });
+
+    it.each(['cv-name', 'cv-title', 'pitch-hook', 'pitch-cta'])('wykrywa błędny nagłówek również bez claimów: %s', fault => {
+      const vault = createEmptyVault();
+      const cv = renderCvFromClaims(vault), hud = renderHudFromClaims(vault), pitch = renderPitchFromClaims(vault);
+      if (fault === 'cv-name') cv.candidateName = 'Inna osoba';
+      if (fault === 'cv-title') cv.title = 'Wymyślone stanowisko';
+      if (fault === 'pitch-hook') pitch.hook = 'Wymyślona wypowiedź';
+      if (fault === 'pitch-cta') pitch.callToAction = 'Wymyślona wypowiedź';
+      const result = validateConsistency(vault, {projectedItems:projectRendererOutputs(cv,hud,pitch,[])});
+      expect(result.sections[fault.split('-')[0]].isConsistent).toBe(false);
+    });
+
+    it.each(['years', 'excluded'])('wykrywa niezgodną oś czasu HUD: %s', fault => {
+      const vault = createMockVault();
+      const hud = renderHudFromClaims(vault);
+      if (fault === 'years') hud.timelineCoverageYears = 99;
+      else hud.timelineExcludedEntries = 99;
+      const result = validateConsistency(vault, { projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), extractClaimsFromVault(vault).map(item => item.id)) });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'TIMELINE_MISMATCH')).toBe(true);
+    });
+
+    it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];
+      const result = validateConsistency(vault, {
+        projectedItems: projectRendererOutputs(renderCvFromClaims(vault), renderHudFromClaims(vault), renderPitchFromClaims(vault), ['plain']),
+      });
+      expect(result.isConsistent).toBe(true);
+    });
+
+    it('nie potwierdza metryki dopisanej do claimu bez wyniku źródłowego', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [] }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId: 'cv', sectionName: 'CV', claimId: 'metric', claimedMetric: '40%',
+      }] });
+      expect(result.isConsistent).toBe(false);
+    });
+
+    it('akceptuje identyczny zapis metryki po normalizacji odstępów', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Projekt testowy', tags: [], metric: '20 sztuk dziennie' }];
+      const result = validateConsistency(vault, { projectedItems: [{
+        sectionId: 'cv', sectionName: 'CV', claimId: 'metric', claimedMetric: ' 20  sztuk\n dziennie ',
+      }] });
+      expect(result.isConsistent).toBe(true);
+    });
     it('nie potwierdza dodanych w projekcji dat, gdy źródło nie podało okresu', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'undated', sourceProject: 'Projekt testowy', tags: [] }];
@@ -220,7 +524,8 @@ describe('ConsistencyGuard Engine', () => {
             sectionName: 'Doświadczenie CV',
             claimId: 'claim_exp_exp_1',
             claimedDateRange: { start: '2021-01', end: '2023-01' }, // 2.0 lata (zgodne z exp_1)
-            claimedTags: ['TypeScript', 'Node.js'],
+            claimedTags: ['TypeScript', 'Node.js', 'PostgreSQL'],
+            claimedMetric: '+40% TPS',
           },
         ],
       });
@@ -281,6 +586,31 @@ describe('ConsistencyGuard Engine', () => {
   });
 
   describe('Renderery pobierające dane z MasterVault przez claimId', () => {
+    it('każdy renderer wybiera fakt tylko raz także po aliasie, bez brakujących ID', () => {
+      const vault = createMockVault();
+      const ids = ['claim_exp_exp_1', 'exp_1', 'missing'];
+      expect(renderCvFromClaims(vault, ids).sections.flatMap(section => section.items)).toHaveLength(1);
+      expect(renderHudFromClaims(vault, ids).verifiedMetrics).toHaveLength(1);
+      expect(renderPitchFromClaims(vault, ids).profileStatements).toHaveLength(1);
+      expect(renderLinkedInFromClaims(vault, ids).experience).toHaveLength(1);
+    });
+
+    it('szkic LinkedIn nie wywodzi biegłości ani weryfikacji z obecności tagów', () => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'tag-only', sourceProject: 'Projekt testowy', tags: ['SEP', 'Java'] }];
+      const output = renderLinkedInFromClaims(vault);
+      expect(output.headline).toBe('Profil zawodowy');
+      expect(output.about).not.toMatch(/zweryfikowan|kluczowych wdrożeniach/);
+      expect(output.headline).not.toContain('Ekspert');
+      expect(output.experience[0].description).toContain('W profilu');
+    });
+    it('HUD liczy wyłącznie unikalne odnalezione fakty i nie wytwarza procentu spójności', () => {
+      const vault = createMockVault();
+      const output = renderHudFromClaims(vault, ['claim_exp_exp_1', 'claim_exp_exp_1', 'missing']);
+      expect(output.activeClaimsCount).toBe(1);
+      expect(output).not.toHaveProperty('consistencyScore');
+      expect(renderHudFromClaims(createEmptyVault(), ['missing']).activeClaimsCount).toBe(0);
+    });
     it('renderCvFromClaims tworzy sekcje CV oparte na powiązaniach claimId', () => {
       const vault = createMockVault();
       const cvOutput = renderCvFromClaims(vault, ['claim_exp_exp_1', 'claim_proj_proj_1']);
@@ -299,7 +629,7 @@ describe('ConsistencyGuard Engine', () => {
       expect(hudOutput.activeClaimsCount).toBe(2);
       expect(hudOutput.timelineCoverageYears).toBeGreaterThanOrEqual(3.0);
       expect(hudOutput.skillsRadar.some((s) => s.skill === 'TypeScript')).toBe(true);
-      expect(hudOutput.consistencyScore).toBe(100);
+      expect(hudOutput).not.toHaveProperty('consistencyScore');
     });
 
     it('renderPitchFromClaims generuje pitch z jawnie wskazanych wpisów profilu', () => {

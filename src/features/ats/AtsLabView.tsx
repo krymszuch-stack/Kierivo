@@ -223,6 +223,10 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
         return { badge: 'bg-rose-500 text-white', label: 'Bardzo niski wynik' };
       case 'NOT_ASSESSED':
         return { badge: 'bg-ink/60 text-white', label: 'Nie oceniono' };
+      case 'REVIEW_REQUIRED':
+        return { badge: 'bg-amber-500 text-white', label: 'Do sprawdzenia' };
+      case 'NO_SIGNALS':
+        return { badge: 'bg-blue-500 text-white', label: 'Bez sygnałów w sprawdzonym zakresie' };
       default:
         return { badge: 'bg-ink/60 text-white', label: 'Brak oceny' };
     }
@@ -709,6 +713,9 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             <div className="flex flex-col gap-4 border-b border-ink/5 pb-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-xl font-bold text-ink">{activeEngine.name}</h3>
+                <span className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${getStatusColor(activeEngine.status).badge}`}>
+                  {getStatusColor(activeEngine.status).label}
+                </span>
                 <p className="mt-1 text-xs text-ink-muted">Kategoria reguły: <strong>{activeEngine.category}</strong></p>
               </div>
               <div className="text-right">
@@ -722,8 +729,8 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div className="space-y-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
-                <h4 className="flex items-center gap-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" /> Pozytywne sygnały</h4>
+              <div className={`space-y-3 rounded-2xl border p-4 ${activeEngine.score === null ? 'border-ink/10 bg-surface/50' : 'border-emerald-500/15 bg-emerald-500/5'}`}>
+                <h4 className={`flex items-center gap-1.5 text-sm font-bold ${activeEngine.score === null ? 'text-ink-muted' : 'text-emerald-700 dark:text-emerald-400'}`}><CheckCircle2 className="h-4 w-4" /> {activeEngine.score === null ? 'Zakres i ustalenia' : 'Pozytywne sygnały'}</h4>
                 <ul className="space-y-2 text-xs text-ink-muted">
                   {activeEngine.keyStrengths.map((strength) => <li key={strength}>• {strength}</li>)}
                 </ul>

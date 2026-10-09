@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { unionExperienceYears } from '../experience';
+import { employmentIntervalForJob, unionExperienceYears } from '../experience';
 
 describe('experience — unia przedziałów (F5)', () => {
+  it('brak końca zakończonej roli nie potwierdza zerowego okresu', () => {
+    expect(employmentIntervalForJob({ startDate: '2020-01', endDate: '', isCurrent: false })).toBeNull();
+  });
+
+  it('identyczne jawne końce są policzalnym zerowym okresem', () => {
+    expect(employmentIntervalForJob({ startDate: '2020-01', endDate: '2020-01', isCurrent: false })).not.toBeNull();
+  });
   it('rozłączne okresy sumują się w całości', () => {
     expect(unionExperienceYears([
       { id: '1', startDate: '2020-01', endDate: '2022-01', isCurrent: false },

@@ -29,6 +29,7 @@ import type { SuggestFn } from '../../hooks/useFieldSuggestions';
 import { AchievementEditor } from './AchievementEditor';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ExperienceWizardModal } from './ExperienceWizardModal';
+import { ConsistencyAlertBanner } from '../../components/consistency/ConsistencyAlertBanner';
 
 export interface ExperienceSectionProps {
   history: WorkExperience[];
@@ -287,9 +288,10 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-muted mt-0.5">
-                    {audit.careerGaps.length > 0 && `${audit.careerGaps.length} luka w zatrudnieniu (> 6 mies.) • `}
-                    {audit.locationConflicts.length > 0 && `${audit.locationConflicts.length} kolizja miast • `}
-                    {audit.overlappingExperiences.length > 0 && `${audit.overlappingExperiences.length} nakładające się etaty • `}
+                    {audit.alerts.some(alert => alert.type === 'INVALID_DATE_RANGE') && 'Niepełne lub niepoprawne daty — chronologia niepotwierdzona • '}
+                    {audit.careerGaps.length > 0 && `${audit.careerGaps.length} nieopisany okres (≥ 6 mies.) • `}
+                    {audit.locationConflicts.length > 0 && `${audit.locationConflicts.length} różne lokalizacje do sprawdzenia • `}
+                    {audit.overlappingExperiences.length > 0 && `${audit.overlappingExperiences.length} nakładające się okresy • `}
                     {audit.missingMetrics.length > 0 && `${audit.missingMetrics.length} stanowisk bez twardych metryk X-Y-Z`}
                   </p>
                 </div>
@@ -297,13 +299,13 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
 
               <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-auto">
                 {audit.locationConflicts.length > 0 && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger-fg border border-danger/30">
-                    <MapPin className="h-3 w-3" /> Kolizja miast
+                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning-fg border border-warning/30">
+                    <MapPin className="h-3 w-3" /> Lokalizacje do sprawdzenia
                   </span>
                 )}
                 {audit.careerGaps.length > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning-fg border border-warning/30">
-                    <Calendar className="h-3 w-3" /> Luka &gt; 6 mies.
+                    <Calendar className="h-3 w-3" /> Nieopisany okres ≥ 6 mies.
                   </span>
                 )}
                 {audit.missingMetrics.length > 0 && (
@@ -332,6 +334,7 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
       )}
 
       {/* Lista doświadczeń */}
+      <ConsistencyAlertBanner alerts={audit.alerts.filter(alert => alert.type === 'INVALID_DATE_RANGE')} />
       <div className="space-y-4">
         <AnimatePresence initial={false}>
           {history.length === 0 ? (
@@ -490,11 +493,11 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                       <div className="space-y-4 pt-1">
                         {/* Ostrzeżenia audytu */}
                         {locConflict && (
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-danger/40 bg-danger-soft/60 p-3 text-xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning-soft/60 p-3 text-xs">
                             <div className="flex items-start gap-2">
-                              <MapPin className="h-4 w-4 text-danger-fg shrink-0 mt-0.5" />
+                              <MapPin className="h-4 w-4 text-warning-fg shrink-0 mt-0.5" />
                               <div>
-                                <span className="font-bold text-danger-fg">Kolizja lokalizacji w nakładających się terminach</span>
+                                <span className="font-bold text-warning-fg">{locConflict.title}</span>
                                 <p className="text-[11px] text-ink/90 mt-0.5">{locConflict.message}</p>
                               </div>
                             </div>
@@ -503,9 +506,9 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                               variant="outline"
                               size="sm"
                               onClick={() => handleMarkAsRemote(item.id)}
-                              className="shrink-0 text-[11px] border-danger/30 text-danger-fg hover:bg-danger/10 self-end sm:self-auto"
+                              className="shrink-0 text-[11px] border-warning/30 text-warning-fg hover:bg-warning/10 self-end sm:self-auto"
                             >
-                              Oznacz jako praca zdalna
+                              To była praca zdalna
                             </Button>
                           </div>
                         )}
@@ -747,13 +750,13 @@ export const ExperienceSection: React.FC<ExperienceSectionProps> = ({
                         </div>
                         <div>
                           <div className="font-bold text-ink flex items-center gap-2">
-                            <span>Luka w zatrudnieniu (~{followingGap.details?.gapMonths} mies.)</span>
+                            <span>{followingGap.title}</span>
                             <span className="text-muted font-normal text-xs">
                               {followingGap.details?.gapStart} – {followingGap.details?.gapEnd}
                             </span>
                           </div>
                           <p className="text-[11px] text-muted mt-0.5">
-                            Przerwy powyżej 6 miesięcy budzą pytania rekruterów. Możesz uzupełnić ten okres teraz lub później.
+                            {followingGap.message}
                           </p>
                         </div>
                       </div>

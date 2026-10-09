@@ -14,6 +14,7 @@ import {
   renderCvFromClaims,
   renderHudFromClaims,
   renderPitchFromClaims,
+  projectRendererOutputs,
   ConsistencyValidationResult,
   ProjectedClaimItem,
 } from '../../lib/consistencyGuard';
@@ -40,16 +41,14 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
   const vaultClaims = useMemo(() => extractClaimsFromVault(vault), [vault]);
   const activeClaimIds = useMemo(() => vaultClaims.map((c) => c.id), [vaultClaims]);
 
-  // Przygotowanie projekcji dla walidatora
+  // Walidacja musi korzystać z tych samych wyników, które pokazują zakładki.
+  const cvOutput = useMemo(() => renderCvFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+  const hudOutput = useMemo(() => renderHudFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+  const pitchOutput = useMemo(() => renderPitchFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
+
   const projectedItems: ProjectedClaimItem[] = useMemo(() => {
-    return vaultClaims.map((c, index) => ({
-      sectionId: index % 2 === 0 ? 'cv_experience' : 'cv_projects',
-      sectionName: index % 2 === 0 ? 'Doświadczenie Zawodowe' : 'Projekty i Osiągnięcia',
-      claimId: c.id,
-      ...(c.dateRange ? { claimedDateRange: c.dateRange } : {}),
-      claimedTags: c.tags,
-    }));
-  }, [vaultClaims]);
+    return projectRendererOutputs(cvOutput, hudOutput, pitchOutput, activeClaimIds);
+  }, [cvOutput, hudOutput, pitchOutput, activeClaimIds]);
 
   // Walidacja spójności
   const validationResult: ConsistencyValidationResult = useMemo(() => {
@@ -58,11 +57,6 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
       projectedItems,
     });
   }, [vault, activeClaimIds, projectedItems]);
-
-  // Renderery oparte na claimId
-  const cvOutput = useMemo(() => renderCvFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
-  const hudOutput = useMemo(() => renderHudFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
-  const pitchOutput = useMemo(() => renderPitchFromClaims(vault, activeClaimIds), [vault, activeClaimIds]);
 
   const tabs = [
     { id: 'cv' as ConsistencyTabId, label: 'Renderer CV', icon: FileText },
@@ -200,11 +194,14 @@ export const ConsistencyGuardView: React.FC<ConsistencyGuardViewProps> = ({
             </Card>
 
             <Card className="p-4 space-y-1">
-              <span className="text-xs text-muted font-semibold">Lata doświadczenia z profilu</span>
+              <span className="text-xs text-muted font-semibold">Zakres zatrudnienia z dat profilu</span>
               <div className="text-2xl font-black text-brand-600 font-mono">
-                {hudOutput.timelineCoverageYears} lat
+                {hudOutput.timelineCoverageYears === null ? 'Brak danych do obliczenia' : `${hudOutput.timelineCoverageYears} lat`}
               </div>
-              <div className="text-meta text-muted font-mono">Zakres wynikający z wpisanych dat</div>
+              <div className="text-meta text-muted font-mono">Unia czytelnych, kompletnych okresów zatrudnienia</div>
+              {hudOutput.timelineExcludedEntries > 0 && (
+                <p className="text-xs text-muted">Pominięte wpisy z niekompletnymi lub niepoprawnymi datami: {hudOutput.timelineExcludedEntries}. To nie jest pełny staż profilu.</p>
+              )}
             </Card>
 
           </div>

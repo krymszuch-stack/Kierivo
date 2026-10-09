@@ -1,0 +1,289 @@
+{
+  "observedAt": "2026-10-09T14:35:03.763537+00:00",
+  "evidence": "LOCAL Playwright real components + controlled renderer fault injection",
+  "production_verified": false,
+  "results": [
+    {
+      "case": "metric",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "metric",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-cv",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-cv",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-pitch",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-pitch",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-date",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-date",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-count",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-count",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-duplicate",
+      "baseline": false,
+      "alert_count": 2,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-duplicate",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-duplicate",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "missing-tags",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "missing-tags",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "changed-tags",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "changed-tags",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-skill-count",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-skill-count",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-skill-duplicate",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-skill-duplicate",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-project",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-project",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-summary",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-summary",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-label",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-label",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-source",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-source",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-statement",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-statement",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-timeline-years",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-timeline-years",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "hud-timeline-excluded",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "hud-timeline-excluded",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-name",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-name",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-title",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-title",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-hook",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-hook",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-cta",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-cta",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "Actual AchievementEditor callback",
+      "metric": "25%",
+      "passed": true,
+      "storage_and_reload_verified": false
+    }
+  ]
+}
