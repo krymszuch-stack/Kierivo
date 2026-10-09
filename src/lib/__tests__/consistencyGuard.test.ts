@@ -419,6 +419,33 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.sections.hud.claimsCount).toBe(0);
     });
 
+    it.each(['cv-project', 'cv-summary', 'hud-label', 'hud-source', 'pitch-statement'])('wykrywa zmienioną treść lub źródło: %s', fault => {
+      const vault = createEmptyVault();
+      vault.claims = [{ id: 'metric', sourceProject: 'Firma źródłowa', tags: [], metric: '20%' }];
+      const cv = renderCvFromClaims(vault);
+      const hud = renderHudFromClaims(vault);
+      const pitch = renderPitchFromClaims(vault);
+      if (fault === 'cv-project') cv.sections[0].items[0].project = 'Inna firma';
+      if (fault === 'cv-summary') cv.sections[0].items[0].summary = 'Wymyślony fakt';
+      if (fault === 'hud-label') hud.verifiedMetrics[0].label = 'Inna firma';
+      if (fault === 'hud-source') hud.verifiedMetrics[0].sourceProject = 'Inna firma';
+      if (fault === 'pitch-statement') pitch.profileStatements[0].statement = 'Wymyślony fakt';
+      const section = fault.split('-')[0];
+      const result = validateConsistency(vault, { projectedItems: projectRendererOutputs(cv, hud, pitch, ['metric']) });
+      expect(result.sections[section].isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'PROJECTION_CONTENT_MISMATCH')).toBe(true);
+    });
+
+    it.each(['years', 'excluded'])('wykrywa niezgodną oś czasu HUD: %s', fault => {
+      const vault = createMockVault();
+      const hud = renderHudFromClaims(vault);
+      if (fault === 'years') hud.timelineCoverageYears = 99;
+      else hud.timelineExcludedEntries = 99;
+      const result = validateConsistency(vault, { projectedItems: projectRendererOutputs(renderCvFromClaims(vault), hud, renderPitchFromClaims(vault), extractClaimsFromVault(vault).map(item => item.id)) });
+      expect(result.sections.hud.isConsistent).toBe(false);
+      expect(result.alerts.some(item => item.type === 'TIMELINE_MISMATCH')).toBe(true);
+    });
+
     it('akceptuje rzeczywiste wyjścia rendererów bez metryk i dat', () => {
       const vault = createEmptyVault();
       vault.claims = [{ id: 'plain', sourceProject: 'Projekt testowy', tags: [] }];

@@ -1,8 +1,11 @@
 import asyncio
+from datetime import datetime, timezone
 import json
 import os
 import atexit
 import subprocess
+import urllib.request
+import urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -26,11 +29,16 @@ async def main():
     async with async_playwright() as p:
         proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
         browser = await p.chromium.launch(executable_path=os.environ.get("PLAYWRIGHT_CHROME_PATH", "/usr/bin/chromium"), headless=True,
-            args=["--no-sandbox"], proxy={"server": proxy, "bypass": "127.0.0.1,localhost"} if proxy else None)
+            args=["--no-sandbox", "--no-proxy-server"])
         # Wstrzykujemy konkretną awarię w rzeczywisty renderer, nie atrapę całego silnika.
         async def changed_renderer(route):
-            response = await route.fetch()
-            body = await response.text()
+            # API route.fetch może kierować localhost przez proxy mimo bypass przeglądarki.
+            # Pobieramy wyłącznie lokalny zasób Vite; nie zmieniamy polityki dla zewnętrznej sieci.
+            assert urllib.parse.urlparse(route.request.url).hostname in ['127.0.0.1', 'localhost']
+            def fetch_local():
+                with urllib.request.urlopen(route.request.url, timeout=10) as response:
+                    return response.status, dict(response.headers), response.read().decode()
+            status, headers, body = await asyncio.to_thread(fetch_local)
             mutations = {
                 'metric': ('metric: claim.metric,', 'metric: claim.metric === "20%" ? "40%" : claim.metric,'),
                 'missing-cv': ('sections: [experiencesSection, projectsSection]', 'sections: []'),
@@ -44,15 +52,32 @@ async def main():
                 'changed-tags': ('tags: claim.tags || [],', 'tags: ["UDT"],'),
                 'hud-skill-count': ('count: data.count,', 'count: 99,'),
                 'hud-skill-duplicate': ('skillsRadar,', 'skillsRadar: [...skillsRadar, ...skillsRadar],'),
+                'cv-project': ('project: claim.sourceProject,', 'project: "Inna firma",'),
+                'cv-summary': ('summary: describeCvClaim(claim),', 'summary: "Wymyślony fakt",'),
+                'hud-label': ('label: claim.sourceProject,', 'label: "Inna firma",'),
+                'hud-source': ('sourceProject: claim.sourceProject,', 'sourceProject: "Inna firma",'),
+                'pitch-statement': ('statement: describeProfileClaim(claim),', 'statement: "Wymyślony fakt",'),
+                'hud-timeline-years': ('...sourceEmploymentTimeline(vault),', '...sourceEmploymentTimeline(vault), timelineCoverageYears:99,'),
+                'hud-timeline-excluded': ('...sourceEmploymentTimeline(vault),', '...sourceEmploymentTimeline(vault), timelineExcludedEntries:99,'),
             }
             marker, replacement = mutations[scenario]
-            assert marker in body, "Nie znaleziono miejsca kontrolowanej mutacji renderera"
-            body = body.replace(marker, replacement, 1)
-            await route.fulfill(response=response, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate', 'missing-tags', 'changed-tags', 'hud-skill-count', 'hud-skill-duplicate'] for old in [True, False]]:
+            renderer = 'renderHudFromClaims' if scenario.startswith('hud-') else ('renderPitchFromClaims' if 'pitch' in scenario else 'renderCvFromClaims')
+            start = body.index('function '+renderer+'(')
+            prefix, renderer_body = body[:start], body[start:]
+            if marker not in renderer_body and marker.endswith(','):
+                marker = marker[:-1]
+                replacement = replacement.rstrip(',')
+            if marker not in renderer_body:
+                await route.abort()
+                raise AssertionError(f"Nie znaleziono mutacji: {scenario}: {marker}")
+            body = prefix + renderer_body.replace(marker, replacement, 1)
+            headers = {key:value for key,value in headers.items() if key.lower() not in ['content-length','content-encoding','connection']}
+            await route.fulfill(status=status, headers=headers, body=body)
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate', 'missing-tags', 'changed-tags', 'hud-skill-count', 'hud-skill-duplicate', 'cv-project', 'cv-summary', 'hud-label', 'hud-source', 'pitch-statement', 'hud-timeline-years', 'hud-timeline-excluded'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()
+            await page.route(BASE.rstrip('/')+'/', lambda route: route.fulfill(content_type='text/html', body='<html><head><title>Renderer fixture</title></head><body><script type="module">import {injectIntoGlobalHook} from "/@react-refresh";injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;</script></body></html>'))
             await page.goto(BASE, wait_until="domcontentloaded")
             await page.evaluate("""async ({baseline, scenario}) => {
                 const [React, ReactDOM, view, {createEmptyVault}] = await Promise.all([
@@ -65,7 +90,7 @@ async def main():
                 ]);
                 const vault = createEmptyVault();
                 vault.claims = [{id:'metric', sourceProject:'Syntetyczny monter', tags:['missing-tags','changed-tags','hud-skill-count','hud-skill-duplicate'].includes(scenario) ? ['SEP'] : [],
-                    ...(['metric','hud-duplicate'].includes(scenario) ? {metric:'20%'} : {}),
+                    ...(['metric','hud-duplicate','hud-label','hud-source'].includes(scenario) ? {metric:'20%'} : {}),
                     ...(scenario === 'missing-date' ? {dateRange:'2020-2022'} : {})}];
                 document.body.innerHTML = '<main id="release-proof"></main>';
                 (ReactDOM.createRoot ?? ReactDOM.default.createRoot)(document.getElementById('release-proof')).render(
@@ -80,9 +105,10 @@ async def main():
             results.append({"case": scenario,
                             "baseline": baseline, "alert_count": count,
                             "expected_alert_present": count > 0})
-            assert (count == 0) if baseline else (count > 0)
+            assert (count == 0) if baseline else (count > 0), f'{scenario}: baseline={baseline}, alerts={count}'
             await context.close()
         page = await browser.new_page()
+        await page.route(BASE.rstrip('/')+'/', lambda route: route.fulfill(content_type='text/html', body='<html><head><title>Editor fixture</title></head><body><script type="module">import {injectIntoGlobalHook} from "/@react-refresh";injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;</script></body></html>'))
         await page.goto(BASE, wait_until="domcontentloaded")
         await page.evaluate("""async () => {
             const [React, ReactDOM, {AchievementEditor}] = await Promise.all([
@@ -108,7 +134,7 @@ async def main():
         results.append({"case": "Actual AchievementEditor callback", "metric": metric, "passed": True,
                         "storage_and_reload_verified": False})
         await browser.close()
-    report = {"evidence": "LOCAL Playwright real components + controlled renderer fault injection",
+    report = {"observedAt":datetime.now(timezone.utc).isoformat(), "evidence": "LOCAL Playwright real components + controlled renderer fault injection",
               "production_verified": False, "results": results}
     (OUT / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
     print(json.dumps(report, ensure_ascii=False, indent=2))
