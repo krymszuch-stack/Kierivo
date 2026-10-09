@@ -436,6 +436,17 @@ describe('ConsistencyGuard Engine', () => {
       expect(result.alerts.some(item => item.type === 'PROJECTION_CONTENT_MISMATCH')).toBe(true);
     });
 
+    it.each(['cv-name', 'cv-title', 'pitch-hook', 'pitch-cta'])('wykrywa błędny nagłówek również bez claimów: %s', fault => {
+      const vault = createEmptyVault();
+      const cv = renderCvFromClaims(vault), hud = renderHudFromClaims(vault), pitch = renderPitchFromClaims(vault);
+      if (fault === 'cv-name') cv.candidateName = 'Inna osoba';
+      if (fault === 'cv-title') cv.title = 'Wymyślone stanowisko';
+      if (fault === 'pitch-hook') pitch.hook = 'Wymyślona wypowiedź';
+      if (fault === 'pitch-cta') pitch.callToAction = 'Wymyślona wypowiedź';
+      const result = validateConsistency(vault, {projectedItems:projectRendererOutputs(cv,hud,pitch,[])});
+      expect(result.sections[fault.split('-')[0]].isConsistent).toBe(false);
+    });
+
     it.each(['years', 'excluded'])('wykrywa niezgodną oś czasu HUD: %s', fault => {
       const vault = createMockVault();
       const hud = renderHudFromClaims(vault);

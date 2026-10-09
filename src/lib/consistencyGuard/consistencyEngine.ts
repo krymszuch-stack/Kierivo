@@ -340,6 +340,9 @@ export interface ProjectedClaimItem {
   claimedProject?: string;
   claimedLabel?: string;
   claimedText?: string;
+  claimedCvHeader?: Pick<CvRendererOutput, 'title' | 'candidateName'>;
+  claimedPitchHeader?: Pick<PitchRendererOutput, 'hook' | 'callToAction'>;
+  pitchTargetRole?: string;
   claimedTimeline?: Pick<HudRendererOutput, 'timelineCoverageYears' | 'timelineExcludedEntries'>;
 }
 
@@ -349,6 +352,7 @@ export function projectRendererOutputs(
   hud: HudRendererOutput,
   pitch: PitchRendererOutput,
   activeClaimIds: string[],
+  pitchTargetRole?: string,
 ): ProjectedClaimItem[] {
   const countIds = (ids: string[]) => {
     const counts = new Map<string, number>();
@@ -370,6 +374,8 @@ export function projectRendererOutputs(
       sectionId, sectionName, claimId, projectionMissing: true,
     }));
   const projected: ProjectedClaimItem[] = [
+    {sectionId:'cv',sectionName:'Renderer CV',claimId:'',claimedCvHeader:{title:cv.title,candidateName:cv.candidateName}},
+    {sectionId:'pitch',sectionName:'Renderer Pitch',claimId:'',claimedPitchHeader:{hook:pitch.hook,callToAction:pitch.callToAction},pitchTargetRole},
     ...cv.sections.flatMap(section => section.items.map(item => ({
       sectionId: section.id,
       sectionName: section.title,
@@ -494,6 +500,24 @@ export function validateConsistency(
       }
 
       if (item.claimId) sectionsMap[secKey].claimsCount += 1;
+
+      const cvHeaderMismatch = item.claimedCvHeader !== undefined && (
+        item.claimedCvHeader.candidateName !== (vault.personalInfo?.fullName || 'Kandydat') ||
+        item.claimedCvHeader.title !== (vault.personalInfo?.title || 'Profil Kandydata')
+      );
+      const pitchContext = {candidateName:vault.personalInfo?.fullName?.trim() || '', roleTitle:item.pitchTargetRole || vault.personalInfo?.title || ''};
+      const pitchHeaderMismatch = item.claimedPitchHeader !== undefined && (
+        !getPitchHookVariations(pitchContext).includes(item.claimedPitchHeader.hook) ||
+        !getPitchCtaVariations(pitchContext).includes(item.claimedPitchHeader.callToAction)
+      );
+      if (cvHeaderMismatch || pitchHeaderMismatch) {
+        const headerAlert: ConsistencyAlert = {
+          id:`alert_header_${secKey}`,sectionId:secKey,type:'PROJECTION_CONTENT_MISMATCH',severity:'ALERT',
+          title:'Nagłówek podglądu wymaga sprawdzenia',
+          message:'Dane kandydata lub wypowiedź nagłówka nie odpowiadają źródłowemu profilowi.',
+        };
+        alerts.push(headerAlert); sectionsMap[secKey].alerts.push(headerAlert); sectionsMap[secKey].isConsistent=false;
+      }
 
       if (item.claimedTimeline !== undefined) {
         const expected = sourceEmploymentTimeline(vault);

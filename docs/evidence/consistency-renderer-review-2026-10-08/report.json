@@ -1,4 +1,5 @@
 {
+  "observedAt": "2026-10-09T14:35:03.763537+00:00",
   "evidence": "LOCAL Playwright real components + controlled renderer fault injection",
   "production_verified": false,
   "results": [
@@ -231,11 +232,58 @@
       "expected_alert_present": true
     },
     {
+      "case": "cv-name",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-name",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "cv-title",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "cv-title",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-hook",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-hook",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
+      "case": "pitch-cta",
+      "baseline": true,
+      "alert_count": 0,
+      "expected_alert_present": false
+    },
+    {
+      "case": "pitch-cta",
+      "baseline": false,
+      "alert_count": 1,
+      "expected_alert_present": true
+    },
+    {
       "case": "Actual AchievementEditor callback",
       "metric": "25%",
       "passed": true,
       "storage_and_reload_verified": false
     }
-  ],
-  "observedAt": "2026-10-09T14:20:31.101651+00:00"
+  ]
 }

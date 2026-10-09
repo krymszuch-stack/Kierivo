@@ -57,6 +57,10 @@ async def main():
                 'hud-label': ('label: claim.sourceProject,', 'label: "Inna firma",'),
                 'hud-source': ('sourceProject: claim.sourceProject,', 'sourceProject: "Inna firma",'),
                 'pitch-statement': ('statement: describeProfileClaim(claim),', 'statement: "Wymyślony fakt",'),
+                'cv-name': ("candidateName: vault.personalInfo?.fullName || \"Kandydat\"", 'candidateName: "Inna osoba"'),
+                'cv-title': ("title: vault.personalInfo?.title || \"Profil Kandydata\"", 'title: "Wymyślone stanowisko"'),
+                'pitch-hook': ('const hook = hookVariations[hookIdx];', 'const hook = "Wymyślona wypowiedź";'),
+                'pitch-cta': ('const callToAction = ctaVariations[ctaIdx];', 'const callToAction = "Wymyślona wypowiedź";'),
                 'hud-timeline-years': ('...sourceEmploymentTimeline(vault),', '...sourceEmploymentTimeline(vault), timelineCoverageYears:99,'),
                 'hud-timeline-excluded': ('...sourceEmploymentTimeline(vault),', '...sourceEmploymentTimeline(vault), timelineExcludedEntries:99,'),
             }
@@ -73,7 +77,7 @@ async def main():
             body = prefix + renderer_body.replace(marker, replacement, 1)
             headers = {key:value for key,value in headers.items() if key.lower() not in ['content-length','content-encoding','connection']}
             await route.fulfill(status=status, headers=headers, body=body)
-        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate', 'missing-tags', 'changed-tags', 'hud-skill-count', 'hud-skill-duplicate', 'cv-project', 'cv-summary', 'hud-label', 'hud-source', 'pitch-statement', 'hud-timeline-years', 'hud-timeline-excluded'] for old in [True, False]]:
+        for scenario, baseline in [(case, old) for case in ['metric', 'missing-cv', 'missing-pitch', 'missing-date', 'hud-count', 'hud-duplicate', 'cv-duplicate', 'pitch-duplicate', 'missing-tags', 'changed-tags', 'hud-skill-count', 'hud-skill-duplicate', 'cv-project', 'cv-summary', 'hud-label', 'hud-source', 'pitch-statement', 'hud-timeline-years', 'hud-timeline-excluded', 'cv-name', 'cv-title', 'pitch-hook', 'pitch-cta'] for old in [True, False]]:
             context = await browser.new_context()
             await context.route("**/src/lib/consistencyGuard/consistencyEngine.ts*", changed_renderer)
             page = await context.new_page()
