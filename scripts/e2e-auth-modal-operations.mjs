@@ -64,6 +64,17 @@ try {
     await page.getByRole('button', { name: 'Nie pamiętam hasła', exact: true }).click();
     await page.getByLabel(/Adres e-mail/i).fill('synthetic@example.invalid');
   }
+  async function changeRecoveryScope(patch) {
+    await page.evaluate(patch => window.__authAudit.setState(state => ({ ...state, ...patch })), patch);
+    // setState tylko kolejkuje zmianę. Test odpowiedzi starej operacji zaczyna
+    // się po zatwierdzeniu nowego właściciela/linku, a nie w losowym renderze.
+    await page.waitForFunction(patch => {
+      const auth = window.__authAudit.auth;
+      return (!patch.owner || auth.session.user.id === patch.owner)
+        && auth.passwordRecoveryRevision === patch.revision
+        && document.querySelector('input[type="password"]')?.value === '';
+    }, patch);
+  }
   await setup();
   await resetView();
   await page.getByRole('button', { name: 'Wyślij link', exact: true }).click();
@@ -104,7 +115,7 @@ try {
   };
   await fillPasswords();
   await page.getByRole('button', { name: 'Zapisz nowe hasło', exact: true }).click();
-  await page.evaluate(() => window.__authAudit.setState(s => ({ ...s, owner: 'synthetic-B', revision: 2 })));
+  await changeRecoveryScope({ owner: 'synthetic-B', revision: 2 });
   await settle('leak', { leaked: false, count: 0, unavailable: false });
   assert.equal(await page.evaluate(() => window.__authAudit.calls.includes('update')), false);
   assert.equal(await page.getByLabel(/^Nowe hasło/i).inputValue(), '');
@@ -117,7 +128,7 @@ try {
   await page.screenshot({ path: 'docs/evidence/password-recovery-failure-2026-10-05.png', animations: 'disabled' });
   await page.getByRole('button', { name: 'Zapisz nowe hasło', exact: true }).click();
   await settle('leak', { leaked: false, count: 0, unavailable: false });
-  await page.evaluate(() => window.__authAudit.setState(s => ({ ...s, revision: 3 })));
+  await changeRecoveryScope({ revision: 3 });
   await settle('update', { ok: true, message: '' });
   assert.equal(await page.evaluate(() => window.__authAudit.toasts.length), 0);
   assert.equal(await page.getByLabel(/^Nowe hasło/i).inputValue(), '');
