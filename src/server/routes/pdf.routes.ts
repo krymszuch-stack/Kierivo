@@ -434,6 +434,20 @@ pdfRouter.post(
       const validThemeIds = new Set(AVAILABLE_THEMES.map((t) => t.id));
       const validLayoutIds = new Set(AVAILABLE_LAYOUTS.map((l) => l.id));
 
+      // D18: zapis roboczy może być niepełny; gotowy eksport wymaga decyzji
+      // użytkownika o brakującym wpisie. Nie usuwamy go po cichu ani nie zgadujemy dat.
+      const hasText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+      const incompleteIndex = Array.isArray(vault.history) ? vault.history.findIndex((entry) =>
+        !entry || !hasText(entry.role) || !hasText(entry.startDate) || (!entry.isCurrent && !hasText(entry.endDate))
+      ) : -1;
+      if (incompleteIndex >= 0) {
+        return res.status(400).json({
+          success: false,
+          requestId,
+          error: `Niekompletny wpis doświadczenia nr ${incompleteIndex + 1}: sprawdź stanowisko, datę rozpoczęcia oraz datę zakończenia lub oznaczenie „obecnie”. Uzupełnij wyłącznie znane fakty albo usuń ten wpis z wersji przeznaczonej do eksportu. Nie zgaduj brakujących danych.`,
+        });
+      }
+
       if (theme && !validThemeIds.has(theme)) {
         const errorMsg = `Nieprawidłowy motyw PDF: ${theme}. Dostępne motywy: ${AVAILABLE_THEMES.map((t) => t.id).join(', ')}`;
         logPdfExportStage({

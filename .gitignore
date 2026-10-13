@@ -1,5 +1,8 @@
 # Dependencies
 node_modules/
+.venv/
+artifacts/
+*.egg-info/
 
 # Production build outputs
 dist/

@@ -10,6 +10,12 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // Izolujemy konsumenta walidatora od asynchronicznego montowania całej aplikacji.
+  await page.route('**/', async route => {
+    const response = await route.fetch();
+    const html = (await response.text()).replace(/<script\b[^>]*\bsrc=["']\/src\/main\.tsx(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gu, '');
+    await route.fulfill({ response, body: html });
+  });
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:3045', { waitUntil: 'domcontentloaded' });
   const proof = await page.evaluate(async () => {
     const [React, ReactDOM, { ConsistencyAlertBanner }, { validateConsistency, parseDateRangeToYears }, { createEmptyVault }] = await Promise.all([

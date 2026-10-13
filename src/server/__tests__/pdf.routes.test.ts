@@ -121,6 +121,21 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Kody błędów i rozróżnienie (400, 503, 504, 500)', () => {
+    it('400 — półpusty wpis PartWork nie jest gotowym CV i nie uruchamia renderera', async () => {
+      const vault = baseVault();
+      vault.history[0] = { ...vault.history[0], company: 'PartWork', role: '', startDate: '', endDate: '' };
+      const original = JSON.stringify(vault);
+      const spawn = vi.spyOn(pythonRunner, 'spawn').mockRejectedValue(new Error('Nie wolno renderować niekompletnego wpisu'));
+      const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vault }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain('Niekompletny wpis doświadczenia');
+      expect(spawn).not.toHaveBeenCalled();
+      expect(JSON.stringify(vault)).toBe(original);
+      spawn.mockRestore();
+    });
     it('400 — odrzuca brak danych MasterVault lub brak personalInfo', async () => {
       const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
         method: 'POST',

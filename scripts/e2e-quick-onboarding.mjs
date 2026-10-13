@@ -47,33 +47,7 @@ try {
 /* ------------------------------------------------------------------ dane */
 
 // Jawnie syntetyczne CV do regresji zgłoszonych błędów parsera i dopasowania.
-const CV_TEXT = [
-  'Alicja Testowa',
-  'Kraków | alicja.testowa@example.com',
-  '',
-  'PODSUMOWANIE ZAWODOWE',
-  'Specjalistka wsparcia IT z doświadczeniem w Windows 11, Microsoft 365, Exchange Online i TCP/IP.',
-  '',
-  'UMIEJĘTNOŚCI',
-  'Windows 11, Microsoft 365, Exchange Online, Active Directory, TCP/IP, obsługa klienta',
-  '',
-  'DOŚWIADCZENIE ZAWODOWE',
-  'Specjalistka wsparcia IT — Testowa Sp. z o.o. — 2022–2025',
-  'Obsługa zgłoszeń, konfiguracja kont Microsoft 365, diagnoza Windows 11.',
-  '',
-  'EDUKACJA',
-  'Technik informatyk — Zespół Szkół Technicznych — 2016–2020',
-].join('\n');
-
-const JD_TEXT = [
-  'Specjalista IT Support',
-  'Testowa Firma',
-  '',
-  'Wymagania:',
-  'Windows 11, Microsoft 365, Exchange Online, TCP/IP, obsługa klienta.',
-  '',
-  'Mile widziane: Intune, Entra ID, PowerShell.',
-].join('\n');
+import { CV_TEXT, JD_TEXT } from './user-flow-fixture.mjs';
 
 // Wyraz-wskaźnik: występuje w ogłoszeniu, nie występuje w CV. Jeśli po przejściu
 // do trybu zaawansowanego mapper słów kluczowych nadal go pokazuje, ogłoszenie
@@ -167,7 +141,7 @@ async function sprawdzDopasowanie(page) {
 
   // 1. Wynik ma stabilną nazwę dostępnościową i nie jest opisywany jako szansa ATS.
   const baner = page.getByRole('status', {
-    name: /Wynik dopasowania Kierivo \d+ procent/,
+    name: /Wstępny wynik Kierivo \d+ procent/,
   });
   await waitVisible(baner);
   check('wynik ma aria-label z liczbą procent', await baner.count() === 1);
@@ -205,11 +179,11 @@ async function sprawdzOgraniczoneDane(page) {
     'The recruitment process includes a conversation with the team manager and recruiter.',
   ].join('\n'));
   await page.getByRole('button', { name: 'Sprawdź', exact: true }).click();
-  const result = page.getByRole('status', { name: /Wynik dopasowania Kierivo \d+ procent/ });
+  const result = page.getByRole('status', { name: /Wstępny wynik Kierivo \d+ procent/ });
   await waitVisible(result);
   const body = await page.locator('body').innerText();
   check('mała próbka wymagań dostaje etykietę wstępną',
-    body.includes('Wynik wstępny — ograniczone dane') && /Rozpoznano tylko 1 wymaganie/.test(body), body.slice(-900));
+    body.includes('Wynik wstępny — ograniczone dane') && /Rozpoznano 1 wymaganie/.test(body), body.slice(-900));
   await page.screenshot({ path: 'docs/evidence/quick-onboarding-limited-evidence-2026-10-01.png', fullPage: true });
 }
 
@@ -435,7 +409,9 @@ try {
           history: [{
             id: 'synthetic-exp', company: 'Firma Testowa', role: 'Specjalistka wsparcia', location: 'Kraków',
             startDate: '2022-01', endDate: '2025-01', isCurrent: false,
-            highlights: [{ id: 'synthetic-highlight', text: 'Przykładowy wpis wyłącznie do testu.' }],
+            // Fixture gotowego profilu musi spełniać kontrakt MasterVault; brak
+            // pól STAR oznacza nieprawidłowy zapis, a nie gotowy profil użytkownika.
+            highlights: [{ id: 'synthetic-highlight', text: 'Przykładowy wpis wyłącznie do testu.', action: '', target: '', tool: '', metric: '', keywords: [] }],
           }],
           education: [{ id: 'synthetic-edu', institution: 'Szkoła Testowa', degree: 'Technik', fieldOfStudy: 'IT', startDate: '2018', endDate: '2022' }],
           projects: [],

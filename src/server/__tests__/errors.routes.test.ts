@@ -262,7 +262,9 @@ describe('magazyn lokalny — agregacja grup i retencja', () => {
 
     const groups = await listLocalErrorGroups();
     expect(groups).toHaveLength(1);
-    expect(groups[0].status).toBe('resolved');
+    // Poprawny wpis sidecara został odczytany, ale zdarzenie jest późniejsze
+    // niż resolvedAt: nawrót musi ponownie otworzyć grupę.
+    expect(groups[0].status).toBe('open');
   });
 
   it('retencja usuwa rozwiązane po oknie i martwe otwarte, a statusy przechodzi w sidecarze', async () => {

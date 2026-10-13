@@ -10,7 +10,8 @@ process.env.BACKEND_MODE = 'local';
 process.env.AI_PROVIDER = 'ollama';
 const { pdfRouter } = await import('../src/server/routes/pdf.routes');
 
-const outputPath = resolve('docs/evidence/pdf-long-cv-synthetic-2026-10-02.pdf');
+const outputDir = resolve(process.env.EVIDENCE_DIR || 'docs/evidence');
+const outputPath = resolve(outputDir, 'pdf-long-cv-synthetic-2026-10-02.pdf');
 const app = express();
 app.use((req, res, next) => {
   (req as typeof req & { requestId: string }).requestId = 'req-audit-pdf-long-cv';
@@ -93,12 +94,13 @@ try {
   const bytes = Buffer.from(payload.pdf, 'base64');
   const loadingTask = getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
   const pdf = await loadingTask.promise;
+  if (pdf.numPages < 2) throw new Error('Próba wielostronicowego PDF nie wygenerowała co najmniej dwóch stron.');
   const pageTexts = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) => {
     const content = await (await pdf.getPage(index + 1)).getTextContent();
     return content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
   }));
   await loadingTask.destroy();
-  await mkdir(resolve('docs/evidence'), { recursive: true });
+  await mkdir(outputDir, { recursive: true });
   await writeFile(outputPath, bytes);
   const normalizedText = pageTexts.join(' ').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const expected = [

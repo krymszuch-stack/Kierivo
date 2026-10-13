@@ -54,6 +54,8 @@ function vault(marker, title) {
       location: '',
       startDate: '2024-01',
       endDate: '',
+      isCurrent: true,
+      highlights: [],
     }],
     education: [], projects: [],
   };

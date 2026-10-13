@@ -1,6 +1,7 @@
 name: D04 AUTH + RLS
 
 on:
+  workflow_call:
   pull_request:
     branches: [main, master]
   push:
@@ -25,6 +26,11 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -e mastervault-cv
+      - run: npx playwright install --with-deps chromium
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -95,5 +101,17 @@ jobs:
           npm run test:rls
           npm run test:auth-lifecycle
           supabase db lint --level error
+          export VITE_SUPABASE_URL="$SUPABASE_URL"
+          export VITE_SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
+          npm run build
+          node scripts/isolated-auth-smoke.mjs
 
           kill "$FUNCTIONS_PID" >/dev/null 2>&1 || true
+
+      - name: Zapis dowodów uwierzytelnionego PDF (bez sesji konta)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: isolated-auth-smoke-${{ github.sha }}
+          path: artifacts/isolated-auth-smoke/
+          retention-days: 30

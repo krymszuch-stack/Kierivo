@@ -1,6 +1,7 @@
 name: Kierivo CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -9,27 +10,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: npm
-      - name: Setup Python for Dual-Layer PDF engine
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install Python dependencies
-        run: pip install -e mastervault-cv
       - run: npm ci
-      - run: node scripts/sprawdz-limity-regul.mjs
-      - run: npm run lint
-      - run: npm test
-      - name: PDF integration test (requires Python + mvcv)
+      - run: npx playwright install --with-deps chromium
+      - name: Fast Gate — krytyczne regresje i zmienione moduły
         env:
-          RUN_PDF_INTEGRATION: '1'
-        run: npx vitest run src/server/__tests__/pdf.routes.test.ts
-      - run: npm run build
+          GATE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run gate:fast
+      - name: Zapis dowodów Fast Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-gate-${{ github.sha }}
+          path: artifacts/fast-*/
+          retention-days: 14
       - name: Produkcyjny smoke test — główna ścieżka (Azure OpenAI)
         env:
           NODE_ENV: production
