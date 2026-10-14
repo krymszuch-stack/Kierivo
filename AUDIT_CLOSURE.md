@@ -125,3 +125,17 @@ Właściciel wskazał obecne środowisko po przywróceniu go przez siebie.
 Nie przywrócono usług i nie zmieniono sekretów. Produkcyjny odbiór nadal UNKNOWN.
 Następny krok: CI canonical-v3, następnie odbiór pozostałych kryteriów diagnozy
 i źródeł dowodów; po udostępnieniu środowiska test rzeczywistych zależności.
+
+### Aktualizacja 14.10, 11:40 CEST
+
+Cały CI, w tym [Release Gate 38511678096](https://github.com/krymszuch-stack/Kierivo/actions/runs/38511678096),
+PASS dla HEAD `dbff67148d03ba3446c5cb941010d1bbdba3c3db` / merge
+`829d3af8a054afe23a2754883d4ea37c71ce0421`. Obejmuje canonical-v3 i regresję
+niezależności kompetencji od danych kontaktowych.
+
+D18: następne regresje RED ujawniły przepuszczanie doświadczenia bez pracodawcy,
+pustej edukacji i projektu bez nazwy. Rozszerzono ten sam preflight API/druk.
+Puste sekcje pozostają dozwolone; edukacja trwająca nie wymaga uzyskanego stopnia,
+projekt nie wymaga zmyślonej roli. Realny modal/API: 400, brak download/print,
+źródło bez zmian — PASS. Lokalny Vitest: 2731 PASS / 1 SKIPPED, 239 plików.
+Nowa rewizja wymaga własnego CI; nie dziedziczy powyższego PASS.

@@ -4,6 +4,7 @@ const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:4186';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROME_PATH });
 const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+page.setDefaultTimeout(15_000);
 const errors = [];
 let downloads = 0;
 page.on('pageerror', error => errors.push(error.message));
@@ -50,6 +51,33 @@ try {
   await page.getByRole('button', { name: 'Drukuj CV', exact: true }).click();
   await page.getByRole('button', { name: 'Uruchom drukowanie CV', exact: true }).click();
   assert.equal(await page.evaluate(() => window.__printCalls), 0, 'Niepełny wpis nie może ominąć preflight przez druk');
+  for (const section of ['education', 'projects']) {
+    // Jawna zmiana syntetycznego źródła pozwala sprawdzić obie ścieżki tego
+    // samego modalu, bez podstawiania odpowiedzi API ani renderera.
+    await page.evaluate(section => {
+      const vault = window.__partialVault;
+      vault.history = [];
+      vault.education = section === 'education'
+        ? [{ id: 'draft', institution: '', degree: '', fieldOfStudy: '', startDate: '', endDate: '' }] : [];
+      vault.projects = section === 'projects'
+        ? [{ id: 'draft', name: '', role: 'Autor', description: '', techStack: [] }] : [];
+      window.__partialOriginal = JSON.stringify(vault);
+    }, section);
+    await page.getByRole('button', { name: 'Uruchom drukowanie CV', exact: true }).click();
+    const message = section === 'education' ? /Niekompletny wpis edukacji/ : /Niekompletny wpis projektu/;
+    await page.getByText(message).last().waitFor();
+    assert.equal(await page.evaluate(() => window.__printCalls), 0);
+    await page.getByRole('button', { name: 'Pobierz PDF ATS / Dual-Layer', exact: true }).click();
+    const [rejected] = await Promise.all([
+      page.waitForResponse(res => new URL(res.url()).pathname === '/api/cv/export-pdf' && res.request().method() === 'POST'),
+      page.getByRole('button', { name: 'Pobierz PDF ATS Dual-Layer', exact: true }).click(),
+    ]);
+    assert.equal(rejected.status(), 400);
+    assert.match((await rejected.json()).error, message);
+    assert.equal(await page.evaluate(() => JSON.stringify(window.__partialVault) === window.__partialOriginal), true);
+    assert.equal(downloads, 0);
+    await page.getByRole('button', { name: 'Drukuj CV', exact: true }).click();
+  }
   assert.deepEqual(errors, []);
   await mkdir('docs/evidence', { recursive: true });
   await page.screenshot({ path: 'docs/evidence/pdf-incomplete-experience.png', fullPage: true });
