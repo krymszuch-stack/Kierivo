@@ -1,58 +1,38 @@
-# Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
+# Kierivo Public Pre-Beta ? odbi?r ADR-152 / ADR-125
 
-Stan roboczy 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+Stan 14.10.2026: **BLOCKED ? odbi?r trwa; brak zgody na publikacj?**.
 
-Aktualizacja 17:35 CEST: środowisko Supabase `kierivo` jest **ACTIVE_HEALTHY**.
-Odczyt `client_errors` działa: 1 grupa OPEN, 8 wystąpień błędu importu modułu,
-ostatnie 06.10; nie zamknięto bez odtworzenia/wyjaśnienia. Advisor potwierdza
-ADR-127 (ochrona ujawnionych haseł wyłączona) oraz 4 INFO o RLS bez polityk.
-Nie zmieniano ustawień, polityk, sekretów ani danych produkcyjnych.
-Strona kierivo.com została odczytana w przeglądarce, bez zalogowanej sesji;
-to nie jest odbiór uwierzytelnionego PDF ani dostępności AI.
+Ostatni kompletny odbi?r kodu: `8a8c3e7f23402443b2d307b8a5f941633a8a2324`.
+Lokalny Release Gate PASS, Vitest 2732 PASS / 1 SKIPPED, Python 46/46,
+PDF API 19/19, 27 scenariuszy przegl?darkowych i built smoke PASS.
+Raport: `artifacts/release-8a8c3e7f23402443b2d307b8a5f941633a8a2324/report.json`.
+Wszystkie sze?? workflow?w GitHub PASS; [Release Gate 38590682130](https://github.com/krymszuch-stack/Kierivo/actions/runs/38590682130),
+merge ref `96543ca0a144efefc5cc08cebd37bae1a725a521`.
+Nie oznacza to odbioru p??niejszych zmian ani produkcji.
 
-GitHub CI i pełny Release Gate **PASS** dla `ae75bda8db995c7fa18295a1c98bc7746338f610`,
-merge `a9e2c0af816d64d5662aa777489f5e76af89c18f`, run 38589383082.
-Lokalny Gate tego SHA: FAIL w testach przeglądarkowych przy drugim serwerze dev
-(konflikt transportu Vite na 24678). Naprawa wiąże WebSocket z właściwym HTTP
-serwerem aplikacji; test obok istniejącego dev PASS bez ignorowania błędów strony.
-Nowa rewizja wymaga ponownego Gate. Lokalny lint/build i Vitest 2732 PASS /
-1 SKIPPED po poprawce serwera; wszystkie dotychczasowe asercje pozostają.
+Kolejna poprawka D17: dodanie brakuj?cego Terraform do oferty z Python
+obni?a?o ?wie?o?? ze 100 do 85 mimo niezmienionych dat. Pokrycie wymaga? by?o
+ponownie wa?one w modu?ach aktualno?ci (30%) i tytu?u (25%). Te modu?y mierz?
+teraz wy??cznie w?asny sygna?; pokrycie ma osobny modu?. RED ? GREEN;
+2733 testy PASS / 1 SKIPPED, lint/TypeScript i build PASS. Rzeczywisty AtsLabView
+oraz onboarding PASS, zrzuty `docs/evidence/ats-independent-aggregation.png`
+i `ats-mandatory-skill-onboarding.png`. Ta poprawka wymaga nowego CI/Gate.
+Nie zmieniono prog?w ani oczekiwa? wcze?niejszych test?w.
 
-Najnowszy zakres poprawek: brakująca wymagana umiejętność ogranicza pozytywną
-interpretację, tak jak brak formalny. Reprodukcja: Python/AWS bez Terraform,
-oferta wymaga wszystkich trzech; wcześniej 80% i „Wysokie dopasowanie”. Teraz
-laboratorium i pełny onboarding wskazują konkretny brak, bez tej etykiety.
-Wynik liczbowy nie został sztucznie obniżony ani przeliczony przez frontend.
-Atuty opcjonalne nadal nie są brakami, a niewiadome są przechowywane osobno.
-Test RED → GREEN; Vitest 2732 PASS / 1 SKIPPED (239 plików). Browser PASS:
-laboratorium, onboarding z Terraform oraz dotychczasowa regresja SEP G1.
-Dowody: `docs/evidence/ats-independent-aggregation.png` i
-`docs/evidence/ats-mandatory-skill-onboarding.png`. Nowa rewizja wymaga własnego CI.
+Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wyst?pie? b??du
+importu modu?u, ostatnie 06.10; przyczyna nieustalona, nie zamkni?to zg?oszenia.
+ADR-127: ochrona ujawnionych hase? nadal wy??czona. Polityki w?a?cicielskie
+profiles/vaults/applications odczytano; to nie jest test izolacji dw?ch kont.
+W?a?ciciel zalogowa? konto i zezwoli? na zast?pienie CV danymi syntetycznymi.
+Konflikt lokalnej/chmurowej wersji rozwi?zano wyborem chmury; UI potwierdzi?
+zapis. Pe?ny smoke AI/PDF nadal w toku. Testowana strona publiczna nie zawiera
+jeszcze PR #142. Nie zmieniono produkcyjnych sekret?w ani uprawnie?.
 
-Ostatni potwierdzony pełny CI: HEAD `d5e7fa269bff41538a730cae29b89c933e19902a`,
-merge `bbd0f0d05bfe0143c4e8817dac47cc7d1ab3f475`, Release Gate 38553579369 PASS.
-Późniejszy `f28c4b802eff43dce47fc17b762d7e6ce47abde8`, merge
-`550f74de099a8d3c8ca5cc50cfa841b93110e05d`: Gate 38554289239 FAIL w smoke
-onboardingu (dev i built). Komunikat o braku ServiceNow wypierał informację
-o tylko jednym wymaganiu. Poprawiono UI tak, aby zachować oba ustalenia;
-stara asercja pozostała, dodano wymaganie konkretnego braku. Lokalny przejazd
-desktop/mobile 375 px PASS. Nowy CI nadal wymagany.
-
-PDF: test trzech rzeczywistych wariantów wykazał raport 1/1/3 strony przy
-faktycznych plikach 2/2/2. Pipeline wybierał wynik compact/ultra_compact, lecz
-zapisywał bajty normal oraz wcześniejszy raport pominięć; powtórnie renderował
-stanową instancję w wariancie overflow. Naprawiono wybór jednego przebiegu dla
-bajtów, semantyki, JSON-LD i raportu. RED → GREEN: teraz 1/1/2 strony zgodne
-z plikami. Python 46/46 PASS, integracja API PDF 19/19 PASS, rzeczywisty
-podgląd/API zachowuje 31 kontrolowanych faktów i wyłącznie podaną klauzulę zgody.
-Obejrzano PDF po skróceniu oraz obie strony overflow; druga strona zawiera
-tylko języki (ograniczenie składu). Zrzut: `docs/evidence/pdf-selected-render-2026-10-14.png`.
-To nie jest odbiór pełnej zgodności wizualnej podglądu HTML i PDF.
-
-Pozostałe blokery odbioru: pełne kryteria D17/D20 i ADR-143, zgodność podglądu/PDF,
-końcowy CI oraz uwierzytelniony odbiór zależności na przywróconym środowisku.
-Nie wykonano merge/deploy ani zmiany produkcyjnych sekretów. Historyczne wyniki
-poniżej odnoszą się wyłącznie do podanych SHA, nie do bieżącego checkoutu.
+Pozosta?e kryteria odbioru: D17/D20 i ADR-143, pe?na zgodno?? podgl?du/PDF,
+ko?cowy Gate oraz rzeczywiste zale?no?ci. D?ugi PDF wymaga jawnej zgody na
+skr?cenia i nie dowodzi bezstratnej zgodno?ci z podgl?dem. Nie wykonano merge
+ani deploy. ADR-152/125 pozostaj? otwarte; bie??ce dowody uzupe?niono w Linear.
+Historia poni?ej odnosi si? wy??cznie do podanych SHA.
 
 ## Zakres i punkt odniesienia
 

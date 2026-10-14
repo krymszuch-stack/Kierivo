@@ -127,6 +127,27 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
 
   // 2. Testy wielosilnikowej symulacji 10 modułów Kierivo
   describe('2. Symulator Konsensusu 10 Modułów Weryfikacji', () => {
+    it('brak dodatkowej umiejętności nie zmienia oceny tych samych dat i tytułu', () => {
+      const vault = createEmptyVault('Osoba Testowa', 'test@example.invalid');
+      vault.personalInfo.title = 'Programista Python';
+      vault.skillsMatrix.hardSkills = ['Python'];
+      vault.history = [{
+        id: 'synthetic-python-role', company: 'Firma testowa', role: 'Programista Python',
+        location: '', startDate: '2020-01', endDate: '', isCurrent: true,
+        highlights: [{ id: 'python-use', text: 'Tworzenie aplikacji w Python.',
+          action: '', target: '', tool: 'Python', metric: '', keywords: ['Python'] }],
+      }];
+      const baseline = simulateMultiEngineATS(vault, 'Wymagania: Python.', 'Programista Python');
+      const extraRequirement = simulateMultiEngineATS(vault, 'Wymagania: Python, Terraform.', 'Programista Python');
+      const score = (result: typeof baseline, id: string) => result.engines.find(engine => engine.id === id)!.score;
+
+      expect(score(extraRequirement, 'slowa_kluczowe_fleksja')).toBeLessThan(score(baseline, 'slowa_kluczowe_fleksja')!);
+      for (const id of ['swiezosc_umiejetnosci', 'zgodnosc_tytulu']) {
+        expect(score(baseline, id)).not.toBeNull();
+        expect(score(extraRequirement, id), id).toBe(score(baseline, id));
+      }
+    });
+
     it('zwraca kompletny zestaw 10 zróżnicowanych silników z uzasadnieniem, medianą i propozycjami', () => {
       const result = simulateMultiEngineATS(sampleVault, sampleJobOffer, 'Starszy Inżynier Chmurowy i DevOps');
 
