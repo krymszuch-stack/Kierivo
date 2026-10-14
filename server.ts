@@ -8,6 +8,7 @@ import path from "path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import helmet from "helmet";
 import { jobsRouter } from "./src/server/routes/jobs.routes";
 import { aiRouter } from "./src/server/routes/ai.routes";
@@ -190,12 +191,16 @@ async function startServer() {
     res.status(404).json({ success: false, error: "Nie znaleziono takiego zasobu API." });
   });
 
+  const httpServer = createServer(app);
   if (!isProduction) {
     // Loaded lazily so the production bundle never pulls Vite (and with it
     // rollup and esbuild) into the container image or the cold start.
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      // Vite uruchamia transport WebSocket także przy hmr:false. Wspólny
+      // serwer HTTP usuwa kolizję stałego portu 24678 między testem i dev.
+      // DISABLE_HMR nadal wyłącza obserwację plików przez vite.config.ts.
+      server: { middlewareMode: true, hmr: { server: httpServer } },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -220,7 +225,7 @@ async function startServer() {
   // Error middleware only catches what is registered before it.
   app.use(errorHandler);
 
-  app.listen(config.PORT, "0.0.0.0", () => {
+  httpServer.listen(config.PORT, "0.0.0.0", () => {
     console.log(`KIERIVO Engine Server running on http://localhost:${config.PORT}`);
   });
 }

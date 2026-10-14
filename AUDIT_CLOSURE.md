@@ -2,6 +2,22 @@
 
 Stan roboczy 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 
+Aktualizacja 17:35 CEST: środowisko Supabase `kierivo` jest **ACTIVE_HEALTHY**.
+Odczyt `client_errors` działa: 1 grupa OPEN, 8 wystąpień błędu importu modułu,
+ostatnie 06.10; nie zamknięto bez odtworzenia/wyjaśnienia. Advisor potwierdza
+ADR-127 (ochrona ujawnionych haseł wyłączona) oraz 4 INFO o RLS bez polityk.
+Nie zmieniano ustawień, polityk, sekretów ani danych produkcyjnych.
+Strona kierivo.com została odczytana w przeglądarce, bez zalogowanej sesji;
+to nie jest odbiór uwierzytelnionego PDF ani dostępności AI.
+
+GitHub CI i pełny Release Gate **PASS** dla `ae75bda8db995c7fa18295a1c98bc7746338f610`,
+merge `a9e2c0af816d64d5662aa777489f5e76af89c18f`, run 38589383082.
+Lokalny Gate tego SHA: FAIL w testach przeglądarkowych przy drugim serwerze dev
+(konflikt transportu Vite na 24678). Naprawa wiąże WebSocket z właściwym HTTP
+serwerem aplikacji; test obok istniejącego dev PASS bez ignorowania błędów strony.
+Nowa rewizja wymaga ponownego Gate. Lokalny lint/build i Vitest 2732 PASS /
+1 SKIPPED po poprawce serwera; wszystkie dotychczasowe asercje pozostają.
+
 Najnowszy zakres poprawek: brakująca wymagana umiejętność ogranicza pozytywną
 interpretację, tak jak brak formalny. Reprodukcja: Python/AWS bez Terraform,
 oferta wymaga wszystkich trzech; wcześniej 80% i „Wysokie dopasowanie”. Teraz
@@ -34,7 +50,7 @@ tylko języki (ograniczenie składu). Zrzut: `docs/evidence/pdf-selected-render-
 To nie jest odbiór pełnej zgodności wizualnej podglądu HTML i PDF.
 
 Pozostałe blokery odbioru: pełne kryteria D17/D20 i ADR-143, zgodność podglądu/PDF,
-końcowy CI oraz rzeczywiste zależności na środowisku przywróconym przez właściciela.
+końcowy CI oraz uwierzytelniony odbiór zależności na przywróconym środowisku.
 Nie wykonano merge/deploy ani zmiany produkcyjnych sekretów. Historyczne wyniki
 poniżej odnoszą się wyłącznie do podanych SHA, nie do bieżącego checkoutu.
 
