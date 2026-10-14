@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { cleanPastedJobOffer } from '../jobOfferCleaner';
 import { parseJobDescriptionLocal } from '../jdParser';
 
@@ -56,12 +57,12 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
 
   if (!isAvailable) return;
 
-  describe('1. kierivo_dirty_job_offers_300.md (301 stron ofert z Aplikuj.pl)', () => {
+  describe('1. kierivo_dirty_job_offers_300.md (300 fragmentów Aplikuj.pl)', () => {
     const content = readCorpusFile('kierivo_dirty_job_offers_300.md');
-    const offers = content.split(/\n(?=## Oferta \d+)/).filter((s) => s.trim());
+    const offers = content.split(/\n(?=## Oferta \d+)/).filter((s) => /^## Oferta \d+/.test(s));
 
-    it('wczytuje 301 ofert ze zrzutu Aplikuj.pl', () => {
-      expect(offers.length).toBeGreaterThanOrEqual(300);
+    it('wczytuje dokładnie 300 fragmentów ofert, bez liczenia wstępu pliku', () => {
+      expect(offers.length).toBe(300);
     });
 
     it('0% tagów HTML, 0% encji i 0% szumu portalowego na wszystkich ofertach', () => {
@@ -133,14 +134,25 @@ describe('Parser i Cleaner wklejek - test na zbiorze produkcyjnym Codex outputs'
     });
   });
 
-  describe('4. kierivo_dirty_clipboard_batch_20260930.md (300 ofert ze schowka)', () => {
+  describe('4. kierivo_dirty_clipboard_batch_20260930.md (wszystkie różne treści schowka)', () => {
     const content = readCorpusFile('kierivo_dirty_clipboard_batch_20260930.md');
-    const batch = content.split(/\n(?=## Clipboard \d+)/).filter((s) => s.trim()).slice(0, 300);
+    const fragments = content.split(/\n(?=## Clipboard \d+)/).filter((s) => /^## Clipboard \d+/.test(s));
+    // Nagłówek narzędzia zmienia numer przy ponownym kopiowaniu tej samej treści.
+    // Deduplikujemy wyłącznie do wykonania testu; bajty korpusu pozostają oryginalne.
+    const batch = [...new Map(fragments.map(raw => [
+      createHash('sha256').update(raw.replace(/^## Clipboard[^\n]*\n/, '')).digest('hex'), raw,
+    ])).values()];
 
-    it('0% HTML i 0% szumu na 300 ofertach ze schowka', () => {
+    it('obejmuje 2985 fragmentów i wszystkie 126 różnych treści, bez obcięcia do pierwszych 300', () => {
+      expect(fragments).toHaveLength(2985);
+      expect(batch).toHaveLength(126);
+    });
+
+    it('brak HTML i szumu oraz zachowana treść na wszystkich różnych wklejkach', () => {
       batch.forEach((clipRaw, idx) => {
         const cleaned = cleanPastedJobOffer(clipRaw);
         const ct = cleaned.cleanText;
+        expect(ct.trim().length, `Clip ${idx + 1} nie może zostać wyczyszczony do pustego tekstu`).toBeGreaterThan(0);
 
         // Zero tagów HTML
         expect(HTML_TAG_REGEX.test(ct), `Clip ${idx + 1} zawiera tag HTML`).toBe(false);

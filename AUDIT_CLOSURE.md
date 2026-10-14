@@ -9,14 +9,16 @@ których wymaga istniejący fallback na Linuksie. Obraz instaluje teraz
 `fonts-dejavu-core`. Wymagany CI po zbudowaniu obrazu wykonuje rzeczywisty
 eksport i ścisłą weryfikację PDF jako użytkownik node. Lokalny eksport/
 weryfikacja CLI PASS (2 strony, 37 elementów semantycznych). Docker nie jest
-dostępny lokalnie; odbiór poprawki kontenera wymaga wyniku GitHub CI.
+dostępny lokalnie; poprawkę kontenera odebrano w GitHub CI wskazanym poniżej.
 Eksport obecnej produkcji pozostaje FAIL do zatwierdzonego wdrożenia i smoke.
 
-Ostatni kompletny odbiór kodu: `8b56cea0c0b689c014df6229e034b5115dd91d6d`.
-Lokalny Release Gate PASS, Vitest 2733 PASS / 1 SKIPPED, Python 46/46,
-PDF API 19/19, 27 scenariuszy przeglądarkowych i built smoke PASS.
-Raport: `artifacts/release-8b56cea0c0b689c014df6229e034b5115dd91d6d/report.json`.
-Wszystkie sześć workflowów GitHub PASS; [Release Gate 38592989537](https://github.com/krymszuch-stack/Kierivo/actions/runs/38592989537).
+Ostatni kompletny odbiór kodu: `d1cc1e7cba6c263ba58c4e5629bbee47dda21aba`.
+Lokalny Release Gate PASS, Vitest 2736 PASS / 1 SKIPPED, Python 46/46,
+PDF API 19/19, 28 scenariuszy przeglądarkowych i built smoke PASS.
+Raport: `artifacts/release-d1cc1e7cba6c263ba58c4e5629bbee47dda21aba/report.json`.
+Wszystkie sześć workflowów GitHub PASS; [Release Gate 38636624103](https://github.com/krymszuch-stack/Kierivo/actions/runs/38636624103).
+Funkcjonalny eksport i ścisła weryfikacja PDF wewnątrz obrazu runtime PASS
+w [CI 38636624084](https://github.com/krymszuch-stack/Kierivo/actions/runs/38636624084), job 116101321304, krok 12.
 Nie oznacza to odbioru późniejszych zmian ani produkcji.
 
 Kolejna poprawka D17: dodanie brakującego Terraform do oferty z Python
@@ -35,7 +37,20 @@ ze skrótem i numerem; osobny prawdziwy dowód nadal liczy się. Parser zachowuj
 jedną szkołę z datami także przy kolejności zakres → uczelnia → stopień.
 Lokalnie 2736 PASS / 1 SKIPPED, lint/TS i build PASS. Rzeczywisty modal importu
 przez ekran różnic do MasterVault PASS; dowód `docs/evidence/cv-import-source-facts.png`.
-Dodano go jako 28. scenariusz Release Gate. Nowa rewizja wymaga własnego Gate.
+Dodano go jako 28. scenariusz Release Gate; odbiór `d1cc1e7` powyżej go obejmuje.
+
+Wcześniejsze wklejki: ponownie potwierdzono sumy wszystkich sześciu plików.
+Duży schowek zawiera 2985 fragmentów, lecz 126 różnych treści po pominięciu
+samego nagłówka kopii. Stały test bada wszystkie 126, bez dawnego limitu 300
+fragmentów; tekst nie może zniknąć do pustego wyniku. Zbiór praktyczny ma
+dokładnie 33 sekcje. Dodatkowe kontrole ofert 2/16 w pełnym potoku przygotowania
+potwierdzają wymagane C/UDT i blokadę profilu z negacją uprawnień. Wklejek nie
+zmieniono. Regresje korpusu 26/26 PASS; cały Vitest 2739 PASS / 1 SKIPPED.
+To pokrycie wybranych kontraktów, nie dowód idealnego odczytu wszystkich ofert.
+Wyniki nowych testów nie są wynikiem CI nowego commitu. Następny krok:
+potwierdzić CI rozszerzonego korpusu, następnie odebrać zgodność widoku pliku
+PDF z pobieranym artefaktem oraz sprawdzić, które pozostałe kryteria D20 są
+przyszłym rozwojem, a które są potwierdzonym błędem bieżącego produktu.
 
 Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wystąpień błędu
 importu modułu, ostatnie 06.10; przyczyna nieustalona, nie zamknięto zgłoszenia.
@@ -43,7 +58,9 @@ ADR-127: ochrona ujawnionych haseł nadal wyłączona. Polityki właścicielskie
 profiles/vaults/applications odczytano; to nie jest test izolacji dwóch kont.
 Właściciel zalogował konto i zezwolił na zastąpienie CV danymi syntetycznymi.
 Konflikt lokalnej/chmurowej wersji rozwiązano wyborem chmury; UI potwierdził
-zapis. Pełny smoke AI/PDF nadal w toku. Testowana strona publiczna nie zawiera
+zapis. AI `/api/ai/verify-cv` odpowiedział 200; bez JD UI wstrzymał dopasowanie
+i jawnie wykluczył ocenę pliku PDF. Eksport publiczny FAIL opisano wyżej.
+Testowana strona publiczna nie zawiera
 jeszcze PR #142. Nie zmieniono produkcyjnych sekretów ani uprawnień.
 
 Pozostałe kryteria odbioru: D17/D20 i ADR-143, pełna zgodność podglądu/PDF,
