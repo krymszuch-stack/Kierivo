@@ -519,7 +519,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                   <div className="mt-5 pt-4 border-t border-current/15">
                     <span className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider opacity-90 mb-2.5">
                       <Lightbulb className="h-3.5 w-3.5" />
-                      Wskazówki, jak podnieść wynik przed wysłaniem aplikacji:
+                      Co sprawdzić przed wysłaniem aplikacji:
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {statusMeta.tips.map((tip, idx) => (

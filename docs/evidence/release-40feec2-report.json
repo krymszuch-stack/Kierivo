@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 1,
+  "mode": "release",
+  "sha": "40feec2353c780314ad23178799afc872e81349c",
+  "startedAt": "2026-10-14T04:22:39.048Z",
+  "node": "v22.23.3",
+  "checks": [
+    {
+      "id": "source-identity",
+      "status": "PASS",
+      "reason": "Czysty checkout przypisany do SHA."
+    },
+    {
+      "id": "rule-limits",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "scripts/sprawdz-limity-regul.mjs"
+      ],
+      "startedAt": "2026-10-14T04:22:39.202Z",
+      "finishedAt": "2026-10-14T04:22:39.236Z",
+      "log": "rule-limits.log"
+    },
+    {
+      "id": "lint-typescript",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/opt/hostedtoolcache/node/22.23.3/x64/lib/node_modules/npm/bin/npm-cli.js",
+        "run",
+        "lint"
+      ],
+      "startedAt": "2026-10-14T04:22:39.251Z",
+      "finishedAt": "2026-10-14T04:23:07.484Z",
+      "log": "lint-typescript.log"
+    },
+    {
+      "id": "unit-integration",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/node_modules/vitest/vitest.mjs",
+        "run",
+        "--maxWorkers=4"
+      ],
+      "startedAt": "2026-10-14T04:23:07.485Z",
+      "finishedAt": "2026-10-14T04:23:53.816Z",
+      "log": "unit-integration.log"
+    },
+    {
+      "id": "pdf-integration",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/node_modules/vitest/vitest.mjs",
+        "run",
+        "src/server/__tests__/pdf.routes.test.ts"
+      ],
+      "startedAt": "2026-10-14T04:23:53.816Z",
+      "finishedAt": "2026-10-14T04:23:55.090Z",
+      "log": "pdf-integration.log"
+    },
+    {
+      "id": "python-pdf",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "mastervault-cv/tests"
+      ],
+      "startedAt": "2026-10-14T04:23:55.091Z",
+      "finishedAt": "2026-10-14T04:23:57.223Z",
+      "log": "python-pdf.log"
+    },
+    {
+      "id": "multipage-pdf",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/node_modules/tsx/dist/cli.mjs",
+        "/home/runner/work/Kierivo/Kierivo/scripts/audit-pdf-long-cv.ts"
+      ],
+      "startedAt": "2026-10-14T04:23:57.223Z",
+      "finishedAt": "2026-10-14T04:23:58.699Z",
+      "log": "multipage-pdf.log"
+    },
+    {
+      "id": "build",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/opt/hostedtoolcache/node/22.23.3/x64/lib/node_modules/npm/bin/npm-cli.js",
+        "run",
+        "build"
+      ],
+      "startedAt": "2026-10-14T04:23:58.699Z",
+      "finishedAt": "2026-10-14T04:24:06.819Z",
+      "log": "build.log"
+    },
+    {
+      "id": "client-secret-patterns",
+      "status": "PASS",
+      "reason": "Brak znanych wzorców sekretów w bundlu klienta. To nie jest pełny skan historii sekretów."
+    },
+    {
+      "id": "browser-quick-onboarding",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-quick-onboarding.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:08.429Z",
+      "finishedAt": "2026-10-14T04:24:29.664Z",
+      "log": "browser-quick-onboarding.log"
+    },
+    {
+      "id": "browser-quick-ats-required-qualification",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-quick-ats-required-qualification.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:29.665Z",
+      "finishedAt": "2026-10-14T04:24:34.325Z",
+      "log": "browser-quick-ats-required-qualification.log"
+    },
+    {
+      "id": "browser-quick-ats-limitation-reason",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-quick-ats-limitation-reason.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:34.326Z",
+      "finishedAt": "2026-10-14T04:24:38.327Z",
+      "log": "browser-quick-ats-limitation-reason.log"
+    },
+    {
+      "id": "browser-ats-unconfirmed-only",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-ats-unconfirmed-only.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:38.327Z",
+      "finishedAt": "2026-10-14T04:24:40.270Z",
+      "log": "browser-ats-unconfirmed-only.log"
+    },
+    {
+      "id": "browser-ats-score-unknown-experience",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-ats-score-unknown-experience.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:40.271Z",
+      "finishedAt": "2026-10-14T04:24:42.444Z",
+      "log": "browser-ats-score-unknown-experience.log"
+    },
+    {
+      "id": "browser-negated-requirements",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-negated-requirements.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:42.444Z",
+      "finishedAt": "2026-10-14T04:24:48.644Z",
+      "log": "browser-negated-requirements.log"
+    },
+    {
+      "id": "browser-consistency-projected-dates",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-consistency-projected-dates.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:48.644Z",
+      "finishedAt": "2026-10-14T04:24:49.572Z",
+      "log": "browser-consistency-projected-dates.log"
+    },
+    {
+      "id": "browser-consistency-negated-tags",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-consistency-negated-tags.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:49.574Z",
+      "finishedAt": "2026-10-14T04:24:51.208Z",
+      "log": "browser-consistency-negated-tags.log"
+    },
+    {
+      "id": "browser-consistency-projected-metrics",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-consistency-projected-metrics.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:51.208Z",
+      "finishedAt": "2026-10-14T04:24:52.888Z",
+      "log": "browser-consistency-projected-metrics.log"
+    },
+    {
+      "id": "browser-consistency-missing-sources",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-consistency-missing-sources.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:52.889Z",
+      "finishedAt": "2026-10-14T04:24:54.655Z",
+      "log": "browser-consistency-missing-sources.log"
+    },
+    {
+      "id": "browser-local-profile-isolation",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-local-profile-isolation.mjs"
+      ],
+      "startedAt": "2026-10-14T04:24:54.655Z",
+      "finishedAt": "2026-10-14T04:25:03.977Z",
+      "log": "browser-local-profile-isolation.log"
+    },
+    {
+      "id": "browser-local-profile-session-race",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-local-profile-session-race.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:03.978Z",
+      "finishedAt": "2026-10-14T04:25:05.963Z",
+      "log": "browser-local-profile-session-race.log"
+    },
+    {
+      "id": "browser-cloud-logout-race",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-cloud-logout-race.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:05.963Z",
+      "finishedAt": "2026-10-14T04:25:12.372Z",
+      "log": "browser-cloud-logout-race.log"
+    },
+    {
+      "id": "browser-account-delete-ui",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-account-delete-ui.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:12.373Z",
+      "finishedAt": "2026-10-14T04:25:13.820Z",
+      "log": "browser-account-delete-ui.log"
+    },
+    {
+      "id": "browser-auth-modal-operations",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-auth-modal-operations.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:13.820Z",
+      "finishedAt": "2026-10-14T04:25:18.327Z",
+      "log": "browser-auth-modal-operations.log"
+    },
+    {
+      "id": "browser-idb-stale-write",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-idb-stale-write.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:18.328Z",
+      "finishedAt": "2026-10-14T04:25:19.105Z",
+      "log": "browser-idb-stale-write.log"
+    },
+    {
+      "id": "browser-master-vault-invalid-import",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-master-vault-invalid-import.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:19.105Z",
+      "finishedAt": "2026-10-14T04:25:21.180Z",
+      "log": "browser-master-vault-invalid-import.log"
+    },
+    {
+      "id": "browser-cv-malformed-file",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-cv-malformed-file.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:21.180Z",
+      "finishedAt": "2026-10-14T04:25:23.353Z",
+      "log": "browser-cv-malformed-file.log"
+    },
+    {
+      "id": "browser-rewriter-model-error",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-rewriter-model-error.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:23.353Z",
+      "finishedAt": "2026-10-14T04:25:25.677Z",
+      "log": "browser-rewriter-model-error.log"
+    },
+    {
+      "id": "browser-summary-skills-grounded",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-summary-skills-grounded.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:25.678Z",
+      "finishedAt": "2026-10-14T04:25:27.752Z",
+      "log": "browser-summary-skills-grounded.log"
+    },
+    {
+      "id": "browser-cv-copy-parity",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-cv-copy-parity.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:27.752Z",
+      "finishedAt": "2026-10-14T04:25:33.890Z",
+      "log": "browser-cv-copy-parity.log"
+    },
+    {
+      "id": "browser-pdf-preview",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-pdf-preview.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:33.891Z",
+      "finishedAt": "2026-10-14T04:25:40.554Z",
+      "log": "browser-pdf-preview.log"
+    },
+    {
+      "id": "browser-pdf-incomplete-experience",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-pdf-incomplete-experience.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:40.555Z",
+      "finishedAt": "2026-10-14T04:25:42.045Z",
+      "log": "browser-pdf-incomplete-experience.log"
+    },
+    {
+      "id": "browser-cloud-vault-conflict",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-cloud-vault-conflict.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:43.624Z",
+      "finishedAt": "2026-10-14T04:25:47.314Z",
+      "log": "browser-cloud-vault-conflict.log"
+    },
+    {
+      "id": "browser-cloud-vault-malformed",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-cloud-vault-malformed.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:47.314Z",
+      "finishedAt": "2026-10-14T04:25:50.404Z",
+      "log": "browser-cloud-vault-malformed.log"
+    },
+    {
+      "id": "built-user-flow",
+      "status": "PASS",
+      "reason": "exit 0",
+      "command": [
+        "/opt/hostedtoolcache/node/22.23.3/x64/bin/node",
+        "/home/runner/work/Kierivo/Kierivo/scripts/e2e-quick-onboarding.mjs"
+      ],
+      "startedAt": "2026-10-14T04:25:50.984Z",
+      "finishedAt": "2026-10-14T04:26:08.988Z",
+      "log": "built-user-flow.log"
+    },
+    {
+      "id": "authenticated-ui-pdf",
+      "status": "UNKNOWN",
+      "reason": "Wykonywany w wymaganym workflow D04 na izolowanym Supabase; ten raport lokalny nie potwierdza jego wyniku.",
+      "required": false
+    },
+    {
+      "id": "production-telemetry",
+      "status": "SKIPPED",
+      "reason": "Lokalny/CI odbiór nie ma produkcyjnego źródła. Przed wdrożeniem wymagane bledy:bramka -- --required --cloud.",
+      "required": false
+    },
+    {
+      "id": "live-provider-auth-ai",
+      "status": "UNKNOWN",
+      "reason": "Deterministyczne testy nie potwierdzają dostępności produkcyjnego OAuth/AI. RLS i cykl kont sprawdza osobny wymagany job na izolowanym Supabase.",
+      "required": false
+    }
+  ],
+  "status": "PASS",
+  "finishedAt": "2026-10-14T04:26:09.008Z",
+  "releaseDecision": "REQUIRES_EXTERNAL_ACCEPTANCE"
+}

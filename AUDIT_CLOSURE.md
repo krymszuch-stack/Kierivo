@@ -102,3 +102,26 @@ lint 0 błędów / 202 wcześniejsze ostrzeżenia. Pełny D18 nadal nieodebrany.
 Następny krok: potwierdzić CI poprawionego logout i drukowania, następnie
 zweryfikować nieodebrane kryteria ADR-120/143/123/121 bez rozszerzania funkcji.
 ADR-152/125/121 mają aktualizacje Linear; nie ustawiono Done.
+
+### Aktualizacja 14.10, 06:28 CEST
+
+Release Gate **PASS** dla HEAD `d70d577c1657654fa8a97e36d5d0eeac74ab6f49`,
+testowanego merge SHA `40feec2353c780314ad23178799afc872e81349c`:
+[CI 38511006492](https://github.com/krymszuch-stack/Kierivo/actions/runs/38511006492).
+Wszystkie trzy wymagane joby oraz końcowy verdict przeszły, włącznie z Docker,
+izolowanym AUTH/RLS i download PDF. Raport: `docs/evidence/release-40feec2-report.json`.
+To nie jest odbiór produkcji ani późniejszych zmian kodu.
+
+Kolejna potwierdzona usterka ADR-143: dodanie samego kontaktu podnosiło wynik
+kompetencji 62 → 69. Regresja RED, poprawka `canonical-v3`: struktura pozostaje
+diagnostyką z wagą zero; proporcje pozostałych wag 40:25:15 zachowano
+(0.5 / 0.3125 / 0.1875). V1/V2 pozostają historyczne bez przepisywania wyników.
+Regresja GREEN; główny onboarding z/bez kontaktu pokazuje identyczne 78%,
+zrzuty `fit-contact-*-2026-10-14.png`. Lokalnie 239 plików / 2728 PASS / 1 SKIPPED,
+lint i build PASS przed ostatnią korektą nagłówka wskazówek. Nowe CI wymagane.
+Nie jest to pełna kalibracja D17 ani pełny odbiór trzech diagnoz/ledgera D20.
+
+Właściciel wskazał obecne środowisko po przywróceniu go przez siebie.
+Nie przywrócono usług i nie zmieniono sekretów. Produkcyjny odbiór nadal UNKNOWN.
+Następny krok: CI canonical-v3, następnie odbiór pozostałych kryteriów diagnozy
+i źródeł dowodów; po udostępnieniu środowiska test rzeczywistych zależności.

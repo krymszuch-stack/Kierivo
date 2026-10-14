@@ -16,6 +16,7 @@ describe('wersja reguł zapisanej oceny', () => {
   it('odróżnia bieżącą, historyczną i nieznaną wersję', () => {
     expect(getAtsRulesFreshness(CANONICAL_ATS_SCORE_PROVENANCE)).toBe('current');
     expect(getAtsRulesFreshness('canonical-v1')).toBe('stale');
+    expect(getAtsRulesFreshness('canonical-v2')).toBe('stale');
     for (const value of [undefined, null, 2, '', 'canonical-v999']) {
       expect(getAtsRulesFreshness(value)).toBe('unknown');
     }
@@ -25,6 +26,7 @@ describe('wersja reguł zapisanej oceny', () => {
     expect(getSavedAtsScoreDisplayInfo(68, context, CANONICAL_ATS_SCORE_PROVENANCE, new Date('2026-10-02T12:00:00.000Z'))).toMatchObject({ state: 'full', label: 'Wynik Kierivo: 68%' });
     expect(getSavedAtsScoreDisplayInfo(68, context, 'canonical-v1')).toMatchObject({ state: 'unknown', label: 'Wynik historyczny: 68%' });
     expect(getSavedAtsScoreDisplayInfo(68, context, 'canonical-v1').note).toContain('wcześniejszymi regułami');
+    expect(getSavedAtsScoreDisplayInfo(68, context, 'canonical-v2')).toMatchObject({ state: 'unknown', label: 'Wynik historyczny: 68%' });
   });
 
   it('nie dopisuje wersji reguł do nieoznaczonej liczby', () => {

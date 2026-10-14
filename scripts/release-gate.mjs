@@ -110,7 +110,7 @@ try {
     if (built) scanBundle(); else record('client-secret-patterns', 'SKIPPED', 'Build nie powiódł się.');
     await withServer(false, async url => {
       const names = mode === 'fast' ? ['quick-onboarding'] : [
-        'quick-onboarding', 'quick-ats-required-qualification', 'quick-ats-limitation-reason',
+        'quick-onboarding', 'fit-structure-separation', 'quick-ats-required-qualification', 'quick-ats-limitation-reason',
         'ats-unconfirmed-only', 'ats-score-unknown-experience', 'negated-requirements',
         'consistency-projected-dates', 'consistency-negated-tags', 'consistency-projected-metrics',
         'consistency-missing-sources', 'local-profile-isolation', 'local-profile-session-race',

@@ -447,7 +447,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                   <div className="mt-2.5 pt-2 border-t border-ink/5">
                     <div className="flex items-center justify-between text-[10px] text-ink-faint">
                       <span>Waga</span>
-                      <span className="font-mono font-bold text-ink-muted">{isScorable ? `${pillar.weight}%` : '—'}</span>
+                      <span className="font-mono font-bold text-ink-muted">{pillar.id === 'structure' ? 'poza wynikiem' : isScorable ? `${pillar.weight}%` : '—'}</span>
                     </div>
                     <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink/10">
                       <div

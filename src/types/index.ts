@@ -610,8 +610,8 @@ export interface CvExportEvent {
  */
 // Zmieniamy wersję przy zmianie reguł punktacji lub ekstrakcji wpływającej na wynik.
 // Migracja danych nie jest ponowną analizą i nie może podnosić tego znacznika.
-export const CANONICAL_ATS_SCORE_PROVENANCE = 'canonical-v2' as const;
-export const ATS_SCORE_PROVENANCES = ['canonical-v1', CANONICAL_ATS_SCORE_PROVENANCE] as const;
+export const CANONICAL_ATS_SCORE_PROVENANCE = 'canonical-v3' as const;
+export const ATS_SCORE_PROVENANCES = ['canonical-v1', 'canonical-v2', CANONICAL_ATS_SCORE_PROVENANCE] as const;
 export type AtsScoreProvenance = (typeof ATS_SCORE_PROVENANCES)[number];
 
 /** Zakres danych użyty przy zapisie wyniku; bez niego migawka nie może udawać pełnej oceny. */
