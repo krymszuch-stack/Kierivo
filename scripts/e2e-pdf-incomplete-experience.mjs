@@ -31,6 +31,8 @@ try {
     vault.history = [{ id: 'partial', company: 'PartWork', role: '', location: '', startDate: '', endDate: '', isCurrent: false, highlights: [] }];
     window.__partialVault = vault;
     window.__partialOriginal = JSON.stringify(vault);
+    window.__printCalls = 0;
+    window.print = () => { window.__printCalls++; };
     const e = React.createElement ?? React.default.createElement;
     document.body.innerHTML = '<main id="pdf-preflight"></main>';
     (dom.createRoot ?? dom.default.createRoot)(document.getElementById('pdf-preflight')).render(e('div', null,
@@ -45,6 +47,9 @@ try {
   await page.getByText(/Niekompletny wpis doświadczenia nr 1/).waitFor();
   assert.equal(await page.evaluate(() => JSON.stringify(window.__partialVault) === window.__partialOriginal), true);
   assert.equal(downloads, 0);
+  await page.getByRole('button', { name: 'Drukuj CV', exact: true }).click();
+  await page.getByRole('button', { name: 'Uruchom drukowanie CV', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.__printCalls), 0, 'Niepełny wpis nie może ominąć preflight przez druk');
   assert.deepEqual(errors, []);
   await mkdir('docs/evidence', { recursive: true });
   await page.screenshot({ path: 'docs/evidence/pdf-incomplete-experience.png', fullPage: true });

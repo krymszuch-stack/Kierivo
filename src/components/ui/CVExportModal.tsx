@@ -1,4 +1,5 @@
 import { cvVerificationPresentation } from '../../lib/cvVerificationPresentation';
+import { getCvExportCompletenessError } from '../../lib/cvExportPreflight';
 import React, { useState, useEffect } from 'react';
 import {
   X,
@@ -229,6 +230,11 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
    */
   const handleExecuteExport = async () => {
     if (selectedExportFormat === 'print') {
+      const completenessError = getCvExportCompletenessError(vault);
+      if (completenessError) {
+        showToast('Nieprawidłowe dane CV', { message: completenessError, variant: 'error' });
+        return;
+      }
       onClose();
       if (onPrint) {
         onPrint();

@@ -93,6 +93,12 @@ ani asercji ochrony danych. Lokalnie 3/3 powtórzenia PASS; nowy CI wymagany.
 Produkcyjny odczyt zgłoszeń zakończył się timeoutem; advisors zwrócił pustą
 listę przy nieaktywnym projekcie, co nie potwierdza konfiguracji produkcyjnej.
 
-Następny krok: potwierdzić CI poprawionego logout, następnie
+14.10 D18: odtworzono obejście preflight przez opcję „Drukuj CV” w modalu
+(RED: `window.print` wywołane dla PartWork bez roli/dat). Wspólna walidacja
+`cvExportPreflight` zabezpiecza teraz API PDF i druk; syntetyczny test realnego
+modalu/API GREEN, bez modyfikacji faktów. Vitest 239 plików, 2727 PASS / 1 SKIPPED;
+lint 0 błędów / 202 wcześniejsze ostrzeżenia. Pełny D18 nadal nieodebrany.
+
+Następny krok: potwierdzić CI poprawionego logout i drukowania, następnie
 zweryfikować nieodebrane kryteria ADR-120/143/123/121 bez rozszerzania funkcji.
 ADR-152/125/121 mają aktualizacje Linear; nie ustawiono Done.
