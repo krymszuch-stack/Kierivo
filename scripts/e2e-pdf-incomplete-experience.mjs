@@ -41,7 +41,7 @@ try {
   });
   const [response] = await Promise.all([
     page.waitForResponse(res => new URL(res.url()).pathname === '/api/cv/export-pdf' && res.request().method() === 'POST'),
-    page.getByRole('button', { name: 'Pobierz PDF ATS Dual-Layer', exact: true }).click(),
+    page.getByRole('button', { name: 'Przygotuj podgląd PDF ATS Dual-Layer', exact: true }).click(),
   ]);
   assert.equal(response.status(), 400);
   await page.getByText('Nieprawidłowe dane CV', { exact: true }).waitFor();
@@ -70,7 +70,7 @@ try {
     await page.getByRole('button', { name: 'Pobierz PDF ATS / Dual-Layer', exact: true }).click();
     const [rejected] = await Promise.all([
       page.waitForResponse(res => new URL(res.url()).pathname === '/api/cv/export-pdf' && res.request().method() === 'POST'),
-      page.getByRole('button', { name: 'Pobierz PDF ATS Dual-Layer', exact: true }).click(),
+      page.getByRole('button', { name: 'Przygotuj podgląd PDF ATS Dual-Layer', exact: true }).click(),
     ]);
     assert.equal(rejected.status(), 400);
     assert.match((await rejected.json()).error, message);

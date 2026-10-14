@@ -35,10 +35,17 @@ try {
   assert.ok(!preview.includes('Wyrażam zgodę'));
   await page.screenshot({ path: `${output}/preview.png`, fullPage: true });
   await dialog.getByRole('button', { name: 'Otwórz menu eksportu CV', exact: true }).click();
-  const button = page.getByRole('button', { name: 'Pobierz PDF ATS Dual-Layer', exact: true });
+  const button = page.getByRole('button', { name: 'Przygotuj podgląd PDF ATS Dual-Layer', exact: true });
   await button.waitFor();
   assert.equal(await button.isEnabled(), true, 'Zalogowane konto nie może pobrać PDF.');
-  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), button.click()]);
+  await button.click();
+  const pdfPreview = page.getByTestId('prepared-pdf-preview');
+  await pdfPreview.getByRole('status').filter({ hasText: /Podgląd PDF gotowy/ }).waitFor({ timeout: 60_000 });
+  await page.screenshot({ path: `${output}/pdf-preview.png`, fullPage: true });
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60_000 }),
+    page.getByRole('button', { name: 'Pobierz pokazany plik PDF', exact: true }).click(),
+  ]);
   await download.saveAs(`${output}/download.pdf`);
   const task = getDocument({ data: new Uint8Array(await readFile(`${output}/download.pdf`)), useSystemFonts: true });
   const pdf = await task.promise;

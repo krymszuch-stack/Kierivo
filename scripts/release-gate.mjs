@@ -117,7 +117,7 @@ try {
         'cloud-logout-race', 'account-delete-ui', 'auth-modal-operations', 'idb-stale-write',
         'master-vault-invalid-import',
         'cv-import-source-facts',
-        'cv-malformed-file', 'rewriter-model-error', 'summary-skills-grounded', 'cv-copy-parity', 'pdf-preview', 'pdf-incomplete-experience',
+        'cv-malformed-file', 'rewriter-model-error', 'summary-skills-grounded', 'cv-copy-parity', 'pdf-preview', 'pdf-artifact-preview', 'pdf-incomplete-experience',
       ];
       for (const name of names) await browserTest(name, url);
     });

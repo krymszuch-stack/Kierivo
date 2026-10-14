@@ -1,6 +1,6 @@
 import { cvVerificationPresentation } from '../../lib/cvVerificationPresentation';
 import { getCvExportCompletenessError } from '../../lib/cvExportPreflight';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Download,
@@ -34,6 +34,7 @@ import { showToast } from '../../store/useToastStore';
 import { AtsValidationPanel } from '../../features/ats/AtsValidationPanel';
 import { useOptionalAuth } from '../../context/AuthContext';
 import type { AtsPdfValidationReport } from '../../lib/atsPdfValidator';
+import { PreparedPdfPreview } from './PreparedPdfPreview';
 
 /**
  * Formatowanie komunikatów błędów eksportu PDF z uwzględnieniem kodu HTTP i requestId.
@@ -137,9 +138,18 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
   const [atsValidation, setAtsValidation] = useState<AtsPdfValidationReport | null>(null);
   const [contentWarnings, setContentWarnings] = useState<string[]>([]);
   const [pendingPdf, setPendingPdf] = useState<SemanticPdfExportResult | null>(null);
+  const [pdfPreviewReady, setPdfPreviewReady] = useState(false);
+  const [artifactContext, setArtifactContext] = useState<{
+    vault: MasterVault; resume: TailoredResume | null | undefined; ownerId: string | undefined;
+  } | null>(null);
+  const artifactIsCurrent = artifactContext?.vault === vault
+    && artifactContext.resume === tailoredResume && artifactContext.ownerId === auth?.session?.user?.id;
+  const exportGeneration = useRef(0);
 
-  // Synchronizacja trybu po otwarciu
+  // Gotowy plik i opóźniona odpowiedź tracą ważność po zmianie źródła,
+  // właściciela sesji albo ponownym otwarciu modalu.
   useEffect(() => {
+    const generation = ++exportGeneration.current;
     if (isOpen) {
       setCurrentMode(initialMode);
       setSelectedTheme(initialTheme);
@@ -149,8 +159,12 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
       setAtsValidation(null);
       setContentWarnings([]);
       setPendingPdf(null);
+      setArtifactContext(null);
+      setPdfPreviewReady(false);
+      setIsExporting(false);
     }
-  }, [isOpen, initialMode, initialTheme, initialLayout, initialTargetPages, initialAvatar]);
+    return () => { exportGeneration.current = generation + 1; };
+  }, [isOpen, initialMode, initialTheme, initialLayout, initialTargetPages, initialAvatar, vault, tailoredResume, auth?.session?.user?.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -247,7 +261,9 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
     if (!canExportPdf) return;
 
     setIsExporting(true);
+    setPdfPreviewReady(false);
     setAtsValidation(null);
+    const generation = exportGeneration.current;
     try {
       const result = await prepareSemanticPdf({
         vault,
@@ -258,18 +274,22 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
         avatar: selectedAvatar,
         pdfType: selectedExportFormat,
       });
+      if (generation !== exportGeneration.current) return;
+      setArtifactContext({ vault, resume: tailoredResume, ownerId: auth?.session?.user?.id });
       setContentWarnings(result.contentWarnings);
       setAtsValidation(result.atsValidation);
-      if (result.contentWarnings.length > 0) setPendingPdf(result);
-      else completePdfDownload(result);
+      // Podgląd i pobranie korzystają z jednego gotowego artefaktu. Nie
+      // generujemy drugiego dokumentu po zaakceptowaniu jego wyglądu.
+      setPendingPdf(result);
     } catch (err) {
+      if (generation !== exportGeneration.current) return;
       const { title, message } = formatPdfExportErrorMessage(err);
       showToast(title, {
         message,
         variant: 'error',
       });
     } finally {
-      setIsExporting(false);
+      if (generation === exportGeneration.current) setIsExporting(false);
     }
   };
 
@@ -278,7 +298,7 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
   const modeConfig = {
     export: {
       title: 'Eksportuj CV',
-      desc: 'Wybierz format eksportu dokumentu dopasowany do Twojego celu.',
+      desc: 'Przygotuj plik, sprawdź podgląd jego stron i pobierz pokazany dokument.',
       icon: Download,
     },
     theme: {
@@ -387,9 +407,10 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
             <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
             <span className="ml-2 text-sm text-muted">Ładowanie motywów z silnika...</span>
           </div>
-        ) : atsValidation || contentWarnings.length > 0 ? (
+        ) : artifactIsCurrent && (pendingPdf || atsValidation || contentWarnings.length > 0) ? (
           /* Wyniki walidacji ATS po eksporcie */
           <div className="space-y-4">
+            {pendingPdf && <PreparedPdfPreview blob={pendingPdf.blob} onReady={setPdfPreviewReady} />}
             {contentWarnings.length > 0 && (
               <div role="alert" className="rounded-xl border border-warning/40 bg-warning-soft/30 p-4">
                 <div className="mb-2 flex items-center gap-2 text-warning-fg">
@@ -424,9 +445,10 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                   variant="primary"
                   size="sm"
                   onClick={() => completePdfDownload(pendingPdf)}
-                  aria-label="Pobierz CV po potwierdzeniu skrócenia treści"
+                  disabled={!pdfPreviewReady || !canExportPdf}
+                  aria-label={contentWarnings.length > 0 ? 'Pobierz CV po potwierdzeniu skrócenia treści' : 'Pobierz pokazany plik PDF'}
                 >
-                  Pobierz mimo pominięć
+                  {contentWarnings.length > 0 ? 'Pobierz mimo pominięć' : 'Pobierz pokazany PDF'}
                 </Button>
               </div>
             )}
@@ -564,8 +586,8 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                     selectedExportFormat === 'print'
                       ? 'Uruchom drukowanie CV'
                       : selectedExportFormat === 'dual-layer'
-                        ? 'Pobierz PDF ATS Dual-Layer'
-                        : 'Pobierz standardowy PDF'
+                        ? 'Przygotuj podgląd PDF ATS Dual-Layer'
+                        : 'Przygotuj podgląd standardowego PDF'
                   }
                 >
                   {isExporting
@@ -573,8 +595,8 @@ export const CVExportModal: React.FC<CVExportModalProps> = ({
                     : selectedExportFormat === 'print'
                       ? 'Drukuj CV'
                       : selectedExportFormat === 'dual-layer'
-                        ? 'Pobierz PDF ATS'
-                        : 'Pobierz standardowy PDF'}
+                        ? 'Przygotuj podgląd PDF ATS'
+                        : 'Przygotuj podgląd PDF'}
                 </Button>
               </div>
             </div>
