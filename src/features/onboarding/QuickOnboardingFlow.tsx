@@ -92,10 +92,13 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[], limitedEv
   const hasFormalIssue = topProblems.some((p) => p.category === 'formal');
 
   if (blockingRequirements.length > 0) {
+    const limitedSampleNote = requirementCount > 0 && requirementCount < 3
+      ? ` Wynik wstępny — ograniczone dane. Rozpoznano ${requirementCount} ${requirementCount === 1 ? 'wymaganie' : 'wymagania'}. Sprawdź pełną treść oferty.`
+      : '';
     return {
       statusLabel: 'Wymóg obowiązkowy niepotwierdzony',
       headline: 'Sprawdź brakujące wymagania przed oceną aplikacji',
-      subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.`,
+      subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.${limitedSampleNote}`,
       cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
       badgeClass: 'bg-warning-soft text-warning-fg',
       icon: AlertTriangle,

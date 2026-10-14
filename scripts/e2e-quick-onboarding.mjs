@@ -184,6 +184,8 @@ async function sprawdzOgraniczoneDane(page) {
   const body = await page.locator('body').innerText();
   check('mała próbka wymagań dostaje etykietę wstępną',
     body.includes('Wynik wstępny — ograniczone dane') && /Rozpoznano 1 wymaganie/.test(body), body.slice(-900));
+  check('mała próbka nie ukrywa brakującej obowiązkowej umiejętności',
+    body.includes('Wymóg obowiązkowy niepotwierdzony') && /Profil nie potwierdza: servicenow/i.test(body));
   await page.screenshot({ path: 'docs/evidence/quick-onboarding-limited-evidence-2026-10-01.png', fullPage: true });
 }
 
