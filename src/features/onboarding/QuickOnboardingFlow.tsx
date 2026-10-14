@@ -94,14 +94,14 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[], limitedEv
   if (blockingRequirements.length > 0) {
     return {
       statusLabel: 'Wymóg obowiązkowy niepotwierdzony',
-      headline: 'Sprawdź wymagane uprawnienie przed oceną aplikacji',
+      headline: 'Sprawdź brakujące wymagania przed oceną aplikacji',
       subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.`,
       cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
       badgeClass: 'bg-warning-soft text-warning-fg',
       icon: AlertTriangle,
       tips: [{
-        title: 'Sprawdź uprawnienie i treść oferty',
-        desc: 'Dodaj je do profilu tylko wtedy, gdy faktycznie je posiadasz. W przeciwnym razie traktuj je jako brak blokujący.',
+        title: 'Sprawdź dowody i treść oferty',
+        desc: 'Dodaj potwierdzenie do profilu tylko wtedy, gdy faktycznie spełniasz wymóg. Sam wynik liczbowy nie usuwa wykazanego braku.',
       }],
     };
   }

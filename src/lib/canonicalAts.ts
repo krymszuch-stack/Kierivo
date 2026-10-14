@@ -102,11 +102,14 @@ export interface CanonicalAtsScore extends AtsCalculationTime {
   reason: string;
 }
 
-/** Jedno źródło prawdy dla formalnych braków, które oferta oznaczyła jako blokujące. */
+/** Rozpoznane braki wymagań ograniczają interpretację niezależnie od średniej.
+ * Kanon wyklucza atuty opcjonalne i przechowuje niewiadome osobno.
+ * Nazwa historyczna: blokuje pełną etykietę dopasowania, nie aplikowanie. */
 export function getUnmetBlockingRequirements(result?: CanonicalAtsScore): string[] {
-  return result?.formalFindings
+  if (!result) return [];
+  return [...new Set([...(result.missingRequirements ?? []), ...result.formalFindings
     .filter((finding) => finding.severity === 'knockout' && (finding.status ?? (finding.satisfied ? 'satisfied' : 'unsatisfied')) === 'unsatisfied')
-    .map((finding) => finding.label) ?? [];
+      .map((finding) => finding.label)])];
 }
 
 /** Wymogi wymagające danych, których profil obecnie nie przechowuje. */

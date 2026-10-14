@@ -1,6 +1,27 @@
 # Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
 
-Stan roboczy 13.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+Stan roboczy 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+
+Najnowszy zakres poprawek: brakująca wymagana umiejętność ogranicza pozytywną
+interpretację, tak jak brak formalny. Reprodukcja: Python/AWS bez Terraform,
+oferta wymaga wszystkich trzech; wcześniej 80% i „Wysokie dopasowanie”. Teraz
+laboratorium i pełny onboarding wskazują konkretny brak, bez tej etykiety.
+Wynik liczbowy nie został sztucznie obniżony ani przeliczony przez frontend.
+Atuty opcjonalne nadal nie są brakami, a niewiadome są przechowywane osobno.
+Test RED → GREEN; Vitest 2732 PASS / 1 SKIPPED (239 plików). Browser PASS:
+laboratorium, onboarding z Terraform oraz dotychczasowa regresja SEP G1.
+Dowody: `docs/evidence/ats-independent-aggregation.png` i
+`docs/evidence/ats-mandatory-skill-onboarding.png`. Nowa rewizja wymaga własnego CI.
+
+Ostatni potwierdzony pełny CI: HEAD `31b02d95440ce85c0994163c3ddf0b1ec50cd68d`,
+merge `83a1dbd01e84e4978098680df5d681950d6e5b5f`, Release Gate 38544174600 PASS.
+Późniejszy D17 `d5e7fa269bff41538a730cae29b89c933e19902a` uruchomił Gate 38553579369;
+stan w trakcie ostatniego sprawdzenia: IN_PROGRESS (nie PASS).
+
+Pozostałe blokery odbioru: pełne kryteria D17/D20 i ADR-143, zgodność podglądu/PDF,
+końcowy CI oraz rzeczywiste zależności na środowisku przywróconym przez właściciela.
+Nie wykonano merge/deploy ani zmiany produkcyjnych sekretów. Historyczne wyniki
+poniżej odnoszą się wyłącznie do podanych SHA, nie do bieżącego checkoutu.
 
 ## Zakres i punkt odniesienia
 
@@ -30,7 +51,7 @@ S0/S1 blokują; S2/S3 wymagają udokumentowanej akceptacji ryzyka.
 
 ## Aktualnie potwierdzone wyniki
 
-### Najnowszy odbiór — 13.10.2026, 23:06 CEST
+### Historyczny odbiór — 13.10.2026, 23:06 CEST
 
 **Decyzja: BLOCKED.** PR: https://github.com/krymszuch-stack/Kierivo/pull/142.
 Nie wykonano merge ani deploy. `main` ponownie pobrano po wznowieniu: nadal

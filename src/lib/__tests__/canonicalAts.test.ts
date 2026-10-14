@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scoreCanonicalAts, recomputeCanonicalTotal, CANONICAL_WEIGHTS, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, hasSufficientCvContent, hasCanonicalAtsScore } from '../canonicalAts';
+import { scoreCanonicalAts, recomputeCanonicalTotal, CANONICAL_WEIGHTS, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, hasSufficientCvContent, hasCanonicalAtsScore, getUnmetBlockingRequirements } from '../canonicalAts';
 import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
 import { extractDynamicJdPhrases } from '../atsSimulator';
 import { createEmptyVault } from '../sampleVault';
@@ -31,6 +31,15 @@ function hist(id: string, text: string, start = '2020-01', end = '2024-01') {
 }
 
 const JD = 'We need Python developer. Requirements: Python, AWS, Docker.';
+
+it('brak obowiązkowej umiejętności ogranicza interpretację także przy wysokiej średniej', () => {
+  const candidate = vaultWith({ hard: ['Python', 'AWS'], history: [hist('python', 'Rozwijałem aplikacje Python i wdrażałem usługi AWS.')] });
+  const required = scoreCanonicalAts(candidate, 'Wymagane: Python, AWS, Terraform. Minimum 2 lata doświadczenia.');
+  expect(required.missingRequirements).toContain('terraform');
+  expect(getUnmetBlockingRequirements(required)).toContain('terraform');
+  const optional = scoreCanonicalAts(candidate, 'Wymagane: Python, AWS. Mile widziane: Terraform.');
+  expect(getUnmetBlockingRequirements(optional)).not.toContain('terraform');
+});
 
 describe('ekstrakcja wymagań z nagłówkiem oferty', () => {
   it('nie zamienia stanowiska i nazwy firmy w wymagane umiejętności', () => {
