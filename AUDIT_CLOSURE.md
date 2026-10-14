@@ -82,6 +82,17 @@ Supabase i nie zmieniono sekretów ani danych produkcyjnych.
 
 ## Checkpoint kontynuacji
 
-Następny krok: potwierdzić CI poprawionego recovery i preflight UI, następnie
+14.10: CI dla HEAD `152dbd6d0f62441f96cbb4f61f32df0fcb68fdca`, merge SHA
+`9eebd6c9921a501ce5518e5dab09b841fec06e1e`: Fast Gate, D04/D05/D09 PASS.
+Release Gate [38467971605](https://github.com/krymszuch-stack/Kierivo/actions/runs/38467971605)
+FAIL tylko w `browser-cloud-logout-race`; recovery i preflight PDF PASS.
+Przyczyna: test sprawdzał DOM po zakończeniu Promise, przed renderem React.
+Log błędu potwierdza już konto B i odmowę wymazania nowszej sesji. Test teraz
+czeka na wyrenderowany wynik operacji; nie zmienia kolejności zdarzeń sesji
+ani asercji ochrony danych. Lokalnie 3/3 powtórzenia PASS; nowy CI wymagany.
+Produkcyjny odczyt zgłoszeń zakończył się timeoutem; advisors zwrócił pustą
+listę przy nieaktywnym projekcie, co nie potwierdza konfiguracji produkcyjnej.
+
+Następny krok: potwierdzić CI poprawionego logout, następnie
 zweryfikować nieodebrane kryteria ADR-120/143/123/121 bez rozszerzania funkcji.
 ADR-152/125/121 mają aktualizacje Linear; nie ustawiono Done.
