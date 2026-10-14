@@ -2,12 +2,17 @@
 
 Stan 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 
-Ostatni kompletny odbiór kodu: `8a8c3e7f23402443b2d307b8a5f941633a8a2324`.
-Lokalny Release Gate PASS, Vitest 2732 PASS / 1 SKIPPED, Python 46/46,
+Potwierdzony S1 na stronie publicznej po rzeczywistym logowaniu: eksport
+`POST /api/cv/export-pdf` zwraca HTTP 500. Renderer zgłasza brak Georgia,
+Georgia-Bold i SegoeUI/Bold/Semibold. Obraz runtime nie instaluje fontów DejaVu,
+których wymaga istniejący fallback na Linuksie. Poprawka kontenera w toku;
+nie uznano eksportu produkcyjnego za PASS.
+
+Ostatni kompletny odbiór kodu: `8b56cea0c0b689c014df6229e034b5115dd91d6d`.
+Lokalny Release Gate PASS, Vitest 2733 PASS / 1 SKIPPED, Python 46/46,
 PDF API 19/19, 27 scenariuszy przeglądarkowych i built smoke PASS.
-Raport: `artifacts/release-8a8c3e7f23402443b2d307b8a5f941633a8a2324/report.json`.
-Wszystkie sześć workflowów GitHub PASS; [Release Gate 38590682130](https://github.com/krymszuch-stack/Kierivo/actions/runs/38590682130),
-merge ref `96543ca0a144efefc5cc08cebd37bae1a725a521`.
+Raport: `artifacts/release-8b56cea0c0b689c014df6229e034b5115dd91d6d/report.json`.
+Wszystkie sześć workflowów GitHub PASS; [Release Gate 38592989537](https://github.com/krymszuch-stack/Kierivo/actions/runs/38592989537).
 Nie oznacza to odbioru późniejszych zmian ani produkcji.
 
 Kolejna poprawka D17: dodanie brakującego Terraform do oferty z Python
@@ -16,8 +21,17 @@ ponownie ważone w modułach aktualności (30%) i tytułu (25%). Te moduły mier
 teraz wyłącznie własny sygnał; pokrycie ma osobny moduł. RED → GREEN;
 2733 testy PASS / 1 SKIPPED, lint/TypeScript i build PASS. Rzeczywisty AtsLabView
 oraz onboarding PASS, zrzuty `docs/evidence/ats-independent-aggregation.png`
-i `ats-mandatory-skill-onboarding.png`. Ta poprawka wymaga nowego CI/Gate.
+i `ats-mandatory-skill-onboarding.png`. CI/Gate powyżej obejmuje tę poprawkę.
 Nie zmieniono progów ani oczekiwań wcześniejszych testów.
+
+Smoke działającej strony ujawnił dwa błędy importu tekstu: z „ADR-152”
+powstawała umiejętność ADR, a daty po nazwie uczelni i stopniu tworzyły drugą,
+pustą edukację. Reprodukcje RED → GREEN. Wspólny matcher pomija identyfikator
+ze skrótem i numerem; osobny prawdziwy dowód nadal liczy się. Parser zachowuje
+jedną szkołę z datami także przy kolejności zakres → uczelnia → stopień.
+Lokalnie 2736 PASS / 1 SKIPPED, lint/TS i build PASS. Rzeczywisty modal importu
+przez ekran różnic do MasterVault PASS; dowód `docs/evidence/cv-import-source-facts.png`.
+Dodano go jako 28. scenariusz Release Gate. Nowa rewizja wymaga własnego Gate.
 
 Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wystąpień błędu
 importu modułu, ostatnie 06.10; przyczyna nieustalona, nie zamknięto zgłoszenia.

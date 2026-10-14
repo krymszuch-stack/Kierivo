@@ -4,6 +4,32 @@ import { mergeImportedVault } from '../vaultImportMerge';
 import { MasterVault } from '../../types';
 import { DocumentTextLimitError, MAX_DOCUMENT_TEXT_CHARS, normalizeDocumentText } from '../textNormalization';
 
+describe('regresje syntetycznego smoke ADR-152', () => {
+  it('przypisuje daty po nazwie uczelni i stopniu do jednej edukacji', () => {
+    const result = parseTextToMasterVault([
+      'Anna Syntetyczna', 'Programistka Python', 'synthetic@example.invalid',
+      'Edukacja', 'Politechnika Testowa', 'Inżynier, Informatyka', '2015 – 2019',
+    ].join('\n'));
+    expect(result.education).toHaveLength(1);
+    expect(result.education[0]).toMatchObject({
+      institution: 'Politechnika Testowa', degree: 'Inżynier', fieldOfStudy: 'Informatyka',
+      startDate: '2015', endDate: '2019',
+    });
+  });
+
+  it('zachowuje dwie szkoły z zakresami dat umieszczonymi przed nazwami', () => {
+    const result = parseTextToMasterVault([
+      'Anna Syntetyczna', 'Edukacja', '2015 – 2019', 'Politechnika Testowa',
+      'Inżynier, Informatyka', '2020 – 2022', 'Uniwersytet Testowy', 'Magister, Informatyka',
+    ].join('\n'));
+    expect(result.education).toHaveLength(2);
+    expect(result.education.map(({ institution, startDate, endDate }) => ({ institution, startDate, endDate }))).toEqual([
+      { institution: 'Politechnika Testowa', startDate: '2015', endDate: '2019' },
+      { institution: 'Uniwersytet Testowy', startDate: '2020', endDate: '2022' },
+    ]);
+  });
+});
+
 function createMockVault(fullName = 'Użytkownik Bazowy'): MasterVault {
   return {
     version: '1.0.0',

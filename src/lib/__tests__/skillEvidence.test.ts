@@ -2,6 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { hasPositiveSkillEvidence, expandWithAliases } from '../skillEvidence';
 
 describe('skillEvidence — kanoniczny matcher dowodów', () => {
+  it('identyfikator zgłoszenia nie potwierdza kompetencji o tym samym skrócie', () => {
+    expect(hasPositiveSkillEvidence('Profil do odbioru Kierivo ADR-152.', 'ADR')).toBe(false);
+    expect(hasPositiveSkillEvidence('Zamknąłem zgłoszenie SQL-123.', 'SQL')).toBe(false);
+    expect(hasPositiveSkillEvidence('Mam uprawnienia ADR do przewozu towarów niebezpiecznych.', 'ADR')).toBe(true);
+    expect(hasPositiveSkillEvidence('Używam SQL. Zgłoszenie SQL-123 zamknięte.', 'SQL')).toBe(true);
+  });
+
   it('Java != JavaScript w obie strony', () => {
     expect(hasPositiveSkillEvidence('JavaScript React developer', 'java')).toBe(false);
     expect(hasPositiveSkillEvidence('Java Spring developer', 'javascript')).toBe(false);

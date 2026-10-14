@@ -349,6 +349,9 @@ function isTainted(normalizedHaystack: string, matchIndex: number, phrase?: stri
     const length = match?.index === 0 ? match[0].length : tail.match(/^[\p{L}\p{N}#+.]+/u)?.[0].length;
     if (length) {
       const suffix = tail.slice(length);
+      // Identyfikator „ADR-152” lub „SQL-123” nie jest samodzielną deklaracją
+      // kompetencji. Osobne prawdziwe wystąpienie w tej samej treści nadal liczy się.
+      if (/^[a-z]{2,8}$/u.test(stripDiacriticsLower(phrase)) && /^[-–]\d/u.test(suffix)) return true;
       if (POSTFIXED_TAINT_RE.test(suffix)) return true;
       if (OTHER_ACTOR_SUFFIX_RE.test(suffix)) return true;
     }
