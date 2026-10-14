@@ -68,3 +68,12 @@ jobs:
         run: |
           ! grep -rE "service_role|sk_live_|sk_test_|SUPABASE_SERVICE_ROLE|AZURE_OPENAI" dist/client/
       - run: docker build -t kierivo-api:ci .
+      # Testy na runnerze mogą korzystać z fontów hosta. Sprawdzamy sam obraz
+      # runtime jako użytkownik node, aby brak fontów nie wrócił dopiero na Azure.
+      - name: PDF z produkcyjnego obrazu — fonty i rzeczywisty dokument
+        run: |
+          docker run --rm --entrypoint sh kierivo-api:ci -c '
+            cd /app/mastervault-cv &&
+            python -m mvcv export sample/mastervault.json -o /tmp/kierivo-runtime.pdf --layout single --theme parchment --avatar none --target-pages 2 &&
+            python -m mvcv verify /tmp/kierivo-runtime.pdf
+          '

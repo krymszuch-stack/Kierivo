@@ -67,10 +67,13 @@ COPY --from=build /app/dist ./dist
 # wymusza `query_only = ON` i `fileMustExist`.
 COPY --from=build /app/labs/semantic-work-graph/data ./labs/semantic-work-graph/data
 
+# DejaVu zasila istniejący fallback Segoe/Georgia na Linuksie. Bez fontów
+# obraz budował się poprawnie, ale każdy rzeczywisty eksport kończył się 500.
 # Instalacja środowiska Python oraz zależności silnika Dual-Layer Semantic PDF (mvcv)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
+    fonts-dejavu-core \
     && ln -s /usr/bin/python3 /usr/bin/python \
     && pip install --no-cache-dir --break-system-packages reportlab pikepdf pdfminer.six pillow \
     && rm -rf /var/lib/apt/lists/*

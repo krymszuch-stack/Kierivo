@@ -5,8 +5,12 @@ Stan 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 Potwierdzony S1 na stronie publicznej po rzeczywistym logowaniu: eksport
 `POST /api/cv/export-pdf` zwraca HTTP 500. Renderer zgłasza brak Georgia,
 Georgia-Bold i SegoeUI/Bold/Semibold. Obraz runtime nie instaluje fontów DejaVu,
-których wymaga istniejący fallback na Linuksie. Poprawka kontenera w toku;
-nie uznano eksportu produkcyjnego za PASS.
+których wymaga istniejący fallback na Linuksie. Obraz instaluje teraz
+`fonts-dejavu-core`. Wymagany CI po zbudowaniu obrazu wykonuje rzeczywisty
+eksport i ścisłą weryfikację PDF jako użytkownik node. Lokalny eksport/
+weryfikacja CLI PASS (2 strony, 37 elementów semantycznych). Docker nie jest
+dostępny lokalnie; odbiór poprawki kontenera wymaga wyniku GitHub CI.
+Eksport obecnej produkcji pozostaje FAIL do zatwierdzonego wdrożenia i smoke.
 
 Ostatni kompletny odbiór kodu: `8b56cea0c0b689c014df6229e034b5115dd91d6d`.
 Lokalny Release Gate PASS, Vitest 2733 PASS / 1 SKIPPED, Python 46/46,
