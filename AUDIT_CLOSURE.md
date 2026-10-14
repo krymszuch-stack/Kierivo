@@ -13,10 +13,25 @@ laboratorium, onboarding z Terraform oraz dotychczasowa regresja SEP G1.
 Dowody: `docs/evidence/ats-independent-aggregation.png` i
 `docs/evidence/ats-mandatory-skill-onboarding.png`. Nowa rewizja wymaga własnego CI.
 
-Ostatni potwierdzony pełny CI: HEAD `31b02d95440ce85c0994163c3ddf0b1ec50cd68d`,
-merge `83a1dbd01e84e4978098680df5d681950d6e5b5f`, Release Gate 38544174600 PASS.
-Późniejszy D17 `d5e7fa269bff41538a730cae29b89c933e19902a` uruchomił Gate 38553579369;
-stan w trakcie ostatniego sprawdzenia: IN_PROGRESS (nie PASS).
+Ostatni potwierdzony pełny CI: HEAD `d5e7fa269bff41538a730cae29b89c933e19902a`,
+merge `bbd0f0d05bfe0143c4e8817dac47cc7d1ab3f475`, Release Gate 38553579369 PASS.
+Późniejszy `f28c4b802eff43dce47fc17b762d7e6ce47abde8`, merge
+`550f74de099a8d3c8ca5cc50cfa841b93110e05d`: Gate 38554289239 FAIL w smoke
+onboardingu (dev i built). Komunikat o braku ServiceNow wypierał informację
+o tylko jednym wymaganiu. Poprawiono UI tak, aby zachować oba ustalenia;
+stara asercja pozostała, dodano wymaganie konkretnego braku. Lokalny przejazd
+desktop/mobile 375 px PASS. Nowy CI nadal wymagany.
+
+PDF: test trzech rzeczywistych wariantów wykazał raport 1/1/3 strony przy
+faktycznych plikach 2/2/2. Pipeline wybierał wynik compact/ultra_compact, lecz
+zapisywał bajty normal oraz wcześniejszy raport pominięć; powtórnie renderował
+stanową instancję w wariancie overflow. Naprawiono wybór jednego przebiegu dla
+bajtów, semantyki, JSON-LD i raportu. RED → GREEN: teraz 1/1/2 strony zgodne
+z plikami. Python 46/46 PASS, integracja API PDF 19/19 PASS, rzeczywisty
+podgląd/API zachowuje 31 kontrolowanych faktów i wyłącznie podaną klauzulę zgody.
+Obejrzano PDF po skróceniu oraz obie strony overflow; druga strona zawiera
+tylko języki (ograniczenie składu). Zrzut: `docs/evidence/pdf-selected-render-2026-10-14.png`.
+To nie jest odbiór pełnej zgodności wizualnej podglądu HTML i PDF.
 
 Pozostałe blokery odbioru: pełne kryteria D17/D20 i ADR-143, zgodność podglądu/PDF,
 końcowy CI oraz rzeczywiste zależności na środowisku przywróconym przez właściciela.

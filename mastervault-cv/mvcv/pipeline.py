@@ -94,6 +94,7 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
         r_compact = Renderer(resolved, th, ly, avatar=avatar or resolved.avatar, density="compact")
         res_compact = r_compact.render()
         if res_compact.pages == 1:
+            r = r_compact
             result = res_compact
 
         # Pass 3: adaptacyjny governance
@@ -102,10 +103,11 @@ def export(profile_path: str, out_path: str, *, layout: str = "sidebar",
                                             target_pages=1, aggressive_fit=True)
             r_agg = Renderer(resolved_agg, th, ly, avatar=avatar or resolved_agg.avatar, density="ultra_compact")
             res_agg = r_agg.render()
-            if res_agg.pages <= 1:
-                result = res_agg
-            else:
-                result = r_agg.render()
+            # Bajty, semantyka, metadane i raport pominięć muszą pochodzić
+            # z tego samego wybranego przebiegu. Renderer jest stanowy.
+            r, result = r_agg, res_agg
+            resolved, gov = resolved_agg, gov_agg
+            if res_agg.pages > 1:
                 result.warnings.append("Auto-balancing: nie udało się zmieścić w 1 stronie — dokument może mieć 2 strony")
 
     import io
