@@ -34,6 +34,17 @@ stąd, tylko wskazują właściwą sekcję i dokładają pułapkę specyficzną 
 katalogu. **Limit Antigravity to 12 000 znaków na plik reguł**, więc ten plik
 i katalog `.agents/` pilnuje `scripts/sprawdz-limity-regul.mjs` w CI.
 
+## Codex — oszczędny kontekst i przekazywanie pracy
+
+**Jedno źródło prawdy:** ten plik. Nie kopiuj go do nowych promptów, `CLAUDE.md` ani skills. Procedura audytu pojedynczego issue (tylko gdy potrzebna): `.agents/skills/kierivo-targeted-audit/SKILL.md`; uzasadnienie: `docs/agents/codex-tuning.md`.
+
+- **Najpierw zakres:** numer Linear, gałąź/HEAD SHA, `git status --short`, aktualne kryteria. Nie czytaj całego `docs/`, `src/` ani 13 workflowów na starcie. `docs/NOTATKI.md` otwórz tylko dla obszaru zmiany.
+- **Selektor zamiast dumpa:** `git grep -n` w związanych katalogach → entrypoint + test → zależności po importach. Do rozmowy trafiają odpowiednie zakresy `plik:linia`, nie pełne logi/ZIP/screenshoty i nie każde trafienie wyszukiwania.
+- **Testuj proporcjonalnie:** najpierw test reprodukujący bug (FAIL), potem minimalny fix (PASS). Pełne `npm run lint`, `npm test`, `npm run build` uruchom przed PR według bramki poniżej; release E2E/PDF/auth tylko gdy zakres albo ADR-152 tego wymaga.
+- **Niezależne odczyty można grupować**, ale zapis do tych samych plików, zmiany git, mutacje Linear/GitHub i inne skutki uboczne wykonuj sekwencyjnie. Nie uruchamiaj subagentów dla prostych zadań.
+- **Handoff do Linear:** issue, SHA, ścieżki, przyczyna, reprodukcja, komendy + PASS/FAIL/SKIPPED/UNKNOWN, PR, ograniczenia oraz jeden konkretny następny krok. Nie traktuj braku logu, wcześniejszego Done ani zielonego CI innego SHA jako dowodu.
+- **Bezpieczny release:** żadnego automatycznego merge/deploy, zmian RLS/sekretów/produkcji lub wyłączania gate bez właściwej zgody i sprawdzeń. Nie kopiuj prywatnych CV, PII i tokenów do kontekstu agentów.
+
 ## Dwa pakiety, dwie konfiguracje
 
 | | katalog główny | `labs/semantic-work-graph/` |
