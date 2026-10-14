@@ -1,38 +1,38 @@
-# Kierivo Public Pre-Beta ? odbi?r ADR-152 / ADR-125
+# Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
 
-Stan 14.10.2026: **BLOCKED ? odbi?r trwa; brak zgody na publikacj?**.
+Stan 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 
-Ostatni kompletny odbi?r kodu: `8a8c3e7f23402443b2d307b8a5f941633a8a2324`.
+Ostatni kompletny odbiór kodu: `8a8c3e7f23402443b2d307b8a5f941633a8a2324`.
 Lokalny Release Gate PASS, Vitest 2732 PASS / 1 SKIPPED, Python 46/46,
-PDF API 19/19, 27 scenariuszy przegl?darkowych i built smoke PASS.
+PDF API 19/19, 27 scenariuszy przeglądarkowych i built smoke PASS.
 Raport: `artifacts/release-8a8c3e7f23402443b2d307b8a5f941633a8a2324/report.json`.
-Wszystkie sze?? workflow?w GitHub PASS; [Release Gate 38590682130](https://github.com/krymszuch-stack/Kierivo/actions/runs/38590682130),
+Wszystkie sześć workflowów GitHub PASS; [Release Gate 38590682130](https://github.com/krymszuch-stack/Kierivo/actions/runs/38590682130),
 merge ref `96543ca0a144efefc5cc08cebd37bae1a725a521`.
-Nie oznacza to odbioru p??niejszych zmian ani produkcji.
+Nie oznacza to odbioru późniejszych zmian ani produkcji.
 
-Kolejna poprawka D17: dodanie brakuj?cego Terraform do oferty z Python
-obni?a?o ?wie?o?? ze 100 do 85 mimo niezmienionych dat. Pokrycie wymaga? by?o
-ponownie wa?one w modu?ach aktualno?ci (30%) i tytu?u (25%). Te modu?y mierz?
-teraz wy??cznie w?asny sygna?; pokrycie ma osobny modu?. RED ? GREEN;
+Kolejna poprawka D17: dodanie brakującego Terraform do oferty z Python
+obniżało świeżość ze 100 do 85 mimo niezmienionych dat. Pokrycie wymagań było
+ponownie ważone w modułach aktualności (30%) i tytułu (25%). Te moduły mierzą
+teraz wyłącznie własny sygnał; pokrycie ma osobny moduł. RED → GREEN;
 2733 testy PASS / 1 SKIPPED, lint/TypeScript i build PASS. Rzeczywisty AtsLabView
 oraz onboarding PASS, zrzuty `docs/evidence/ats-independent-aggregation.png`
 i `ats-mandatory-skill-onboarding.png`. Ta poprawka wymaga nowego CI/Gate.
-Nie zmieniono prog?w ani oczekiwa? wcze?niejszych test?w.
+Nie zmieniono progów ani oczekiwań wcześniejszych testów.
 
-Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wyst?pie? b??du
-importu modu?u, ostatnie 06.10; przyczyna nieustalona, nie zamkni?to zg?oszenia.
-ADR-127: ochrona ujawnionych hase? nadal wy??czona. Polityki w?a?cicielskie
-profiles/vaults/applications odczytano; to nie jest test izolacji dw?ch kont.
-W?a?ciciel zalogowa? konto i zezwoli? na zast?pienie CV danymi syntetycznymi.
-Konflikt lokalnej/chmurowej wersji rozwi?zano wyborem chmury; UI potwierdzi?
-zapis. Pe?ny smoke AI/PDF nadal w toku. Testowana strona publiczna nie zawiera
-jeszcze PR #142. Nie zmieniono produkcyjnych sekret?w ani uprawnie?.
+Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wystąpień błędu
+importu modułu, ostatnie 06.10; przyczyna nieustalona, nie zamknięto zgłoszenia.
+ADR-127: ochrona ujawnionych haseł nadal wyłączona. Polityki właścicielskie
+profiles/vaults/applications odczytano; to nie jest test izolacji dwóch kont.
+Właściciel zalogował konto i zezwolił na zastąpienie CV danymi syntetycznymi.
+Konflikt lokalnej/chmurowej wersji rozwiązano wyborem chmury; UI potwierdził
+zapis. Pełny smoke AI/PDF nadal w toku. Testowana strona publiczna nie zawiera
+jeszcze PR #142. Nie zmieniono produkcyjnych sekretów ani uprawnień.
 
-Pozosta?e kryteria odbioru: D17/D20 i ADR-143, pe?na zgodno?? podgl?du/PDF,
-ko?cowy Gate oraz rzeczywiste zale?no?ci. D?ugi PDF wymaga jawnej zgody na
-skr?cenia i nie dowodzi bezstratnej zgodno?ci z podgl?dem. Nie wykonano merge
-ani deploy. ADR-152/125 pozostaj? otwarte; bie??ce dowody uzupe?niono w Linear.
-Historia poni?ej odnosi si? wy??cznie do podanych SHA.
+Pozostałe kryteria odbioru: D17/D20 i ADR-143, pełna zgodność podglądu/PDF,
+końcowy Gate oraz rzeczywiste zależności. Długi PDF wymaga jawnej zgody na
+skrócenia i nie dowodzi bezstratnej zgodności z podglądem. Nie wykonano merge
+ani deploy. ADR-152/125 pozostają otwarte; bieżące dowody uzupełniono w Linear.
+Historia poniżej odnosi się wyłącznie do podanych SHA.
 
 ## Zakres i punkt odniesienia
 
