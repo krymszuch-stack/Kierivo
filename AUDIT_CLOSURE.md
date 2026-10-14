@@ -139,3 +139,26 @@ Puste sekcje pozostają dozwolone; edukacja trwająca nie wymaga uzyskanego stop
 projekt nie wymaga zmyślonej roli. Realny modal/API: 400, brak download/print,
 źródło bez zmian — PASS. Lokalny Vitest: 2731 PASS / 1 SKIPPED, 239 plików.
 Nowa rewizja wymaga własnego CI; nie dziedziczy powyższego PASS.
+
+### Aktualizacja 14.10, 13:00 CEST
+
+HEAD `31b02d95440ce85c0994163c3ddf0b1ec50cd68d`: wszystkie workflowy PASS,
+w tym [Release Gate 38544174600](https://github.com/krymszuch-stack/Kierivo/actions/runs/38544174600)
+na merge SHA `83a1dbd01e84e4978098680df5d681950d6e5b5f`.
+Opis ADR-125 uzgodniono ze scalonymi PR 138–141; status pozostaje In Progress.
+
+D17: regresja RED wykazała 8 ocen zamiast 6 niezależnie agregowanych modułów.
+Mediana/średnia/min/max pomijają teraz dwa pochodne podsumowania, zachowane
+w diagnostyce. Nie oznacza to udowodnienia niezależności wszystkich pozostałych
+sygnałów. Testowy adapter semantyczny otrzymał pierwszeństwo SIGNIFICANT_GAPS
+przed pasmem mediany; zachowano dotychczasowe asercje LOW i progi scenariuszy.
+65 testów celowanych PASS; cały Vitest 2731 PASS / 1 SKIPPED (239 plików),
+lint 0 błędów / 202 ostrzeżenia, build PASS. Rzeczywisty AtsLabView w Chromium:
+mediana 92% z 5 modułów źródłowych, dwa agregaty bez dodatkowego głosu — PASS.
+Dowód: `docs/evidence/ats-independent-aggregation.png`; test włączono do Release Gate.
+
+Ten sam ekran wykazuje brak Terraform, a mimo tego pokazuje „Wysokie dopasowanie”.
+To kolejny konkretny przypadek do naprawy interpretacji wymagań, nie dowód odbioru
+diagnozy. Następny krok: regresja obligatoryjnej umiejętności i spójny komunikat
+we wszystkich konsumentach kanonicznego wyniku. Nowy commit wymaga własnego CI.
+Decyzja nadal BLOCKED; produkcyjny odbiór i pełna zgodność podglądu/PDF niepotwierdzone.

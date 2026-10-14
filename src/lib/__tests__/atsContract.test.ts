@@ -53,6 +53,10 @@ function kontraktSim(sim: WynikSim, konsensus: Konsensus): KontraktSemantyczny {
     fitBand:
       konsensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE'
         ? 'INSUFFICIENT'
+        // Mediana opisuje różne kontrole dokumentu. Nie może przeważyć
+        // jawnych braków kompetencji ustalonych przez ocenę wymagań.
+        : konsensus.careerFitAdvice.assessment === 'SIGNIFICANT_GAPS'
+        ? 'LOW'
         : konsensus.consensusGrade === 'EXCELLENT'
         ? 'HIGH'
         : konsensus.consensusGrade === 'GOOD' || konsensus.careerFitAdvice.isRealisticFit

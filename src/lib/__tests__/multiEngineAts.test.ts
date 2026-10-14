@@ -131,7 +131,12 @@ describe('Multi-Engine ATS Consensus & Engine Enhancements Suite', () => {
       const result = simulateMultiEngineATS(sampleVault, sampleJobOffer, 'Starszy Inżynier Chmurowy i DevOps');
 
       expect(result.engines).toHaveLength(10);
-      expect(result.assessedEngineCount).toBe(result.engines.filter((engine) => engine.score !== null).length);
+      const sourceScores = result.engines.filter((engine) =>
+        engine.score !== null && !['przesiew_wymagan', 'konsensus_cvelocity'].includes(engine.id)
+      ).map(engine => engine.score!);
+      expect(result.assessedEngineCount).toBe(sourceScores.length);
+      expect(result.medianScore).toBe(calculateMedian(sourceScores));
+      expect(result.meanScore).toBe(Math.round(sourceScores.reduce((sum, score) => sum + score, 0) / sourceScores.length));
       expect(result.medianScore).toBeGreaterThanOrEqual(70);
       expect(result.meanScore).toBeGreaterThanOrEqual(70);
       expect(result.consensusGrade).toBe('EXCELLENT');

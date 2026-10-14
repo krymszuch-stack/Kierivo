@@ -825,6 +825,7 @@ export interface MultiEngineAtsConsensus {
   meanScore: number | null;
   minScore: number | null;
   maxScore: number | null;
+  /** Pasmo mediany diagnostycznej; nie ocena dopasowania. Braki określa careerFitAdvice. */
   consensusGrade: 'EXCELLENT' | 'GOOD' | 'NEEDS_WORK' | 'CRITICAL_RISK' | 'INSUFFICIENT_DATA';
   summaryJustification: string;
   careerFitAdvice: {
@@ -1227,9 +1228,9 @@ export function simulateMultiEngineATS(
   );
   const engine10: AtsEngineResult = {
     id: 'konsensus_cvelocity',
-    name: 'Glowny Zrownowazony Konsensus Kierivo',
+    name: 'Pomocnicze podsumowanie składników',
     component: 'atsSimulator.ts (agregacja ocenionych skladnikow)',
-    category: 'Koncowa syntetyczna ocena profilu',
+    category: 'Diagnostyka pochodna — poza medianą',
     score: cvelocityScore,
     status: cvelocityScore === null ? 'NOT_ASSESSED' : cvelocityScore >= 80 ? 'OPTIMAL' : cvelocityScore >= 65 ? 'ACCEPTABLE' : cvelocityScore >= 50 ? 'RISKY' : 'REJECTED',
     weightsFocus: !hasFitEvidence
@@ -1250,7 +1251,10 @@ export function simulateMultiEngineATS(
   };
 
   const engines = [engine1, engine2, engine3, engine4, engine5, engine6, engine7, engine8, engine9, engine10];
-  const allScores = engines.flatMap((engine) => engine.score === null ? [] : [engine.score]);
+  // D17: moduły 9 i 10 ponownie agregują sygnały z modułów źródłowych.
+  // Włączenie ich do mediany/średniej dawało tym samym sygnałom dodatkowy głos.
+  const allScores = [engine1, engine2, engine3, engine4, engine5, engine6, engine7, engine8]
+    .flatMap((engine) => engine.score === null ? [] : [engine.score]);
   const medianScore = calculateMedian(allScores);
   const meanScore = allScores.length === 0 ? null : Math.round(allScores.reduce((sum, s) => sum + s, 0) / allScores.length);
   const minScore = allScores.length === 0 ? null : Math.min(...allScores);
@@ -1309,7 +1313,7 @@ export function simulateMultiEngineATS(
 
   const summaryJustification = medianScore === null
     ? 'Nie obliczono mediany kontrolnych wskaznikow: zaden modul nie ma danych do oceny.'
-    : `Mediana kontrolnych wskaznikow wynosi ${medianScore}% dla ${allScores.length} modulow. Moduly sprawdzaja rozne cechy i nie tworza wyniku dopasowania ani przewidywania decyzji ATS lub rekrutera.`;
+    : `Mediana kontrolnych wskaznikow wynosi ${medianScore}% dla ${allScores.length} modulow. Moduly sprawdzaja rozne cechy i nie tworza wyniku dopasowania ani przewidywania decyzji ATS lub rekrutera. Pomocnicze agregaty (przesiew wymagań i podsumowanie składników) są wyłączone z mediany i średniej, aby nie liczyć ponownie ich źródeł.`;
 
   const globalBestPractices = [
     {
