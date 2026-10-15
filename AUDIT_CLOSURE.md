@@ -1,202 +1,91 @@
-# Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
+# Kierivo Public Pre-Beta — ADR-152 / ADR-125
 
-Stan 15.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+Stan 15.10.2026: **BLOCKED**. Kod kandydata jest przygotowany do odbioru;
+nie ma zgody na merge do main, migrację produkcyjną ani wdrożenie.
 
-Nowy FAIL bramki D04 dla `0bd76a0881b93995b1d66604ab1f9b6d1ea841e7`:
-run 38675032473, job 116226585631. Dziesięć równoległych pierwszych rezerwacji
-AI dało 1 zgodę / 0 odmów zamiast wymaganych 5/5. Pozostałe kontrole RLS
-i usuwania danych przeszły. Nie ponowiono testu w celu ukrycia wyniku.
-Istniejąca funkcja `reserve_ai_quota` blokuje SELECT FOR UPDATE przed INSERT:
-nieistniejący wiersz nie jest chroniony przed równoległą inicjalizacją.
-Przygotowano migrację zastępującą tylko tę funkcję: INSERT licznika 0
-ON CONFLICT DO NOTHING przed odczytem z blokadą. Dalsza polityka limitu
-pozostaje oryginalna, ACL zachowane przez CREATE OR REPLACE, bez GRANT/REVOKE.
-Test nadal wymaga dokładnie 5 zgód i 5 odmów; dodatkowo zapisuje wyłącznie
-kody błędów i jawnie wymaga ich braku. Lokalnie brak Dockera/Postgresa:
-wykonanie migracji UNKNOWN do odbioru izolowanego CI. Produkcja nietknięta.
-Reguła ON CONFLICT: [dokumentacja PostgreSQL](https://www.postgresql.org/docs/current/sql-insert.html).
+Kod kandydata: `53d4c6b7b3b7d8bd4ff111fc6561e99cd69dfb43`.
+Późniejszy commit tego raportu nie zmienia kodu ani bramek. Wiążący wynik
+wydania musi pochodzić z Release Gate dla pełnego SHA publikowanego w PR.
+[Zbiorczy PR #142 i jego checks](https://github.com/krymszuch-stack/Kierivo/pull/142/checks).
+Main ponownie pobrany: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`.
+PR #138–#141 są scalone; #141 od 09.10.2026. Nie opieramy statusów na starych opisach.
 
-ADR-154: na bazie `112e2a8af88162e13cb0ebd3f75393dcbc49e062` potwierdzono S1:
-wysyłka A → zapis lokalny B → konflikt serwera dla A zastępował B starszym A.
-Druga regresja tego samego catch odtwarzała outbox wyczyszczony podczas wysyłki.
-Oba testy FAIL przed zmianą. Minimalna poprawka oznacza konflikt na najnowszym
-istniejącym pending; nie przywraca usuniętego wpisu. GREEN: 52 testy sąsiednie,
-pełny Vitest 2742 PASS / 3 SKIPPED, lint/TS i build PASS. Rozszerzony istniejący
-`e2e-cloud-vault-conflict.mjs` odtwarza A/B przez prawdziwy moduł outboxu,
-ponownie otwiera aplikację i potwierdza zapis tylko wybranej wersji B — PASS.
-Sesja i Supabase są syntetyczne. Dowód:
-`docs/evidence/cloud-vault-conflict-latest-draft.png`.
+## Zakres i granice
 
-Macierz ADR-154 (lokalna poprawka względem bazy `112e2a8`; wynikowy SHA w PR):
+Parser CV/JD → MasterVault → diagnoza poparta danymi → generator/podgląd →
+PDF; uwierzytelnianie, izolacja, logout/delete, regresje i bezpieczne wydanie.
+D07–D20: zachowanie dostępnego produktu; bez deklaracji pełnej kalibracji ATS.
+Poza wydaniem: Gigs, Hunter Autofill, Jobs, publiczny Trust, Kotlin, CzyToTy,
+nowe funkcje komercyjne i przebudowa UI. Pełny przyszły ledger D20 pozostaje
+ADR-123; nie przedstawiamy go jako zaimplementowanego.
 
-| Scenariusz | Istniejący dowód | Wynik |
+S0/S1 blokują wydanie. S2/S3 wymagają opisanego ryzyka i akceptacji właściciela.
+Brak danych, N/A i INSUFFICIENT_DATA nie są pozytywną oceną. Wynik dopasowania
+nie jest szansą zatrudnienia ani symulacją prywatnego ATS. Dane użytkownika
+nie stają się niezależnie zweryfikowane przez samo użycie AI.
+
+## Potwierdzone naprawy
+
+| Obszar | Przyczyna i zmiana | Dowód |
 | --- | --- | --- |
-| Szybkie A/B i spóźniony ACK | cloudVaultOutbox.test.ts: serializacja, zachowanie B | PASS |
-| A/B i spóźniony konflikt A | nowa regresja + cloud-vault-conflict E2E | FAIL → PASS |
-| Wyczyść outbox podczas wysyłki | nowa regresja; konflikt nie odtwarza danych | FAIL → PASS |
-| Konflikt z innym urządzeniem | outbox: jawny wybór; E2E bez automatycznej sumy snapshotów | PASS |
-| Konto zmienione podczas rozstrzygania | cloudVaultConflictResolution.test.ts | PASS |
-| Zamknięcie/logout/odświeżenie i odłożony zapis | deferredWriter, idb-stale-write, cloud-logout-race; Release Gate `4eb4ca0` | PASS na wskazanym SHA; ponowny odbiór poprawki wymagany |
-| Historyczna wersja i aktualny profil | historicalDocumentExport.test.ts + cvLibraryStorage.test.ts | PASS |
+| Diagnoza / D17 | Brak MUST ogranicza pozytywny komunikat; agregaty nie głosują ponownie w medianie; aktualność i tytuł nie liczą drugi raz pokrycia | Regresje jednostkowe, golden corpus, prawdziwy onboarding i AtsLab; etykieta liczby uwag nie udaje liczby odjęć |
+| Import CV/JD | ADR-152 nie tworzy umiejętności ADR; wieloliniowa edukacja zachowuje szkołę i daty | FAIL → PASS, rzeczywisty modal importu → różnice → Vault; niezmienione surowe wklejki |
+| PDF runtime | Obraz nie miał fontów fallback; dodano fonts-dejavu-core i eksport/weryfikację wewnątrz obrazu jako node | CI Docker PASS na d1cc1e7 i kolejnych odebranych SHA; produkcja jeszcze bez poprawki |
+| Podgląd PDF | Przygotowany Blob renderowany na stronach PDF.js; pobierany ten sam Blob po decyzji; zmiana źródła/konta unieważnia plik | FAIL → PASS; 2 strony, równe SHA-256, jedno wywołanie renderera, brak automatycznego pobrania |
+| S0 / ADR-153 | docVault pozostawał po zmianie lokalnego konta; edytor należy teraz do właściciela, także przy logout i opóźnionym odczycie | #144: A → B → reload → A, widok i rzeczywisty schowek; pełny CI 112e2a8 PASS |
+| S1 / ADR-154 | Konflikt wysyłki A nadpisywał nowszy pending B i odtwarzał usunięty wpis; catch zachowuje najnowszy istniejący snapshot | #145: dwie regresje FAIL → PASS, 52 testy sąsiednie, prawdziwy outbox → ponowny odczyt UI → wybór B → zapis B |
+| Limit AI | Pierwsze równoległe wywołania nie blokowały nieistniejącego wiersza; INSERT ON CONFLICT DO NOTHING przed SELECT FOR UPDATE | #146: D04 0bd76a0 FAIL (1/0), feb4c1b PASS (dokładnie 5/5), bez retry i zmiany limitu |
 
-Nie przeprowadzono pełnego testu równoczesnej edycji jednego profilu w dwóch
-kartach ani rzeczywistej utraty danych produkcyjnego konta. Serializacja w module
-dotyczy jednej karty; CAS chroni rewizję serwera. Ten raport nie deklaruje
-współpracy w czasie rzeczywistym ani automatycznego scalania zmian.
+Szczegółowe małe PR: [#144](https://github.com/krymszuch-stack/Kierivo/pull/144),
+[#145](https://github.com/krymszuch-stack/Kierivo/pull/145),
+[#146](https://github.com/krymszuch-stack/Kierivo/pull/146).
+Migracja zastępuje istniejącą funkcję, zachowuje ACL i dalszą politykę;
+bez zmian tabel, GRANT/REVOKE i kasowania danych. Nie wykonano jej na produkcji.
 
-ADR-153: potwierdzono S0 w lokalnym przełączaniu profili. Na bazowym
-`1e5d2eb7241fa999d0e576201725462424b544f2` edytor pozostawiony na karcie CV
-po zmianie A → B pokazywał i kopiował tekst A. Magazyny źródłowe pozostawały
-rozdzielone; lokalny `docVault` był inicjalizowany tylko przy montowaniu.
-Poprawka odmontowuje edytor przy zmianie właściciela, osłania przekazanie Vaultu
-także przy wylogowaniu i uzupełnia nietknięty szkic po odczycie nowego profilu.
-Istniejący test izolacji sprawdza teraz CV i rzeczywisty schowek przed zmianą
-zakładki: A → zamknięcie profilu → B → reload → A. Reprodukcja FAIL przed
-poprawką, PASS po poprawce na świeżo uruchomionym serwerze. Lint/TS PASS
-(202 wcześniejsze ostrzeżenia), Vitest 2739 PASS / 1 SKIPPED, build PASS.
-Dowód syntetyczny: `docs/evidence/cv-profile-owner-b.png`. Pozostaje odbiór
-CI wynikowego SHA oraz dalsze kryteria ADR-153 dotyczące bajtów eksportów;
-nie oznaczono całego issue Done.
+## Sprawdzenia i ich rzeczywisty zakres
 
-Odbiór lokalny poprawki `4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6`:
-Release Gate PASS, zakończony 15.10.2026 03:04:42 UTC; 29 scenariuszy
-przeglądarkowych, testy Python/PDF, build i built smoke PASS. Raport:
-`artifacts/release-4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6/report.json`.
-Produkcja/OAuth/AI mają osobne statusy UNKNOWN, telemetria lokalna SKIPPED;
-nie zaliczono ich na podstawie tego raportu. Draft PR #144 jest oparty na #142,
-więc filtry `pull_request: branches: [main]` nie uruchamiają automatycznie CI.
+| Kontrola | Status i SHA |
+| --- | --- |
+| Lokalny lint/TS, build, pełny Vitest kandydata kodu | PASS; 239 plików, 2742 PASS / 3 SKIPPED; 202 wcześniejsze ostrzeżenia, 0 błędów |
+| Trzy integracje PDF pomijane w zwykłym Vitest | Wykonane osobno z RUN_PDF_INTEGRATION=1; DOCX/PDF 34/34 PASS na 112e2a8; później eksporty niezmienione |
+| Pełny lokalny Release Gate | 4eb4ca0 PASS: 29 przeglądarkowych, Python 46/46, PDF API, build, built smoke; artifacts/release-4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6/report.json |
+| Pełny CI izolacji i eksportów | [112e2a8 / 38674580531](https://github.com/krymszuch-stack/Kierivo/actions/runs/38674580531) PASS: release-acceptance, CI, Auth/RLS, verdict |
+| CI outboxu | [0bd76a0 / 38675032473](https://github.com/krymszuch-stack/Kierivo/actions/runs/38675032473) FAIL: quota D04; release-acceptance i CI PASS. Nie zamaskowano tego wyniku |
+| D04 po migracji | [feb4c1b / 38675814638](https://github.com/krymszuch-stack/Kierivo/actions/runs/38675814638) PASS: quota 5/5, RLS, usunięcie konta/stary token, zalogowane CV → diagnoza → podgląd → PDF |
+| Niepełna chronologia | Istniejące e2e-ats-timeline-status i e2e-consistency-timeline-unknown PASS; null i jawny zakres zamiast fikcyjnej oceny. Włączone do końcowego Gate (łącznie 31 scenariuszy) |
+| Bajty eksportów | PDF standard/dual-layer: tekst wszystkich stron, metadane, brak załączników; DOCX: wszystkie wpisy ZIP; dwa mechanizmy TXT. Pominięte markery nie występują, źródło zachowane |
+| Surowy korpus parsera | 6 sum zgodnych z README; duży schowek: 2985 fragmentów / 126 różnych treści; Aplikuj: dokładnie 300 fragmentów; praktyczny: 33 sekcje; PL/EN i negatywne C/UDT |
+| Produkcyjna telemetria | FAIL: 1 OPEN d1a27e2fbc8aa52a, 8 ui-crash/AppErrorBoundary, ostatni 06.10.2026 20:54:21 UTC. Brak dowodu przyczyny/powiązania z obecnym SHA; nie ustawiono resolved |
+| Produkcyjne OAuth/AI | Ostatni rzeczywisty smoke: zapis syntetycznego Vaultu i AI verify-cv 200. Nie stanowi pełnej kalibracji ani odbioru nowego kandydata |
+| Produkcyjny eksport kandydata | UNKNOWN — kandydat niewdrożony. Obecna strona miała HTTP 500 brakujących fontów. Wymagany smoke po osobno zatwierdzonym wydaniu |
+| Lokalna baza / Docker | SQL i kontener lokalnie UNKNOWN; rzeczywisty odbiór w izolowanym CI. Niczego nie testowano destrukcyjnie na produkcji |
 
-Dodatkowe kryterium ADR-153: istniejące testy eksportu badają teraz rzeczywiste
-PDF standard/dual-layer (tekst wszystkich stron, metadane, brak załączników),
-całe archiwum DOCX i dwa mechanizmy TXT. Markery telefonu i punktora usuniętych
-z projekcji oraz wewnętrznych claims/subRoleId nie występują w wynikach;
-publiczne markery są obecne, źródłowy Vault zachowuje całą treść. Wynik negatywny
-dla tej projekcji, bez nowej poprawki runtime. Kontrakt nie ma flag private/visible;
-test nie potwierdza nieistniejącej funkcji prywatnych pól. Globalny eksport Word
-z palety poleceń używa całego MasterVault, a edytor CV swojej projekcji.
-34 testy DOCX/PDF PASS z rzeczywistym rendererem; pełny Vitest 2740 PASS /
-3 SKIPPED (trzy kontrole PDF wykonano osobno z RUN_PDF_INTEGRATION=1), lint/TS
-PASS, bez nowych ostrzeżeń. Bieżący kod runtime nie zmienił się od `4eb4ca0`.
+N/A: kontrakt nie ma flag private/visible. Testowano faktycznie usunięte dane
+z projekcji i pominięte pola wewnętrzne claims/subRoleId; nie deklarujemy funkcji
+prywatnych pól. Globalny Word z palety eksportuje MasterVault, edytor własną projekcję.
+Nie potwierdzono równoczesnej edycji jednego profilu w dwóch kartach;
+serializacja outboxu dotyczy jednej karty, serwer używa CAS i jawnego konfliktu.
 
-Uzgodniono nowe przekazanie Gemini Argon i instrukcje z draft PR #143:
-ADR-153/154 przed porządkowaniem agentów i optymalizacją CI. PR #143 pozostaje
-osobny i niescalony. Same nazwy historycznych zrzutów nie są dowodem regresji.
-`main` po ponownym pobraniu: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`;
-baza poprawki ma 17 commitów przewagi i 0 zaległych względem `main`.
+## Release Gate i decyzja
 
-Potwierdzony S1 na stronie publicznej po rzeczywistym logowaniu: eksport
-`POST /api/cv/export-pdf` zwraca HTTP 500. Renderer zgłasza brak Georgia,
-Georgia-Bold i SegoeUI/Bold/Semibold. Obraz runtime nie instaluje fontów DejaVu,
-których wymaga istniejący fallback na Linuksie. Obraz instaluje teraz
-`fonts-dejavu-core`. Wymagany CI po zbudowaniu obrazu wykonuje rzeczywisty
-eksport i ścisłą weryfikację PDF jako użytkownik node. Lokalny eksport/
-weryfikacja CLI PASS (2 strony, 37 elementów semantycznych). Docker nie jest
-dostępny lokalnie; poprawkę kontenera odebrano w GitHub CI wskazanym poniżej.
-Eksport obecnej produkcji pozostaje FAIL do zatwierdzonego wdrożenia i smoke.
+FAST: lint/TS, krytyczne regresje ATS/faktów i zmienione moduły, build,
+krótki smoke, kontrola znanych wzorców sekretów w bundlu (nie pełnej historii).
+RELEASE: pełne testy, Python/PDF API i wielostronicowy dokument, PL/EN golden,
+negatywne scenariusze, 31 istniejących E2E, built smoke i osobny Auth/RLS/PDF.
+Raporty zawierają SHA oraz PASS/FAIL/SKIPPED/UNKNOWN; lokalne UNKNOWN usług
+zewnętrznych i SKIPPED produkcyjnej telemetrii nie są PASS tych kontroli.
 
-Ostatni kompletny odbiór CI i lokalny: `1e5d2eb7241fa999d0e576201725462424b544f2`
-([Release Gate 38640047253](https://github.com/krymszuch-stack/Kierivo/actions/runs/38640047253), wszystkie 6 workflowów PASS).
-Lokalny raport: `artifacts/release-1e5d2eb7241fa999d0e576201725462424b544f2/report.json`;
-29 kontroli przeglądarkowych, Vitest 2739 PASS / 1 SKIPPED, Python 46/46,
-PDF API 19/19 i built smoke PASS. Ten odbiór nie obejmuje późniejszej poprawki S0.
-Ostatni kompletny lokalny odbiór kodu: `d1cc1e7cba6c263ba58c4e5629bbee47dda21aba`.
-Lokalny Release Gate PASS, Vitest 2736 PASS / 1 SKIPPED, Python 46/46,
-PDF API 19/19, 28 scenariuszy przeglądarkowych i built smoke PASS.
-Raport: `artifacts/release-d1cc1e7cba6c263ba58c4e5629bbee47dda21aba/report.json`.
-Wszystkie sześć workflowów GitHub PASS; [Release Gate 38636624103](https://github.com/krymszuch-stack/Kierivo/actions/runs/38636624103).
-Funkcjonalny eksport i ścisła weryfikacja PDF wewnątrz obrazu runtime PASS
-w [CI 38636624084](https://github.com/krymszuch-stack/Kierivo/actions/runs/38636624084), job 116101321304, krok 12.
-Nie oznacza to odbioru późniejszych zmian ani produkcji.
+Deploy jest ręczny i zależy od wymaganych workflowów dla tego samego commitu;
+ma własną bramkę telemetrii oraz uwierzytelniony smoke po wdrożeniu.
+HTTP 200 / health nie wystarcza. Merge do main oraz produkcyjne wdrożenie
+pozostają zastrzeżone właścicielowi. PR #143 dotyczy instrukcji agentów i pozostaje osobny.
 
-Kolejna poprawka D17: dodanie brakującego Terraform do oferty z Python
-obniżało świeżość ze 100 do 85 mimo niezmienionych dat. Pokrycie wymagań było
-ponownie ważone w modułach aktualności (30%) i tytułu (25%). Te moduły mierzą
-teraz wyłącznie własny sygnał; pokrycie ma osobny moduł. RED → GREEN;
-2733 testy PASS / 1 SKIPPED, lint/TypeScript i build PASS. Rzeczywisty AtsLabView
-oraz onboarding PASS, zrzuty `docs/evidence/ats-independent-aggregation.png`
-i `ats-mandatory-skill-onboarding.png`. CI/Gate powyżej obejmuje tę poprawkę.
-Nie zmieniono progów ani oczekiwań wcześniejszych testów.
+Do zamknięcia: odebrać zbiorczy kandydat na jednym SHA, rozstrzygnąć historyczną
+otwartą telemetrię bez fikcyjnego resolved i dokończyć klasyfikację ograniczeń.
+Długi PDF nadal wymaga jawnej zgody na skrócenie: istniejąca próbka zachowuje
+11/31 markerów i jawnie zgłasza 20 pominięć, a rzeczywisty podgląd pokazuje wynik.
+ADR-127 (ochrona ujawnionych haseł) pozostaje otwarte; ustawień nie zmieniono.
+ADR-152 i ADR-125 nie są Done. Techniczna decyzja pozostaje BLOCKED do odbioru.
 
-Smoke działającej strony ujawnił dwa błędy importu tekstu: z „ADR-152”
-powstawała umiejętność ADR, a daty po nazwie uczelni i stopniu tworzyły drugą,
-pustą edukację. Reprodukcje RED → GREEN. Wspólny matcher pomija identyfikator
-ze skrótem i numerem; osobny prawdziwy dowód nadal liczy się. Parser zachowuje
-jedną szkołę z datami także przy kolejności zakres → uczelnia → stopień.
-Lokalnie 2736 PASS / 1 SKIPPED, lint/TS i build PASS. Rzeczywisty modal importu
-przez ekran różnic do MasterVault PASS; dowód `docs/evidence/cv-import-source-facts.png`.
-Dodano go jako 28. scenariusz Release Gate; odbiór `d1cc1e7` powyżej go obejmuje.
-
-Wcześniejsze wklejki: ponownie potwierdzono sumy wszystkich sześciu plików.
-Duży schowek zawiera 2985 fragmentów, lecz 126 różnych treści po pominięciu
-samego nagłówka kopii. Stały test bada wszystkie 126, bez dawnego limitu 300
-fragmentów; tekst nie może zniknąć do pustego wyniku. Zbiór praktyczny ma
-dokładnie 33 sekcje. Dodatkowe kontrole ofert 2/16 w pełnym potoku przygotowania
-potwierdzają wymagane C/UDT i blokadę profilu z negacją uprawnień. Wklejek nie
-zmieniono. Regresje korpusu 26/26 PASS; cały Vitest 2739 PASS / 1 SKIPPED.
-To pokrycie wybranych kontraktów, nie dowód idealnego odczytu wszystkich ofert.
-
-Nowa poprawka podglądu PDF: po przygotowaniu pliku modal renderuje jego strony
-przez PDF.js, a pobranie zapisuje ten sam Blob. Nie generuje drugiego pliku.
-Bez gotowego podglądu pobranie jest zablokowane; ostrzeżenia o skróceniu nadal
-wymagają decyzji. Zmiana źródła lub konta usuwa gotowy artefakt i unieważnia
-opóźnioną odpowiedź. RED: ostrzeżenia bez podglądu, 0 zamiast 1 panelu. GREEN:
-rzeczywiste 2 strony, SHA-256 podglądu == pobranie, jedno wywołanie renderera,
-brak automatycznego download, usunięcie pliku po zmianie profilu i właściciela.
-Użyto bez zmian istniejącej długiej próbki (wspólny fixture). Dotychczasowy test
-nadal wykazuje 11/31 markerów oraz jawne 20 pominięć; nie deklarujemy eksportu
-bez skróceń. Obejrzano obie strony: `docs/evidence/pdf-artifact-preview*.png`.
-Vitest 2739 PASS / 1 SKIPPED, lint/TS (202 istniejące ostrzeżenia) i build PASS;
-preflight PDF/druk PASS. Nowy test jest 29. scenariuszem Gate. D04 wymaga teraz
-obejrzenia PDF przed pobraniem. CI/Gate tej nowej poprawki pozostaje wymagany.
-
-Następny krok: odebrać końcowy Gate/D04 podglądu i ustalić pozostałe kryteria
-D20: przyszłe UI vs potwierdzone usterki bieżącego produktu. Przykład do
-weryfikacji: etykieta „Kary” w AtsLab zlicza również uwagi struktury/danych,
-które w canonical-v3 nie odejmują punktów dopasowania.
-
-Supabase **ACTIVE_HEALTHY**. Odczyt telemetrii: 1 OPEN / 8 wystąpień błędu
-importu modułu, ostatnie 06.10; przyczyna nieustalona, nie zamknięto zgłoszenia.
-ADR-127: ochrona ujawnionych haseł nadal wyłączona. Polityki właścicielskie
-profiles/vaults/applications odczytano; to nie jest test izolacji dwóch kont.
-Właściciel zalogował konto i zezwolił na zastąpienie CV danymi syntetycznymi.
-Konflikt lokalnej/chmurowej wersji rozwiązano wyborem chmury; UI potwierdził
-zapis. AI `/api/ai/verify-cv` odpowiedział 200; bez JD UI wstrzymał dopasowanie
-i jawnie wykluczył ocenę pliku PDF. Eksport publiczny FAIL opisano wyżej.
-Testowana strona publiczna nie zawiera
-jeszcze PR #142. Nie zmieniono produkcyjnych sekretów ani uprawnień.
-
-Pozostałe kryteria odbioru: D17/D20 i ADR-143, pełna zgodność podglądu/PDF,
-końcowy Gate oraz rzeczywiste zależności. Długi PDF wymaga jawnej zgody na
-skrócenia i nie dowodzi bezstratnej zgodności z podglądem. Nie wykonano merge
-ani deploy. ADR-152/125 pozostają otwarte; bieżące dowody uzupełniono w Linear.
-Historia poniżej odnosi się wyłącznie do podanych SHA.
-
-## Zakres i punkt odniesienia
-
-Main pobrany 13.10: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`.
-PR #138 (011f694), #139 (f5ba973), #140 (763338b), #141 (00a4ccb) są scalone;
-potwierdzono przez GitHub API. Przy rozpoczęciu brak otwartych PR.
-Gałąź prac: `codex/adr-152-release-hardening`. Nie wykonano merge ani deploy.
-
-Zakres: parser CV/JD → MasterVault → deterministyczna diagnoza i dowody →
-generator/podgląd → eksport PDF, izolacja kont/logout/delete, regresje i proces wydania.
-Audit Core D07–D20 oceniany w zakresie zachowania publicznego produktu.
-Poza zakresem: Gigs, Hunter Autofill, Jobs, publiczny Trust, Kotlin, CzyToTy,
-nowa komercjalizacja i przebudowa UI. Nie deklarujemy pełnej kalibracji matematycznej.
-S0/S1 blokują; S2/S3 wymagają udokumentowanej akceptacji ryzyka.
-
-## Mapa zależności
-
-- Oferta: scraper/net safeFetch → parser/normalizacja/sekcje MUST/NICE → canonicalAts/knockouts.
-- CV: cvUniversalParser → MasterVault → canonicalAts (konsument głównej ścieżki),
-  atsSimulator (diagnostyka), Audit Core D07/D08/D09… (kontrakty i ledger).
-- Fakty: localProfile/storage/IndexedDB lub AuthContext/cloudVault/outbox/RLS →
-  projekcje CV/HUD/Pitch → consistencyEngine/consistencyGuard.
-- Eksport: DocumentRenderer/docVault → CVExportModal → API → pdf.routes →
-  Python mvcv; wymagany token w ścieżce UI. Podgląd i pobrany plik to oddzielne kontrole.
-- Wydanie: CI Fast Gate + pełny Release Gate + izolowany AUTH/RLS/PDF →
-  ręczny workflow deploy z produkcyjną bramką telemetryczną → uwierzytelniony smoke.
-
-## Historia
-
-Poprzednie checkpointy i wyniki: [AUDIT_CLOSURE_HISTORY.md](docs/evidence/AUDIT_CLOSURE_HISTORY.md).
+Historia, macierz race/revision, szczegółowe SHA i wcześniejsze ograniczenia:
+[AUDIT_CLOSURE_HISTORY.md](docs/evidence/AUDIT_CLOSURE_HISTORY.md).
