@@ -2,6 +2,20 @@
 
 Stan 15.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 
+Nowy FAIL bramki D04 dla `0bd76a0881b93995b1d66604ab1f9b6d1ea841e7`:
+run 38675032473, job 116226585631. Dziesięć równoległych pierwszych rezerwacji
+AI dało 1 zgodę / 0 odmów zamiast wymaganych 5/5. Pozostałe kontrole RLS
+i usuwania danych przeszły. Nie ponowiono testu w celu ukrycia wyniku.
+Istniejąca funkcja `reserve_ai_quota` blokuje SELECT FOR UPDATE przed INSERT:
+nieistniejący wiersz nie jest chroniony przed równoległą inicjalizacją.
+Przygotowano migrację zastępującą tylko tę funkcję: INSERT licznika 0
+ON CONFLICT DO NOTHING przed odczytem z blokadą. Dalsza polityka limitu
+pozostaje oryginalna, ACL zachowane przez CREATE OR REPLACE, bez GRANT/REVOKE.
+Test nadal wymaga dokładnie 5 zgód i 5 odmów; dodatkowo zapisuje wyłącznie
+kody błędów i jawnie wymaga ich braku. Lokalnie brak Dockera/Postgresa:
+wykonanie migracji UNKNOWN do odbioru izolowanego CI. Produkcja nietknięta.
+Reguła ON CONFLICT: [dokumentacja PostgreSQL](https://www.postgresql.org/docs/current/sql-insert.html).
+
 ADR-154: na bazie `112e2a8af88162e13cb0ebd3f75393dcbc49e062` potwierdzono S1:
 wysyłka A → zapis lokalny B → konflikt serwera dla A zastępował B starszym A.
 Druga regresja tego samego catch odtwarzała outbox wyczyszczony podczas wysyłki.
