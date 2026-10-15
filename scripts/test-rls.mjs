@@ -195,10 +195,13 @@ try {
   );
   const allowedCount = race.filter((r) => r.data?.allowed === true).length;
   const deniedCount = race.filter((r) => r.data?.allowed === false).length;
+  // Same liczby allowed/denied nie ujawniały przyczyny dziewięciu błędów
+  // pierwszej równoległej inicjalizacji. Zapisujemy tylko kody, bez payloadów.
+  const raceErrors = race.filter((r) => r.error).map((r) => r.error.code ?? 'UNKNOWN');
   check(
     'Z 10 równoległych rezerwacji (limit 5) dokładnie 5 przechodzi',
-    allowedCount === 5 && deniedCount === 5,
-    `dopuszczono: ${allowedCount}, odrzucono: ${deniedCount}`
+    allowedCount === 5 && deniedCount === 5 && raceErrors.length === 0,
+    `dopuszczono: ${allowedCount}, odrzucono: ${deniedCount}, kody błędów: ${raceErrors.join(', ') || 'brak'}`
   );
 
   console.log('\nUsunięcie konta i stary token:');

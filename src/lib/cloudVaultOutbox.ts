@@ -242,9 +242,14 @@ export function flushPendingCloudVault(
         confirmation = await sender(pending.vault, ownerId, pending.baseUpdatedAt);
       } catch (error) {
         if (error instanceof CloudVaultConflictError) {
-          writeJson(cloudVaultOutboxKeyFor(ownerId), { ...pending, conflict: true });
-          publish(ownerId, 'conflict');
-          return 'conflict';
+          // Żądanie dotyczy starszej rewizji. Konflikt blokuje aktualną pracę,
+          // ale nie może zastąpić jej snapshotem z początku wysyłki ani
+          // odtworzyć kopii usuniętej podczas oczekiwania na odpowiedź.
+          const latest = getPendingCloudVault(ownerId);
+          if (latest) writeJson(cloudVaultOutboxKeyFor(ownerId), { ...latest, conflict: true });
+          const status = getCloudVaultSyncStatus(ownerId);
+          publish(ownerId, status);
+          return status;
         }
         // Brak potwierdzenia = nadal oczekuje. Niczego nie kasujemy. Kolejna
         // próba nastąpi po nowym zapisie, zdarzeniu online lub ponownym wejściu.

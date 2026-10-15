@@ -70,10 +70,10 @@ const browser = await chromium.launch({
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
 const page = await context.newPage();
+await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(BASE_URL).origin });
 const errors = [];
 page.on('pageerror', (error) => {
-  // Wspólny host Vite może zamknąć WebSocket HMR; pozostałe błędy strony są failami testu.
-  if (!/WebSocket closed without opened/i.test(String(error))) errors.push(String(error));
+  errors.push(String(error));
 });
 
 async function assertActiveProfile(profile, marker) {
@@ -84,6 +84,19 @@ async function assertActiveProfile(profile, marker) {
   if (!visibleText.includes(marker)) throw new Error(`Aktywny profil ${profile.id} nie pokazuje swojego znacznika.`);
   const otherMarker = marker === 'MARKER-A-ONLY' ? 'MARKER-B-ONLY' : 'MARKER-A-ONLY';
   if (visibleText.includes(otherMarker)) throw new Error(`Dane ${otherMarker} przeniknęły do widoku ${profile.id}.`);
+}
+
+async function assertCurrentCv(marker, otherMarker) {
+  // Nie przełączaj zakładki: to właśnie pozostający na ekranie edytor miał
+  // zachowany docVault właściciela A po wznowieniu profilu B.
+  const document = page.locator('#cv-printable-document');
+  await document.getByText(marker, { exact: true }).waitFor();
+  const text = await document.innerText();
+  if (text.includes(otherMarker)) throw new Error('CV pokazuje dane poprzedniego właściciela.');
+  await page.getByRole('button', { name: 'Kopiuj treść dokumentu do schowka' }).click();
+  await page.getByRole('button', { name: 'Kopiuj treść dokumentu do schowka' }).getByText('Skopiowano!', { exact: true }).waitFor();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  if (!copied.includes(marker) || copied.includes(otherMarker)) throw new Error('TXT przenosi dane innego profilu.');
 }
 
 async function savedProfileButton(profile) {
@@ -124,10 +137,17 @@ try {
 
   await assertActiveProfile(profileA, 'MARKER-A-ONLY');
   await page.screenshot({ path: PROFILE_A_SCREENSHOT, fullPage: true });
+  await page.getByRole('button', { name: 'CV', exact: true }).click();
+  await assertCurrentCv('MARKER-A-ONLY', 'MARKER-B-ONLY');
 
   await closeActiveProfileAndOpenChooser();
+  if ((await page.locator('#cv-printable-document').innerText()).includes('MARKER-A-ONLY')) {
+    throw new Error('Zamknięcie profilu pozostawiło jego dane w CV.');
+  }
   await (await savedProfileButton(profileB)).click();
   await page.getByText('Profil lokalny wznowiony').waitFor({ state: 'visible', timeout: 10_000 });
+  await assertCurrentCv('MARKER-B-ONLY', 'MARKER-A-ONLY');
+  await page.screenshot({ path: 'docs/evidence/cv-profile-owner-b.png', fullPage: true });
   await assertActiveProfile(profileB, 'MARKER-B-ONLY');
   await page.screenshot({ path: PROFILE_B_SCREENSHOT, fullPage: true });
 
@@ -135,9 +155,13 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await assertActiveProfile(profileB, 'MARKER-B-ONLY');
 
+  await page.getByRole('button', { name: 'CV', exact: true }).click();
+  await assertCurrentCv('MARKER-B-ONLY', 'MARKER-A-ONLY');
+
   await closeActiveProfileAndOpenChooser();
   await (await savedProfileButton(profileA)).click();
   await page.getByText('Profil lokalny wznowiony').waitFor({ state: 'visible', timeout: 10_000 });
+  await assertCurrentCv('MARKER-A-ONLY', 'MARKER-B-ONLY');
   await assertActiveProfile(profileA, 'MARKER-A-ONLY');
 
   const stored = await page.evaluate(({ a, b }) => ({

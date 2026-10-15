@@ -1,6 +1,88 @@
 # Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
 
-Stan 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+Stan 15.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+
+Nowy FAIL bramki D04 dla `0bd76a0881b93995b1d66604ab1f9b6d1ea841e7`:
+run 38675032473, job 116226585631. Dziesięć równoległych pierwszych rezerwacji
+AI dało 1 zgodę / 0 odmów zamiast wymaganych 5/5. Pozostałe kontrole RLS
+i usuwania danych przeszły. Nie ponowiono testu w celu ukrycia wyniku.
+Istniejąca funkcja `reserve_ai_quota` blokuje SELECT FOR UPDATE przed INSERT:
+nieistniejący wiersz nie jest chroniony przed równoległą inicjalizacją.
+Przygotowano migrację zastępującą tylko tę funkcję: INSERT licznika 0
+ON CONFLICT DO NOTHING przed odczytem z blokadą. Dalsza polityka limitu
+pozostaje oryginalna, ACL zachowane przez CREATE OR REPLACE, bez GRANT/REVOKE.
+Test nadal wymaga dokładnie 5 zgód i 5 odmów; dodatkowo zapisuje wyłącznie
+kody błędów i jawnie wymaga ich braku. Lokalnie brak Dockera/Postgresa:
+wykonanie migracji UNKNOWN do odbioru izolowanego CI. Produkcja nietknięta.
+Reguła ON CONFLICT: [dokumentacja PostgreSQL](https://www.postgresql.org/docs/current/sql-insert.html).
+
+ADR-154: na bazie `112e2a8af88162e13cb0ebd3f75393dcbc49e062` potwierdzono S1:
+wysyłka A → zapis lokalny B → konflikt serwera dla A zastępował B starszym A.
+Druga regresja tego samego catch odtwarzała outbox wyczyszczony podczas wysyłki.
+Oba testy FAIL przed zmianą. Minimalna poprawka oznacza konflikt na najnowszym
+istniejącym pending; nie przywraca usuniętego wpisu. GREEN: 52 testy sąsiednie,
+pełny Vitest 2742 PASS / 3 SKIPPED, lint/TS i build PASS. Rozszerzony istniejący
+`e2e-cloud-vault-conflict.mjs` odtwarza A/B przez prawdziwy moduł outboxu,
+ponownie otwiera aplikację i potwierdza zapis tylko wybranej wersji B — PASS.
+Sesja i Supabase są syntetyczne. Dowód:
+`docs/evidence/cloud-vault-conflict-latest-draft.png`.
+
+Macierz ADR-154 (lokalna poprawka względem bazy `112e2a8`; wynikowy SHA w PR):
+
+| Scenariusz | Istniejący dowód | Wynik |
+| --- | --- | --- |
+| Szybkie A/B i spóźniony ACK | cloudVaultOutbox.test.ts: serializacja, zachowanie B | PASS |
+| A/B i spóźniony konflikt A | nowa regresja + cloud-vault-conflict E2E | FAIL → PASS |
+| Wyczyść outbox podczas wysyłki | nowa regresja; konflikt nie odtwarza danych | FAIL → PASS |
+| Konflikt z innym urządzeniem | outbox: jawny wybór; E2E bez automatycznej sumy snapshotów | PASS |
+| Konto zmienione podczas rozstrzygania | cloudVaultConflictResolution.test.ts | PASS |
+| Zamknięcie/logout/odświeżenie i odłożony zapis | deferredWriter, idb-stale-write, cloud-logout-race; Release Gate `4eb4ca0` | PASS na wskazanym SHA; ponowny odbiór poprawki wymagany |
+| Historyczna wersja i aktualny profil | historicalDocumentExport.test.ts + cvLibraryStorage.test.ts | PASS |
+
+Nie przeprowadzono pełnego testu równoczesnej edycji jednego profilu w dwóch
+kartach ani rzeczywistej utraty danych produkcyjnego konta. Serializacja w module
+dotyczy jednej karty; CAS chroni rewizję serwera. Ten raport nie deklaruje
+współpracy w czasie rzeczywistym ani automatycznego scalania zmian.
+
+ADR-153: potwierdzono S0 w lokalnym przełączaniu profili. Na bazowym
+`1e5d2eb7241fa999d0e576201725462424b544f2` edytor pozostawiony na karcie CV
+po zmianie A → B pokazywał i kopiował tekst A. Magazyny źródłowe pozostawały
+rozdzielone; lokalny `docVault` był inicjalizowany tylko przy montowaniu.
+Poprawka odmontowuje edytor przy zmianie właściciela, osłania przekazanie Vaultu
+także przy wylogowaniu i uzupełnia nietknięty szkic po odczycie nowego profilu.
+Istniejący test izolacji sprawdza teraz CV i rzeczywisty schowek przed zmianą
+zakładki: A → zamknięcie profilu → B → reload → A. Reprodukcja FAIL przed
+poprawką, PASS po poprawce na świeżo uruchomionym serwerze. Lint/TS PASS
+(202 wcześniejsze ostrzeżenia), Vitest 2739 PASS / 1 SKIPPED, build PASS.
+Dowód syntetyczny: `docs/evidence/cv-profile-owner-b.png`. Pozostaje odbiór
+CI wynikowego SHA oraz dalsze kryteria ADR-153 dotyczące bajtów eksportów;
+nie oznaczono całego issue Done.
+
+Odbiór lokalny poprawki `4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6`:
+Release Gate PASS, zakończony 15.10.2026 03:04:42 UTC; 29 scenariuszy
+przeglądarkowych, testy Python/PDF, build i built smoke PASS. Raport:
+`artifacts/release-4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6/report.json`.
+Produkcja/OAuth/AI mają osobne statusy UNKNOWN, telemetria lokalna SKIPPED;
+nie zaliczono ich na podstawie tego raportu. Draft PR #144 jest oparty na #142,
+więc filtry `pull_request: branches: [main]` nie uruchamiają automatycznie CI.
+
+Dodatkowe kryterium ADR-153: istniejące testy eksportu badają teraz rzeczywiste
+PDF standard/dual-layer (tekst wszystkich stron, metadane, brak załączników),
+całe archiwum DOCX i dwa mechanizmy TXT. Markery telefonu i punktora usuniętych
+z projekcji oraz wewnętrznych claims/subRoleId nie występują w wynikach;
+publiczne markery są obecne, źródłowy Vault zachowuje całą treść. Wynik negatywny
+dla tej projekcji, bez nowej poprawki runtime. Kontrakt nie ma flag private/visible;
+test nie potwierdza nieistniejącej funkcji prywatnych pól. Globalny eksport Word
+z palety poleceń używa całego MasterVault, a edytor CV swojej projekcji.
+34 testy DOCX/PDF PASS z rzeczywistym rendererem; pełny Vitest 2740 PASS /
+3 SKIPPED (trzy kontrole PDF wykonano osobno z RUN_PDF_INTEGRATION=1), lint/TS
+PASS, bez nowych ostrzeżeń. Bieżący kod runtime nie zmienił się od `4eb4ca0`.
+
+Uzgodniono nowe przekazanie Gemini Argon i instrukcje z draft PR #143:
+ADR-153/154 przed porządkowaniem agentów i optymalizacją CI. PR #143 pozostaje
+osobny i niescalony. Same nazwy historycznych zrzutów nie są dowodem regresji.
+`main` po ponownym pobraniu: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`;
+baza poprawki ma 17 commitów przewagi i 0 zaległych względem `main`.
 
 Potwierdzony S1 na stronie publicznej po rzeczywistym logowaniu: eksport
 `POST /api/cv/export-pdf` zwraca HTTP 500. Renderer zgłasza brak Georgia,
@@ -12,8 +94,11 @@ weryfikacja CLI PASS (2 strony, 37 elementów semantycznych). Docker nie jest
 dostępny lokalnie; poprawkę kontenera odebrano w GitHub CI wskazanym poniżej.
 Eksport obecnej produkcji pozostaje FAIL do zatwierdzonego wdrożenia i smoke.
 
-Ostatni kompletny odbiór CI: `3e264e31e8d60317b7653e70fc0d2cdad5ce0ef9`
-([Release Gate 38637847803](https://github.com/krymszuch-stack/Kierivo/actions/runs/38637847803), wszystkie 6 workflowów PASS).
+Ostatni kompletny odbiór CI i lokalny: `1e5d2eb7241fa999d0e576201725462424b544f2`
+([Release Gate 38640047253](https://github.com/krymszuch-stack/Kierivo/actions/runs/38640047253), wszystkie 6 workflowów PASS).
+Lokalny raport: `artifacts/release-1e5d2eb7241fa999d0e576201725462424b544f2/report.json`;
+29 kontroli przeglądarkowych, Vitest 2739 PASS / 1 SKIPPED, Python 46/46,
+PDF API 19/19 i built smoke PASS. Ten odbiór nie obejmuje późniejszej poprawki S0.
 Ostatni kompletny lokalny odbiór kodu: `d1cc1e7cba6c263ba58c4e5629bbee47dda21aba`.
 Lokalny Release Gate PASS, Vitest 2736 PASS / 1 SKIPPED, Python 46/46,
 PDF API 19/19, 28 scenariuszy przeglądarkowych i built smoke PASS.
