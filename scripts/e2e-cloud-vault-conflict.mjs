@@ -115,6 +115,7 @@ await page.route('https://synthetic-project.supabase.co/rest/v1/vaults**', async
 });
 
 await page.addInitScript(({ ownerId, localSnapshot, remoteUpdatedAt }) => {
+  if (localStorage.getItem('cvelocity:profile')) return;
   const fnv1a = (input) => {
     let hash = 0x811c9dc5;
     for (let i = 0; i < input.length; i += 1) {
@@ -163,6 +164,30 @@ await page.addInitScript(({ ownerId, localSnapshot, remoteUpdatedAt }) => {
 });
 
 try {
+  // Najpierw prawdziwy outbox, zanim aplikacja odczyta konflikt. A czeka,
+  // B jest nowszą pracą; spóźniony konflikt A musi zachować B po reload.
+  await page.route('**/src/main.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+  const raced = await page.evaluate(async ({ ownerId, newer }) => {
+    const [outbox, storage, { CloudVaultConflictError }] = await Promise.all([
+      import('/src/lib/cloudVaultOutbox.ts'), import('/src/lib/storage.ts'), import('/src/lib/cloudVault.ts'),
+    ]);
+    storage.removeRaw(outbox.cloudVaultOutboxKeyFor(ownerId));
+    const older = structuredClone(newer);
+    older.personalInfo.title = 'STARY-SNAPSHOT-A';
+    outbox.enqueueCloudVaultSave(ownerId, older);
+    let rejectSave;
+    const flushing = outbox.flushPendingCloudVault(ownerId, () => new Promise((_resolve, reject) => { rejectSave = reject; }));
+    const queued = outbox.enqueueCloudVaultSave(ownerId, newer);
+    rejectSave(new CloudVaultConflictError());
+    const status = await flushing;
+    const pending = outbox.getPendingCloudVault(ownerId);
+    return { status, title: pending?.vault.personalInfo.title, revision: pending?.revision, expectedRevision: queued.revision };
+  }, { ownerId: OWNER_ID, newer: localVault });
+  if (raced.status !== 'conflict' || raced.title !== localVault.personalInfo.title || raced.revision !== raced.expectedRevision) {
+    throw new Error('Spóźniony konflikt A nadpisał nowszą pracę B przed odczytem aplikacji.');
+  }
+  await page.unroute('**/src/main.tsx*');
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   const dialog = page.getByRole('dialog', { name: 'Konflikt dwóch wersji CV' });
   await dialog.waitFor({ state: 'visible', timeout: 20_000 });
@@ -190,7 +215,7 @@ try {
   }
   if (errors.length) throw new Error(`Błędy przeglądarki: ${errors.join('; ')}`);
 
-  console.log(`PASS: modal pokazał obie wersje, zapisano wyłącznie wybrany snapshot; zrzut: ${SCREENSHOT}`);
+  console.log(`PASS: spóźniony konflikt A zachował B i jego rewizję; po ponownym odczycie modal pokazał obie wersje, zapisano wyłącznie wybrany snapshot; zrzut: ${SCREENSHOT}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   console.error(`URL: ${page.url()}`);

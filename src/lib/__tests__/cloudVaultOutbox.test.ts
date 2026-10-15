@@ -16,7 +16,7 @@ import { resetLastGoodCache } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 import { CloudVaultConflictError } from '../cloudVault';
 import { cloudVaultOutboxKeyFor } from '../cloudVaultKeys';
-import { writeJson } from '../storage';
+import { writeJson, removeRaw } from '../storage';
 import { hasInvalidPendingCloudVault, markCloudVaultUnverified } from '../cloudVaultOutbox';
 
 describe('cloudVaultOutbox', () => {
@@ -91,6 +91,39 @@ describe('cloudVaultOutbox', () => {
     ]);
     expect(sender.mock.calls[1][2]).toBe('rev-2');
     expect(getPendingCloudVault(ownerId)).toBeNull();
+  });
+
+  it('konflikt starszej wysyłki zachowuje nowszy lokalny snapshot i jego rewizję', async () => {
+    const ownerId = 'owner-conflict-newer-draft';
+    const a = createEmptyVault('Starsza wersja A');
+    const b = createEmptyVault('Nowsza praca B');
+    let rejectA: (error: Error) => void = () => { throw new Error('Wysyłka A nie została rozpoczęta'); };
+    const sender = vi.fn(() => new Promise<{ updatedAt: string }>((_resolve, reject) => { rejectA = reject; }));
+    enqueueCloudVaultSave(ownerId, a, { baseUpdatedAt: 'remote-original' });
+    const flushing = flushPendingCloudVault(ownerId, sender);
+    const queuedB = enqueueCloudVaultSave(ownerId, b);
+    rejectA(new CloudVaultConflictError());
+    await expect(flushing).resolves.toBe('conflict');
+    const pending = getPendingCloudVault(ownerId);
+    expect(pending?.vault.personalInfo.fullName).toBe('Nowsza praca B');
+    expect(pending?.revision).toBe(queuedB.revision);
+    expect(pending?.baseUpdatedAt).toBe('remote-original');
+    expect(pending?.conflict).toBe(true);
+    await expect(flushPendingCloudVault(ownerId, sender)).resolves.toBe('conflict');
+    expect(sender).toHaveBeenCalledTimes(1);
+  });
+
+  it('spóźniony konflikt nie odtwarza wyczyszczonego outboxu', async () => {
+    const ownerId = 'owner-cleared-conflict';
+    let rejectSave: (error: Error) => void = () => { throw new Error('Wysyłka nie została rozpoczęta'); };
+    const sender = vi.fn(() => new Promise<{ updatedAt: string }>((_resolve, reject) => { rejectSave = reject; }));
+    enqueueCloudVaultSave(ownerId, createEmptyVault('Usunięta lokalna kopia'));
+    const flushing = flushPendingCloudVault(ownerId, sender);
+    removeRaw(cloudVaultOutboxKeyFor(ownerId));
+    rejectSave(new CloudVaultConflictError());
+    await flushing;
+    expect(getPendingCloudVault(ownerId)).toBeNull();
+    expect(localStorage.getItem(cloudVaultOutboxKeyFor(ownerId))).toBeNull();
   });
 
   it('zachowuje konflikt między urządzeniami i nie ponawia starego snapshotu', async () => {
