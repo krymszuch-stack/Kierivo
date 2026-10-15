@@ -67,7 +67,14 @@ const COLOR_SWATCHES = [
   { id: 'slate', label: 'Classic Slate', hex: '#334155' },
 ];
 
-export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
+// Szkic, schowek i gotowy PDF należą do jednego właściciela. Zmiana konta
+// odmontowuje cały edytor, zamiast zostawiać lokalny docVault poprzednika.
+export const DocumentRenderer: React.FC<DocumentRendererProps> = (props) => {
+  const { user } = useAuth();
+  return <OwnerDocumentRenderer key={user?.id ?? ANONYMOUS_PROFILE_ID} {...props} />;
+};
+
+const OwnerDocumentRenderer: React.FC<DocumentRendererProps> = ({
   vault,
   tailoredResume,
   onUpdateVault,
@@ -101,12 +108,29 @@ export const DocumentRenderer: React.FC<DocumentRendererProps> = ({
 
   // Lokalna robocza wersja dokumentu z możliwością edycji przed drukiem
   const [docVault, setDocVault] = useState<MasterVault>(() => JSON.parse(JSON.stringify(vault)));
-  const [initialVaultSkills] = useState(() => ({
+  const [documentSource, setDocumentSource] = useState(vault);
+  const [initialVaultSkills, setInitialVaultSkills] = useState(() => ({
     hardSkills: [...(vault.skillsMatrix?.hardSkills ?? [])],
     toolsAndTech: [...(vault.skillsMatrix?.toolsAndTech ?? [])],
     softSkills: [...(vault.skillsMatrix?.softSkills ?? [])],
   }));
   const [manualContentOverrides, setManualContentOverrides] = useState<Partial<{ title: string; summary: string }>>({});
+  // Po zmianie właściciela źródło może najpierw być puste, a następnie
+  // przyjść z magazynu. Odświeżaj tylko szkic bez własnych zmian; edycji
+  // użytkownika nie zastępuj cichą odpowiedzią synchronizacji.
+  if (documentSource !== vault) {
+    const pristine = JSON.stringify(docVault) === JSON.stringify(documentSource)
+      && Object.keys(manualContentOverrides).length === 0;
+    setDocumentSource(vault);
+    if (pristine) {
+      setDocVault(JSON.parse(JSON.stringify(vault)));
+      setInitialVaultSkills({
+        hardSkills: [...(vault.skillsMatrix?.hardSkills ?? [])],
+        toolsAndTech: [...(vault.skillsMatrix?.toolsAndTech ?? [])],
+        softSkills: [...(vault.skillsMatrix?.softSkills ?? [])],
+      });
+    }
+  }
   const effectiveTailoredResume = useMemo(
     () => applyManualCvOverrides(tailoredResume, manualContentOverrides),
     [tailoredResume, manualContentOverrides],

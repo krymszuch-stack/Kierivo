@@ -1,6 +1,26 @@
 # Kierivo Public Pre-Beta — odbiór ADR-152 / ADR-125
 
-Stan 14.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+Stan 15.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
+
+ADR-153: potwierdzono S0 w lokalnym przełączaniu profili. Na bazowym
+`1e5d2eb7241fa999d0e576201725462424b544f2` edytor pozostawiony na karcie CV
+po zmianie A → B pokazywał i kopiował tekst A. Magazyny źródłowe pozostawały
+rozdzielone; lokalny `docVault` był inicjalizowany tylko przy montowaniu.
+Poprawka odmontowuje edytor przy zmianie właściciela, osłania przekazanie Vaultu
+także przy wylogowaniu i uzupełnia nietknięty szkic po odczycie nowego profilu.
+Istniejący test izolacji sprawdza teraz CV i rzeczywisty schowek przed zmianą
+zakładki: A → zamknięcie profilu → B → reload → A. Reprodukcja FAIL przed
+poprawką, PASS po poprawce na świeżo uruchomionym serwerze. Lint/TS PASS
+(202 wcześniejsze ostrzeżenia), Vitest 2739 PASS / 1 SKIPPED, build PASS.
+Dowód syntetyczny: `docs/evidence/cv-profile-owner-b.png`. Pozostaje odbiór
+CI wynikowego SHA oraz dalsze kryteria ADR-153 dotyczące bajtów eksportów;
+nie oznaczono całego issue Done.
+
+Uzgodniono nowe przekazanie Gemini Argon i instrukcje z draft PR #143:
+ADR-153/154 przed porządkowaniem agentów i optymalizacją CI. PR #143 pozostaje
+osobny i niescalony. Same nazwy historycznych zrzutów nie są dowodem regresji.
+`main` po ponownym pobraniu: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`;
+baza poprawki ma 17 commitów przewagi i 0 zaległych względem `main`.
 
 Potwierdzony S1 na stronie publicznej po rzeczywistym logowaniu: eksport
 `POST /api/cv/export-pdf` zwraca HTTP 500. Renderer zgłasza brak Georgia,
@@ -12,8 +32,11 @@ weryfikacja CLI PASS (2 strony, 37 elementów semantycznych). Docker nie jest
 dostępny lokalnie; poprawkę kontenera odebrano w GitHub CI wskazanym poniżej.
 Eksport obecnej produkcji pozostaje FAIL do zatwierdzonego wdrożenia i smoke.
 
-Ostatni kompletny odbiór CI: `3e264e31e8d60317b7653e70fc0d2cdad5ce0ef9`
-([Release Gate 38637847803](https://github.com/krymszuch-stack/Kierivo/actions/runs/38637847803), wszystkie 6 workflowów PASS).
+Ostatni kompletny odbiór CI i lokalny: `1e5d2eb7241fa999d0e576201725462424b544f2`
+([Release Gate 38640047253](https://github.com/krymszuch-stack/Kierivo/actions/runs/38640047253), wszystkie 6 workflowów PASS).
+Lokalny raport: `artifacts/release-1e5d2eb7241fa999d0e576201725462424b544f2/report.json`;
+29 kontroli przeglądarkowych, Vitest 2739 PASS / 1 SKIPPED, Python 46/46,
+PDF API 19/19 i built smoke PASS. Ten odbiór nie obejmuje późniejszej poprawki S0.
 Ostatni kompletny lokalny odbiór kodu: `d1cc1e7cba6c263ba58c4e5629bbee47dda21aba`.
 Lokalny Release Gate PASS, Vitest 2736 PASS / 1 SKIPPED, Python 46/46,
 PDF API 19/19, 28 scenariuszy przeglądarkowych i built smoke PASS.
