@@ -8,11 +8,14 @@ import unittest
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pikepdf
 
 from mvcv.pdfsem.metadata import _years_of_experience
 from mvcv.pipeline import export
+from mvcv.governance import apply as govern
+from mvcv.render.renderer import Renderer
 from mvcv.tools.verify import (
     actual_text_entries,
     embedded_json,
@@ -32,6 +35,50 @@ class TestPipelineAndVerification(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
+
+    def test_selected_render_matches_pdf_report_and_governance(self):
+        # Rzeczywisty renderer i PDF: obserwujemy wybór przebiegu, bez
+        # podstawiania liczby stron ani odpowiedzi silnika.
+        base = json.loads(Path(self.sample_path).read_text(encoding="utf-8"))
+        for project_count in (0, 1, 4):
+            with self.subTest(project_count=project_count):
+                data = dict(base)
+                data["projects"] = [{
+                    "name": f"Projekt syntetyczny {i}",
+                    "description": "Test renderowania dokumentu. " * 8,
+                    "techStack": ["Python"],
+                } for i in range(project_count)]
+                source = Path(self.temp_dir) / f"render-selection-{project_count}.json"
+                output = source.with_suffix(".pdf")
+                source.write_text(json.dumps(data), encoding="utf-8")
+                renders = []
+                governance_runs = []
+
+                class ObservedRenderer(Renderer):
+                    def render(self):
+                        result = super().render()
+                        renders.append((self.density, result))
+                        return result
+
+                def observed_govern(*args, **kwargs):
+                    result = govern(*args, **kwargs)
+                    governance_runs.append(result)
+                    return result
+
+                with patch("mvcv.pipeline.Renderer", ObservedRenderer), patch("mvcv.pipeline.govern", observed_govern):
+                    report = export(str(source), str(output), layout="single", theme="classic", target_pages=1)
+                sidecar = json.loads(output.with_suffix(".semantic.json").read_text(encoding="utf-8"))
+                with pikepdf.open(output) as pdf:
+                    self.assertEqual(len(pdf.pages), report.pages, "Raport musi opisywać zapisane bajty PDF")
+                    self.assertEqual(len(pdf.pages), sidecar["pages"])
+                self.assertIn("compact", [density for density, _ in renders])
+                self.assertEqual(len(renders), len({density for density, _ in renders}), "Renderer jest stanowy: nie renderujemy drugi raz tej samej instancji")
+                self.assertEqual(report.governance, governance_runs[-1][1], "Pominięcia muszą pochodzić z wybranego przebiegu")
+                self.assertEqual(sidecar["governance"]["skills_dropped"], report.governance.skills_dropped)
+                self.assertEqual(sidecar["governance"]["bullets_dropped"], report.governance.bullets_dropped)
+                self.assertEqual(len(report.jsonld["knowsAbout"]), report.governance.skills_kept)
+                self.assertEqual(sidecar["jsonld"], report.jsonld)
+                self.assertEqual(report.pages, renders[-1][1].pages)
 
     def test_export_and_verify_default(self):
         out_pdf = os.path.join(self.temp_dir, "default_test.pdf")

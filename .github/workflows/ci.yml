@@ -1,6 +1,7 @@
 name: Kierivo CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -9,27 +10,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: npm
-      - name: Setup Python for Dual-Layer PDF engine
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install Python dependencies
-        run: pip install -e mastervault-cv
       - run: npm ci
-      - run: node scripts/sprawdz-limity-regul.mjs
-      - run: npm run lint
-      - run: npm test
-      - name: PDF integration test (requires Python + mvcv)
+      - run: npx playwright install --with-deps chromium
+      - name: Fast Gate — krytyczne regresje i zmienione moduły
         env:
-          RUN_PDF_INTEGRATION: '1'
-        run: npx vitest run src/server/__tests__/pdf.routes.test.ts
-      - run: npm run build
+          GATE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: npm run gate:fast
+      - name: Zapis dowodów Fast Gate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-gate-${{ github.sha }}
+          path: artifacts/fast-*/
+          retention-days: 14
       - name: Produkcyjny smoke test — główna ścieżka (Azure OpenAI)
         env:
           NODE_ENV: production
@@ -66,3 +68,12 @@ jobs:
         run: |
           ! grep -rE "service_role|sk_live_|sk_test_|SUPABASE_SERVICE_ROLE|AZURE_OPENAI" dist/client/
       - run: docker build -t kierivo-api:ci .
+      # Testy na runnerze mogą korzystać z fontów hosta. Sprawdzamy sam obraz
+      # runtime jako użytkownik node, aby brak fontów nie wrócił dopiero na Azure.
+      - name: PDF z produkcyjnego obrazu — fonty i rzeczywisty dokument
+        run: |
+          docker run --rm --entrypoint sh kierivo-api:ci -c '
+            cd /app/mastervault-cv &&
+            python -m mvcv export sample/mastervault.json -o /tmp/kierivo-runtime.pdf --layout single --theme parchment --avatar none --target-pages 2 &&
+            python -m mvcv verify /tmp/kierivo-runtime.pdf
+          '

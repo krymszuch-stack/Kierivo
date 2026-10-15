@@ -14,6 +14,9 @@ import {
 } from '../docxExporter';
 import { createEmptyVault } from '../sampleVault';
 import { generatePlainTextCvExport } from '../layeredVaultEngine';
+import { buildCvPlainText } from '../cvPlainText';
+import { adaptMasterVaultToSemanticProfile } from '../semanticPdfAdapter';
+import { createExportProjectionFixture, PUBLIC_EXPORT_MARKERS, OMITTED_EXPORT_MARKERS } from './fixtures/cvExportProjection';
 import type { MasterVault, LayeredFactItem } from '../../types';
 
 /**
@@ -55,6 +58,25 @@ const vault = {
 const facts: LayeredFactItem[] = [];
 
 describe('kontrakt OpenXML eksportu DOCX', () => {
+  it('rzeczywisty DOCX i TXT pomijają usunięte dane oraz wewnętrzne pola Vaultu', async () => {
+    const { source, projection, layeredFacts } = createExportProjectionFixture();
+    const before = JSON.stringify(source);
+    // Czytamy wszystkie wpisy ZIP, również właściwości dokumentu, nie tylko DOM/XML treści.
+    const archive = unzipSync(new Uint8Array(await Packer.toBuffer(buildCvDocument(projection, layeredFacts, '', ''))));
+    const outputs = [
+      Object.values(archive).map(bytes => new TextDecoder().decode(bytes)).join('\n'),
+      buildCvPlainText(projection),
+      generatePlainTextCvExport(projection, layeredFacts, '', ''),
+      JSON.stringify(adaptMasterVaultToSemanticProfile(projection)),
+    ];
+    for (const output of outputs) {
+      for (const marker of PUBLIC_EXPORT_MARKERS) expect(output).toContain(marker);
+      for (const marker of OMITTED_EXPORT_MARKERS) expect(output).not.toContain(marker);
+    }
+    expect(JSON.stringify(source)).toBe(before);
+    for (const marker of OMITTED_EXPORT_MARKERS) expect(before).toContain(marker);
+  });
+
   it('margines to dokładnie 25,4 mm (1 cal = 1440 twips) na każdej stronie', () => {
     expect(MARGIN_ONE_INCH_TWIPS).toBe(1440);
   });

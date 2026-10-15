@@ -81,7 +81,7 @@ try {
   }
   const current = await send();
   assert.equal(current.context.calculationMonth, '2026-09');
-  assert.equal(current.context.atsScoreProvenance, 'canonical-v2');
+  assert.equal(current.context.atsScoreProvenance, 'canonical-v3');
   await page.clock.setSystemTime(new Date('2026-10-15T12:00:00.000Z'));
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   await notice.waitFor();

@@ -3,14 +3,15 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Server } from 'node:http';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { createEmptyVault } from '../src/lib/sampleVault';
+import { createLongCvVault } from './fixtures/longCvVault';
 
 // Audyt uruchamia trasę PDF na danych syntetycznych, bez konta ani integracji chmurowej.
 process.env.BACKEND_MODE = 'local';
 process.env.AI_PROVIDER = 'ollama';
 const { pdfRouter } = await import('../src/server/routes/pdf.routes');
 
-const outputPath = resolve('docs/evidence/pdf-long-cv-synthetic-2026-10-02.pdf');
+const outputDir = resolve(process.env.EVIDENCE_DIR || 'docs/evidence');
+const outputPath = resolve(outputDir, 'pdf-long-cv-synthetic-2026-10-02.pdf');
 const app = express();
 app.use((req, res, next) => {
   (req as typeof req & { requestId: string }).requestId = 'req-audit-pdf-long-cv';
@@ -19,47 +20,7 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '2mb' }));
 app.use('/api', pdfRouter);
 
-const vault = createEmptyVault('Profil testowy', 'synthetic@example.invalid');
-vault.personalInfo = {
-  ...vault.personalInfo,
-  fullName: 'Profil testowy',
-  title: 'Technik utrzymania ruchu',
-  summary: 'Syntetyczny opis doświadczenia. '.repeat(18),
-  location: 'Miasto testowe',
-};
-vault.skillsMatrix = {
-  hardSkills: Array.from({ length: 12 }, (_, index) => `Syntetyczna umiejętność ${index + 1}`),
-  toolsAndTech: ['Narzędzie testowe A', 'Narzędzie testowe B'],
-  softSkills: ['Dokładność', 'Współpraca'],
-  certifications: [],
-};
-vault.history = Array.from({ length: 7 }, (_, index) => {
-  const number = String(index + 1).padStart(2, '0');
-  return {
-    id: `synthetic-long-exp-${number}`,
-    company: `Syntetyczny zakład ${number}`,
-    role: `Testowa rola ${number}`,
-    location: 'Miasto testowe',
-    startDate: `${2012 + index}-01`,
-    endDate: `${2012 + index}-12`,
-    isCurrent: false,
-    description: `Opis testowego stanowiska ${number}. ${'Syntetyczna treść obowiązków. '.repeat(8)}`,
-    highlights: Array.from({ length: 3 }, (_, highlightIndex) => ({
-      id: `synthetic-long-highlight-${number}-${highlightIndex + 1}`,
-      text: `CVLONG_SENTINEL_${number}_${highlightIndex + 1} ${'Syntetyczny punkt doświadczenia służący do sprawdzenia łamania i kolejności treści w dokumencie. '.repeat(3)}`,
-      action: '', target: '', tool: '', metric: '', keywords: [],
-    })),
-  };
-});
-vault.projects = Array.from({ length: 3 }, (_, index) => ({
-  id: `synthetic-long-project-${index + 1}`,
-  name: `Testowy projekt ${index + 1}`,
-  role: 'uczestnik testu',
-  description: `${'Syntetyczny opis projektu do weryfikacji pełnego eksportu. '.repeat(6)} PROJLONG_SENTINEL_${index + 1}`,
-  techStack: ['Narzędzie testowe A'],
-  metrics: '',
-  link: '',
-}));
+const vault = createLongCvVault();
 
 const server = await new Promise<Server>((resolveServer) => {
   const started = app.listen(0, '127.0.0.1', () => resolveServer(started));
@@ -93,12 +54,13 @@ try {
   const bytes = Buffer.from(payload.pdf, 'base64');
   const loadingTask = getDocument({ data: new Uint8Array(bytes), useSystemFonts: true });
   const pdf = await loadingTask.promise;
+  if (pdf.numPages < 2) throw new Error('Próba wielostronicowego PDF nie wygenerowała co najmniej dwóch stron.');
   const pageTexts = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) => {
     const content = await (await pdf.getPage(index + 1)).getTextContent();
     return content.items.map((item) => ('str' in item ? item.str : '')).join(' ');
   }));
   await loadingTask.destroy();
-  await mkdir(resolve('docs/evidence'), { recursive: true });
+  await mkdir(outputDir, { recursive: true });
   await writeFile(outputPath, bytes);
   const normalizedText = pageTexts.join(' ').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const expected = [

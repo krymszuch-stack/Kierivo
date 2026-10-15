@@ -118,9 +118,10 @@ function MainApp() {
     () => getActiveProfile()?.id ?? ANONYMOUS_PROFILE_ID
   );
   const vault = useMemo(() => {
-    const handoffIsPending = mode === 'cloud' && user &&
-      vaultProfileId !== user.id && vaultProfileId !== ANONYMOUS_PROFILE_ID;
-    return handoffIsPending ? createEmptyVault(user.name, user.email) : storedVault;
+    const ownerId = user?.id ?? ANONYMOUS_PROFILE_ID;
+    const eligibleAnonymousDraft = mode === 'cloud' && user && vaultProfileId === ANONYMOUS_PROFILE_ID;
+    const handoffIsPending = vaultProfileId !== ownerId && !eligibleAnonymousDraft;
+    return handoffIsPending ? createEmptyVault(user?.name, user?.email) : storedVault;
   }, [mode, user, vaultProfileId, storedVault]);
   const [cloudSyncRetryTick, setCloudSyncRetryTick] = useState(0);
   const [cloudVaultConflict, setCloudVaultConflict] = useState<{

@@ -825,6 +825,7 @@ export interface MultiEngineAtsConsensus {
   meanScore: number | null;
   minScore: number | null;
   maxScore: number | null;
+  /** Pasmo mediany diagnostycznej; nie ocena dopasowania. Braki określa careerFitAdvice. */
   consensusGrade: 'EXCELLENT' | 'GOOD' | 'NEEDS_WORK' | 'CRITICAL_RISK' | 'INSUFFICIENT_DATA';
   summaryJustification: string;
   careerFitAdvice: {
@@ -984,8 +985,10 @@ export function simulateMultiEngineATS(
   };
 
   // 4. Moduł Świeżości Umiejętności (Recency Bias & relevanceRanking.ts)
-  const recencyScoreEngine = hasRecencyEvidence && recencyScore !== null && hardCoverage !== null
-    ? Math.min(100, Math.max(0, Math.round(recencyScore * 0.70 + hardCoverage * 0.30)))
+  // Pokrycie wymagań ma własny moduł. Ponowne dodanie go tutaj karałoby
+  // te same braki, mimo niezmienionych dat użycia dopasowanych umiejętności.
+  const recencyScoreEngine = hasRecencyEvidence && recencyScore !== null
+    ? Math.min(100, Math.max(0, Math.round(recencyScore)))
     : null;
   const engine4: AtsEngineResult = {
     id: 'swiezosc_umiejetnosci',
@@ -996,7 +999,7 @@ export function simulateMultiEngineATS(
     status: recencyScoreEngine === null ? 'NOT_ASSESSED' : recencyScoreEngine >= 80 ? 'OPTIMAL' : recencyScoreEngine >= 65 ? 'ACCEPTABLE' : recencyScoreEngine >= 50 ? 'RISKY' : 'REJECTED',
     weightsFocus: recencyScoreEngine === null
       ? 'Nie oceniono — brak dopasowanych umiejętności i datowanego doświadczenia'
-      : 'Wystąpienie dopasowanych umiejętności w datowanych wpisach (70%), pokrycie (30%)',
+      : 'Wystąpienie dopasowanych umiejętności w datowanych wpisach; pokrycie wymagań oceniane osobno',
     keyStrengths: [
       recencyScoreEngine === null
         ? 'Za malo danych o datowanym uzyciu dopasowanych umiejetnosci'
@@ -1016,13 +1019,9 @@ export function simulateMultiEngineATS(
   };
 
   // 5. Moduł Zgodności Tytułu Stanowiska (Title Matcher)
-  const hasHardCoverageForTitle = hasHardRequirementEvidence && hardCoverage !== null;
+  // Zgodność nazw stanowisk nie jest kolejną oceną brakujących umiejętności.
   const titleScoreEngine = targetRoleTitle.trim() && hasCandidateTitleEvidence && titleScore !== null
-    ? Math.min(100, Math.max(0, Math.round(
-      hasHardCoverageForTitle
-        ? titleScore * 0.75 + hardCoverage * 0.25
-        : titleScore
-    )))
+    ? Math.min(100, Math.max(0, Math.round(titleScore)))
     : null;
   const engine5: AtsEngineResult = {
     id: 'zgodnosc_tytulu',
@@ -1033,9 +1032,9 @@ export function simulateMultiEngineATS(
     status: titleScoreEngine === null ? 'NOT_ASSESSED' : titleScoreEngine >= 80 ? 'OPTIMAL' : titleScoreEngine >= 65 ? 'ACCEPTABLE' : titleScoreEngine >= 50 ? 'RISKY' : 'REJECTED',
     weightsFocus: titleScoreEngine === null
       ? 'Nie oceniono - potrzebny tytul stanowiska w ofercie i tytul kandydata w profilu lub historii.'
-      : hasHardCoverageForTitle
-        ? 'Zgodnosc tytulu (75%) i pokrycie rozpoznanych wymagan twardych (25%).'
-        : 'Zgodnosc tytulu; nie znaleziono wymagan twardych do dolaczenia do wyniku.',
+      : hasHardRequirementEvidence
+        ? 'Zgodność tytułu; pokrycie wymagań oceniane osobno.'
+        : 'Zgodnosc tytulu; nie znaleziono wymagan twardych do osobnej oceny.',
     keyStrengths: [
       titleScoreEngine === null || titleScore === null ? 'Brak danych do porownania tytulow' : titleScore >= 75 ? 'Naglowek profilu odpowiada szukanemu stanowisku' : 'Tytuly stanowisk czesciowo sie roznia',
     ],
@@ -1227,9 +1226,9 @@ export function simulateMultiEngineATS(
   );
   const engine10: AtsEngineResult = {
     id: 'konsensus_cvelocity',
-    name: 'Glowny Zrownowazony Konsensus Kierivo',
+    name: 'Pomocnicze podsumowanie składników',
     component: 'atsSimulator.ts (agregacja ocenionych skladnikow)',
-    category: 'Koncowa syntetyczna ocena profilu',
+    category: 'Diagnostyka pochodna — poza medianą',
     score: cvelocityScore,
     status: cvelocityScore === null ? 'NOT_ASSESSED' : cvelocityScore >= 80 ? 'OPTIMAL' : cvelocityScore >= 65 ? 'ACCEPTABLE' : cvelocityScore >= 50 ? 'RISKY' : 'REJECTED',
     weightsFocus: !hasFitEvidence
@@ -1250,7 +1249,10 @@ export function simulateMultiEngineATS(
   };
 
   const engines = [engine1, engine2, engine3, engine4, engine5, engine6, engine7, engine8, engine9, engine10];
-  const allScores = engines.flatMap((engine) => engine.score === null ? [] : [engine.score]);
+  // D17: moduły 9 i 10 ponownie agregują sygnały z modułów źródłowych.
+  // Włączenie ich do mediany/średniej dawało tym samym sygnałom dodatkowy głos.
+  const allScores = [engine1, engine2, engine3, engine4, engine5, engine6, engine7, engine8]
+    .flatMap((engine) => engine.score === null ? [] : [engine.score]);
   const medianScore = calculateMedian(allScores);
   const meanScore = allScores.length === 0 ? null : Math.round(allScores.reduce((sum, s) => sum + s, 0) / allScores.length);
   const minScore = allScores.length === 0 ? null : Math.min(...allScores);
@@ -1309,7 +1311,7 @@ export function simulateMultiEngineATS(
 
   const summaryJustification = medianScore === null
     ? 'Nie obliczono mediany kontrolnych wskaznikow: zaden modul nie ma danych do oceny.'
-    : `Mediana kontrolnych wskaznikow wynosi ${medianScore}% dla ${allScores.length} modulow. Moduly sprawdzaja rozne cechy i nie tworza wyniku dopasowania ani przewidywania decyzji ATS lub rekrutera.`;
+    : `Mediana kontrolnych wskaznikow wynosi ${medianScore}% dla ${allScores.length} modulow. Moduly sprawdzaja rozne cechy i nie tworza wyniku dopasowania ani przewidywania decyzji ATS lub rekrutera. Pomocnicze agregaty (przesiew wymagań i podsumowanie składników) są wyłączone z mediany i średniej, aby nie liczyć ponownie ich źródeł.`;
 
   const globalBestPractices = [
     {

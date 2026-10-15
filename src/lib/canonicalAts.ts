@@ -23,20 +23,18 @@ export { hasCareerEvidence } from './careerEvidence';
  * i `buildAtsTelemetryReport` zostają jako diagnostyka symulacyjna i nie
  * wolno ich podpinać pod główny wskaźnik dopasowania w UI.
  *
- * Wzór: S = Σ wi·ci / Σ wi, składniki w [0,100], wagi z intencji produktu:
- * telemetria ważyła hard 0.40 / staż 0.25 / strukturę 0.20 / czasowniki 0.15.
- * Czasowniki sprawcze wypadają z kanonu (faworyzowały polski 1. os. — F8),
- * a ich 0.15 przejmują wymagania formalne (silnik je mierzył, ale wynik je
- * ignorował — F3). Stąd: skills 0.40, experience 0.25, structure 0.20,
- * formal 0.15. Wymiary bez wykrytych wymagań nie udają 100%: są wyłączane,
- * a pozostałe wagi normalizowane do 1.00.
+ * Wzór: S = Σ wi·ci / Σ wi, składniki w [0,100]. ADR-143: kontakt i
+ * struktura opisują dokument, nie kompetencje. Pozostają osobną diagnostyką
+ * z wagą zero. Zachowujemy proporcje dotychczasowych wag kompetencji 40:25:15,
+ * normalizując je do 1. Nie jest to kalibracja prawdopodobieństwa zatrudnienia.
+ * Wymiary bez danych są wyłączane, a pozostałe wagi normalizowane do 1.00.
  */
 
 export const CANONICAL_WEIGHTS = {
-  skills: 0.4,
-  experience: 0.25,
-  structure: 0.2,
-  formal: 0.15,
+  skills: 0.5,
+  experience: 0.3125,
+  structure: 0,
+  formal: 0.1875,
 } as const;
 
 export type CanonicalScoreBand = 'high' | 'moderate' | 'low';
@@ -104,11 +102,14 @@ export interface CanonicalAtsScore extends AtsCalculationTime {
   reason: string;
 }
 
-/** Jedno źródło prawdy dla formalnych braków, które oferta oznaczyła jako blokujące. */
+/** Rozpoznane braki wymagań ograniczają interpretację niezależnie od średniej.
+ * Kanon wyklucza atuty opcjonalne i przechowuje niewiadome osobno.
+ * Nazwa historyczna: blokuje pełną etykietę dopasowania, nie aplikowanie. */
 export function getUnmetBlockingRequirements(result?: CanonicalAtsScore): string[] {
-  return result?.formalFindings
+  if (!result) return [];
+  return [...new Set([...(result.missingRequirements ?? []), ...result.formalFindings
     .filter((finding) => finding.severity === 'knockout' && (finding.status ?? (finding.satisfied ? 'satisfied' : 'unsatisfied')) === 'unsatisfied')
-    .map((finding) => finding.label) ?? [];
+      .map((finding) => finding.label)])];
 }
 
 /** Wymogi wymagające danych, których profil obecnie nie przechowuje. */

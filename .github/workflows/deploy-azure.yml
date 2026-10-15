@@ -1,16 +1,25 @@
 name: Deploy Kierivo to Azure
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
 jobs:
+  release-gate:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/release-gate.yml
+    permissions:
+      contents: read
   deploy:
+    needs: release-gate
+    if: github.ref == 'refs/heads/main' && needs.release-gate.result == 'success'
     runs-on: ubuntu-latest
     environment: production
 
@@ -18,36 +27,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Wymagane dedykowane konto smoke przed jakąkolwiek zmianą Azure
+        env:
+          SMOKE_STATE_JSON: ${{ secrets.RELEASE_SMOKE_STORAGE_STATE }}
+        run: |
+          test -n "$SMOKE_STATE_JSON" || { echo 'UNKNOWN: brak sesji dedykowanego konta smoke. Wdrożenie zablokowane.'; exit 1; }
+          node --input-type=module -e 'const s=JSON.parse(process.env.SMOKE_STATE_JSON); if (!Array.isArray(s.origins) || !s.origins.some(o => o.localStorage?.some(k => k.name.endsWith("-auth-token")))) process.exit(1)'
+      - name: Bramka produkcyjnych zgłoszeń — odczyt wymagany
+        env:
+          BACKEND_MODE: cloud
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run bledy:bramka -- --required --cloud
       - name: Login to Azure with OIDC
         uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Build and test
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: npm
-
-      - name: Setup Python for Dual-Layer PDF engine
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Python dependencies
-        run: pip install -e mastervault-cv
-
-      - run: npm ci
-
-      - name: Install semantic work graph dependencies
-        working-directory: labs/semantic-work-graph
-        run: npm ci
-
-      - run: npm run lint
-
-      - run: npm test
 
       - name: Build and push image to ACR
         run: |
@@ -100,3 +103,24 @@ jobs:
             --retry 12 \
             --retry-delay 5 \
             "https://${FQDN}/api/health"
+
+      - name: Rzeczywisty smoke po wdrożeniu — CV → audyt → pobrany PDF
+        shell: bash
+        env:
+          SMOKE_STATE_JSON: ${{ secrets.RELEASE_SMOKE_STORAGE_STATE }}
+        run: |
+          SMOKE_STORAGE_STATE=$(mktemp)
+          export SMOKE_STORAGE_STATE
+          trap 'rm -f "$SMOKE_STORAGE_STATE"' EXIT
+          chmod 600 "$SMOKE_STORAGE_STATE"
+          printf '%s' "$SMOKE_STATE_JSON" > "$SMOKE_STORAGE_STATE"
+          unset SMOKE_STATE_JSON
+          FQDN=$(az containerapp show --name "${{ vars.AZURE_CONTAINER_APP }}" --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --query properties.configuration.ingress.fqdn -o tsv)
+          BASE_URL="https://${FQDN}" npm run gate:postdeploy
+      - name: Zapis dowodów po wdrożeniu
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postdeploy-${{ github.sha }}
+          path: artifacts/postdeploy-*/
+          retention-days: 30

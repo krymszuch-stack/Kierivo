@@ -21,7 +21,7 @@ import {
 import { MasterVault } from '../../types';
 import { simulateMultiEngineATS, AtsEngineResult } from '../../lib/atsSimulator';
 import { scoreCanonicalAts, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, getUnmetBlockingRequirements } from '../../lib/canonicalAts';
-import { getCanonicalScoreMetricLabel, hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
+import { getCanonicalScoreMetricLabel, getMatchInterpretation, hasLimitedMatchEvidence } from '../../lib/matchInterpretation';
 import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
 import { formatDecimalPl } from '../../lib/pluralFormat';
 import { buildAtsTelemetryReport, STUFFING_DENSITY_THRESHOLD } from '../../lib/atsScorer';
@@ -155,11 +155,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
   const scoreBand = isScorable ? getCanonicalScoreBand(scorableScore) : null;
   const profileCoverage = measureVaultCompleteness(vault).percent;
   const detectedRequirementCount = canonical.matchedRequirements.length + canonical.missingRequirements.length + canonical.unconfirmedRequirements.length;
+  const blockingRequirements = getUnmetBlockingRequirements(canonical);
   const limitedMatchEvidence = hasLimitedMatchEvidence({
     profileCompleteness: profileCoverage,
     totalRequirementCount: detectedRequirementCount,
     fitEvidenceAvailable: consensus.careerFitAdvice.assessment !== 'INSUFFICIENT_EVIDENCE',
-    blockingRequirements: getUnmetBlockingRequirements(canonical),
+    blockingRequirements,
     unconfirmedRequirements: canonical.unconfirmedRequirements,
   });
 
@@ -379,6 +380,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 {canonical.unconfirmedRequirements.length > 0 && <>
                   Nie można potwierdzić: {canonical.unconfirmedRequirements.join(', ')}. Brak danych nie oznacza spełnienia ani niespełnienia tych wymogów.{' '}
                 </>}
+                {blockingRequirements.length > 0 && <>Nie potwierdzono wymagań: {blockingRequirements.join(', ')}. </>}
                 Wynik jest wstępny i korzysta tylko z dostępnych danych. Sprawdź odczyt CV oraz pełną treść oferty.
               </p>
             )}
@@ -408,7 +410,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
               </span>
             ) : (
               <span className={`mt-4 rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white ${
-                scoreBand === 'high' ? 'bg-emerald-500' : scoreBand === 'moderate' ? 'bg-blue-500' : 'bg-amber-500'
+                limitedMatchEvidence ? 'bg-amber-500' : scoreBand === 'high' ? 'bg-emerald-500' : scoreBand === 'moderate' ? 'bg-blue-500' : 'bg-amber-500'
               }`}>
                 {limitedMatchEvidence
                   ? 'Wynik wstępny — ograniczone dane'
@@ -447,7 +449,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                   <div className="mt-2.5 pt-2 border-t border-ink/5">
                     <div className="flex items-center justify-between text-[10px] text-ink-faint">
                       <span>Waga</span>
-                      <span className="font-mono font-bold text-ink-muted">{isScorable ? `${pillar.weight}%` : '—'}</span>
+                      <span className="font-mono font-bold text-ink-muted">{pillar.id === 'structure' ? 'poza wynikiem' : isScorable ? `${pillar.weight}%` : '—'}</span>
                     </div>
                     <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink/10">
                       <div
@@ -466,7 +468,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
                 <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
                 {canonical.unconfirmedRequirements.length > 0 && <span>Do potwierdzenia: <strong className="font-mono text-amber-600">{canonical.unconfirmedRequirements.length}</strong></span>}
-                <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
+                <span title="Liczba uwag do danych i struktury. Nie każda uwaga odejmuje punkty dopasowania do oferty.">Uwagi do danych i struktury: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
               </> : <span>Wynik dopasowania pojawi się po dodaniu profilu i treści oferty.</span>}
               {isScorable && consensus.medianScore !== null && (
                 <div className="ml-auto flex items-center gap-1.5 text-ink-faint">
@@ -639,7 +641,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
       {isScorable && <>
       <ScrollContinuationHint targetId="ocena-dopasowania" label="Dalej: Ocena dopasowania profilu ↓" />
 
-      <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${consensus.careerFitAdvice.assessment === 'PLAUSIBLE_FIT' ? 'border-emerald-500/20 bg-emerald-500/5' : consensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE' ? 'border-line bg-surface/60' : 'border-amber-500/25 bg-amber-500/5'}`}>
+      <div id="ocena-dopasowania" className={`scroll-mt-24 rounded-3xl border p-6 ${limitedMatchEvidence ? 'border-amber-500/25 bg-amber-500/5' : 'border-line bg-surface/60'}`}>
         <div className="flex items-start gap-4">
           <div className="rounded-2xl bg-brand/10 p-3 text-brand-fg"><Compass className="h-6 w-6" /></div>
           <div className="flex-1 space-y-2">
@@ -647,7 +649,12 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
             {consensus.careerFitAdvice.assessment === 'INSUFFICIENT_EVIDENCE' && (
               <p className="text-xs font-semibold text-muted">Brak wystarczających danych o doświadczeniu</p>
             )}
-            <p className="text-sm leading-relaxed text-ink-muted">{consensus.careerFitAdvice.verdict}</p>
+            <p className="text-sm leading-relaxed text-ink-muted">{getMatchInterpretation({
+              score: scorableScore, activeSuggestionCount: 0, profileCompleteness: profileCoverage,
+              matchedRequirementCount: canonical.matchedRequirements.length, totalRequirementCount: detectedRequirementCount,
+              fitEvidenceAvailable: consensus.careerFitAdvice.assessment !== 'INSUFFICIENT_EVIDENCE',
+              blockingRequirements, unconfirmedRequirements: canonical.unconfirmedRequirements,
+            })}</p>
             <div className="rounded-xl border border-ink/5 bg-surface/80 p-3 text-xs text-ink">
               <strong>Rekomendowany plan działania:</strong> {consensus.careerFitAdvice.actionablePlan}
             </div>

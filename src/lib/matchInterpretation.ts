@@ -16,7 +16,7 @@ export interface MatchInterpretationInput {
   totalRequirementCount?: number;
   /** False oznacza brak podstaw do rzetelnej oceny dopasowania zawodowego. */
   fitEvidenceAvailable?: boolean;
-  /** Wymogi formalne o statusie knockout, których profil nie potwierdza. */
+  /** Rozpoznane wymagania (w tym umiejętności), których profil nie potwierdza. */
   blockingRequirements?: string[];
   /** Wymogi, których nie da się rozstrzygnąć na podstawie zapisanych danych. */
   unconfirmedRequirements?: string[];

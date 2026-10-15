@@ -46,7 +46,7 @@ try {
   const statusText = await status.innerText();
   const body = await page.locator('body').innerText();
   if (!statusText.includes('Wymóg obowiązkowy niepotwierdzony') ||
-      !statusText.includes('SEP G1') || !body.includes('Sprawdź wymagane uprawnienie przed oceną aplikacji')) {
+      !statusText.includes('SEP G1') || !body.includes('Sprawdź brakujące wymagania przed oceną aplikacji')) {
     throw new Error(`Szybki wynik nie pokazał braku wymaganego SEP G1: ${statusText}`);
   }
   if (/wymog obowiazkowy|sprawdz wymagane uprawnienie|spelnienia tego warunku/i.test(statusText)) {

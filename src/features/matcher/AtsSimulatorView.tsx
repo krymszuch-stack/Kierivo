@@ -184,7 +184,7 @@ export const AtsSimulatorView: React.FC<AtsSimulatorViewProps> = ({
                   </span>
                 </div>
                 <div className="rounded-xl border border-line/60 bg-surface p-2 text-center">
-                  <span className="block text-[10px] text-muted">Struktura ({Math.round(canonicalResult.effectiveWeights.structure * 100)}%)</span>
+                  <span className="block text-[10px] text-muted">Struktura — osobna diagnostyka</span>
                   <span className={`font-mono text-xs font-bold ${
                     componentTone(canonicalComponents?.structure)
                   }`}>

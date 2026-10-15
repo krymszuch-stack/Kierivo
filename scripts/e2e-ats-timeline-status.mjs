@@ -8,6 +8,13 @@ try {
   const page = await browser.newPage({ viewport: { width: 1000, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // Ten harness montuje własny widok. Bootstrap aplikacji po odczycie IDB
+  // nie może równolegle montować App w kontenerze usuniętym przez harness.
+  await page.route('**/*', async route => {
+    if (new URL(route.request().url()).pathname !== '/') return route.continue();
+    const response = await route.fetch();
+    return route.fulfill({ response, body: (await response.text()).replace(/<script\b[^>]*\bsrc=["']\/src\/main\.tsx(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gu, '') });
+  });
   const cases = [
     { id: 'invalid', status: 'NOT_ASSESSED', label: 'Nie oceniono' },
     { id: 'review', status: 'REVIEW_REQUIRED', label: 'Do sprawdzenia' },
@@ -19,7 +26,7 @@ try {
     const result = await page.evaluate(async caseId => {
       const [React, ReactDOM, { AtsLabView }, { createEmptyVault }, { simulateMultiEngineATS }] = await Promise.all([
         import('/node_modules/.vite/deps/react.js'), import('/node_modules/.vite/deps/react-dom_client.js'),
-        import('/src/features/ats/AtsLabView.tsx'), import('/src/lib/sampleVault.ts'), import('/src/lib/atsSimulator.ts'),
+        import('/src/features/ats/AtsLabView.tsx'), import('/src/lib/sampleVault.ts'), import('/src/lib/atsSimulator.ts'), import('/src/index.css'),
       ]);
       const h = React.createElement ?? React.default.createElement;
       const vault = createEmptyVault();

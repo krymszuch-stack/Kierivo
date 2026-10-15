@@ -92,16 +92,19 @@ function getResultStatusMeta(score: number, topProblems: TopProblem[], limitedEv
   const hasFormalIssue = topProblems.some((p) => p.category === 'formal');
 
   if (blockingRequirements.length > 0) {
+    const limitedSampleNote = requirementCount > 0 && requirementCount < 3
+      ? ` Wynik wstępny — ograniczone dane. Rozpoznano ${requirementCount} ${requirementCount === 1 ? 'wymaganie' : 'wymagania'}. Sprawdź pełną treść oferty.`
+      : '';
     return {
       statusLabel: 'Wymóg obowiązkowy niepotwierdzony',
-      headline: 'Sprawdź wymagane uprawnienie przed oceną aplikacji',
-      subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.`,
+      headline: 'Sprawdź brakujące wymagania przed oceną aplikacji',
+      subline: `Profil nie potwierdza: ${blockingRequirements.join(', ')}. Wynik nie oznacza spełnienia tego warunku.${limitedSampleNote}`,
       cardClass: 'bg-warning-soft border-warning/30 text-warning-fg',
       badgeClass: 'bg-warning-soft text-warning-fg',
       icon: AlertTriangle,
       tips: [{
-        title: 'Sprawdź uprawnienie i treść oferty',
-        desc: 'Dodaj je do profilu tylko wtedy, gdy faktycznie je posiadasz. W przeciwnym razie traktuj je jako brak blokujący.',
+        title: 'Sprawdź dowody i treść oferty',
+        desc: 'Dodaj potwierdzenie do profilu tylko wtedy, gdy faktycznie spełniasz wymóg. Sam wynik liczbowy nie usuwa wykazanego braku.',
       }],
     };
   }
@@ -519,7 +522,7 @@ export const QuickOnboardingFlow: React.FC<QuickOnboardingFlowProps> = ({
                   <div className="mt-5 pt-4 border-t border-current/15">
                     <span className="flex items-center gap-1.5 font-mono text-[11px] font-bold uppercase tracking-wider opacity-90 mb-2.5">
                       <Lightbulb className="h-3.5 w-3.5" />
-                      Wskazówki, jak podnieść wynik przed wysłaniem aplikacji:
+                      Co sprawdzić przed wysłaniem aplikacji:
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {statusMeta.tips.map((tip, idx) => (

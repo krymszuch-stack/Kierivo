@@ -134,11 +134,12 @@ async function readLocalStatuses(): Promise<Record<string, LocalStatusEntry>> {
 }
 
 /** Agregacja lokalnego JSONL-a do tych samych grup co tabela w chmurze. */
-export async function listLocalErrorGroups(): Promise<ErrorGroup[]> {
+export async function listLocalErrorGroups(strict = false): Promise<ErrorGroup[]> {
   let raw: string;
   try {
     raw = await readFile(localSinkPath(), 'utf8');
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
 
@@ -150,7 +151,10 @@ export async function listLocalErrorGroups(): Promise<ErrorGroup[]> {
     if (!trimmed) continue;
     try {
       const result = storedClientErrorSchema.safeParse(JSON.parse(trimmed));
-      if (!result.success) continue;
+      if (!result.success) {
+        if (strict) throw new Error('Nieprawidłowy rekord zgłoszenia.');
+        continue;
+      }
       const event = result.data;
       const existing = groups.get(event.fingerprint);
       if (!existing) {
@@ -174,12 +178,36 @@ export async function listLocalErrorGroups(): Promise<ErrorGroup[]> {
           existing.lastSeenAt = event.receivedAt ?? event.occurredAt;
         }
       }
-    } catch {
+    } catch (error) {
+      if (strict) throw error;
       // Uszkodzona linia (ucięty zapis) nie unieważnia reszty magazynu.
     }
   }
 
+  for (const group of groups.values()) {
+    const local = statuses[group.fingerprint];
+    // Nawrót po zamknięciu unieważnia lokalny status tak samo jak RPC w chmurze.
+    // Brak czasu rozwiązania nie jest dowodem, że ostatnie zdarzenie naprawiono.
+    if (group.status === 'resolved' && (!local?.resolvedAt || group.lastSeenAt > local.resolvedAt)) {
+      group.status = 'open';
+    }
+  }
   return [...groups.values()].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+}
+
+/** Bramka nie korzysta z paginowanej listy: starszy otwarty błąd też blokuje. */
+export async function countUnresolvedClientErrors(): Promise<{ mode: 'cloud' | 'local'; count: number }> {
+  const mode = resolveMode();
+  if (mode === 'cloud') {
+    const { count, error } = await getSupabase()
+      .from('client_errors')
+      .select('fingerprint', { count: 'exact', head: true })
+      .in('status', ['open', 'triaged']);
+    if (error || count === null || count === undefined) throw new Error('Nie udało się policzyć otwartych zgłoszeń.');
+    return { mode, count };
+  }
+  const groups = await listLocalErrorGroups(true);
+  return { mode, count: groups.filter((group) => group.status !== 'resolved').length };
 }
 
 export async function setLocalErrorStatus(

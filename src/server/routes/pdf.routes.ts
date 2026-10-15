@@ -15,6 +15,7 @@ import { createHash, randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import { adaptMasterVaultToSemanticProfile } from '../../lib/semanticPdfAdapter';
 import { getExplicitCvConsentClause } from '../../lib/cvConsentClause';
+import { getCvExportCompletenessError } from '../../lib/cvExportPreflight';
 import { validatePdfTextForAts } from '../../lib/atsPdfValidator';
 import { runAtsExtract } from '../extract/atsExtract';
 import { MasterVault, TailoredResume } from '../../types';
@@ -433,6 +434,17 @@ pdfRouter.post(
 
       const validThemeIds = new Set(AVAILABLE_THEMES.map((t) => t.id));
       const validLayoutIds = new Set(AVAILABLE_LAYOUTS.map((l) => l.id));
+
+      // D18: zapis roboczy może być niepełny; gotowy eksport wymaga decyzji
+      // użytkownika o brakującym wpisie. Nie usuwamy go po cichu ani nie zgadujemy dat.
+      const completenessError = getCvExportCompletenessError(vault);
+      if (completenessError) {
+        return res.status(400).json({
+          success: false,
+          requestId,
+          error: completenessError,
+        });
+      }
 
       if (theme && !validThemeIds.has(theme)) {
         const errorMsg = `Nieprawidłowy motyw PDF: ${theme}. Dostępne motywy: ${AVAILABLE_THEMES.map((t) => t.id).join(', ')}`;

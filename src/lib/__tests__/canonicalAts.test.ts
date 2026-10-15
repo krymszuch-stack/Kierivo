@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scoreCanonicalAts, recomputeCanonicalTotal, CANONICAL_WEIGHTS, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, hasSufficientCvContent, hasCanonicalAtsScore } from '../canonicalAts';
+import { scoreCanonicalAts, recomputeCanonicalTotal, CANONICAL_WEIGHTS, getCanonicalScoreBand, CANONICAL_SCORE_BAND_LABELS, hasSufficientCvContent, hasCanonicalAtsScore, getUnmetBlockingRequirements } from '../canonicalAts';
 import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
 import { extractDynamicJdPhrases } from '../atsSimulator';
 import { createEmptyVault } from '../sampleVault';
@@ -31,6 +31,15 @@ function hist(id: string, text: string, start = '2020-01', end = '2024-01') {
 }
 
 const JD = 'We need Python developer. Requirements: Python, AWS, Docker.';
+
+it('brak obowiązkowej umiejętności ogranicza interpretację także przy wysokiej średniej', () => {
+  const candidate = vaultWith({ hard: ['Python', 'AWS'], history: [hist('python', 'Rozwijałem aplikacje Python i wdrażałem usługi AWS.')] });
+  const required = scoreCanonicalAts(candidate, 'Wymagane: Python, AWS, Terraform. Minimum 2 lata doświadczenia.');
+  expect(required.missingRequirements).toContain('terraform');
+  expect(getUnmetBlockingRequirements(required)).toContain('terraform');
+  const optional = scoreCanonicalAts(candidate, 'Wymagane: Python, AWS. Mile widziane: Terraform.');
+  expect(getUnmetBlockingRequirements(optional)).not.toContain('terraform');
+});
 
 describe('ekstrakcja wymagań z nagłówkiem oferty', () => {
   it('nie zamienia stanowiska i nazwy firmy w wymagane umiejętności', () => {
@@ -197,7 +206,8 @@ ServiceNow is required.`;
 
 describe('kanon: kształt i granice', () => {
   it('nie używa liczby sprzed zmiany reguł jako bieżącego kanonicznego wyniku', () => {
-    expect(CANONICAL_ATS_SCORE_PROVENANCE).toBe('canonical-v2');
+    expect(CANONICAL_ATS_SCORE_PROVENANCE).toBe('canonical-v3');
+    expect(hasCanonicalAtsScore({ atsScore: 41, atsScoreProvenance: 'canonical-v2' })).toBe(false);
     expect(hasCanonicalAtsScore({ atsScore: 41, atsScoreProvenance: 'canonical-v1' })).toBe(false);
   });
 
@@ -292,6 +302,19 @@ describe('kanon: kształt i granice', () => {
       CANONICAL_WEIGHTS.skills + CANONICAL_WEIGHTS.experience +
       CANONICAL_WEIGHTS.structure + CANONICAL_WEIGHTS.formal
     ).toBeCloseTo(1, 10);
+  });
+
+  it('kontakt i struktura dokumentu nie podnoszą dopasowania kompetencji', () => {
+    const candidate = vaultWith({ hard: ['Python'], history: [hist('1', 'Python AWS work')] });
+    candidate.personalInfo.phone = '';
+    candidate.personalInfo.email = '';
+    const before = scoreCanonicalAts(candidate, JD, 'Developer');
+    candidate.personalInfo.phone = '123456789';
+    candidate.personalInfo.email = 'synthetic@example.invalid';
+    const after = scoreCanonicalAts(candidate, JD, 'Developer');
+    expect(after.components.structure).toBeGreaterThan(before.components.structure!);
+    expect(after.score).toBe(before.score);
+    expect(after.effectiveWeights.structure).toBe(0);
   });
 
   it('0 <= score <= 100 i uzgodnienie z komponentami', () => {

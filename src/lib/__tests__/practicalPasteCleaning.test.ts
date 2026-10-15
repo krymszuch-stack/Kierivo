@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { cleanPastedJobOffer } from '../jobOfferCleaner';
 import { parseJobDescriptionLocal, analyzeJdMatchWithVault } from '../jdParser';
 import { buildJobOfferFromManual } from '../jobMatcherEngine';
+import { auditKnockouts } from '../knockouts';
+import { createEmptyVault } from '../sampleVault';
 import {
   accountDoradcaKlienta,
   accountKierowcaC,
@@ -44,8 +46,26 @@ const FORBIDDEN_PORTAL_NOISE = [
 describe('Praktyczne czyszczenie wklejek z portali (test_praktyczny1.md)', () => {
   const sections = loadRawSections();
 
+  it.each([
+    { section: 2, rule: 'license_c', profile: accountKierowcaC },
+    { section: 16, rule: 'udt_suwnice', profile: accountSuwnicowy },
+  ])('wklejka $section zachowuje obowiązkowe $rule i wykazuje brak na profilu bez uprawnień', ({ section, rule, profile }) => {
+    const raw = sections[section - 1];
+    const { job } = buildJobOfferFromManual({ description: raw });
+    if (!job.description) throw new Error(`Wklejka ${section} nie zachowała treści oferty.`);
+    const withoutQualification = createEmptyVault('Profil syntetyczny bez uprawnień', 'test@example.invalid');
+    withoutQualification.personalInfo.summary = 'Nie posiadam prawa jazdy kat. C ani uprawnień UDT do obsługi suwnic.';
+    const present = auditKnockouts(job.description, profile).findings.find(finding => finding.ruleId === rule);
+    const absent = auditKnockouts(job.description, withoutQualification).findings.find(finding => finding.ruleId === rule);
+
+    expect(present, 'wymóg musi rzeczywiście zostać wykryty w treści po przygotowaniu oferty').toBeDefined();
+    expect(present?.status).toBe('satisfied');
+    expect(absent?.status).toBe('unsatisfied');
+    expect(auditKnockouts(job.description, withoutQualification).blocking.map(finding => finding.ruleId)).toContain(rule);
+  });
+
   it('wczytuje wszystkie 33 sekcje ze zbioru testowego', () => {
-    expect(sections.length).toBeGreaterThanOrEqual(30);
+    expect(sections).toHaveLength(33);
   });
 
   it('oczyszcza wszystkie 33 sekcje z szumu portalowego i linków śmieciowych', () => {

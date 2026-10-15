@@ -88,9 +88,9 @@
     "test:e2e:malformed-historical-ats": "node scripts/e2e-malformed-historical-ats.mjs",
     "test:e2e:malformed-home-analysis": "node scripts/e2e-malformed-home-analysis.mjs",
     "test:e2e:empty-heuristic-profiles": "node scripts/e2e-empty-heuristic-profiles.mjs",
-      "test:e2e:empty-cv-structure-unmeasured": "node scripts/e2e-empty-cv-structure-unmeasured.mjs",
-      "test:e2e:star-verdict-consistency": "node scripts/e2e-star-verdict-consistency.mjs",
-      "test:e2e:drill-history-null-score": "node scripts/e2e-drill-history-null-score.mjs",
+    "test:e2e:empty-cv-structure-unmeasured": "node scripts/e2e-empty-cv-structure-unmeasured.mjs",
+    "test:e2e:star-verdict-consistency": "node scripts/e2e-star-verdict-consistency.mjs",
+    "test:e2e:drill-history-null-score": "node scripts/e2e-drill-history-null-score.mjs",
     "test:e2e:drill-history-malformed-storage": "node scripts/e2e-drill-history-malformed-storage.mjs",
     "test:e2e:error-buffer-sanitize": "node scripts/e2e-error-buffer-sanitize.mjs",
     "test:e2e:drill-uncertain-score": "node scripts/e2e-drill-uncertain-score.mjs",
@@ -144,7 +144,10 @@
     "bledy:czysc": "tsx scripts/bledy-klienta.ts czysc",
     "bledy:bramka": "tsx scripts/bledy-klienta.ts bramka",
     "bledy:linear": "tsx scripts/bledy-klienta.ts linear",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "gate:fast": "node scripts/release-gate.mjs fast",
+    "gate:release": "node scripts/release-gate.mjs release",
+    "gate:postdeploy": "node scripts/release-gate.mjs postdeploy"
   },
   "dependencies": {
     "@azure/identity": "^4.13.3",
@@ -199,6 +202,7 @@
     "lucide-react": "^0.546.0",
     "mammoth": "^1.12.0",
     "motion": "^12.23.24",
+    "playwright": "1.58.2",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

@@ -92,13 +92,21 @@ try {
     }, options);
     await page.getByText('synthetic-A', { exact: true }).waitFor();
   }
+  async function waitForRenderedResult() {
+    // Promise Auth kończy się przed zatwierdzeniem setStatus przez React.
+    // Dopiero wyrenderowany wynik pozwala sprawdzać właściciela w tym samym UI.
+    await page.waitForFunction(() => {
+      const result = window.__cloudLogout.result;
+      return result !== null && document.querySelector('#result')?.textContent === JSON.stringify(result);
+    });
+  }
   await setup();
   await page.evaluate(() => window.__cloudLogout.emit('synthetic-A', 'PASSWORD_RECOVERY'));
   await page.getByText('Recovery: true', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Zmień hasło syntetyczne', exact: true }).click();
   await page.evaluate(() => window.__cloudLogout.emit('synthetic-B', 'PASSWORD_RECOVERY'));
   await page.evaluate(() => window.__cloudLogout.releaseUpdate());
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-B');
   assert.equal(await page.locator('#recovery').innerText(), 'Recovery: true');
@@ -108,7 +116,7 @@ try {
   await page.getByText('Recovery: true', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Zmień hasło syntetyczne', exact: true }).click();
   await page.evaluate(() => window.__cloudLogout.releaseUpdate());
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), true);
   assert.equal(await page.locator('#recovery').innerText(), 'Recovery: false');
   for (const deleteData of [null, {}, [], 'ok', false, { success: false }, { success: 1 }, { success: true, error: 'Odmowa' }]) {
@@ -116,7 +124,7 @@ try {
     await page.getByRole('button', { name: 'Usuń konto syntetyczne', exact: true }).click();
     await page.waitForFunction(() => window.__cloudLogout.releaseDelete !== null);
     await page.evaluate(() => window.__cloudLogout.releaseDelete());
-    await page.waitForFunction(() => window.__cloudLogout.result !== null);
+    await waitForRenderedResult();
     assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
     assert.equal(await page.evaluate(() => window.__cloudLogout.calls), 0);
     assert.equal(await page.evaluate(() => window.__cloudLogout.storage.isPrivacyWipeInProgress()), false);
@@ -129,7 +137,7 @@ try {
   await page.getByRole('button', { name: 'Usuń konto syntetyczne', exact: true }).click();
   await page.waitForFunction(() => window.__cloudLogout.releaseDelete !== null);
   await page.evaluate(() => window.__cloudLogout.releaseDelete());
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   assert.equal(await page.evaluate(() => window.__cloudLogout.calls), 0);
   assert.equal(await page.evaluate(() => window.__cloudLogout.storage.isPrivacyWipeInProgress()), false);
@@ -141,7 +149,7 @@ try {
   await page.evaluate(() => window.__cloudLogout.emit('synthetic-B'));
   await page.getByText('synthetic-B', { exact: true }).waitFor();
   await page.evaluate(() => window.__cloudLogout.release());
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-B');
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   await page.screenshot({ path: 'docs/evidence/cloud-logout-new-session-2026-10-04.png' });
@@ -157,7 +165,7 @@ try {
     c.storage.writeJson(c.key, createEmptyVault('Nowsza sesja tego samego konta'));
     c.release();
   });
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-A');
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   assert.match(await page.evaluate(() => window.__cloudLogout.storage.readRaw(window.__cloudLogout.key)), /Nowsza sesja/);
@@ -187,7 +195,7 @@ try {
     window.__cloudLogout.emit('synthetic-B');
     window.__cloudLogout.releaseCleanup();
   });
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-B');
   assert.equal(await page.evaluate(() => window.__cloudLogout.calls), 0);
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
@@ -202,7 +210,7 @@ try {
     c.storage.writeJson(c.storage.vaultKeyFor('synthetic-B'), { marker: 'dane nowszego konta' });
     c.releaseDelete();
   });
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-B');
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   assert.equal(await page.evaluate(() => window.__cloudLogout.calls), 0);
@@ -214,7 +222,7 @@ try {
   await setup();
   await page.evaluate(() => { window.__cloudLogout.refuse = true; });
   await page.getByRole('button', { name: 'Wyloguj', exact: true }).click();
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
   assert.equal(await page.evaluate(() => window.__cloudLogout.calls), 0);
   assert.equal(await page.locator('#owner').innerText(), 'synthetic-A');
@@ -247,7 +255,7 @@ try {
     await page.getByRole('button', { name: 'Usuń konto syntetyczne', exact: true }).click();
     await page.waitForFunction(() => window.__cloudLogout.releaseDelete !== null);
     await page.evaluate(() => window.__cloudLogout.releaseDelete());
-    await page.waitForFunction(() => window.__cloudLogout.result !== null);
+    await waitForRenderedResult();
     assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), false);
     assert.match(await page.locator('#result').innerText(), /sesji/);
     assert.equal(await page.evaluate(() => window.__cloudLogout.storage.readRaw(window.__cloudLogout.key)), null);
@@ -272,7 +280,7 @@ try {
   await page.evaluate(() => window.__cloudLogout.releaseDelete());
   await page.waitForFunction(() => window.__cloudLogout.calls === 1);
   await page.evaluate(() => window.__cloudLogout.release());
-  await page.waitForFunction(() => window.__cloudLogout.result !== null);
+  await waitForRenderedResult();
   assert.equal(await page.evaluate(() => window.__cloudLogout.result.ok), true);
   assert.equal(await page.evaluate(() => window.__cloudLogout.storage.readRaw(window.__cloudLogout.key)), null);
   assert.deepEqual(await page.evaluate(async () => window.__cloudLogout.idb.idbBackupKeys(window.__cloudLogout.key)), []);

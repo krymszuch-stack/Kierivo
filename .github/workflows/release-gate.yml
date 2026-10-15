@@ -1,0 +1,59 @@
+name: Kierivo Release Gate
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  # Aktualizacja raportu wyznacza kandydata wydania; zwykłe PR mają Fast Gate.
+  pull_request:
+    branches: [main]
+    paths:
+      - AUDIT_CLOSURE.md
+      - .github/workflows/release-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+  auth-rls:
+    uses: ./.github/workflows/d04-auth-rls.yml
+  release-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: pip install -e mastervault-cv
+      - run: npx playwright install --with-deps chromium
+      - run: npm run gate:release
+      - name: Zapis wyników także przy FAIL / UNKNOWN
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-${{ github.sha }}
+          path: artifacts/release-*/
+          retention-days: 30
+  release-verdict:
+    if: always()
+    needs: [ci, auth-rls, release-acceptance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wymagane kontrole tego samego SHA
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          AUTH_RESULT: ${{ needs.auth-rls.result }}
+          ACCEPTANCE_RESULT: ${{ needs.release-acceptance.result }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          printf 'SHA: %s\nCI: %s\nAuth/RLS: %s\nAcceptance: %s\n' "$RELEASE_SHA" "$CI_RESULT" "$AUTH_RESULT" "$ACCEPTANCE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          test "$CI_RESULT" = success
+          test "$AUTH_RESULT" = success
+          test "$ACCEPTANCE_RESULT" = success

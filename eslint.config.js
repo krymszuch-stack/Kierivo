@@ -18,6 +18,8 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'node_modules/**',
+      '.venv/**',
+      'artifacts/**',
       // Katalog eksperymentów, narzędzi trenerskich i grafu wiedzy.
       'labs/**',
       // Silnik CV w Pythonie z własnym pakietem i testami.

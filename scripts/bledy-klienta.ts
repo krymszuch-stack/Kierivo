@@ -18,7 +18,7 @@
  * więc cykl „błąd → naprawa → regres" jest widoczny w jednym miejscu.
  */
 
-import { listErrorGroups, pruneClientErrors, setErrorStatus } from '../src/server/errorStore';
+import { countUnresolvedClientErrors, listErrorGroups, pruneClientErrors, setErrorStatus } from '../src/server/errorStore';
 import type { ErrorGroup } from '../src/server/errorStore';
 
 const LINEAR_GRAPHQL_ENDPOINT = 'https://api.linear.app/graphql';
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     case 'czysc':
       return void (await cmdCzysc(rest));
     case 'bramka':
-      return void (await cmdBramka());
+      return void (await cmdBramka(rest));
     case 'linear':
       return void (await cmdLinear(rest));
     default:
@@ -142,25 +142,23 @@ async function cmdCzysc(args: string[]): Promise<void> {
 // bramka — krok CI / agent przy każdym wdrożeniu
 // ---------------------------------------------------------------------------
 
-async function cmdBramka(): Promise<void> {
-  const { mode, groups } = await loadGroupsOrExplain(100);
-
-  if (mode === 'brak') {
-    console.log('✓ pomijam bramkę błędów — brak skonfigurowanego zaplecza zgłoszeń');
-    return;
+async function cmdBramka(args: string[]): Promise<void> {
+  const required = hasFlag(args, '--required');
+  try {
+    const { mode, count } = await countUnresolvedClientErrors();
+    if (hasFlag(args, '--cloud') && mode !== 'cloud') {
+      console.log('UNKNOWN: wymagane źródło chmurowe; lokalny plik nie dowodzi stanu produkcji.');
+      process.exitCode = 2;
+      return;
+    }
+    console.log(`${count === 0 ? 'PASS' : 'FAIL'}: ${count} otwartych grup błędów klienta; źródło: ${mode}. Wynik dotyczy wyłącznie odczytanego źródła.`);
+    process.exitCode = count === 0 ? 0 : 1;
+  } catch (error) {
+    const absent = error instanceof Error && 'code' in error && error.code === 'ENOENT';
+    const skipped = absent && !required;
+    console.log(`${skipped ? 'SKIPPED' : 'UNKNOWN'}: źródło zgłoszeń niedostępne lub nieprawidłowe; brak dowodu stanu produktu.`);
+    process.exitCode = skipped ? 0 : 2;
   }
-
-  const open = groups.filter((group) => group.status !== 'resolved');
-
-  if (open.length === 0) {
-    console.log(`✓ brak otwartych zgłoszeń błędów klienta (${groups.length} rozwiązanych w historii) — wdrażanie może ruszyć`);
-    return;
-  }
-
-  console.error(`✗ otwarte grupy błędów klienta: ${open.length}`);
-  printGroups(open);
-  console.error('\nPo naprawieniu przyczyny oznacz grupę: npm run bledy -- rozwiaz <fingerprint>');
-  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------

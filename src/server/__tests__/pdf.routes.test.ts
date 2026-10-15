@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import fs from 'node:fs/promises';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createEmptyVault } from '../../lib/sampleVault';
+import { createExportProjectionFixture, PUBLIC_EXPORT_MARKERS, OMITTED_EXPORT_MARKERS } from '../../lib/__tests__/fixtures/cvExportProjection';
 import {
   pdfRouter,
   pythonRunner,
@@ -121,6 +122,21 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Kody błędów i rozróżnienie (400, 503, 504, 500)', () => {
+    it('400 — półpusty wpis PartWork nie jest gotowym CV i nie uruchamia renderera', async () => {
+      const vault = baseVault();
+      vault.history[0] = { ...vault.history[0], company: 'PartWork', role: '', startDate: '', endDate: '' };
+      const original = JSON.stringify(vault);
+      const spawn = vi.spyOn(pythonRunner, 'spawn').mockRejectedValue(new Error('Nie wolno renderować niekompletnego wpisu'));
+      const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vault }),
+      });
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toContain('Niekompletny wpis doświadczenia');
+      expect(spawn).not.toHaveBeenCalled();
+      expect(JSON.stringify(vault)).toBe(original);
+      spawn.mockRestore();
+    });
     it('400 — odrzuca brak danych MasterVault lub brak personalInfo', async () => {
       const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
         method: 'POST',
@@ -290,6 +306,41 @@ describe('pdf.routes API Suite (unit)', () => {
   });
 
   describe('Sukces (200) i poprawny format odpowiedzi', () => {
+    for (const pdfType of ['standard', 'dual-layer']) {
+      it.runIf(process.env.RUN_PDF_INTEGRATION === '1')(`rzeczywisty PDF ${pdfType} nie zawiera danych pominiętych z projekcji`, async () => {
+        const { source, projection } = createExportProjectionFixture();
+        const before = JSON.stringify(source);
+        const res = await fetch(`${baseUrl}/api/cv/export-pdf`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vault: projection, pdfType, theme: 'classic', layout: 'single', targetPages: 2 }),
+        });
+        expect(res.status).toBe(200);
+        const data = await res.json() as { success: boolean; pdf: string };
+        expect(data.success).toBe(true);
+        const task = getDocument({ data: new Uint8Array(Buffer.from(data.pdf, 'base64')), useSystemFonts: true });
+        try {
+          const pdf = await task.promise;
+          const pages: string[] = [];
+          for (let index = 1; index <= pdf.numPages; index++) {
+            const content = await (await pdf.getPage(index)).getTextContent();
+            pages.push(content.items.map(item => 'str' in item ? item.str : '').join(' '));
+          }
+          const text = pages.join('\n');
+          const metadata = JSON.stringify(await pdf.getMetadata());
+          expect(await pdf.getAttachments()).toBeNull();
+          for (const marker of PUBLIC_EXPORT_MARKERS) expect(text).toContain(marker);
+          for (const marker of OMITTED_EXPORT_MARKERS) {
+            expect(text).not.toContain(marker);
+            expect(metadata).not.toContain(marker);
+            expect(before).toContain(marker);
+          }
+          expect(JSON.stringify(source)).toBe(before);
+        } finally {
+          await task.destroy();
+        }
+      }, 30_000);
+    }
+
     // Osobny krok CI ustawia tę flagę po instalacji silnika; pozostałe
     // workflowy testują kontrakt trasy bez wymagania środowiska Python.
     it.runIf(process.env.RUN_PDF_INTEGRATION === '1')('rzeczywisty renderer zwraca PDF z ręcznie poprawionym nagłówkiem i podsumowaniem', async () => {

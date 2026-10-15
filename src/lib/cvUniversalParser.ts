@@ -1021,6 +1021,22 @@ function parseEducationEntries(sectionLines: string[]): Education[] {
     const hasInst = INSTITUTION_KEYWORDS.test(trimmed);
     const hasDegree = DEGREE_KEYWORDS.test(trimmed);
 
+    // Daty mogą zamykać wieloliniowy wpis uczelnia → stopień → zakres.
+    // Sam zakres nie tworzy wtedy kolejnej, pustej szkoły.
+    if (currentBlock && dateRange && !currentBlock.dateRange && !hasInst && !hasDegree) {
+      currentBlock.lines.push(trimmed);
+      currentBlock.dateRange = dateRange;
+      continue;
+    }
+    // Drugi poprawny układ to zakres → uczelnia → stopień. Nazwa uczelni
+    // uzupełnia blok zawierający wyłącznie daty, zamiast odcinać je od wpisu.
+    if (currentBlock && hasInst && currentBlock.lines.every(entryLine =>
+      entryLine.replace(DATE_RANGE_REGEX, '').trim().length === 0
+    )) {
+      currentBlock.lines.push(trimmed);
+      continue;
+    }
+
     if (dateRange || hasInst || (hasDegree && !currentBlock)) {
       if (currentBlock && currentBlock.lines.length === 1 && !currentBlock.dateRange && dateRange) {
         currentBlock.lines.push(trimmed);
