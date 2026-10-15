@@ -2,6 +2,34 @@
 
 Stan 15.10.2026: **BLOCKED — odbiór trwa; brak zgody na publikację**.
 
+ADR-154: na bazie `112e2a8af88162e13cb0ebd3f75393dcbc49e062` potwierdzono S1:
+wysyłka A → zapis lokalny B → konflikt serwera dla A zastępował B starszym A.
+Druga regresja tego samego catch odtwarzała outbox wyczyszczony podczas wysyłki.
+Oba testy FAIL przed zmianą. Minimalna poprawka oznacza konflikt na najnowszym
+istniejącym pending; nie przywraca usuniętego wpisu. GREEN: 52 testy sąsiednie,
+pełny Vitest 2742 PASS / 3 SKIPPED, lint/TS i build PASS. Rozszerzony istniejący
+`e2e-cloud-vault-conflict.mjs` odtwarza A/B przez prawdziwy moduł outboxu,
+ponownie otwiera aplikację i potwierdza zapis tylko wybranej wersji B — PASS.
+Sesja i Supabase są syntetyczne. Dowód:
+`docs/evidence/cloud-vault-conflict-latest-draft.png`.
+
+Macierz ADR-154 (lokalna poprawka względem bazy `112e2a8`; wynikowy SHA w PR):
+
+| Scenariusz | Istniejący dowód | Wynik |
+| --- | --- | --- |
+| Szybkie A/B i spóźniony ACK | cloudVaultOutbox.test.ts: serializacja, zachowanie B | PASS |
+| A/B i spóźniony konflikt A | nowa regresja + cloud-vault-conflict E2E | FAIL → PASS |
+| Wyczyść outbox podczas wysyłki | nowa regresja; konflikt nie odtwarza danych | FAIL → PASS |
+| Konflikt z innym urządzeniem | outbox: jawny wybór; E2E bez automatycznej sumy snapshotów | PASS |
+| Konto zmienione podczas rozstrzygania | cloudVaultConflictResolution.test.ts | PASS |
+| Zamknięcie/logout/odświeżenie i odłożony zapis | deferredWriter, idb-stale-write, cloud-logout-race; Release Gate `4eb4ca0` | PASS na wskazanym SHA; ponowny odbiór poprawki wymagany |
+| Historyczna wersja i aktualny profil | historicalDocumentExport.test.ts + cvLibraryStorage.test.ts | PASS |
+
+Nie przeprowadzono pełnego testu równoczesnej edycji jednego profilu w dwóch
+kartach ani rzeczywistej utraty danych produkcyjnego konta. Serializacja w module
+dotyczy jednej karty; CAS chroni rewizję serwera. Ten raport nie deklaruje
+współpracy w czasie rzeczywistym ani automatycznego scalania zmian.
+
 ADR-153: potwierdzono S0 w lokalnym przełączaniu profili. Na bazowym
 `1e5d2eb7241fa999d0e576201725462424b544f2` edytor pozostawiony na karcie CV
 po zmianie A → B pokazywał i kopiował tekst A. Magazyny źródłowe pozostawały
