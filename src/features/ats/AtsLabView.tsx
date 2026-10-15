@@ -468,7 +468,7 @@ export const AtsLabView: React.FC<AtsLabViewProps> = ({
                 <span>Dopasowane: <strong className="font-mono text-ink">{canonical.matchedRequirements.length}</strong></span>
                 <span>Brakujące: <strong className="font-mono text-rose-500">{canonical.missingRequirements.length}</strong></span>
                 {canonical.unconfirmedRequirements.length > 0 && <span>Do potwierdzenia: <strong className="font-mono text-amber-600">{canonical.unconfirmedRequirements.length}</strong></span>}
-                <span>Kary: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
+                <span title="Liczba uwag do danych i struktury. Nie każda uwaga odejmuje punkty dopasowania do oferty.">Uwagi do danych i struktury: <strong className="font-mono text-ink">{canonical.penalties.length}</strong></span>
               </> : <span>Wynik dopasowania pojawi się po dodaniu profilu i treści oferty.</span>}
               {isScorable && consensus.medianScore !== null && (
                 <div className="ml-auto flex items-center gap-1.5 text-ink-faint">

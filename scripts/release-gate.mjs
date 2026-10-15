@@ -114,6 +114,7 @@ try {
         'ats-unconfirmed-only', 'ats-score-unknown-experience', 'negated-requirements',
         'consistency-projected-dates', 'consistency-negated-tags', 'consistency-projected-metrics',
         'consistency-missing-sources', 'local-profile-isolation', 'local-profile-session-race',
+        'ats-timeline-status', 'consistency-timeline-unknown',
         'cloud-logout-race', 'account-delete-ui', 'auth-modal-operations', 'idb-stale-write',
         'master-vault-invalid-import',
         'cv-import-source-facts',

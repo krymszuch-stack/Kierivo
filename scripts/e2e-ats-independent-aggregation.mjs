@@ -49,6 +49,8 @@ try {
   await page.getByText(`Mediana kontrolnych wskaznikow (${scores.length} modulow; nie ocena dopasowania): ${median}%`, { exact: true }).waitFor();
   await page.getByText(/Nie potwierdzono wymagań: terraform/).waitFor();
   await page.locator('#ocena-dopasowania').getByText(/Nie potwierdzono obowiązkowego wymogu: terraform/).waitFor();
+  await page.getByText(/^Uwagi do danych i struktury:/).waitFor();
+  assert.equal(await page.getByText(/^Kary:/).count(), 0, 'liczba uwag nie oznacza liczby odjęć od dopasowania');
   assert.equal(await page.getByText('Wysokie dopasowanie', { exact: true }).count(), 0);
   assert.deepEqual(errors, []);
   await mkdir('docs/evidence', { recursive: true });
