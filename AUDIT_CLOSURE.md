@@ -16,6 +16,26 @@ Dowód syntetyczny: `docs/evidence/cv-profile-owner-b.png`. Pozostaje odbiór
 CI wynikowego SHA oraz dalsze kryteria ADR-153 dotyczące bajtów eksportów;
 nie oznaczono całego issue Done.
 
+Odbiór lokalny poprawki `4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6`:
+Release Gate PASS, zakończony 15.10.2026 03:04:42 UTC; 29 scenariuszy
+przeglądarkowych, testy Python/PDF, build i built smoke PASS. Raport:
+`artifacts/release-4eb4ca0d98a7ac45460cda1c41fcabda6553bdb6/report.json`.
+Produkcja/OAuth/AI mają osobne statusy UNKNOWN, telemetria lokalna SKIPPED;
+nie zaliczono ich na podstawie tego raportu. Draft PR #144 jest oparty na #142,
+więc filtry `pull_request: branches: [main]` nie uruchamiają automatycznie CI.
+
+Dodatkowe kryterium ADR-153: istniejące testy eksportu badają teraz rzeczywiste
+PDF standard/dual-layer (tekst wszystkich stron, metadane, brak załączników),
+całe archiwum DOCX i dwa mechanizmy TXT. Markery telefonu i punktora usuniętych
+z projekcji oraz wewnętrznych claims/subRoleId nie występują w wynikach;
+publiczne markery są obecne, źródłowy Vault zachowuje całą treść. Wynik negatywny
+dla tej projekcji, bez nowej poprawki runtime. Kontrakt nie ma flag private/visible;
+test nie potwierdza nieistniejącej funkcji prywatnych pól. Globalny eksport Word
+z palety poleceń używa całego MasterVault, a edytor CV swojej projekcji.
+34 testy DOCX/PDF PASS z rzeczywistym rendererem; pełny Vitest 2740 PASS /
+3 SKIPPED (trzy kontrole PDF wykonano osobno z RUN_PDF_INTEGRATION=1), lint/TS
+PASS, bez nowych ostrzeżeń. Bieżący kod runtime nie zmienił się od `4eb4ca0`.
+
 Uzgodniono nowe przekazanie Gemini Argon i instrukcje z draft PR #143:
 ADR-153/154 przed porządkowaniem agentów i optymalizacją CI. PR #143 pozostaje
 osobny i niescalony. Same nazwy historycznych zrzutów nie są dowodem regresji.
