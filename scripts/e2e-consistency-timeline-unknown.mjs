@@ -9,12 +9,19 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // Ten harness montuje własny widok. Bootstrap aplikacji po odczycie IDB
+  // nie może równolegle montować App w kontenerze usuniętym przez harness.
+  await page.route('**/*', async route => {
+    if (new URL(route.request().url()).pathname !== '/') return route.continue();
+    const response = await route.fetch();
+    return route.fulfill({ response, body: (await response.text()).replace(/<script\b[^>]*\bsrc=["']\/src\/main\.tsx(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gu, '') });
+  });
   await page.goto(process.env.BASE_URL || 'http://127.0.0.1:3045', { waitUntil: 'domcontentloaded' });
   const outputs = await page.evaluate(async () => {
     const [React, ReactDOM, { ConsistencyGuardView }, { createEmptyVault }, { renderHudFromClaims }] = await Promise.all([
       import('/node_modules/.vite/deps/react.js'), import('/node_modules/.vite/deps/react-dom_client.js'),
       import('/src/features/consistency/ConsistencyGuardView.tsx'), import('/src/lib/sampleVault.ts'),
-      import('/src/lib/consistencyGuard/index.ts'),
+      import('/src/lib/consistencyGuard/index.ts'), import('/src/index.css'),
     ]);
     const h = React.createElement ?? React.default.createElement;
     const job = (id, role, startDate, endDate) => ({ id, company: 'Firma testowa', role, startDate, endDate,

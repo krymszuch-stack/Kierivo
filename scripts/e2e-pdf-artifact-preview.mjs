@@ -26,9 +26,9 @@ try {
   });
   await page.goto(BASE_URL);
   await page.evaluate(async () => {
-    const [React, dom, { CVExportModal }, { createLongCvVault }, { ToastHost }] = await Promise.all([
+    const [React, dom, { CVExportModal }, { createLongCvVault }, { ToastHost }, { createEmptyVault }] = await Promise.all([
       import('/node_modules/.vite/deps/react.js'), import('/node_modules/.vite/deps/react-dom_client.js'),
-      import('/src/components/ui/CVExportModal.tsx'), import('/scripts/fixtures/longCvVault.ts'), import('/src/components/ui/ToastHost.tsx'), import('/src/index.css'),
+      import('/src/components/ui/CVExportModal.tsx'), import('/scripts/fixtures/longCvVault.ts'), import('/src/components/ui/ToastHost.tsx'), import('/src/lib/sampleVault.ts'), import('/src/index.css'),
     ]);
     // Ta sama próbka co w istniejącym audit-pdf-long-cv.
     const vault = createLongCvVault();
@@ -42,6 +42,15 @@ try {
       window.__openPdf = () => setOpen(true);
       window.__replacePdfSource = () => setSource({ ...vault, personalInfo: { ...vault.personalInfo, fullName: 'Inny Profil' } });
       window.__replacePdfOwner = () => { window.__pdfOwner = 'other-owner'; setOwnerTick(tick => tick + 1); };
+      window.__useOwnerBSource = () => {
+        const b = createEmptyVault('OWNER B', 'owner-b@example.invalid');
+        b.personalInfo.title = 'Serwisant B';
+        b.personalInfo.summary = 'ONLY_B_MARKER — syntetyczny profil serwisanta.';
+        b.skillsMatrix.hardSkills = ['SQL'];
+        b.history = [{ id: 'b', company: 'Firma B', role: 'Serwisant B', location: '', startDate: '2020-01', endDate: '2024-01', isCurrent: false,
+          highlights: [{ id: 'b-hl', text: 'ONLY_B_MARKER', action: '', target: '', tool: '', metric: '', keywords: [] }] }];
+        setSource(b);
+      };
       return e('div', null, e(CVExportModal, { isOpen: open, onClose() { setOpen(false); }, vault: source, initialTheme: 'classic', initialLayout: 'sidebar', initialTargetPages: 2 }), e(ToastHost));
     }
     document.body.innerHTML = '<main id="pdf-proof"></main>';
@@ -94,8 +103,33 @@ try {
   await preview.waitFor({ state: 'detached' });
   assert.equal(await page.getByRole('button', { name: label, exact: true }).count(), 0, 'nowe konto nie może pobrać gotowego PDF poprzedniego konta');
   assert.equal(downloads, 1);
+  // Sprawdzamy również faktyczne bajty następnego eksportu B, nie tylko
+  // zniknięcie panelu lub obecność właściwego właściciela w DOM.
+  await page.evaluate(() => window.__useOwnerBSource());
+  await page.getByRole('button', { name: 'Przygotuj podgląd PDF ATS Dual-Layer', exact: true }).click();
+  await preview.getByRole('status').filter({ hasText: /Podgląd PDF gotowy/ }).waitFor({ timeout: 60_000 });
+  const ownerBPreviewHash = await preview.getAttribute('data-pdf-sha256');
+  const [ownerBDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Pobierz pokazany plik PDF', exact: true }).click(),
+  ]);
+  const ownerBBytes = await readFile(await ownerBDownload.path());
+  assert.equal(createHash('sha256').update(ownerBBytes).digest('hex'), ownerBPreviewHash);
+  const ownerBTask = getDocument({ data: new Uint8Array(ownerBBytes), useSystemFonts: true });
+  const ownerBPdf = await ownerBTask.promise;
+  const ownerBPages = await Promise.all(Array.from({ length: ownerBPdf.numPages }, async (_, index) => {
+    const content = await (await ownerBPdf.getPage(index + 1)).getTextContent();
+    return content.items.map(item => 'str' in item ? item.str : '').join(' ');
+  }));
+  const ownerBText = ownerBPages.join('\n');
+  assert.ok(ownerBText.includes('ONLY_B_MARKER'));
+  const ownerAName = JSON.parse(await page.evaluate(() => window.__pdfSource)).personalInfo.fullName;
+  assert.ok(!ownerBText.replace(/\s+/g, '').includes(ownerAName.replace(/\s+/g, '')), 'pobrany PDF B nie może zawierać poprzedniego właściciela A');
+  assert.ok(!JSON.stringify(await ownerBPdf.getMetadata()).includes(ownerAName));
+  assert.equal(await ownerBPdf.getAttachments(), null);
+  await ownerBTask.destroy();
   assert.deepEqual(errors, []);
-  console.log('PASS: dwie strony podglądu pochodzą z tego samego PDF co pobranie (SHA-256), pobranie wymaga decyzji bez ponownego renderowania, zmiana profilu lub konta usuwa artefakt.');
+  console.log('PASS: dwie strony podglądu pochodzą z tego samego PDF co pobranie (SHA-256), pobranie wymaga decyzji bez ponownego renderowania, zmiana profilu lub konta usuwa artefakt; pobrany PDF właściciela B zawiera B, bez A w tekście/metadanych i bez załączników.');
 } catch (error) {
   console.error(errors, (await page.locator('body').innerText()).slice(-2200));
   throw error;

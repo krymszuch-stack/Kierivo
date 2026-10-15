@@ -7,6 +7,10 @@ Kod kandydata: `53d4c6b7b3b7d8bd4ff111fc6561e99cd69dfb43`.
 Późniejszy commit tego raportu nie zmienia kodu ani bramek. Wiążący wynik
 wydania musi pochodzić z Release Gate dla pełnego SHA publikowanego w PR.
 [Zbiorczy PR #142 i jego checks](https://github.com/krymszuch-stack/Kierivo/pull/142/checks).
+Workflow PR testuje syntetyczny merge GitHuba; pełny SHA wykonania zapisuje
+artefakt Gate. Dla HEAD `28f9a36` był to `3a9d397141c1359942ac7b7515532c355635beea`;
+sprawdzono identyczne drzewo `202090e9cab55ffdf0f41b97d7730bf1d80e6c51`.
+Deploy ponawia cały wymagany Gate już dla faktycznego commitu main.
 Main ponownie pobrany: `00a4ccb4590d754a90e8a5e65e5e31f39a3ad63f`.
 PR #138–#141 są scalone; #141 od 09.10.2026. Nie opieramy statusów na starych opisach.
 
@@ -52,13 +56,16 @@ bez zmian tabel, GRANT/REVOKE i kasowania danych. Nie wykonano jej na produkcji.
 | Pełny CI izolacji i eksportów | [112e2a8 / 38674580531](https://github.com/krymszuch-stack/Kierivo/actions/runs/38674580531) PASS: release-acceptance, CI, Auth/RLS, verdict |
 | CI outboxu | [0bd76a0 / 38675032473](https://github.com/krymszuch-stack/Kierivo/actions/runs/38675032473) FAIL: quota D04; release-acceptance i CI PASS. Nie zamaskowano tego wyniku |
 | D04 po migracji | [feb4c1b / 38675814638](https://github.com/krymszuch-stack/Kierivo/actions/runs/38675814638) PASS: quota 5/5, RLS, usunięcie konta/stary token, zalogowane CV → diagnoza → podgląd → PDF |
+| Wspólny CI HEAD 28f9a36 / merge 3a9d397 | 5 workflowów PASS; [Release Gate 38676502658](https://github.com/krymszuch-stack/Kierivo/actions/runs/38676502658) FAIL na wyścigu harnessu chronologii. Bootstrap App po odczycie IDB próbował użyć kontenera usuniętego przez własny widok testu. Harnessy izolują teraz własny start, bez ignorowania pageerror; trzy próby chronologii lokalnie PASS. Poprawiony Gate wymaga kolejnego odbioru |
 | Niepełna chronologia | Istniejące e2e-ats-timeline-status i e2e-consistency-timeline-unknown PASS; null i jawny zakres zamiast fikcyjnej oceny. Włączone do końcowego Gate (łącznie 31 scenariuszy) |
 | Bajty eksportów | PDF standard/dual-layer: tekst wszystkich stron, metadane, brak załączników; DOCX: wszystkie wpisy ZIP; dwa mechanizmy TXT. Pominięte markery nie występują, źródło zachowane |
+| PDF po zmianie właściciela | Rozszerzono istniejący test rzeczywistego podglądu: po A przygotowuje i pobiera nowy plik B; marker B obecny, nazwisko A nie występuje w tekście/metadanych, brak załączników, hash zgodny z podglądem. PASS lokalnie; syntetyczny kontekst auth, prawdziwy modal/API/Python |
 | Surowy korpus parsera | 6 sum zgodnych z README; duży schowek: 2985 fragmentów / 126 różnych treści; Aplikuj: dokładnie 300 fragmentów; praktyczny: 33 sekcje; PL/EN i negatywne C/UDT |
 | Produkcyjna telemetria | FAIL: 1 OPEN d1a27e2fbc8aa52a, 8 ui-crash/AppErrorBoundary, ostatni 06.10.2026 20:54:21 UTC. Brak dowodu przyczyny/powiązania z obecnym SHA; nie ustawiono resolved |
 | Produkcyjne OAuth/AI | Ostatni rzeczywisty smoke: zapis syntetycznego Vaultu i AI verify-cv 200. Nie stanowi pełnej kalibracji ani odbioru nowego kandydata |
 | Produkcyjny eksport kandydata | UNKNOWN — kandydat niewdrożony. Obecna strona miała HTTP 500 brakujących fontów. Wymagany smoke po osobno zatwierdzonym wydaniu |
 | Lokalna baza / Docker | SQL i kontener lokalnie UNKNOWN; rzeczywisty odbiór w izolowanym CI. Niczego nie testowano destrukcyjnie na produkcji |
+| Konfiguracja wdrożenia | FAIL: odczytano wyłącznie nazwy sekretów repo i środowiska production; w obu brak RELEASE_SMOKE_STORAGE_STATE i SUPABASE_SERVICE_ROLE_KEY. Preflight blokuje Azure przed zmianami; sekretów nie dodano ani nie odczytano ich wartości |
 
 N/A: kontrakt nie ma flag private/visible. Testowano faktycznie usunięte dane
 z projekcji i pominięte pola wewnętrzne claims/subRoleId; nie deklarujemy funkcji
@@ -80,8 +87,9 @@ ma własną bramkę telemetrii oraz uwierzytelniony smoke po wdrożeniu.
 HTTP 200 / health nie wystarcza. Merge do main oraz produkcyjne wdrożenie
 pozostają zastrzeżone właścicielowi. PR #143 dotyczy instrukcji agentów i pozostaje osobny.
 
-Do zamknięcia: odebrać zbiorczy kandydat na jednym SHA, rozstrzygnąć historyczną
-otwartą telemetrię bez fikcyjnego resolved i dokończyć klasyfikację ograniczeń.
+Do zamknięcia: odebrać poprawiony zbiorczy Gate na zapisanym SHA wykonania,
+uzupełnić przez właściciela konfigurację dedykowanego smoke/odczytu telemetrii,
+rozstrzygnąć historyczną otwartą telemetrię bez fikcyjnego resolved i zaakceptować ograniczenia.
 Długi PDF nadal wymaga jawnej zgody na skrócenie: istniejąca próbka zachowuje
 11/31 markerów i jawnie zgłasza 20 pominięć, a rzeczywisty podgląd pokazuje wynik.
 ADR-127 (ochrona ujawnionych haseł) pozostaje otwarte; ustawień nie zmieniono.
