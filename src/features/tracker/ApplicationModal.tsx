@@ -11,6 +11,7 @@ import {
   getApplicationEventKindLabel,
   isoToLocalDateTime,
   localDateTimeToIso,
+  normalizeApplicationEventStateForKind,
   removeApplicationEvent,
   upsertApplicationEvent,
 } from './applicationEvents';
@@ -383,7 +384,11 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
               <Select
                 label="Rodzaj zdarzenia"
                 value={draftEventKind}
-                onChange={(e) => setDraftEventKind(e.target.value as ApplicationEventKind)}
+                onChange={(e) => {
+                  const kind = e.target.value as ApplicationEventKind;
+                  setDraftEventKind(kind);
+                  setDraftEventState((state) => normalizeApplicationEventStateForKind(kind, state));
+                }}
                 options={[
                   { value: 'application_sent', label: 'Wysłanie aplikacji' },
                   { value: 'interview', label: 'Rozmowa' },

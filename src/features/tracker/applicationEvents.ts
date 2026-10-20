@@ -24,6 +24,14 @@ export function getApplicationEventStateLabel(state: ApplicationEventState): str
   return EVENT_STATE_LABELS[state];
 }
 
+/** Stan „odbyta” ma sens wyłącznie dla rozmowy; po zmianie rodzaju resetujemy go bezpiecznie. */
+export function normalizeApplicationEventStateForKind(
+  kind: ApplicationEventKind,
+  state: ApplicationEventState,
+): ApplicationEventState {
+  return kind !== 'interview' && state === 'completed' ? 'unknown' : state;
+}
+
 function isSameEvent(current: ApplicationEvent, incoming: ApplicationEvent): boolean {
   if (current.id === incoming.id) return true;
   return Boolean(

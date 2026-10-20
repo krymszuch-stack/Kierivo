@@ -5,6 +5,7 @@ import {
   formatApplicationEventDate,
   isoToLocalDateTime,
   localDateTimeToIso,
+  normalizeApplicationEventStateForKind,
   removeApplicationEvent,
   upsertApplicationEvent,
 } from '../applicationEvents';
@@ -20,6 +21,13 @@ const event: ApplicationEvent = {
 };
 
 describe('zdarzenia procesu aplikacji', () => {
+  it('resetuje stan odbytej rozmowy po zmianie rodzaju zdarzenia', () => {
+    expect(normalizeApplicationEventStateForKind('email', 'completed')).toBe('unknown');
+    expect(normalizeApplicationEventStateForKind('follow_up', 'completed')).toBe('unknown');
+    expect(normalizeApplicationEventStateForKind('interview', 'completed')).toBe('completed');
+    expect(normalizeApplicationEventStateForKind('email', 'pending')).toBe('pending');
+  });
+
   it('aktualizuje powtórzony identyfikator źródłowy bez tworzenia duplikatu', () => {
     const incoming = { ...event, id: 'event-retry', state: 'confirmed' as const };
 
