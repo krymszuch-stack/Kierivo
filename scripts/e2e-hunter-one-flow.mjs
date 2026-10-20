@@ -34,7 +34,21 @@ try {
   cpSync(extensionSource,extensionPath,{recursive:true});
   const testManifestPath=path.join(extensionPath,'manifest.json');
   const testManifest=JSON.parse(readFileSync(testManifestPath,'utf-8'));
-  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*','https://kierivo.com/*'];
+  const appMatchPatterns=['http://localhost/*','http://127.0.0.1/*'];
+  if (kierivoApplicationUrl) {
+    const appUrl = new URL(kierivoApplicationUrl);
+    if (appUrl.protocol !== 'http:' || !['localhost','127.0.0.1'].includes(appUrl.hostname)) {
+      throw new Error('Test One Flow obsługuje wyłącznie lokalny origin HTTP Kierivo.');
+    }
+    const appMatchPattern = `${appUrl.protocol}//${appUrl.hostname}/*`;
+    if (!appMatchPatterns.includes(appMatchPattern)) appMatchPatterns.push(appMatchPattern);
+  }
+  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*',...appMatchPatterns];
+  testManifest.content_scripts=[...(testManifest.content_scripts||[]),{
+    matches:appMatchPatterns,
+    js:['kierivoPresence.js'],
+    run_at:'document_idle',
+  }];
   writeFileSync(testManifestPath,JSON.stringify(testManifest,null,2));
   execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',keyPath,'-out',certPath,'-days','1','-subj','/CN=jobs.ashbyhq.com','-addext','subjectAltName=DNS:jobs.ashbyhq.com'],{stdio:'ignore'});
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Synthetic software engineer role</title><script type="application/ld+json">{"@type":"JobPosting","title":"Synthetic\\n  software engineer role","hiringOrganization":{"name":"Synthetic\\n  Employer"}}</script><style>.honeypot{position:absolute;left:-10000px;top:0;width:1px;height:1px}</style></head><body><h1>Synthetic software engineer role</h1><form id="application">
@@ -242,15 +256,16 @@ try {
         }
       });
     });
-    await attachPopup(homePage);
+    // Popup otwieramy na karcie oferty, gdy lokalne Kierivo jest już otwarte w tle.
+    await attachPopup();
     await popupCommand("document.querySelector('#connectKierivo').click()",true);
-    let permissionStatus='';
+    let presenceStatus='';
     for(let i=0;i<100;i++){
-      permissionStatus=(await popupCommand("document.querySelector('#kierivoPresenceStatus').textContent")).result.value;
-      if(permissionStatus.includes('Dostęp przyznany'))break;
+      presenceStatus=(await popupCommand("document.querySelector('#kierivoPresenceStatus').textContent")).result.value;
+      if(presenceStatus.includes('Wykrywanie włączone'))break;
       await new Promise(resolve=>setTimeout(resolve,100));
     }
-    assert.ok(permissionStatus.includes('Dostęp przyznany')||permissionStatus.includes('Dostęp do domeny Kierivo jest włączony'),`uprawnienie runtime jest aktywne: ${permissionStatus}`);
+    assert.ok(presenceStatus.includes('Wykrywanie włączone'),`włączono wykrywanie dla otwartej karty lokalnego Kierivo: ${presenceStatus}`);
     await homePage.getByText(/Wykryto Hunter 1\.2\.0/).waitFor({state:'visible',timeout:10000});
     const presenceReplies=await homePage.evaluate(()=>window.__hunterPresenceReplies);
     assert.equal(presenceReplies.length>0,true,'Kierivo wykryło lokalny handshake z Hunterem');
