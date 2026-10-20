@@ -76,6 +76,8 @@ export const StorageKeys = {
 export interface LastJobAnalysisSummary extends AtsCalculationTime {
   position: string;
   company: string;
+  /** Oryginalne ogłoszenie, jeśli analiza rozpoczęła się od prawidłowego URL. */
+  sourceUrl?: string;
   /** Brak liczby oznacza, że oferta/profil nie dały podstaw do oceny. */
   score?: number;
   strengths: string[];

@@ -6,13 +6,15 @@
  * Zero przeładowania, zero sztucznego szumu, zero wymyślonych danych.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
   FileText,
   Target,
   AlertCircle,
+  Puzzle,
+  Download,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MasterVault } from '../types';
@@ -28,6 +30,9 @@ import { getAnalysisFreshnessDetails } from '../lib/analysisFreshness';
 import { readLastJobAnalysis } from '../lib/lastJobAnalysis';
 import { InvalidLastJobAnalysisState } from './InvalidLastJobAnalysisState';
 import { useAnalysisClock } from '../hooks/useAnalysisClock';
+import { getHunterExtensionStoreUrl } from '../lib/hunterExtensionStore';
+import { normalizeExternalHttpUrl } from '../lib/externalHttpUrl';
+import { buildHunterAutofillProfile } from '../lib/hunterAutofillProfile';
 
 export type HomeViewProps = {
   /** Główne wezwanie do działania */
@@ -47,6 +52,7 @@ export function HomeView({
 }: HomeViewProps) {
   const { applications } = useApplications();
   const { user } = useAuth();
+  const [browserReportsOnline, setBrowserReportsOnline] = useState<boolean | null>(null);
   const now = useAnalysisClock();
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
 
@@ -68,10 +74,24 @@ export function HomeView({
     [profileId]
   );
   const lastAnalysis = lastAnalysisRead.state === 'valid' ? lastAnalysisRead.value : null;
+  const lastAnalysisSourceUrl = normalizeExternalHttpUrl(lastAnalysis?.sourceUrl);
   const lastAnalysisScoreInfo = lastAnalysis?.score === undefined
     ? undefined
     : getSavedAtsScoreDisplayInfo(lastAnalysis.score, lastAnalysis.atsScoreContext, lastAnalysis.atsScoreProvenance, now);
   const lastAnalysisFreshness = getAnalysisFreshnessDetails(lastAnalysis, vault?.updatedAt, now);
+  const extensionStoreUrl = getHunterExtensionStoreUrl(import.meta.env.VITE_HUNTER_EXTENSION_STORE_URL);
+  const hunterAutofillProfile = vault ? buildHunterAutofillProfile(vault) : null;
+
+  useEffect(() => {
+    const updateConnectionHint = () => setBrowserReportsOnline(navigator.onLine);
+    updateConnectionHint();
+    window.addEventListener('online', updateConnectionHint);
+    window.addEventListener('offline', updateConnectionHint);
+    return () => {
+      window.removeEventListener('online', updateConnectionHint);
+      window.removeEventListener('offline', updateConnectionHint);
+    };
+  }, []);
 
   const handleNavigate = (tab: NavTabId) => {
     if (onNavigate) {
@@ -79,6 +99,19 @@ export function HomeView({
     } else if (onStart) {
       onStart();
     }
+  };
+
+  const handleDownloadHunterProfile = () => {
+    if (!hunterAutofillProfile) return;
+    const blobUrl = URL.createObjectURL(new Blob(
+      [JSON.stringify(hunterAutofillProfile, null, 2)],
+      { type: 'application/json' },
+    ));
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = 'kierivo-hunter-autofill-profile.json';
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   return (
@@ -134,6 +167,95 @@ export function HomeView({
 
         </div>
       </div>
+
+      {/* ------------------------------ KIERIVO EXTENSION: dystrybucja i status */}
+      <Card tone="flat" className="border border-line p-5 sm:p-6">
+        <section aria-labelledby="extension-hub-title" className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-brand-subtle p-2 text-brand-fg" aria-hidden="true">
+                <Puzzle className="h-5 w-5" />
+              </span>
+              <div className="space-y-1">
+                <h2 id="extension-hub-title" className="text-base font-bold text-ink">
+                  Kierivo Extension
+                </h2>
+                <p className="text-sm text-muted">
+                  Przygotowanie aplikacji w przeglądarce, z kontrolą po Twojej stronie.
+                </p>
+              </div>
+            </div>
+            <span className="w-fit rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-muted">
+              Public Pre-Beta · 0 zł
+            </span>
+          </div>
+
+          <p className="text-sm text-muted" role="status">
+            {extensionStoreUrl
+              ? 'Stan instalacji i połączenia nie jest jeszcze wykrywany przez Kierivo.'
+              : 'Brak publicznego listingu w Chrome Web Store. Pobieranie nie jest dostępne, a stan instalacji nie jest wykrywany.'}
+          </p>
+
+          {browserReportsOnline === false && (
+            <p className="rounded-lg border border-warning/40 bg-warning-soft px-3 py-2 text-sm text-warning-fg" role="status">
+              Przeglądarka zgłasza brak połączenia. Lokalny eksport profilu nadal działa; otwarcie ogłoszenia i Chrome Web Store wymaga sieci.
+            </p>
+          )}
+
+          <ul className="grid gap-2 text-xs text-muted sm:grid-cols-2" aria-label="Dostępność Kierivo Extension">
+            <li><span className="font-semibold text-ink">Sparowanie i autoryzacja:</span> niedostępne; nie ma jeszcze handshake z rozszerzeniem.</li>
+            <li><span className="font-semibold text-ink">Autofill:</span> lokalny import profilu; pola wybierasz w Hunterze.</li>
+            <li><span className="font-semibold text-ink">Pro:</span> niedostępny w Public Pre-Beta.</li>
+            <li><span className="font-semibold text-ink">Telefon:</span> użyj ręcznego workflow; rozszerzenie przygotuj w desktopowej przeglądarce Chromium.</li>
+          </ul>
+
+          <div className="space-y-2 rounded-lg border border-line/70 bg-surface p-3">
+            <p className="text-sm font-semibold text-ink">Przygotuj dane do autofill</p>
+            <p className="text-xs text-muted">
+              Pobierzesz lokalny plik z imieniem, nazwiskiem, e-mailem i telefonem, jeśli są w profilu. Nie wysyłamy go do serwera. W Hunterze wczytaj plik, otwórz ogłoszenie i osobno zaznacz pola do wypełnienia. LinkedIn pomijamy do czasu wyboru właściwego wariantu.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              icon={Download}
+              disabled={!hunterAutofillProfile}
+              aria-describedby="hunter-profile-export-status"
+              onClick={handleDownloadHunterProfile}
+            >
+              Pobierz profil do Huntera
+            </Button>
+            <p id="hunter-profile-export-status" className="text-xs text-muted" role="status">
+              {hunterAutofillProfile
+                ? 'Plik zawiera tylko dostępne imię, nazwisko, e-mail i telefon. Eksport nie wymaga połączenia z siecią.'
+                : 'Dodaj jawne imię, nazwisko, e-mail lub telefon do profilu, aby przygotować lokalny plik.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {extensionStoreUrl ? (
+              <a
+                href={extensionStoreUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-10 items-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+              >
+                Pobierz z Chrome Web Store
+              </a>
+            ) : (
+              <Button type="button" variant="outline" size="sm" disabled>
+                Wkrótce w Chrome Web Store
+              </Button>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={() => handleNavigate('aplikuj')}>
+              Otwórz oferty
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => handleNavigate('pipeline')}>
+              Moje aplikacje
+            </Button>
+          </div>
+        </section>
+      </Card>
 
       {/* -------------------------------------- TWOJA AKTYWNOŚĆ */}
       <div className="space-y-3 pt-4 border-t border-line/60">
@@ -245,16 +367,38 @@ export function HomeView({
             </div>
 
             <div className="pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                icon={ArrowRight}
-                onClick={() => handleNavigate('aplikuj')}
-                className="cursor-pointer font-semibold"
-              >
-                Otwórz analizę
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  icon={ArrowRight}
+                  onClick={() => handleNavigate('aplikuj')}
+                  className="cursor-pointer font-semibold"
+                >
+                  Otwórz analizę
+                </Button>
+                {lastAnalysisSourceUrl && hunterAutofillProfile ? (
+                  <a
+                    href={lastAnalysisSourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={handleDownloadHunterProfile}
+                    className="inline-flex min-h-9 items-center rounded-lg border border-line px-3 text-sm font-semibold text-ink hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                  >
+                    Przygotuj autofill i otwórz ogłoszenie
+                  </a>
+                ) : lastAnalysisSourceUrl ? (
+                  <a
+                    href={lastAnalysisSourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex min-h-9 items-center rounded-lg border border-line px-3 text-sm font-semibold text-ink hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+                  >
+                    Otwórz oryginalne ogłoszenie
+                  </a>
+                ) : null}
+              </div>
             </div>
           </Card>
         ) : lastAnalysisRead.state === 'invalid' ? (

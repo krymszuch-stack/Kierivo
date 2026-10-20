@@ -23,6 +23,7 @@ export function readLastJobAnalysis(value: unknown): LastJobAnalysisRead {
   if (!isRecord(value) ||
       typeof value.position !== 'string' ||
       typeof value.company !== 'string' ||
+      (value.sourceUrl !== undefined && typeof value.sourceUrl !== 'string') ||
       !isStringArray(value.strengths) ||
       !isStringArray(value.gaps) ||
       typeof value.analyzedAt !== 'string' ||

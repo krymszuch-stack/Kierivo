@@ -118,6 +118,9 @@ export function migrateVault(raw: unknown): MasterVault {
     updatedAt,
     personalInfo: {
       fullName: typeof personalInfoRaw.fullName === 'string' ? personalInfoRaw.fullName : '',
+      ...(typeof personalInfoRaw.firstName === 'string' ? { firstName: personalInfoRaw.firstName } : {}),
+      ...(typeof personalInfoRaw.middleName === 'string' ? { middleName: personalInfoRaw.middleName } : {}),
+      ...(typeof personalInfoRaw.lastName === 'string' ? { lastName: personalInfoRaw.lastName } : {}),
       email: typeof personalInfoRaw.email === 'string' ? personalInfoRaw.email : '',
       phone: typeof personalInfoRaw.phone === 'string' ? personalInfoRaw.phone : '',
       location: typeof personalInfoRaw.location === 'string' ? personalInfoRaw.location : '',
