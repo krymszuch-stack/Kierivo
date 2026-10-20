@@ -7,7 +7,7 @@ function makeVault(personalInfo: Partial<MasterVault['personalInfo']>): MasterVa
 }
 
 describe('buildHunterAutofillProfile', () => {
-  it('creates the schema already accepted by the Hunter extension', () => {
+  it('tworzy schemat akceptowany przez rozszerzenie Hunter', () => {
     expect(buildHunterAutofillProfile(makeVault({
       firstName: '  Ada ',
       lastName: ' Nowak ',
@@ -26,7 +26,7 @@ describe('buildHunterAutofillProfile', () => {
     });
   });
 
-  it('does not guess a name from fullName or export a disputed LinkedIn value', () => {
+  it('nie zgaduje imienia i nazwiska z fullName ani nie eksportuje spornego LinkedIn', () => {
     expect(buildHunterAutofillProfile(makeVault({
       fullName: 'Ada Nowak',
       email: '',
@@ -35,7 +35,7 @@ describe('buildHunterAutofillProfile', () => {
     }))).toBeNull();
   });
 
-  it('returns no file when the profile has no supported non-empty fields', () => {
+  it('nie tworzy pliku, gdy profil nie zawiera obsługiwanych, niepustych pól', () => {
     expect(buildHunterAutofillProfile(makeVault({}))).toBeNull();
   });
 });
