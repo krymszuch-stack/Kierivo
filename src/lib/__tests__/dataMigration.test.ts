@@ -33,6 +33,18 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrateApplication(migrated)).toEqual(migrated);
     });
 
+    it('zachowuje nieznane pola rekordu podczas normalizacji znanych pól', () => {
+      const migrated = migrateApplication({
+        id: 'future-field', company: 'Firma', position: 'Rola',
+        extensionMetadata: { source: 'hunter', importedAt: '2026-10-20T10:00:00.000Z' },
+      });
+
+      expect((migrated as unknown as Record<string, unknown>)?.extensionMetadata).toEqual({
+        source: 'hunter', importedAt: '2026-10-20T10:00:00.000Z',
+      });
+      expect(migrateApplication(migrated)).toEqual(migrated);
+    });
+
     it('nie uznaje braku statusu za wysłanie i nie dopisuje firmy', () => {
       const migrated = migrateApplication({ id: 'legacy-draft', company: '', position: 'Serwisant HVAC' });
 

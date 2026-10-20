@@ -221,6 +221,18 @@ function normalizeDate(rawDate: unknown): string {
 export function migrateApplication(raw: unknown): JobApplication | null {
   if (!isRecord(raw)) return null;
 
+  // Zachowaj pola dodane przez nowsze/eksperymentalne części aplikacji.
+  // Pola kanoniczne poniżej nadal są walidowane i nadpisują surowe wartości.
+  const knownFields = new Set([
+    'schemaVersion', 'id', 'company', 'position', 'salary', 'date', 'applied_at', 'status',
+    'notes', 'jobUrl', 'atsScore', 'atsScoreProvenance', 'atsScoreContext', 'missingKeywords',
+    'interviewAt', 'events', 'migrationQuarantine', 'briefDoneAt', 'debriefSentAt',
+    'documentSnapshot', 'updatedAt',
+  ]);
+  const preservedFields = Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !knownFields.has(key)),
+  );
+
   const id = typeof raw.id === 'string' && raw.id ? raw.id : `app-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const company = typeof raw.company === 'string' ? raw.company.trim() : '';
   const position = typeof raw.position === 'string' ? raw.position.trim() : '';
@@ -261,6 +273,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const interviewAt = projectInterviewAt(events);
 
   const app: JobApplication = {
+    ...preservedFields,
     schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
     id,
     company,
