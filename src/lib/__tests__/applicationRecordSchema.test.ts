@@ -30,11 +30,33 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
         timeZone: 'Europe/Warsaw',
         state: 'pending',
         source: 'user',
+        verificationStatus: 'user_declared',
         evidenceUrl: 'https://example.test/rekrutacja',
         note: 'Rekruter zapowiedział odpowiedź.',
         reminderAt: '2026-10-22T08:00:00.000Z',
       }],
     })).toBe(true);
+  });
+
+  it('dopuszcza timestamp z offsetem bez zgadywania IANA strefy wpisania', () => {
+    expect(isJobApplication({
+      ...valid,
+      events: [{
+        id: 'legacy-interview', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z',
+        state: 'confirmed', source: 'user',
+      }],
+    })).toBe(true);
+  });
+
+  it('pozwala oznaczyć jako odbytą tylko rozmowę', () => {
+    expect(isJobApplication({
+      ...valid,
+      events: [{ id: 'interview-1', kind: 'interview', scheduledAt: '2026-10-19T10:00:00.000Z', state: 'completed', source: 'user' }],
+    })).toBe(true);
+    expect(isJobApplication({
+      ...valid,
+      events: [{ id: 'email-1', kind: 'email', scheduledAt: '2026-10-19T10:00:00.000Z', state: 'completed', source: 'user' }],
+    })).toBe(false);
   });
 
   it.each([

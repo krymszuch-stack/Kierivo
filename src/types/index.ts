@@ -535,7 +535,7 @@ export interface ApplicationHistoryRecord {
 export type ApplicationStatus = 'Do wysłania' | 'Wysłana' | 'Rozmowa' | 'Oferta' | 'Odrzucona';
 
 export type ApplicationEventKind = 'application_sent' | 'interview' | 'email' | 'response_due' | 'follow_up';
-export type ApplicationEventState = 'confirmed' | 'pending' | 'unknown';
+export type ApplicationEventState = 'confirmed' | 'pending' | 'unknown' | 'completed' | 'cancelled';
 export type ApplicationEventSource = 'user' | 'page' | 'extension';
 
 /** Zdarzenie pozostaje częścią rekordu Pipeline i podlega izolacji/usuwaniu profilu. */
@@ -548,6 +548,8 @@ export interface ApplicationEvent {
   timeZone?: string;
   state: ApplicationEventState;
   source: ApplicationEventSource;
+  /** Receipt Huntera potwierdza deklarację użytkownika, nie dostarczenie przez ATS. */
+  verificationStatus?: 'user_declared';
   /** Identyfikator zdarzenia źródłowego pozwalający idempotentnie scalać importy. */
   sourceEventId?: string;
   evidenceUrl?: string;
@@ -694,6 +696,8 @@ export interface JobApplication {
   interviewAt?: string;
   /** Rozszerzona oś procesu; brak pola w starszych rekordach jest prawidłowy. */
   events?: ApplicationEvent[];
+  /** Surowe zdarzenia, których migracja nie mogła bezpiecznie użyć w osi procesu. */
+  migrationQuarantine?: unknown[];
   /** Kiedy odhaczono przygotowanie przed rozmową (Pre-Call Brief). */
   briefDoneAt?: string;
   /** Kiedy wysłano follow-up po rozmowie. */

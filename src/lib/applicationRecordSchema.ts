@@ -10,7 +10,7 @@ const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'Odrzucona',
 ];
 const APPLICATION_EVENT_KINDS: readonly ApplicationEventKind[] = ['application_sent', 'interview', 'email', 'response_due', 'follow_up'];
-const APPLICATION_EVENT_STATES: readonly ApplicationEventState[] = ['confirmed', 'pending', 'unknown'];
+const APPLICATION_EVENT_STATES: readonly ApplicationEventState[] = ['confirmed', 'pending', 'unknown', 'completed', 'cancelled'];
 const APPLICATION_EVENT_SOURCES: readonly ApplicationEventSource[] = ['user', 'page', 'extension'];
 
 export interface ParsedApplications {
@@ -51,17 +51,19 @@ function isTimeZone(value: unknown): value is string {
   }
 }
 
-function isApplicationEvent(value: unknown): value is ApplicationEvent {
+export function isApplicationEvent(value: unknown): value is ApplicationEvent {
   if (!isRecord(value)) return false;
   if (typeof value.id !== 'string' || value.id.trim() === '') return false;
   if (!APPLICATION_EVENT_KINDS.includes(value.kind as ApplicationEventKind)) return false;
   if (!isDate(value.scheduledAt)) return false;
   if (!APPLICATION_EVENT_STATES.includes(value.state as ApplicationEventState)) return false;
+  if (value.state === 'completed' && value.kind !== 'interview') return false;
   if (!APPLICATION_EVENT_SOURCES.includes(value.source as ApplicationEventSource)) return false;
+  if (value.verificationStatus !== undefined && value.verificationStatus !== 'user_declared') return false;
   if (!isOptionalString(value, 'timeZone') ||
       (value.timeZone !== undefined && !isTimeZone(value.timeZone))) return false;
   if (String(value.scheduledAt).includes('T') &&
-      (!isValidOffsetDateTime(value.scheduledAt) || !isTimeZone(value.timeZone))) return false;
+      !isValidOffsetDateTime(value.scheduledAt)) return false;
   if (!isOptionalString(value, 'sourceEventId') || !isOptionalString(value, 'evidenceUrl') ||
       !isOptionalString(value, 'note') || !isOptionalString(value, 'reminderAt')) return false;
   if (value.reminderAt !== undefined && !isValidOffsetDateTime(value.reminderAt)) return false;
@@ -127,6 +129,7 @@ export function isJobApplication(value: unknown): value is JobApplication {
   if (value.interviewAt !== undefined && !isDateTime(value.interviewAt)) return false;
   if (value.events !== undefined &&
       (!Array.isArray(value.events) || !value.events.every(isApplicationEvent))) return false;
+  if (value.migrationQuarantine !== undefined && !Array.isArray(value.migrationQuarantine)) return false;
   if (value.briefDoneAt !== undefined && !isDateTime(value.briefDoneAt)) return false;
   if (value.debriefSentAt !== undefined && !isDateTime(value.debriefSentAt)) return false;
   if (value.updatedAt !== undefined && !isDateTime(value.updatedAt)) return false;

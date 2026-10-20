@@ -63,6 +63,48 @@ export function findApplicationForReceipt(
     application.events?.some((event) => event.source === 'extension' && event.sourceEventId === receiptId));
 }
 
+function normalizeFingerprintText(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function canonicalJobUrl(value: string | undefined): string | undefined {
+  const normalized = normalizeExternalHttpUrl(value);
+  if (!normalized) return undefined;
+  const url = new URL(normalized);
+  url.hash = '';
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(utm_.+|source|ref|trk|gh_src)$/i.test(key)) url.searchParams.delete(key);
+  }
+  url.hostname = url.hostname.toLocaleLowerCase();
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.href;
+}
+
+/** Tylko ostrzeżenie: fingerprint oferty działa przez 24 godziny, bez automatycznego scalenia. */
+export function findReceiptDuplicateCandidate(
+  applications: JobApplication[],
+  receipt: ApplicationReceipt,
+): JobApplication | undefined {
+  const submittedAt = Date.parse(receipt.submittedAt);
+  if (!Number.isFinite(submittedAt)) return undefined;
+  const receiptUrl = canonicalJobUrl(receipt.jobUrl);
+  if (!receiptUrl) return undefined;
+  const company = normalizeFingerprintText(receipt.company);
+  const position = normalizeFingerprintText(receipt.position);
+
+  return applications.find((application) => {
+    if (normalizeFingerprintText(application.company) !== company ||
+        normalizeFingerprintText(application.position) !== position) return false;
+    const applicationUrl = canonicalJobUrl(application.jobUrl);
+    if (!applicationUrl || receiptUrl !== applicationUrl) return false;
+    return (application.events ?? []).some((event) => {
+      if (event.kind !== 'application_sent') return false;
+      const previousSubmission = Date.parse(event.scheduledAt);
+      return Number.isFinite(previousSubmission) && Math.abs(submittedAt - previousSubmission) <= 24 * 60 * 60 * 1000;
+    });
+  });
+}
+
 export function buildApplicationFromReceipt(
   receipt: ApplicationReceipt,
   existing: JobApplication | undefined,
@@ -75,6 +117,7 @@ export function buildApplicationFromReceipt(
     timeZone,
     state: 'confirmed',
     source: 'extension',
+    verificationStatus: 'user_declared',
     sourceEventId: receipt.receiptId,
   };
   const applicationDate = dateKeyInTimeZone(receipt.submittedAt, timeZone) ?? receipt.submittedAt.slice(0, 10);

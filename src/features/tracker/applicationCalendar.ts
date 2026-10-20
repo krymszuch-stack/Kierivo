@@ -58,13 +58,17 @@ export function getApplicationCalendarEntries(
 
   for (const application of applications) {
     if (isDateOnly(application.date)) {
+      const declaredReceipt = application.events?.some((event) =>
+        event.kind === 'application_sent' && event.verificationStatus === 'user_declared' &&
+        dateKeyInTimeZone(event.scheduledAt, timeZone) === application.date,
+      );
       entries.push({
         id: `${application.id}:application`,
         applicationId: application.id,
         date: application.date,
         kind: 'application',
         title: applicationTitle(application),
-        detail: application.status,
+        detail: `${application.status}${declaredReceipt ? ' · Zadeklarowano ręcznie (Hunter), niepotwierdzone przez ATS' : ''}`,
       });
     }
 
@@ -90,6 +94,7 @@ export function getApplicationCalendarEntries(
     }
 
     for (const event of application.events ?? []) {
+      if (event.state === 'cancelled') continue;
       const date = isDateOnly(event.scheduledAt)
         ? event.scheduledAt
         : dateKeyInTimeZone(event.scheduledAt, timeZone);
@@ -102,7 +107,7 @@ export function getApplicationCalendarEntries(
           date,
           kind: event.kind,
           title: applicationTitle(application),
-          detail: `${getApplicationEventKindLabel(event.kind)} · ${getApplicationEventStateLabel(event.state)}`,
+          detail: `${getApplicationEventKindLabel(event.kind)} · ${getApplicationEventStateLabel(event.state)}${event.verificationStatus === 'user_declared' ? ' · Zadeklarowano (Hunter), niepotwierdzone przez ATS' : ''}`,
           timestamp: isDateOnly(event.scheduledAt) ? undefined : event.scheduledAt,
         });
       }

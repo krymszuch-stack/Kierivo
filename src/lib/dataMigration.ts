@@ -1,4 +1,6 @@
 import { ApplicationStatus, JobApplication, MasterVault } from '../types';
+import { isValidOffsetDateTime } from './isoDateTime';
+import { normalizeApplicationInterviews, projectInterviewAt, shouldCancelInterviewOnRejection } from './applicationInterview';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
 import { isValidAtsScoreContext } from './atsScoreEvidence';
 import { normalizeExternalHttpUrl } from './externalHttpUrl';
@@ -8,6 +10,7 @@ import { PendingCloudVaultSave } from './cloudVaultOutbox';
 import { createEmptyVault } from './sampleVault';
 import { readJson, StorageKeys, writeJson } from './storage';
 import { isValidAtsScore } from './canonicalAts';
+import { isApplicationEvent } from './applicationRecordSchema';
 
 /**
  * Aktualna wersja jednolitego schematu danych aplikacji (semantyczna wersja encji).
@@ -16,6 +19,8 @@ import { isValidAtsScore } from './canonicalAts';
  * (profil, vault, aplikacje, biblioteka CV).
  */
 export const CURRENT_DATA_SCHEMA_VERSION = 1 as const;
+/** Wersjonujemy aplikacje osobno, aby ich migracje nie przebudowywały vaultów/profili. */
+export const CURRENT_APPLICATION_SCHEMA_VERSION = 2 as const;
 
 export interface MigrationReport {
   profilesMigrated: number;
@@ -221,6 +226,18 @@ function normalizeDate(rawDate: unknown): string {
 export function migrateApplication(raw: unknown): JobApplication | null {
   if (!isRecord(raw)) return null;
 
+  // Zachowaj pola dodane przez nowsze/eksperymentalne części aplikacji.
+  // Pola kanoniczne poniżej nadal są walidowane i nadpisują surowe wartości.
+  const knownFields = new Set([
+    'schemaVersion', 'id', 'company', 'position', 'salary', 'date', 'applied_at', 'status',
+    'notes', 'jobUrl', 'atsScore', 'atsScoreProvenance', 'atsScoreContext', 'missingKeywords',
+    'interviewAt', 'events', 'migrationQuarantine', 'briefDoneAt', 'debriefSentAt',
+    'documentSnapshot', 'updatedAt',
+  ]);
+  const preservedFields = Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !knownFields.has(key)),
+  );
+
   const id = typeof raw.id === 'string' && raw.id ? raw.id : `app-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const company = typeof raw.company === 'string' ? raw.company.trim() : '';
   const position = typeof raw.position === 'string' ? raw.position.trim() : '';
@@ -232,15 +249,53 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const salary = typeof raw.salary === 'string' ? raw.salary.trim() : '';
   const date = normalizeDate(raw.date || (raw as any).applied_at);
   const jobUrl = normalizeExternalHttpUrl(raw.jobUrl);
-
-  let interviewAt = typeof raw.interviewAt === 'string' ? raw.interviewAt : undefined;
-  // Reguła: Odrzucona aplikacja nie trzyma terminu rozmowy
-  if (status === 'Odrzucona') {
-    interviewAt = undefined;
+  const rawEvents = Array.isArray(raw.events) ? raw.events : [];
+  const validEvents = rawEvents.filter(isApplicationEvent);
+  const existingQuarantine = Array.isArray(raw.migrationQuarantine) ? raw.migrationQuarantine : [];
+  const newlyQuarantinedEvents = rawEvents
+    .filter((event) => !isApplicationEvent(event))
+    .map((rawPayload) => ({ rawPayload, reason: 'invalid_application_event' }));
+  if (raw.events !== undefined && !Array.isArray(raw.events)) {
+    newlyQuarantinedEvents.push({ rawPayload: raw.events, reason: 'events_not_array' });
   }
+  // Ponowny start nie może dopisywać kolejnych kopii tej samej uszkodzonej wartości.
+  const quarantinePayloads = new Set(existingQuarantine.map((entry) => {
+    const payload = isRecord(entry) && 'rawPayload' in entry ? entry.rawPayload : entry;
+    try { return JSON.stringify(payload); } catch { return undefined; }
+  }));
+  const migrationQuarantine = [
+    ...existingQuarantine,
+    ...newlyQuarantinedEvents.filter((entry) => {
+      const serialized = JSON.stringify(entry.rawPayload);
+      if (quarantinePayloads.has(serialized)) return false;
+      quarantinePayloads.add(serialized);
+      return true;
+    }).map((entry) => ({ ...entry, quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION })),
+  ];
+
+  const legacyInterviewAt = typeof raw.interviewAt === 'string' && isValidOffsetDateTime(raw.interviewAt)
+    ? raw.interviewAt
+    : undefined;
+  const migrationNow = Date.now();
+  const events = validEvents.map((event) => status === 'Odrzucona' && shouldCancelInterviewOnRejection(event, migrationNow)
+    ? { ...event, state: 'cancelled' as const }
+    : event);
+  // Obecność dowolnej rozmowy w osi jest rozstrzygająca: odwołanego
+  // legacy terminu nie wolno reaktywować przez ponowną syntezę z interviewAt.
+  if (status !== 'Odrzucona' && legacyInterviewAt && !events.some((event) => event.kind === 'interview')) {
+    events.push({
+      id: `legacy-interview-${id}`,
+      kind: 'interview',
+      scheduledAt: legacyInterviewAt,
+      state: 'confirmed',
+      source: 'user',
+    });
+  }
+  const interviewAt = projectInterviewAt(events);
 
   const app: JobApplication = {
-    schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
+    ...preservedFields,
+    schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION,
     id,
     company,
     position,
@@ -259,13 +314,15 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
+    ...(raw.events !== undefined || legacyInterviewAt ? { events } : {}),
+    ...(migrationQuarantine.length > 0 ? { migrationQuarantine } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),
     ...(typeof raw.debriefSentAt === 'string' ? { debriefSentAt: raw.debriefSentAt } : {}),
     ...(isRecord(raw.documentSnapshot) ? { documentSnapshot: raw.documentSnapshot as any } : {}),
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
   };
 
-  return app;
+  return normalizeApplicationInterviews(app);
 }
 
 /**
@@ -274,6 +331,19 @@ export function migrateApplication(raw: unknown): JobApplication | null {
 export function migrateApplications(raw: unknown): JobApplication[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(migrateApplication).filter((a): a is JobApplication => Boolean(a));
+}
+
+/** Zachowuje nieprzetwarzalne rekordy obok aplikacji udanych w migracji. */
+function migrateApplicationRecordsForStorage(raw: unknown[]): { records: unknown[]; migratedCount: number } {
+  let migratedCount = 0;
+  const records = raw.map((record) => {
+    if (isRecord(record) && record.schemaVersion === CURRENT_APPLICATION_SCHEMA_VERSION) return record;
+    const migrated = migrateApplication(record);
+    if (!migrated) return record;
+    migratedCount++;
+    return migrated;
+  });
+  return { records, migratedCount };
 }
 
 /**
@@ -355,10 +425,10 @@ export function migrateAllStorageAtStartup(): MigrationReport {
   try {
     // Stary klucz wspólny cvelocity:applications
     const legacyApps = readJson<unknown>(StorageKeys.applications, null);
-    if (Array.isArray(legacyApps) && legacyApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_DATA_SCHEMA_VERSION)) {
-      const migrated = migrateApplications(legacyApps);
-      writeJson(StorageKeys.applications, migrated);
-      report.applicationsMigrated += migrated.length;
+    if (Array.isArray(legacyApps) && legacyApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
+      const migrated = migrateApplicationRecordsForStorage(legacyApps);
+      writeJson(StorageKeys.applications, migrated.records);
+      report.applicationsMigrated += migrated.migratedCount;
     }
 
     // Klucze per-profil cvelocity:applications:*
@@ -373,10 +443,10 @@ export function migrateAllStorageAtStartup(): MigrationReport {
 
     for (const key of appsKeys) {
       const rawApps = readJson<unknown>(key, null);
-      if (Array.isArray(rawApps) && rawApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_DATA_SCHEMA_VERSION)) {
-        const migrated = migrateApplications(rawApps);
-        writeJson(key, migrated);
-        report.applicationsMigrated += migrated.length;
+      if (Array.isArray(rawApps) && rawApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
+        const migrated = migrateApplicationRecordsForStorage(rawApps);
+        writeJson(key, migrated.records);
+        report.applicationsMigrated += migrated.migratedCount;
       }
     }
   } catch (err) {

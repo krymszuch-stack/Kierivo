@@ -39,7 +39,9 @@ import { ApplicationProgressTile } from './ApplicationProgressTile';
 import { ApplicationCalendar } from './ApplicationCalendar';
 import {
   buildApplicationFromReceipt,
+  findReceiptDuplicateCandidate,
   findApplicationForReceipt,
+  type ApplicationReceipt,
   parseSameWindowApplicationReceipt,
 } from './applicationReceipt';
 
@@ -125,12 +127,23 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
   const [isReceiptImport, setIsReceiptImport] = useState(false);
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null);
+  const [receiptDuplicateCandidate, setReceiptDuplicateCandidate] = useState<{
+    receipt: ApplicationReceipt;
+    application: JobApplication;
+  } | null>(null);
   const [viewingDocApp, setViewingDocApp] = useState<JobApplication | null>(null);
   const [cheatSheetApp, setCheatSheetApp] = useState<JobApplication | null>(null);
 
   // Notes Drawer/Modal
   const [notesApp, setNotesApp] = useState<JobApplication | null>(null);
   const [currentNotes, setCurrentNotes] = useState<string>('');
+
+  const openReceiptReview = (receipt: ApplicationReceipt, existing?: JobApplication) => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    setEditingApp(buildApplicationFromReceipt(receipt, existing, timeZone));
+    setIsReceiptImport(true);
+    setIsAppModalOpen(true);
+  };
 
   useEffect(() => {
     const handleHunterReceipt = (event: MessageEvent<unknown>) => {
@@ -144,9 +157,14 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         return;
       }
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      setEditingApp(buildApplicationFromReceipt(receipt, existing, timeZone));
-      setIsReceiptImport(true);
-      setIsAppModalOpen(true);
+      if (!existing) {
+        const candidate = findReceiptDuplicateCandidate(applications, receipt);
+        if (candidate) {
+          setReceiptDuplicateCandidate({ receipt, application: candidate });
+          return;
+        }
+      }
+      openReceiptReview(receipt, existing);
     };
     window.addEventListener('message', handleHunterReceipt);
     const receiptWindow = window as Window & { __kierivoApplicationReceiptReady?: boolean };
@@ -512,6 +530,49 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         initialData={editingApp}
         receiptImport={isReceiptImport}
       />
+
+      {receiptDuplicateCandidate && (
+        <Modal
+          isOpen
+          onClose={() => setReceiptDuplicateCandidate(null)}
+          title="Możliwe ponowne zgłoszenie w ciągu 24 godzin"
+          description="Znaleźliśmy aplikację o tej samej firmie, roli i ofercie. Wybierz, czy dołączyć nowe potwierdzenie do istniejącej aplikacji, czy zachować osobny wpis."
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-muted">
+              {getApplicationDisplayInfo(receiptDuplicateCandidate.application).contextLabel}. To tylko ostrzeżenie — ponowna aplikacja może być zamierzona.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="ghost" onClick={() => setReceiptDuplicateCandidate(null)}>
+                Anuluj
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  const candidate = receiptDuplicateCandidate;
+                  setReceiptDuplicateCandidate(null);
+                  openReceiptReview(candidate.receipt);
+                }}
+              >
+                Utwórz osobny wpis
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => {
+                  const candidate = receiptDuplicateCandidate;
+                  setReceiptDuplicateCandidate(null);
+                  openReceiptReview(candidate.receipt, candidate.application);
+                }}
+              >
+                Dołącz do istniejącej
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Historical Document Snapshot Modal (BUG-002) */}
       <HistoricalDocumentModal

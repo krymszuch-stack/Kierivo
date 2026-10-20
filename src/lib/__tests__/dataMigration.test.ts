@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
+  CURRENT_APPLICATION_SCHEMA_VERSION,
   CURRENT_DATA_SCHEMA_VERSION,
   migrateProfile,
   migrateVault,
@@ -10,6 +11,7 @@ import {
 } from '../dataMigration';
 import { measureVaultCompleteness } from '../vaultCompleteness';
 import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
+import { normalizeApplicationInterviews } from '../applicationInterview';
 import { StorageKeys, readJson, resetLastGoodCache, writeJson, vaultKeyFor, applicationsKeyFor } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 
@@ -33,6 +35,18 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrateApplication(migrated)).toEqual(migrated);
     });
 
+    it('zachowuje nieznane pola rekordu podczas normalizacji znanych pól', () => {
+      const migrated = migrateApplication({
+        id: 'future-field', company: 'Firma', position: 'Rola',
+        extensionMetadata: { source: 'hunter', importedAt: '2026-10-20T10:00:00.000Z' },
+      });
+
+      expect((migrated as unknown as Record<string, unknown>)?.extensionMetadata).toEqual({
+        source: 'hunter', importedAt: '2026-10-20T10:00:00.000Z',
+      });
+      expect(migrateApplication(migrated)).toEqual(migrated);
+    });
+
     it('nie uznaje braku statusu za wysłanie i nie dopisuje firmy', () => {
       const migrated = migrateApplication({ id: 'legacy-draft', company: '', position: 'Serwisant HVAC' });
 
@@ -42,6 +56,199 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
         position: 'Serwisant HVAC',
         status: 'Do wysłania',
       });
+    });
+
+    it('zachowuje poprawne zdarzenia osi, a kwarantannuje wadliwe bez utraty danych', () => {
+      const event = {
+        id: 'interview-1',
+        kind: 'interview',
+        scheduledAt: '2026-10-21T10:00:00.000Z',
+        timeZone: 'Europe/Warsaw',
+        state: 'confirmed',
+        source: 'user',
+        reminderAt: '2026-10-20T10:00:00.000Z',
+      };
+      const migrated = migrateApplication({
+        id: 'timeline-app', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', events: [event, { ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }],
+      });
+
+      expect(migrated?.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
+      expect(migrated?.events).toEqual([event]);
+      expect(migrated?.migrationQuarantine).toEqual([{ rawPayload: { ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }, reason: 'invalid_application_event', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION }]);
+      const afterSecondRestart = migrateApplication(migrated);
+      const afterThirdRestart = migrateApplication(afterSecondRestart);
+      expect(afterThirdRestart).toEqual(migrated);
+      expect(afterThirdRestart?.migrationQuarantine).toHaveLength(1);
+    });
+
+    it('zachowuje błędny kontener events w kwarantannie i nie duplikuje go po restartach', () => {
+      const rawEvents = { note: 'ważna historia', corrupted: true };
+      const migrated = migrateApplication({
+        id: 'malformed-events', company: 'Firma', position: 'Rola', events: rawEvents,
+      });
+
+      expect(migrated?.events).toEqual([]);
+      expect(migrated?.migrationQuarantine).toEqual([{
+        rawPayload: rawEvents, reason: 'events_not_array', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION,
+      }]);
+      expect(migrateApplication(migrateApplication(migrated))?.migrationQuarantine).toHaveLength(1);
+    });
+
+    it('migruje legacy interviewAt do osi zdarzeń jako projekcję rozmowy', () => {
+      const migrated = migrateApplication({
+        id: 'legacy-interview', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', interviewAt: '2026-10-22T09:30:00.000Z',
+      });
+
+      expect(migrated?.events).toEqual([expect.objectContaining({
+        id: 'legacy-interview-legacy-interview',
+        kind: 'interview',
+        scheduledAt: '2026-10-22T09:30:00.000Z',
+        state: 'confirmed',
+        source: 'user',
+      })]);
+      expect(migrated?.events?.[0].timeZone).toBeUndefined();
+      expect(migrated?.interviewAt).toBe('2026-10-22T09:30:00.000Z');
+    });
+
+    it('nie wskrzesza legacy interviewAt, jeśli odpowiadające zdarzenie osi zostało odwołane', () => {
+      const cancelledInterview = {
+        id: 'cancelled-legacy', kind: 'interview', scheduledAt: '2026-10-22T09:30:00.000Z',
+        state: 'cancelled', source: 'user',
+      };
+      const migrated = migrateApplication({
+        id: 'cancelled-legacy-app', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', interviewAt: cancelledInterview.scheduledAt, events: [cancelledInterview],
+      });
+
+      expect(migrated?.events).toEqual([cancelledInterview]);
+      expect(migrated?.interviewAt).toBeUndefined();
+    });
+
+    it('nie odtwarza legacy interviewAt, gdy istnieje anulowane zdarzenie o innym terminie', () => {
+      const cancelledInterview = {
+        id: 'cancelled-different-date', kind: 'interview', scheduledAt: '2026-10-21T09:30:00.000Z',
+        state: 'cancelled', source: 'user',
+      } as const;
+      const normalized = normalizeApplicationInterviews({
+        schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION,
+        id: 'cancelled-different-date-app', company: 'Firma', position: 'Rola', salary: '',
+        date: '2026-10-20', status: 'Rozmowa', interviewAt: '2026-10-22T09:30:00.000Z',
+        events: [cancelledInterview],
+      });
+
+      expect(normalized.events).toEqual([cancelledInterview]);
+      expect(normalized.interviewAt).toBeUndefined();
+    });
+
+    it('zachowuje rozmowy przeszłe po odrzuceniu aplikacji i odwołuje tylko przyszłe', () => {
+      const pastAt = new Date(Date.now() - 86_400_000).toISOString();
+      const futureAt = new Date(Date.now() + 86_400_000).toISOString();
+      const pastInterview = {
+        id: 'past-interview', kind: 'interview', scheduledAt: pastAt,
+        state: 'confirmed', source: 'user',
+      } as const;
+      const futureInterview = {
+        id: 'future-interview', kind: 'interview', scheduledAt: futureAt,
+        state: 'confirmed', source: 'user',
+      } as const;
+      const migrated = migrateApplication({
+        id: 'rejected-history', company: 'Firma', position: 'Rola', status: 'Odrzucona',
+        date: '2026-10-10', events: [pastInterview, futureInterview],
+      });
+
+      expect(migrated?.events).toEqual([pastInterview, { ...futureInterview, state: 'cancelled' }]);
+      expect(migrated?.interviewAt).toBe(pastInterview.scheduledAt);
+    });
+
+    it('odwołuje również całodniową rozmowę zaplanowaną na bieżący dzień', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
+      try {
+        const sameDayInterview = {
+          id: 'same-day-interview', kind: 'interview', scheduledAt: '2026-10-20',
+          state: 'confirmed', source: 'user',
+        };
+        const migrated = migrateApplication({
+          id: 'rejected-same-day', company: 'Firma', position: 'Rola', status: 'Odrzucona',
+          date: '2026-10-20', events: [sameDayInterview],
+        });
+
+        expect(migrated?.events).toEqual([{ ...sameDayInterview, state: 'cancelled' }]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {
+      const validEvent = {
+        id: 'v1-valid', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z',
+        state: 'confirmed', source: 'user',
+      };
+      writeJson(applicationsKeyFor('anonymous'), [{
+        schemaVersion: 1, id: 'v1-app', company: 'Firma', position: 'Rola', salary: '',
+        date: '2026-10-20', status: 'Rozmowa',
+        events: [validEvent, { ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }],
+      }]);
+
+      const report = migrateAllStorageAtStartup();
+      const [migrated] = readJson<any[]>(applicationsKeyFor('anonymous'), []);
+
+      expect(report.applicationsMigrated).toBe(1);
+      expect(migrated.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
+      expect(migrated.events).toEqual([validEvent]);
+      expect(migrated.migrationQuarantine).toEqual([{ rawPayload: { ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }, reason: 'invalid_application_event', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION }]);
+    });
+
+    it('zachowuje nieprzetwarzalne rekordy przy migracji kolekcji aplikacji', () => {
+      const legacyRecords = [
+        { schemaVersion: 1, id: 'migratable', company: 'Firma', position: 'Rola', date: '2026-10-20', status: 'Applied' },
+        { legacyPayload: ['pozostaw', 'bez', 'zmian'] },
+      ];
+      writeJson(applicationsKeyFor('rejected-records'), legacyRecords);
+
+      const report = migrateAllStorageAtStartup();
+      const persisted = readJson<unknown[]>(applicationsKeyFor('rejected-records'), []);
+
+      expect(report.applicationsMigrated).toBeGreaterThanOrEqual(1);
+      expect(persisted).toHaveLength(2);
+      expect(persisted[0]).toMatchObject({ schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION, id: 'migratable' });
+      expect(persisted[1]).toEqual(legacyRecords[1]);
+    });
+
+    it('zachowuje oś czasu po migracji, serializacji i ponownym odczycie', () => {
+      const events = [
+        {
+          id: 'receipt-sent', kind: 'application_sent',
+          scheduledAt: '2026-10-20T09:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'confirmed', source: 'extension', verificationStatus: 'user_declared',
+          sourceEventId: 'receipt-12345678', note: 'Zadeklarowano po ręcznym wysłaniu',
+        },
+        {
+          id: 'interview-technical', kind: 'interview',
+          scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'confirmed', source: 'user', evidenceUrl: 'https://example.test/invitation',
+          note: 'Rozmowa techniczna', reminderAt: '2026-10-21T10:00:00.000Z',
+        },
+        {
+          id: 'follow-up', kind: 'follow_up',
+          scheduledAt: '2026-10-24T10:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'pending', source: 'user', note: 'Dopytać o wynik',
+          reminderAt: '2026-10-24T08:00:00.000Z',
+        },
+      ];
+      const migrated = migrateApplication({
+        id: 'timeline-round-trip', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', events, customFutureField: 'xyz',
+      });
+
+      const afterRestart = migrateApplication(JSON.parse(JSON.stringify(migrated)));
+
+      expect(migrated?.events).toEqual(events);
+      expect(afterRestart?.events).toEqual(events);
+      expect((afterRestart as unknown as Record<string, unknown>)?.customFutureField).toBe('xyz');
+      expect(afterRestart?.interviewAt).toBe('2026-10-22T10:00:00.000Z');
     });
 
     it('nieznany status traktuje zachowawczo jako szkic', () => {
@@ -270,16 +477,16 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       const migrated = migrateApplications(legacyApps);
       expect(migrated.length).toBe(3);
 
-      expect(migrated[0].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[0].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[0].status).toBe('Wysłana');
       expect(migrated[0].date).toBe('2026-03-15');
 
-      expect(migrated[1].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[1].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[1].status).toBe('Rozmowa');
       expect(migrated[1].date).toBe('2026-03-10');
       expect(migrated[1].interviewAt).toBe('2026-03-20T14:00:00.000Z');
 
-      expect(migrated[2].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[2].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[2].status).toBe('Odrzucona');
       expect(migrated[2].interviewAt).toBeUndefined();
     });
@@ -371,7 +578,7 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(Array.isArray(vAnon.claims)).toBe(true);
 
       const apps = readJson<any[]>(applicationsKeyFor('local-old-1'), []);
-      expect(apps[0].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(apps[0].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(apps[0].status).toBe('Wysłana');
 
       // 2. Drugi przebieg - pełna idempotencja (0 kolejnych migracji)

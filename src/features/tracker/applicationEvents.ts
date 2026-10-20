@@ -12,6 +12,8 @@ const EVENT_STATE_LABELS: Record<ApplicationEventState, string> = {
   confirmed: 'Potwierdzone',
   pending: 'Oczekuje',
   unknown: 'Nieznane',
+  completed: 'Odbyta',
+  cancelled: 'Odwołane',
 };
 
 export function getApplicationEventKindLabel(kind: ApplicationEventKind): string {
@@ -20,6 +22,14 @@ export function getApplicationEventKindLabel(kind: ApplicationEventKind): string
 
 export function getApplicationEventStateLabel(state: ApplicationEventState): string {
   return EVENT_STATE_LABELS[state];
+}
+
+/** Stan „odbyta” ma sens wyłącznie dla rozmowy; po zmianie rodzaju resetujemy go bezpiecznie. */
+export function normalizeApplicationEventStateForKind(
+  kind: ApplicationEventKind,
+  state: ApplicationEventState,
+): ApplicationEventState {
+  return kind !== 'interview' && state === 'completed' ? 'unknown' : state;
 }
 
 function isSameEvent(current: ApplicationEvent, incoming: ApplicationEvent): boolean {
@@ -51,61 +61,6 @@ export function upsertApplicationEvent(
 
 export function removeApplicationEvent(existing: ApplicationEvent[], eventId: string): ApplicationEvent[] {
   return existing.filter((event) => event.id !== eventId);
-}
-
-function sameInstant(left: string | undefined, right: string): boolean {
-  if (!left) return false;
-  if (left === right) return true;
-  const leftTime = Date.parse(left);
-  const rightTime = Date.parse(right);
-  return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
-}
-
-/** Utrzymuje pole zgodności interviewAt przy zmianie zdarzeń osi procesu. */
-export function synchronizeInterviewAt(
-  previousEvents: ApplicationEvent[],
-  nextEvents: ApplicationEvent[],
-  currentInterviewAt?: string,
-): string | undefined {
-  const nextTimedInterviews = nextEvents.filter((event) =>
-    event.kind === 'interview' && event.scheduledAt.includes('T') && Number.isFinite(Date.parse(event.scheduledAt)),
-  );
-  const changedInterview = nextTimedInterviews.find((event) => {
-    const previous = previousEvents.find((candidate) => candidate.id === event.id || isSameEvent(candidate, event));
-    return !previous || previous.kind !== 'interview' || !previous.scheduledAt.includes('T') ||
-      !sameInstant(previous.scheduledAt, event.scheduledAt);
-  });
-  if (changedInterview) return changedInterview.scheduledAt;
-
-  const currentTimelineInterview = nextEvents.find((event) =>
-    event.kind === 'interview' && sameInstant(currentInterviewAt, event.scheduledAt),
-  );
-  if (currentTimelineInterview) return currentInterviewAt;
-
-  const interviewAtCameFromTimeline = previousEvents.some((event) =>
-    event.kind === 'interview' && sameInstant(currentInterviewAt, event.scheduledAt),
-  );
-  if (!interviewAtCameFromTimeline) return currentInterviewAt;
-
-  return nextTimedInterviews
-    .sort((left, right) => Date.parse(left.scheduledAt) - Date.parse(right.scheduledAt))[0]?.scheduledAt;
-}
-
-/** Przenosi lub usuwa wpis osi odpowiadający starszemu terminowi z panelu rozmowy. */
-export function synchronizeInterviewEventSchedule(
-  events: ApplicationEvent[] | undefined,
-  previousInterviewAt: string | undefined,
-  nextInterviewAt: string | undefined,
-): ApplicationEvent[] | undefined {
-  if (!events || !previousInterviewAt) return events;
-  const matchingIndex = events.findIndex((event) =>
-    event.kind === 'interview' && sameInstant(previousInterviewAt, event.scheduledAt),
-  );
-  if (matchingIndex === -1) return events;
-  if (!nextInterviewAt) return events.filter((_, index) => index !== matchingIndex);
-  return events.map((event, index) => index === matchingIndex
-    ? { ...event, scheduledAt: nextInterviewAt }
-    : event);
 }
 
 export function localDateTimeToIso(value: string): string | undefined {

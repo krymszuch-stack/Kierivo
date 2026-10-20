@@ -11,10 +11,11 @@ import {
   getApplicationEventKindLabel,
   isoToLocalDateTime,
   localDateTimeToIso,
+  normalizeApplicationEventStateForKind,
   removeApplicationEvent,
-  synchronizeInterviewAt,
   upsertApplicationEvent,
 } from './applicationEvents';
+import { projectInterviewAt } from '../../lib/applicationInterview';
 import { resolveApplicationSalary } from './applicationForm';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
@@ -56,6 +57,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingEventSource, setEditingEventSource] = useState<ApplicationEventSource>('user');
   const [editingEventSourceId, setEditingEventSourceId] = useState<string | undefined>();
+  const [editingEventVerificationStatus, setEditingEventVerificationStatus] = useState<ApplicationEvent['verificationStatus']>();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(null);
     setEditingEventSource('user');
     setEditingEventSourceId(undefined);
+    setEditingEventVerificationStatus(undefined);
   }, [initialData, isOpen]);
 
   const resetEventDraft = () => {
@@ -104,6 +107,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(null);
     setEditingEventSource('user');
     setEditingEventSourceId(undefined);
+    setEditingEventVerificationStatus(undefined);
   };
 
   const editEvent = (event: ApplicationEvent) => {
@@ -120,6 +124,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(event.id);
     setEditingEventSource(event.source);
     setEditingEventSourceId(event.sourceEventId);
+    setEditingEventVerificationStatus(event.verificationStatus);
     setEventEvidenceUrlError(false);
   };
 
@@ -145,6 +150,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       ...(draftEventTime ? { timeZone } : {}),
       state: draftEventState,
       source: editingEventSource,
+      ...(editingEventVerificationStatus ? { verificationStatus: editingEventVerificationStatus } : {}),
       ...(editingEventSourceId ? { sourceEventId: editingEventSourceId } : {}),
       ...(evidenceUrl ? { evidenceUrl } : {}),
       ...(draftEventNote.trim() ? { note: draftEventNote.trim() } : {}),
@@ -169,12 +175,12 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       id: initialData?.id || `app-${Date.now()}`,
       company: company.trim(),
       position: position.trim(),
-      salary: resolveApplicationSalary(salary, receiptImport),
+      salary: resolveApplicationSalary(salary),
       date,
       status,
       jobUrl: normalizedJobUrl ?? '',
       notes: notes.trim(),
-      interviewAt: synchronizeInterviewAt(initialData?.events ?? [], events, initialData?.interviewAt),
+      interviewAt: projectInterviewAt(events),
       events,
     });
     onClose();
@@ -192,6 +198,29 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
           <p className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900" role="status">
             To jest deklaracja użytkownika po ręcznym wysłaniu formularza. Sprawdź dane i zapisz ją w bieżącym profilu; Hunter nie wysyła aplikacji.
           </p>
+        )}
+        {initialData?.migrationQuarantine && initialData.migrationQuarantine.length > 0 && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" aria-labelledby="migration-quarantine-heading">
+            <h3 id="migration-quarantine-heading" className="font-semibold">Zdarzenia zachowane do weryfikacji</h3>
+            <p className="mt-1 text-xs">
+              {initialData.migrationQuarantine.length} wpisów osi nie można było bezpiecznie odczytać. Oryginały pozostają zachowane.
+            </p>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold">Pokaż zachowane dane</summary>
+              <ul className="mt-2 max-h-48 space-y-2 overflow-auto">
+                {initialData.migrationQuarantine.map((entry, index) => {
+                  let raw = '[nie można wyświetlić wpisu]';
+                  try { raw = JSON.stringify(entry, null, 2) ?? raw; } catch { /* dane JSON powinny być możliwe do odczytu */ }
+                  return (
+                    <li key={index}>
+                      <pre className="max-h-32 overflow-auto rounded-md bg-white/70 p-2 text-[10px]">{raw.slice(0, 4000)}</pre>
+                      {raw.length > 4000 && <span className="text-[10px]">Podgląd skrócony; zapisany wpis nie został skrócony.</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          </section>
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
@@ -220,6 +249,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             value={salary}
             onChange={(e) => setSalary(e.target.value)}
             placeholder="np. 6 500 - 8 500 PLN brutto / UoP"
+            hint="Puste pole oznacza brak danych. Wpisz „Do negocjacji” tylko wtedy, gdy to informacja z ogłoszenia."
           />
 
           <Input
@@ -292,6 +322,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                           {formatApplicationEventDate(event, timeZone)}
                           {event.timeZone ? ` · ${event.timeZone}` : ''}
                           {' · '}{event.source === 'user' ? 'Wpis użytkownika' : event.source === 'page' ? 'Źródło ze strony' : 'Rozszerzenie'}
+                          {event.verificationStatus === 'user_declared' ? ' · Zadeklarowano ręcznie (Hunter); bez potwierdzenia ATS' : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -306,6 +337,8 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                             { value: 'confirmed', label: 'Potwierdzone' },
                             { value: 'pending', label: 'Oczekuje' },
                             { value: 'unknown', label: 'Nieznane' },
+                            ...(event.kind === 'interview' ? [{ value: 'completed', label: 'Odbyta' }] : []),
+                            { value: 'cancelled', label: 'Odwołane' },
                           ]}
                           className="min-w-32"
                         />
@@ -351,7 +384,11 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
               <Select
                 label="Rodzaj zdarzenia"
                 value={draftEventKind}
-                onChange={(e) => setDraftEventKind(e.target.value as ApplicationEventKind)}
+                onChange={(e) => {
+                  const kind = e.target.value as ApplicationEventKind;
+                  setDraftEventKind(kind);
+                  setDraftEventState((state) => normalizeApplicationEventStateForKind(kind, state));
+                }}
                 options={[
                   { value: 'application_sent', label: 'Wysłanie aplikacji' },
                   { value: 'interview', label: 'Rozmowa' },
@@ -368,6 +405,8 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                   { value: 'unknown', label: 'Nieznane' },
                   { value: 'pending', label: 'Oczekuje' },
                   { value: 'confirmed', label: 'Potwierdzone' },
+                  ...(draftEventKind === 'interview' ? [{ value: 'completed', label: 'Odbyta' }] : []),
+                  { value: 'cancelled', label: 'Odwołane' },
                 ]}
               />
             </div>
