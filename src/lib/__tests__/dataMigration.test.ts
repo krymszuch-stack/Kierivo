@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  CURRENT_APPLICATION_SCHEMA_VERSION,
   CURRENT_DATA_SCHEMA_VERSION,
   migrateProfile,
   migrateVault,
@@ -71,7 +72,7 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
         date: '2026-10-20', events: [event, { ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }],
       });
 
-      expect(migrated?.schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated?.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated?.events).toEqual([event]);
       expect(migrated?.migrationQuarantine).toEqual([{ ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }]);
       expect(migrateApplication(migrated)).toEqual(migrated);
@@ -90,7 +91,28 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
         state: 'confirmed',
         source: 'user',
       })]);
+      expect(migrated?.events?.[0].timeZone).toBeUndefined();
       expect(migrated?.interviewAt).toBe('2026-10-22T09:30:00.000Z');
+    });
+
+    it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {
+      const validEvent = {
+        id: 'v1-valid', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z',
+        state: 'confirmed', source: 'user',
+      };
+      writeJson(applicationsKeyFor('anonymous'), [{
+        schemaVersion: 1, id: 'v1-app', company: 'Firma', position: 'Rola', salary: '',
+        date: '2026-10-20', status: 'Rozmowa',
+        events: [validEvent, { ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }],
+      }]);
+
+      const report = migrateAllStorageAtStartup();
+      const [migrated] = readJson<any[]>(applicationsKeyFor('anonymous'), []);
+
+      expect(report.applicationsMigrated).toBe(1);
+      expect(migrated.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
+      expect(migrated.events).toEqual([validEvent]);
+      expect(migrated.migrationQuarantine).toEqual([{ ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }]);
     });
 
     it('nieznany status traktuje zachowawczo jako szkic', () => {
@@ -297,16 +319,16 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       const migrated = migrateApplications(legacyApps);
       expect(migrated.length).toBe(3);
 
-      expect(migrated[0].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[0].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[0].status).toBe('Wysłana');
       expect(migrated[0].date).toBe('2026-03-15');
 
-      expect(migrated[1].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[1].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[1].status).toBe('Rozmowa');
       expect(migrated[1].date).toBe('2026-03-10');
       expect(migrated[1].interviewAt).toBe('2026-03-20T14:00:00.000Z');
 
-      expect(migrated[2].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated[2].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated[2].status).toBe('Odrzucona');
       expect(migrated[2].interviewAt).toBeUndefined();
     });
@@ -398,7 +420,7 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(Array.isArray(vAnon.claims)).toBe(true);
 
       const apps = readJson<any[]>(applicationsKeyFor('local-old-1'), []);
-      expect(apps[0].schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(apps[0].schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(apps[0].status).toBe('Wysłana');
 
       // 2. Drugi przebieg - pełna idempotencja (0 kolejnych migracji)

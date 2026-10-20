@@ -19,6 +19,8 @@ import { isApplicationEvent } from './applicationRecordSchema';
  * (profil, vault, aplikacje, biblioteka CV).
  */
 export const CURRENT_DATA_SCHEMA_VERSION = 1 as const;
+/** Wersjonujemy aplikacje osobno, aby ich migracje nie przebudowywały vaultów/profili. */
+export const CURRENT_APPLICATION_SCHEMA_VERSION = 2 as const;
 
 export interface MigrationReport {
   profilesMigrated: number;
@@ -265,7 +267,6 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       id: `legacy-interview-${id}`,
       kind: 'interview',
       scheduledAt: legacyInterviewAt,
-      timeZone: 'UTC',
       state: 'confirmed',
       source: 'user',
     });
@@ -274,7 +275,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
 
   const app: JobApplication = {
     ...preservedFields,
-    schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
+    schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION,
     id,
     company,
     position,
@@ -391,7 +392,7 @@ export function migrateAllStorageAtStartup(): MigrationReport {
   try {
     // Stary klucz wspólny cvelocity:applications
     const legacyApps = readJson<unknown>(StorageKeys.applications, null);
-    if (Array.isArray(legacyApps) && legacyApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_DATA_SCHEMA_VERSION)) {
+    if (Array.isArray(legacyApps) && legacyApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
       const migrated = migrateApplications(legacyApps);
       writeJson(StorageKeys.applications, migrated);
       report.applicationsMigrated += migrated.length;
@@ -409,7 +410,7 @@ export function migrateAllStorageAtStartup(): MigrationReport {
 
     for (const key of appsKeys) {
       const rawApps = readJson<unknown>(key, null);
-      if (Array.isArray(rawApps) && rawApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_DATA_SCHEMA_VERSION)) {
+      if (Array.isArray(rawApps) && rawApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
         const migrated = migrateApplications(rawApps);
         writeJson(key, migrated);
         report.applicationsMigrated += migrated.length;

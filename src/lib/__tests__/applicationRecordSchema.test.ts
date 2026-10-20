@@ -38,6 +38,16 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
     })).toBe(true);
   });
 
+  it('dopuszcza timestamp z offsetem bez zgadywania IANA strefy wpisania', () => {
+    expect(isJobApplication({
+      ...valid,
+      events: [{
+        id: 'legacy-interview', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z',
+        state: 'confirmed', source: 'user',
+      }],
+    })).toBe(true);
+  });
+
   it.each([
     ['nieznany rodzaj', [{ id: 'event-1', kind: 'rejection_guess', scheduledAt: '2026-10-21', state: 'unknown', source: 'user' }]],
     ['wadliwą strefę czasową', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z', timeZone: 'Mars/Olympus', state: 'confirmed', source: 'user' }]],

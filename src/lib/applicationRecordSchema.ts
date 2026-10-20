@@ -62,7 +62,7 @@ export function isApplicationEvent(value: unknown): value is ApplicationEvent {
   if (!isOptionalString(value, 'timeZone') ||
       (value.timeZone !== undefined && !isTimeZone(value.timeZone))) return false;
   if (String(value.scheduledAt).includes('T') &&
-      (!isValidOffsetDateTime(value.scheduledAt) || !isTimeZone(value.timeZone))) return false;
+      !isValidOffsetDateTime(value.scheduledAt)) return false;
   if (!isOptionalString(value, 'sourceEventId') || !isOptionalString(value, 'evidenceUrl') ||
       !isOptionalString(value, 'note') || !isOptionalString(value, 'reminderAt')) return false;
   if (value.reminderAt !== undefined && !isValidOffsetDateTime(value.reminderAt)) return false;
