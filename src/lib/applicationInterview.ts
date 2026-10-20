@@ -46,8 +46,20 @@ export function upsertInterviewEvent(
 ): Pick<JobApplication, 'events' | 'interviewAt'> {
   const events = [...(application.events ?? [])];
   const currentAt = projectInterviewAt(events, now);
-  const index = events.findIndex((event) => event.kind === 'interview' &&
+  let index = events.findIndex((event) => event.kind === 'interview' &&
     event.state !== 'cancelled' && event.state !== 'completed' && event.scheduledAt === currentAt);
+
+  // `interviewAt` celowo nie projektuje całodniowego terminu do pola datetime-local.
+  // Jeśli użytkownik dopisze godzinę, uzupełnij najwcześniejszy aktywny wpis
+  // całodniowy zamiast tworzyć drugą rozmowę na tę samą rekrutację.
+  if (index < 0) {
+    const dateOnlyInterview = events
+      .filter((event) => event.kind === 'interview' &&
+        event.state !== 'cancelled' && event.state !== 'completed' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(event.scheduledAt) && Number.isFinite(Date.parse(event.scheduledAt)))
+      .sort((left, right) => left.scheduledAt.localeCompare(right.scheduledAt))[0];
+    if (dateOnlyInterview) index = events.findIndex((event) => event.id === dateOnlyInterview.id);
+  }
 
   if (index >= 0) {
     if (!nextAt) {

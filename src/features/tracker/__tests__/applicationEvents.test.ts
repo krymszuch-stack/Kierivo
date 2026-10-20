@@ -94,6 +94,21 @@ describe('zdarzenia procesu aplikacji', () => {
     expect(rescheduled.events).toEqual([{ ...pending, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
   });
 
+  it('dopina godzinę do aktywnej rozmowy całodniowej zamiast tworzyć drugi wpis', () => {
+    const allDay = { ...event, id: 'all-day-interview', kind: 'interview' as const,
+      scheduledAt: '2026-10-21', state: 'pending' as const };
+    const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20',
+      status: 'Rozmowa' as const, events: [allDay] };
+
+    const updated = upsertInterviewEvent(app, '2026-10-21T10:00:00.000Z', 'Europe/Warsaw', Date.parse('2026-10-20T12:00:00.000Z'));
+
+    expect(updated.events).toEqual([{
+      ...allDay, scheduledAt: '2026-10-21T10:00:00.000Z', timeZone: 'Europe/Warsaw',
+    }]);
+    expect(updated.events).toHaveLength(1);
+    expect(updated.interviewAt).toBe('2026-10-21T10:00:00.000Z');
+  });
+
   it('nie odtwarza usuniętego terminu z projekcji legacy przy zapisie rekordu', () => {
     const normalized = normalizeApplicationInterviews({
       id: 'app-cleared', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20',
