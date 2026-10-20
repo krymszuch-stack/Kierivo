@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ApplicationEvent } from '../../../types';
-import { projectInterviewAt, upsertInterviewEvent } from '../../../lib/applicationInterview';
+import { normalizeApplicationInterviews, projectInterviewAt, upsertInterviewEvent } from '../../../lib/applicationInterview';
 import {
   formatApplicationEventDate,
   isoToLocalDateTime,
@@ -86,6 +86,16 @@ describe('zdarzenia procesu aplikacji', () => {
 
     const rescheduled = upsertInterviewEvent(app, '2026-10-22T10:00:00.000Z', 'UTC', now);
     expect(rescheduled.events).toEqual([{ ...pending, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
+  });
+
+  it('nie odtwarza usuniętego terminu z projekcji legacy przy zapisie rekordu', () => {
+    const normalized = normalizeApplicationInterviews({
+      id: 'app-cleared', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20',
+      status: 'Rozmowa', interviewAt: '2026-10-22T10:00:00.000Z', events: [],
+    });
+
+    expect(normalized.events).toEqual([]);
+    expect(normalized.interviewAt).toBeUndefined();
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

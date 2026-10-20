@@ -53,18 +53,8 @@ export function upsertInterviewEvent(
 /** Gwarantuje, że odrzucenie nie pozostawia aktywnych terminów rozmowy. */
 export function normalizeApplicationInterviews(application: JobApplication): JobApplication {
   let events = [...(application.events ?? [])];
-  if (application.status !== 'Odrzucona' && application.interviewAt?.includes('T') &&
-      Number.isFinite(Date.parse(application.interviewAt)) && !events.some((event) =>
-        event.kind === 'interview')) {
-    events.push({
-      id: `legacy-interview-${application.id}`,
-      kind: 'interview',
-      scheduledAt: application.interviewAt,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      state: 'confirmed',
-      source: 'user',
-    });
-  }
+  // Legacy `interviewAt` jest migrowane do osi wyłącznie przez `migrateApplication`.
+  // Powtarzanie syntezy przy każdym zapisie wskrzeszałoby termin po jego usunięciu.
   if (application.status === 'Odrzucona') {
     const now = Date.now();
     events = events.map((event) => event.kind === 'interview' && event.state !== 'cancelled' &&

@@ -39,6 +39,13 @@ describe('Application Tracker - Cykl życia i powiązania modułu aplikacji', ()
       ...stored[0],
       status: 'Rozmowa',
       interviewAt: new Date(Date.now() - 86_400_000).toISOString(),
+      events: [{
+        id: 'interview-history',
+        kind: 'interview',
+        scheduledAt: new Date(Date.now() - 86_400_000).toISOString(),
+        state: 'confirmed',
+        source: 'user',
+      }],
     };
     saveApplicationsFor(profileId, [updatedApp]);
     stored = loadApplicationsFor(profileId);
