@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Briefcase, DollarSign, Calendar, Globe, FileText, Check } from 'lucide-react';
-import { ApplicationStatus, JobApplication } from '../../types';
+import { Building2, Briefcase, DollarSign, Calendar, Globe, Check, Plus, Trash2, Pencil } from 'lucide-react';
+import type { ApplicationEvent, ApplicationEventKind, ApplicationEventSource, ApplicationEventState, ApplicationStatus, JobApplication } from '../../types';
 import { Modal } from '../../components/ui/Modal';
 import { Input, Textarea, Select } from '../../components/ui/Field';
 import { Button } from '../../components/ui/Button';
 import { getApplicationDisplayInfo } from './applicationDisplay';
 import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
+import {
+  formatApplicationEventDate,
+  getApplicationEventKindLabel,
+  isoToLocalDateTime,
+  localDateTimeToIso,
+  removeApplicationEvent,
+  upsertApplicationEvent,
+} from './applicationEvents';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -16,6 +24,7 @@ export interface ApplicationModalProps {
   onClose: () => void;
   onSave: (application: JobApplication) => void;
   initialData?: JobApplication | null;
+  receiptImport?: boolean;
 }
 
 export const ApplicationModal: React.FC<ApplicationModalProps> = ({
@@ -23,6 +32,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   onClose,
   onSave,
   initialData,
+  receiptImport = false,
 }) => {
   const [company, setCompany] = useState('');
   const [position, setPosition] = useState('');
@@ -32,6 +42,19 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const [jobUrl, setJobUrl] = useState('');
   const [jobUrlError, setJobUrlError] = useState(false);
   const [notes, setNotes] = useState('');
+  const [events, setEvents] = useState<ApplicationEvent[]>([]);
+  const [draftEventKind, setDraftEventKind] = useState<ApplicationEventKind>('response_due');
+  const [draftEventState, setDraftEventState] = useState<ApplicationEventState>('unknown');
+  const [draftEventDate, setDraftEventDate] = useState('');
+  const [draftEventTime, setDraftEventTime] = useState('');
+  const [draftEventReminderAt, setDraftEventReminderAt] = useState('');
+  const [draftEventEvidenceUrl, setDraftEventEvidenceUrl] = useState('');
+  const [draftEventNote, setDraftEventNote] = useState('');
+  const [eventEvidenceUrlError, setEventEvidenceUrlError] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editingEventSource, setEditingEventSource] = useState<ApplicationEventSource>('user');
+  const [editingEventSourceId, setEditingEventSourceId] = useState<string | undefined>();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   useEffect(() => {
     if (initialData) {
@@ -43,6 +66,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       setStatus(initialData.status);
       setJobUrl(initialData.jobUrl || '');
       setNotes(initialData.notes || '');
+      setEvents(initialData.events ?? []);
     } else {
       setCompany('');
       setPosition('');
@@ -51,8 +75,82 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       setStatus('Do wysłania');
       setJobUrl('');
       setNotes('');
+      setEvents([]);
     }
+    setDraftEventKind('response_due');
+    setDraftEventState('unknown');
+    setDraftEventDate('');
+    setDraftEventTime('');
+    setDraftEventReminderAt('');
+    setDraftEventEvidenceUrl('');
+    setDraftEventNote('');
+    setEventEvidenceUrlError(false);
+    setEditingEventId(null);
+    setEditingEventSource('user');
+    setEditingEventSourceId(undefined);
   }, [initialData, isOpen]);
+
+  const resetEventDraft = () => {
+    setDraftEventKind('response_due');
+    setDraftEventState('unknown');
+    setDraftEventDate('');
+    setDraftEventTime('');
+    setDraftEventReminderAt('');
+    setDraftEventEvidenceUrl('');
+    setDraftEventNote('');
+    setEventEvidenceUrlError(false);
+    setEditingEventId(null);
+    setEditingEventSource('user');
+    setEditingEventSourceId(undefined);
+  };
+
+  const editEvent = (event: ApplicationEvent) => {
+    const localScheduledAt = event.scheduledAt.includes('T')
+      ? isoToLocalDateTime(event.scheduledAt)
+      : '';
+    setDraftEventKind(event.kind);
+    setDraftEventState(event.state);
+    setDraftEventDate(localScheduledAt ? localScheduledAt.slice(0, 10) : event.scheduledAt);
+    setDraftEventTime(localScheduledAt ? localScheduledAt.slice(11, 16) : '');
+    setDraftEventReminderAt(event.reminderAt ? isoToLocalDateTime(event.reminderAt) : '');
+    setDraftEventEvidenceUrl(event.evidenceUrl ?? '');
+    setDraftEventNote(event.note ?? '');
+    setEditingEventId(event.id);
+    setEditingEventSource(event.source);
+    setEditingEventSourceId(event.sourceEventId);
+    setEventEvidenceUrlError(false);
+  };
+
+  const addEvent = () => {
+    if (!draftEventDate) return;
+    const scheduledAt = draftEventTime
+      ? localDateTimeToIso(`${draftEventDate}T${draftEventTime}`)
+      : draftEventDate;
+    const reminderAt = draftEventReminderAt ? localDateTimeToIso(draftEventReminderAt) : undefined;
+    const evidenceUrl = draftEventEvidenceUrl.trim()
+      ? normalizeExternalHttpUrl(draftEventEvidenceUrl)
+      : undefined;
+    if (!scheduledAt || (draftEventReminderAt && !reminderAt) ||
+        (draftEventEvidenceUrl.trim() && !evidenceUrl)) {
+      setEventEvidenceUrlError(Boolean(draftEventEvidenceUrl.trim() && !evidenceUrl));
+      return;
+    }
+
+    const event: ApplicationEvent = {
+      id: editingEventId ?? globalThis.crypto.randomUUID(),
+      kind: draftEventKind,
+      scheduledAt,
+      ...(draftEventTime ? { timeZone } : {}),
+      state: draftEventState,
+      source: editingEventSource,
+      ...(editingEventSourceId ? { sourceEventId: editingEventSourceId } : {}),
+      ...(evidenceUrl ? { evidenceUrl } : {}),
+      ...(draftEventNote.trim() ? { note: draftEventNote.trim() } : {}),
+      ...(reminderAt ? { reminderAt } : {}),
+    };
+    setEvents((current) => upsertApplicationEvent(current, event));
+    resetEventDraft();
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,6 +172,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       status,
       jobUrl: normalizedJobUrl ?? '',
       notes: notes.trim(),
+      events,
     });
     onClose();
   };
@@ -82,10 +181,15 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={initialData ? 'Edytuj Aplikację' : 'Dodaj Nową Aplikację'}
+      title={receiptImport ? 'Sprawdź potwierdzenie z Huntera' : initialData ? 'Edytuj Aplikację' : 'Dodaj Nową Aplikację'}
       size="md"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-4 overflow-y-auto px-1">
+        {receiptImport && (
+          <p className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900" role="status">
+            To jest deklaracja użytkownika po ręcznym wysłaniu formularza. Sprawdź dane i zapisz ją w bieżącym profilu; Hunter nie wysyła aplikacji.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Firma Rekrutująca"
@@ -164,13 +268,168 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
           placeholder="np. Rozmowa telefoniczna z HR zaliczona, termin próbki spawalniczej / weryfikacji uprawnień w piątek..."
         />
 
+        <section className="space-y-3 border-t border-line pt-4" aria-labelledby="application-events-heading">
+          <div>
+            <h3 id="application-events-heading" className="font-semibold text-ink">Oś procesu</h3>
+            <p className="mt-1 text-xs text-muted">
+              Zapisuj terminy i ustalenia. Wpis nie wysyła wiadomości ani nie potwierdza faktów samodzielnie.
+            </p>
+          </div>
+
+          {events.length > 0 ? (
+            <ul className="space-y-2">
+              {events.map((event) => {
+                const evidenceUrl = event.evidenceUrl ? normalizeExternalHttpUrl(event.evidenceUrl) : undefined;
+                return (
+                  <li key={event.id} className="rounded-xl border border-line bg-sunken/50 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-semibold text-ink">{getApplicationEventKindLabel(event.kind)}</p>
+                        <p className="text-xs text-muted">
+                          {formatApplicationEventDate(event, timeZone)}
+                          {event.timeZone ? ` · ${event.timeZone}` : ''}
+                          {' · '}{event.source === 'user' ? 'Wpis użytkownika' : event.source === 'page' ? 'Źródło ze strony' : 'Rozszerzenie'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          label="Stan zdarzenia"
+                          value={event.state}
+                          onChange={(e) => {
+                            const state = e.target.value as ApplicationEventState;
+                            setEvents((current) => current.map((entry) => entry.id === event.id ? { ...entry, state } : entry));
+                          }}
+                          options={[
+                            { value: 'confirmed', label: 'Potwierdzone' },
+                            { value: 'pending', label: 'Oczekuje' },
+                            { value: 'unknown', label: 'Nieznane' },
+                          ]}
+                          className="min-w-32"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          icon={Pencil}
+                          aria-label={`Edytuj zdarzenie: ${getApplicationEventKindLabel(event.kind)}`}
+                          onClick={() => editEvent(event)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          icon={Trash2}
+                          aria-label={`Usuń zdarzenie: ${getApplicationEventKindLabel(event.kind)}`}
+                          onClick={() => setEvents((current) => removeApplicationEvent(current, event.id))}
+                        />
+                      </div>
+                    </div>
+                    {evidenceUrl && (
+                      <a href={evidenceUrl} target="_blank" rel="noreferrer" className="mt-2 block truncate text-xs text-brand-700 underline">
+                        Otwórz dowód
+                      </a>
+                    )}
+                    {event.note && <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{event.note}</p>}
+                    {event.reminderAt && (
+                      <p className="mt-2 text-xs font-medium text-amber-800">
+                        Przypomnienie: {new Intl.DateTimeFormat('pl-PL', { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(event.reminderAt))}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="rounded-lg border border-dashed border-line px-3 py-2 text-xs text-muted">Brak zapisanych zdarzeń procesu.</p>
+          )}
+
+          <div className="space-y-3 rounded-xl border border-line p-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Select
+                label="Rodzaj zdarzenia"
+                value={draftEventKind}
+                onChange={(e) => setDraftEventKind(e.target.value as ApplicationEventKind)}
+                options={[
+                  { value: 'application_sent', label: 'Wysłanie aplikacji' },
+                  { value: 'interview', label: 'Rozmowa' },
+                  { value: 'email', label: 'Wiadomość e-mail' },
+                  { value: 'response_due', label: 'Obiecana odpowiedź' },
+                  { value: 'follow_up', label: 'Follow-up' },
+                ]}
+              />
+              <Select
+                label="Stan początkowy"
+                value={draftEventState}
+                onChange={(e) => setDraftEventState(e.target.value as ApplicationEventState)}
+                options={[
+                  { value: 'unknown', label: 'Nieznane' },
+                  { value: 'pending', label: 'Oczekuje' },
+                  { value: 'confirmed', label: 'Potwierdzone' },
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                label="Data"
+                type="date"
+                value={draftEventDate}
+                onChange={(e) => setDraftEventDate(e.target.value)}
+              />
+              <Input
+                label="Godzina (opcjonalnie)"
+                type="time"
+                value={draftEventTime}
+                onChange={(e) => setDraftEventTime(e.target.value)}
+                hint={draftEventTime ? `Strefa: ${timeZone}` : 'Bez godziny termin pozostanie całodniowy.'}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input
+                label="Termin przypomnienia (opcjonalnie)"
+                type="datetime-local"
+                value={draftEventReminderAt}
+                onChange={(e) => setDraftEventReminderAt(e.target.value)}
+                hint={`Termin zostanie pokazany w kalendarzu (${timeZone}).`}
+              />
+              <Input
+                label="Link do dowodu (opcjonalnie)"
+                type="url"
+                value={draftEventEvidenceUrl}
+                onChange={(e) => {
+                  setDraftEventEvidenceUrl(e.target.value);
+                  setEventEvidenceUrlError(false);
+                }}
+                error={eventEvidenceUrlError ? 'Podaj poprawny link http:// lub https://.' : undefined}
+              />
+            </div>
+            <Textarea
+              label="Notatka do zdarzenia (opcjonalnie)"
+              rows={2}
+              value={draftEventNote}
+              onChange={(e) => setDraftEventNote(e.target.value)}
+            />
+            <div className="flex justify-end">
+              <div className="flex gap-2">
+                {editingEventId && (
+                  <Button type="button" variant="ghost" size="sm" onClick={resetEventDraft}>
+                    Anuluj edycję
+                  </Button>
+                )}
+                <Button type="button" variant="secondary" size="sm" icon={editingEventId ? Check : Plus} disabled={!draftEventDate} onClick={addEvent}>
+                  {editingEventId ? 'Zapisz zdarzenie' : 'Dodaj zdarzenie'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div className="flex items-center justify-end gap-2 border-t border-line pt-4">
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
             Anuluj
           </Button>
 
           <Button type="submit" variant="primary" size="md" icon={Check}>
-            {initialData ? 'Zapisz zmiany' : 'Dodaj do moich aplikacji'}
+            {receiptImport ? 'Zapisz potwierdzenie' : initialData ? 'Zapisz zmiany' : 'Dodaj do moich aplikacji'}
           </Button>
         </div>
       </form>

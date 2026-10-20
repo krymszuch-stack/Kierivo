@@ -20,6 +20,34 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
     expect(isJobApplication(valid)).toBe(true);
   });
 
+  it('zachowuje zdarzenia i terminy przypomnienia w rekordzie aplikacji', () => {
+    expect(isJobApplication({
+      ...valid,
+      events: [{
+        id: 'event-1',
+        kind: 'response_due',
+        scheduledAt: '2026-10-21T10:00:00.000Z',
+        timeZone: 'Europe/Warsaw',
+        state: 'pending',
+        source: 'user',
+        evidenceUrl: 'https://example.test/rekrutacja',
+        note: 'Rekruter zapowiedział odpowiedź.',
+        reminderAt: '2026-10-22T08:00:00.000Z',
+      }],
+    })).toBe(true);
+  });
+
+  it.each([
+    ['nieznany rodzaj', [{ id: 'event-1', kind: 'rejection_guess', scheduledAt: '2026-10-21', state: 'unknown', source: 'user' }]],
+    ['wadliwą strefę czasową', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z', timeZone: 'Mars/Olympus', state: 'confirmed', source: 'user' }]],
+    ['timestamp bez jawnego offsetu i strefy', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00', state: 'confirmed', source: 'user' }]],
+    ['nieprawidłowe przypomnienie', [{ id: 'event-1', kind: 'follow_up', scheduledAt: '2026-10-21', reminderAt: 'wkrótce', state: 'pending', source: 'user' }]],
+  ])('odrzuca zdarzenie z %s, zachowując cały rekord w materiale do odzyskania', (_label, events) => {
+    const malformed = { ...valid, events };
+    expect(isJobApplication(malformed)).toBe(false);
+    expect(parseApplications([malformed])).toEqual({ applications: [], rejected: [malformed] });
+  });
+
   it.each([
     ['status spoza słownika', { ...valid, status: 'Oczekuje na cuda' }],
     ['datę spoza kalendarza', { ...valid, date: '2026-02-31' }],

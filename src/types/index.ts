@@ -534,6 +534,28 @@ export interface ApplicationHistoryRecord {
  */
 export type ApplicationStatus = 'Do wysłania' | 'Wysłana' | 'Rozmowa' | 'Oferta' | 'Odrzucona';
 
+export type ApplicationEventKind = 'application_sent' | 'interview' | 'email' | 'response_due' | 'follow_up';
+export type ApplicationEventState = 'confirmed' | 'pending' | 'unknown';
+export type ApplicationEventSource = 'user' | 'page' | 'extension';
+
+/** Zdarzenie pozostaje częścią rekordu Pipeline i podlega izolacji/usuwaniu profilu. */
+export interface ApplicationEvent {
+  id: string;
+  kind: ApplicationEventKind;
+  /** ISO 8601 z godziną albo data kalendarzowa `YYYY-MM-DD`. */
+  scheduledAt: string;
+  /** Strefa, w której użytkownik wpisał termin; brak oznacza stary rekord. */
+  timeZone?: string;
+  state: ApplicationEventState;
+  source: ApplicationEventSource;
+  /** Identyfikator zdarzenia źródłowego pozwalający idempotentnie scalać importy. */
+  sourceEventId?: string;
+  evidenceUrl?: string;
+  note?: string;
+  /** Termin przypomnienia, ISO 8601 z godziną. */
+  reminderAt?: string;
+}
+
 export interface ApplicationDocumentSnapshot {
   /** Wersja schematu snapshotu (do kompatybilności wstecznej) */
   schemaVersion: 1;
@@ -670,6 +692,8 @@ export interface JobApplication {
 
   /** Termin rozmowy, ISO 8601 z godziną. Ustawiany, gdy status = „Rozmowa". */
   interviewAt?: string;
+  /** Rozszerzona oś procesu; brak pola w starszych rekordach jest prawidłowy. */
+  events?: ApplicationEvent[];
   /** Kiedy odhaczono przygotowanie przed rozmową (Pre-Call Brief). */
   briefDoneAt?: string;
   /** Kiedy wysłano follow-up po rozmowie. */
