@@ -36,6 +36,7 @@ describe('potwierdzenie wysłania z Kierivo Hunter', () => {
     expect(parseApplicationReceiptMessage({ ...message, receipt: { ...message.receipt, cv: 'synthetic CV' } })).toBeNull();
     expect(parseApplicationReceiptMessage({ ...message, receipt: { ...message.receipt, jobUrl: 'javascript:alert(1)' } })).toBeNull();
     expect(parseApplicationReceiptMessage({ ...message, receipt: { ...message.receipt, submittedAt: '2026-10-20T10:15:00' } })).toBeNull();
+    expect(parseApplicationReceiptMessage({ ...message, receipt: { ...message.receipt, submittedAt: '2026-02-30T10:15:00.000Z' } })).toBeNull();
     expect(parseApplicationReceiptMessage({ ...message, extra: 'unexpected' })).toBeNull();
   });
 

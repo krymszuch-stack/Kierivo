@@ -41,7 +41,9 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
     ['nieznany rodzaj', [{ id: 'event-1', kind: 'rejection_guess', scheduledAt: '2026-10-21', state: 'unknown', source: 'user' }]],
     ['wadliwą strefę czasową', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z', timeZone: 'Mars/Olympus', state: 'confirmed', source: 'user' }]],
     ['timestamp bez jawnego offsetu i strefy', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00', state: 'confirmed', source: 'user' }]],
+    ['niemożliwy dzień w timestampie', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-02-30T10:15:00.000Z', timeZone: 'Europe/Warsaw', state: 'confirmed', source: 'user' }]],
     ['nieprawidłowe przypomnienie', [{ id: 'event-1', kind: 'follow_up', scheduledAt: '2026-10-21', reminderAt: 'wkrótce', state: 'pending', source: 'user' }]],
+    ['niemożliwy dzień przypomnienia', [{ id: 'event-1', kind: 'follow_up', scheduledAt: '2026-10-21', reminderAt: '2026-02-30T10:15:00.000Z', state: 'pending', source: 'user' }]],
   ])('odrzuca zdarzenie z %s, zachowując cały rekord w materiale do odzyskania', (_label, events) => {
     const malformed = { ...valid, events };
     expect(isJobApplication(malformed)).toBe(false);

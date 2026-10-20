@@ -6,6 +6,7 @@ import {
   localDateTimeToIso,
   removeApplicationEvent,
   synchronizeInterviewAt,
+  synchronizeInterviewEventSchedule,
   upsertApplicationEvent,
 } from '../applicationEvents';
 
@@ -53,11 +54,29 @@ describe('zdarzenia procesu aplikacji', () => {
     expect(synchronizeInterviewAt([current], [], current.scheduledAt)).toBeUndefined();
   });
 
+  it('zastępuje termin całodniowy dokładnym czasem po dopisaniu godziny', () => {
+    const dateOnly = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21' };
+    const timed = { ...dateOnly, scheduledAt: '2026-10-21T00:00:00.000Z' };
+
+    expect(synchronizeInterviewAt([dateOnly], [timed], dateOnly.scheduledAt)).toBe(timed.scheduledAt);
+  });
+
   it('zachowuje ręcznie ustawiony interviewAt niezwiązany ze zdarzeniem osi', () => {
     const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
     const manualAt = '2026-10-23T10:00:00.000Z';
 
     expect(synchronizeInterviewAt([interview], [], manualAt)).toBe(manualAt);
+  });
+
+  it('przenosi albo usuwa termin osi zmieniony w panelu rozmowy', () => {
+    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const nextAt = '2026-10-22T11:30:00.000Z';
+
+    expect(synchronizeInterviewEventSchedule([interview], interview.scheduledAt, nextAt)).toEqual([
+      { ...interview, scheduledAt: nextAt },
+    ]);
+    expect(synchronizeInterviewEventSchedule([interview], interview.scheduledAt, undefined)).toEqual([]);
+    expect(synchronizeInterviewEventSchedule([interview], '2026-10-23T10:00:00.000Z', nextAt)).toEqual([interview]);
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

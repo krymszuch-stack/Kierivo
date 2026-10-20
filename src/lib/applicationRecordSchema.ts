@@ -1,5 +1,6 @@
 import type { ApplicationEvent, ApplicationEventKind, ApplicationEventSource, ApplicationEventState, ApplicationStatus, JobApplication } from '../types';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
+import { isValidOffsetDateTime } from './isoDateTime';
 
 const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'Do wysłania',
@@ -40,12 +41,6 @@ function isDateTime(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
-function isOffsetDateTime(value: unknown): value is string {
-  return typeof value === 'string' &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
-    isDateTime(value);
-}
-
 function isTimeZone(value: unknown): value is string {
   if (typeof value !== 'string' || value.trim() === '') return false;
   try {
@@ -66,10 +61,10 @@ function isApplicationEvent(value: unknown): value is ApplicationEvent {
   if (!isOptionalString(value, 'timeZone') ||
       (value.timeZone !== undefined && !isTimeZone(value.timeZone))) return false;
   if (String(value.scheduledAt).includes('T') &&
-      (!isOffsetDateTime(value.scheduledAt) || !isTimeZone(value.timeZone))) return false;
+      (!isValidOffsetDateTime(value.scheduledAt) || !isTimeZone(value.timeZone))) return false;
   if (!isOptionalString(value, 'sourceEventId') || !isOptionalString(value, 'evidenceUrl') ||
       !isOptionalString(value, 'note') || !isOptionalString(value, 'reminderAt')) return false;
-  if (value.reminderAt !== undefined && !isOffsetDateTime(value.reminderAt)) return false;
+  if (value.reminderAt !== undefined && !isValidOffsetDateTime(value.reminderAt)) return false;
   return true;
 }
 

@@ -91,6 +91,23 @@ export function synchronizeInterviewAt(
     .sort((left, right) => Date.parse(left.scheduledAt) - Date.parse(right.scheduledAt))[0]?.scheduledAt;
 }
 
+/** Przenosi lub usuwa wpis osi odpowiadający starszemu terminowi z panelu rozmowy. */
+export function synchronizeInterviewEventSchedule(
+  events: ApplicationEvent[] | undefined,
+  previousInterviewAt: string | undefined,
+  nextInterviewAt: string | undefined,
+): ApplicationEvent[] | undefined {
+  if (!events || !previousInterviewAt) return events;
+  const matchingIndex = events.findIndex((event) =>
+    event.kind === 'interview' && sameInstant(previousInterviewAt, event.scheduledAt),
+  );
+  if (matchingIndex === -1) return events;
+  if (!nextInterviewAt) return events.filter((_, index) => index !== matchingIndex);
+  return events.map((event, index) => index === matchingIndex
+    ? { ...event, scheduledAt: nextInterviewAt }
+    : event);
+}
+
 export function localDateTimeToIso(value: string): string | undefined {
   if (!value) return undefined;
   const instant = new Date(value);

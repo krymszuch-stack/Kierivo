@@ -2,6 +2,7 @@ import type { ApplicationEvent, JobApplication } from '../../types';
 import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
 import { dateKeyInTimeZone } from './applicationCalendar';
 import { upsertApplicationEvent } from './applicationEvents';
+import { isValidOffsetDateTime } from '../../lib/isoDateTime';
 
 export const HUNTER_APPLICATION_RECEIPT_MESSAGE = 'KIERIVO_HUNTER_APPLICATION_RECEIPT_V1';
 
@@ -18,12 +19,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isOffsetDateTime(value: unknown): value is string {
-  return typeof value === 'string' &&
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
-    Number.isFinite(Date.parse(value));
-}
-
 /** Mesaj z rozszerzenia to niezaufane wejście. Nie przyjmujemy CV ani faktów profilu. */
 export function parseApplicationReceiptMessage(value: unknown): ApplicationReceipt | null {
   if (!isRecord(value) || Object.keys(value).length !== 2 ||
@@ -36,7 +31,7 @@ export function parseApplicationReceiptMessage(value: unknown): ApplicationRecei
       typeof receipt.receiptId !== 'string' || !/^[a-zA-Z0-9_-]{8,100}$/.test(receipt.receiptId) ||
       typeof receipt.company !== 'string' || receipt.company.trim().length === 0 || receipt.company.trim().length > 300 ||
       typeof receipt.position !== 'string' || receipt.position.trim().length === 0 || receipt.position.trim().length > 300 ||
-      !isOffsetDateTime(receipt.submittedAt)) return null;
+      !isValidOffsetDateTime(receipt.submittedAt)) return null;
 
   const jobUrl = receipt.jobUrl === undefined ? undefined : normalizeExternalHttpUrl(receipt.jobUrl);
   if (receipt.jobUrl !== undefined && !jobUrl) return null;
