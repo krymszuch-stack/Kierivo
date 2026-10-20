@@ -25,7 +25,7 @@ export function parseHunterPresenceResponse(
   if (Object.keys(response).length !== 4 ||
       response.type !== HUNTER_PRESENCE_RESPONSE || response.protocolVersion !== 1 ||
       response.requestId !== expected.requestId || typeof response.extensionVersion !== 'string' ||
-      !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(response.extensionVersion)) return null;
+      !/^\d+(?:\.\d+){0,3}$/.test(response.extensionVersion)) return null;
 
   return response.extensionVersion;
 }

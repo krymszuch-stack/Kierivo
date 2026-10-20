@@ -278,5 +278,29 @@ describe('applyParsedCVToVault', () => {
       fields: { email: 'jan@monter.pl' },
     });
   });
+
+  it('nie eksportuje kontaktów poprzedniej osoby, gdy nowe CV ich nie zawiera', () => {
+    const prev = createEmptyVault('Anna Kowalska', 'anna@example.pl');
+    prev.personalInfo.phone = '+48123123123';
+
+    const { vault } = applyParsedCVToVault(prev, {
+      ...parsedMock,
+      personalInfo: {
+        ...parsedMock.personalInfo,
+        fullName: 'Maria Wiśniewska',
+        email: '',
+        phone: '',
+      },
+    } as any, {
+      personal: 'replace',
+      skills: 'keep',
+      experience: 'keep',
+      education: 'keep',
+    });
+
+    expect(vault.personalInfo.email).toBe('');
+    expect(vault.personalInfo.phone).toBe('');
+    expect(buildHunterAutofillProfile(vault)).toBeNull();
+  });
 });
 
