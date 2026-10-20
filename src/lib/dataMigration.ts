@@ -230,6 +230,13 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const salary = typeof raw.salary === 'string' ? raw.salary.trim() : '';
   const date = normalizeDate(raw.date || (raw as any).applied_at);
   const jobUrl = normalizeExternalHttpUrl(raw.jobUrl);
+  const rawEvents = Array.isArray(raw.events) ? raw.events : [];
+  const validEvents = rawEvents.filter(isApplicationEvent);
+  const newlyQuarantinedEvents = rawEvents.filter((event) => !isApplicationEvent(event));
+  const migrationQuarantine = [
+    ...(Array.isArray(raw.migrationQuarantine) ? raw.migrationQuarantine : []),
+    ...newlyQuarantinedEvents,
+  ];
 
   let interviewAt = typeof raw.interviewAt === 'string' ? raw.interviewAt : undefined;
   // Reguła: Odrzucona aplikacja nie trzyma terminu rozmowy
@@ -257,7 +264,8 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
-    ...(Array.isArray(raw.events) ? { events: raw.events.filter(isApplicationEvent) } : {}),
+    ...(Array.isArray(raw.events) ? { events: validEvents } : {}),
+    ...(migrationQuarantine.length > 0 ? { migrationQuarantine } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),
     ...(typeof raw.debriefSentAt === 'string' ? { debriefSentAt: raw.debriefSentAt } : {}),
     ...(isRecord(raw.documentSnapshot) ? { documentSnapshot: raw.documentSnapshot as any } : {}),

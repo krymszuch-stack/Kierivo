@@ -127,6 +127,7 @@ export function isJobApplication(value: unknown): value is JobApplication {
   if (value.interviewAt !== undefined && !isDateTime(value.interviewAt)) return false;
   if (value.events !== undefined &&
       (!Array.isArray(value.events) || !value.events.every(isApplicationEvent))) return false;
+  if (value.migrationQuarantine !== undefined && !Array.isArray(value.migrationQuarantine)) return false;
   if (value.briefDoneAt !== undefined && !isDateTime(value.briefDoneAt)) return false;
   if (value.debriefSentAt !== undefined && !isDateTime(value.debriefSentAt)) return false;
   if (value.updatedAt !== undefined && !isDateTime(value.updatedAt)) return false;

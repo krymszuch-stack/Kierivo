@@ -694,6 +694,8 @@ export interface JobApplication {
   interviewAt?: string;
   /** Rozszerzona oś procesu; brak pola w starszych rekordach jest prawidłowy. */
   events?: ApplicationEvent[];
+  /** Surowe zdarzenia, których migracja nie mogła bezpiecznie użyć w osi procesu. */
+  migrationQuarantine?: unknown[];
   /** Kiedy odhaczono przygotowanie przed rozmową (Pre-Call Brief). */
   briefDoneAt?: string;
   /** Kiedy wysłano follow-up po rozmowie. */

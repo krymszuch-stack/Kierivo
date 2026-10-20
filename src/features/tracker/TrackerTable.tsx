@@ -176,7 +176,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     {/* 3. Salary */}
                     <div className="col-span-2">
                       <span className="inline-block rounded-lg border border-line/60 bg-sunken px-2.5 py-1 font-mono text-[11px] font-bold text-ink">
-                        {app.salary || 'Do negocjacji'}
+                        {app.salary || 'Brak danych'}
                       </span>
                     </div>
 
@@ -244,7 +244,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                     {/* 2. Wynagrodzenie i Data (col-span-3) */}
                     <div className="col-span-3 flex flex-col justify-center">
                       <span className="inline-block self-start rounded-lg border border-line/60 bg-sunken px-2.5 py-1 font-mono text-[11px] font-bold text-ink">
-                        {app.salary || 'Do negocjacji'}
+                        {app.salary || 'Brak danych'}
                       </span>
                       <span className="mt-1 font-mono text-[10px] text-muted">
                         Zgłoszenie: {app.date}

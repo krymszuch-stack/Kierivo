@@ -44,7 +44,7 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       });
     });
 
-    it('zachowuje poprawne zdarzenia osi, a odrzuca wadliwe podczas migracji', () => {
+    it('zachowuje poprawne zdarzenia osi, a kwarantannuje wadliwe bez utraty danych', () => {
       const event = {
         id: 'interview-1',
         kind: 'interview',
@@ -61,6 +61,8 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
 
       expect(migrated?.schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
       expect(migrated?.events).toEqual([event]);
+      expect(migrated?.migrationQuarantine).toEqual([{ ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }]);
+      expect(migrateApplication(migrated)).toEqual(migrated);
     });
 
     it('nieznany status traktuje zachowawczo jako szkic', () => {

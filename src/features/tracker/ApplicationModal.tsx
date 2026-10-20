@@ -15,7 +15,7 @@ import {
   synchronizeInterviewAt,
   upsertApplicationEvent,
 } from './applicationEvents';
-import { hasUnknownReceiptSalary, resolveApplicationSalary } from './applicationForm';
+import { resolveApplicationSalary } from './applicationForm';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -169,10 +169,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       id: initialData?.id || `app-${Date.now()}`,
       company: company.trim(),
       position: position.trim(),
-      salary: resolveApplicationSalary(
-        salary,
-        receiptImport || hasUnknownReceiptSalary(initialData?.salary, initialData?.events),
-      ),
+      salary: resolveApplicationSalary(salary),
       date,
       status,
       jobUrl: normalizedJobUrl ?? '',
@@ -223,6 +220,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             value={salary}
             onChange={(e) => setSalary(e.target.value)}
             placeholder="np. 6 500 - 8 500 PLN brutto / UoP"
+            hint="Puste pole oznacza brak danych. Wpisz „Do negocjacji” tylko wtedy, gdy to informacja z ogłoszenia."
           />
 
           <Input
