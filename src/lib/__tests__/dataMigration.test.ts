@@ -75,7 +75,10 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrated?.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated?.events).toEqual([event]);
       expect(migrated?.migrationQuarantine).toEqual([{ ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }]);
-      expect(migrateApplication(migrated)).toEqual(migrated);
+      const afterSecondRestart = migrateApplication(migrated);
+      const afterThirdRestart = migrateApplication(afterSecondRestart);
+      expect(afterThirdRestart).toEqual(migrated);
+      expect(afterThirdRestart?.migrationQuarantine).toHaveLength(1);
     });
 
     it('migruje legacy interviewAt do osi zdarzeń jako projekcję rozmowy', () => {
@@ -93,6 +96,20 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       })]);
       expect(migrated?.events?.[0].timeZone).toBeUndefined();
       expect(migrated?.interviewAt).toBe('2026-10-22T09:30:00.000Z');
+    });
+
+    it('nie wskrzesza legacy interviewAt, jeśli odpowiadające zdarzenie osi zostało odwołane', () => {
+      const cancelledInterview = {
+        id: 'cancelled-legacy', kind: 'interview', scheduledAt: '2026-10-22T09:30:00.000Z',
+        state: 'cancelled', source: 'user',
+      };
+      const migrated = migrateApplication({
+        id: 'cancelled-legacy-app', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', interviewAt: cancelledInterview.scheduledAt, events: [cancelledInterview],
+      });
+
+      expect(migrated?.events).toEqual([cancelledInterview]);
+      expect(migrated?.interviewAt).toBeUndefined();
     });
 
     it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {

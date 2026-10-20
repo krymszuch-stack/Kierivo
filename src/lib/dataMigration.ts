@@ -261,8 +261,9 @@ export function migrateApplication(raw: unknown): JobApplication | null {
     event.kind === 'interview' && event.state !== 'cancelled'
     ? { ...event, state: 'cancelled' as const }
     : event);
-  if (status !== 'Odrzucona' && legacyInterviewAt && !events.some((event) =>
-    event.kind === 'interview' && event.scheduledAt === legacyInterviewAt && event.state !== 'cancelled')) {
+  // Obecność dowolnej rozmowy w osi jest rozstrzygająca: odwołanego
+  // legacy terminu nie wolno reaktywować przez ponowną syntezę z interviewAt.
+  if (status !== 'Odrzucona' && legacyInterviewAt && !events.some((event) => event.kind === 'interview')) {
     events.push({
       id: `legacy-interview-${id}`,
       kind: 'interview',
