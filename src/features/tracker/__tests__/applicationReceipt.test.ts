@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { JobApplication } from '../../../types';
 import {
   buildApplicationFromReceipt,
+  findSameDayReceiptCandidate,
   findApplicationForReceipt,
   HUNTER_APPLICATION_RECEIPT_MESSAGE,
   parseApplicationReceiptMessage,
@@ -83,5 +84,17 @@ describe('potwierdzenie wysłania z Kierivo Hunter', () => {
     expect(retried.position).toBe('Moja poprawiona rola');
     expect(retried.notes).toBe('Notatka prywatna');
     expect(retried.status).toBe('Rozmowa');
+  });
+
+  it('wykrywa możliwe ponowne zgłoszenie tego samego dnia, ale ignoruje różny URL lub dzień', () => {
+    const receipt = parseApplicationReceiptMessage(message)!;
+    const existing: JobApplication = {
+      id: 'manual-1', company: 'FIRMA TESTOWA', position: 'Inżynier', salary: '',
+      date: '2026-10-20', status: 'Wysłana', jobUrl: 'https://jobs.example.test/role/123?utm_source=mail',
+    };
+
+    expect(findSameDayReceiptCandidate([existing], receipt, 'UTC')).toBe(existing);
+    expect(findSameDayReceiptCandidate([{ ...existing, date: '2026-10-19' }], receipt, 'UTC')).toBeUndefined();
+    expect(findSameDayReceiptCandidate([{ ...existing, jobUrl: 'https://jobs.example.test/role/456' }], receipt, 'UTC')).toBeUndefined();
   });
 });

@@ -63,6 +63,44 @@ export function findApplicationForReceipt(
     application.events?.some((event) => event.source === 'extension' && event.sourceEventId === receiptId));
 }
 
+function normalizeFingerprintText(value: string): string {
+  return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+function canonicalJobUrl(value: string | undefined): string | undefined {
+  const normalized = normalizeExternalHttpUrl(value);
+  if (!normalized) return undefined;
+  const url = new URL(normalized);
+  url.hash = '';
+  for (const key of [...url.searchParams.keys()]) {
+    if (/^(utm_.+|source|ref|trk|gh_src)$/i.test(key)) url.searchParams.delete(key);
+  }
+  url.hostname = url.hostname.toLocaleLowerCase();
+  url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+  return url.href;
+}
+
+/** Tylko ostrzeżenie: nowy receiptId tego samego dnia nie scala aplikacji automatycznie. */
+export function findSameDayReceiptCandidate(
+  applications: JobApplication[],
+  receipt: ApplicationReceipt,
+  timeZone: string,
+): JobApplication | undefined {
+  const day = dateKeyInTimeZone(receipt.submittedAt, timeZone);
+  if (!day) return undefined;
+  const receiptUrl = canonicalJobUrl(receipt.jobUrl);
+  const company = normalizeFingerprintText(receipt.company);
+  const position = normalizeFingerprintText(receipt.position);
+
+  return applications.find((application) => {
+    if (application.date !== day ||
+        normalizeFingerprintText(application.company) !== company ||
+        normalizeFingerprintText(application.position) !== position) return false;
+    const applicationUrl = canonicalJobUrl(application.jobUrl);
+    return !receiptUrl || !applicationUrl || receiptUrl === applicationUrl;
+  });
+}
+
 export function buildApplicationFromReceipt(
   receipt: ApplicationReceipt,
   existing: JobApplication | undefined,
