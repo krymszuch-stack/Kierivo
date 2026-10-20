@@ -27,13 +27,14 @@ let cdp;
 let context;
 let server;
 let appServer;
+let homePage;
 try {
   // Izolowany smoke otrzymuje wąskie uprawnienie hosta, aby popup działał headless.
   // Manifest dystrybucyjny pozostaje bez zmian; activeTab sprawdza osobny smoke paska narzędzi.
   cpSync(extensionSource,extensionPath,{recursive:true});
   const testManifestPath=path.join(extensionPath,'manifest.json');
   const testManifest=JSON.parse(readFileSync(testManifestPath,'utf-8'));
-  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*'];
+  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*','https://kierivo.com/*'];
   writeFileSync(testManifestPath,JSON.stringify(testManifest,null,2));
   execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',keyPath,'-out',certPath,'-days','1','-subj','/CN=jobs.ashbyhq.com','-addext','subjectAltName=DNS:jobs.ashbyhq.com'],{stdio:'ignore'});
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Synthetic software engineer role</title><script type="application/ld+json">{"@type":"JobPosting","title":"Synthetic\\n  software engineer role","hiringOrganization":{"name":"Synthetic\\n  Employer"}}</script><style>.honeypot{position:absolute;left:-10000px;top:0;width:1px;height:1px}</style></head><body><h1>Synthetic software engineer role</h1><form id="application">
@@ -105,6 +106,7 @@ try {
     cpSync(profileFixturePath,profileFile);
   } else if (kierivoApplicationUrl) {
     const exportPage=await context.newPage();
+    homePage=exportPage;
     await exportPage.goto(kierivoApplicationUrl,{waitUntil:'domcontentloaded'});
     await exportPage.evaluate(async()=>{
       const {saveProfileVault}=await import('/src/lib/localProfile.ts');
@@ -198,7 +200,6 @@ try {
       'given-name':'Alex Synthetic','family-name':'Synthetic',email:'synthetic@example.test',tel:'synthetic-phone'
     });
     await exportPage.context().setOffline(false);
-    await exportPage.close();
   }
   const response=await page.goto(`https://jobs.ashbyhq.com:${port}/autofill-smoke`,{waitUntil:'domcontentloaded'});
   assert.equal(response?.status(),200);
@@ -207,13 +208,13 @@ try {
   page.on('request',request=>pageRequests.push(new URL(request.url()).origin));
   const popupUrl=`chrome-extension://${extensionId}/popup.html`;
   let popupSessionId;
-  async function attachPopup(){
+  async function attachPopup(targetPage=page){
     const alreadyOpen=(await cdp.send('Target.getTargets')).targetInfos.find(target=>target.type==='page'&&target.url===popupUrl);
     if(alreadyOpen){
       await cdp.send('Target.closeTarget',{targetId:alreadyOpen.targetId});
       for(let i=0;i<40;i++){const open=(await cdp.send('Target.getTargets')).targetInfos.some(target=>target.type==='page'&&target.url===popupUrl);if(!open)break;await new Promise(resolve=>setTimeout(resolve,100));}
     }
-    await page.bringToFront();
+    await targetPage.bringToFront();
     await worker.evaluate(()=>chrome.action.openPopup());
     let popupTarget;
     for(let i=0;i<40&&!popupTarget;i++){popupTarget=(await cdp.send('Target.getTargets')).targetInfos.find(target=>target.type==='page'&&target.url===popupUrl);if(!popupTarget)await new Promise(resolve=>setTimeout(resolve,100));}
@@ -231,6 +232,31 @@ try {
     });
     await cdp.send('Target.sendMessageToTarget',{sessionId:popupSessionId,message:JSON.stringify({id,method:'Runtime.evaluate',params:{expression,returnByValue:true,awaitPromise:true,userGesture}})});
     return response;
+  }
+  if(homePage){
+    await homePage.evaluate(()=>{
+      window.__hunterPresenceReplies=[];
+      window.addEventListener('message',event=>{
+        if(event.source===window&&event.origin===window.location.origin&&event.data?.type==='KIERIVO_HUNTER_PRESENCE_RESPONSE_V1'){
+          window.__hunterPresenceReplies.push(event.data);
+        }
+      });
+    });
+    await attachPopup(homePage);
+    await popupCommand("document.querySelector('#connectKierivo').click()",true);
+    let permissionStatus='';
+    for(let i=0;i<100;i++){
+      permissionStatus=(await popupCommand("document.querySelector('#kierivoPresenceStatus').textContent")).result.value;
+      if(permissionStatus.includes('Dostęp przyznany'))break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    assert.ok(permissionStatus.includes('Dostęp przyznany')||permissionStatus.includes('Dostęp do domeny Kierivo jest włączony'),`uprawnienie runtime jest aktywne: ${permissionStatus}`);
+    await homePage.getByText(/Wykryto Hunter 1\.2\.0/).waitFor({state:'visible',timeout:10000});
+    const presenceReplies=await homePage.evaluate(()=>window.__hunterPresenceReplies);
+    assert.equal(presenceReplies.length>0,true,'Kierivo wykryło lokalny handshake z Hunterem');
+    assert.deepEqual(Object.keys(presenceReplies.at(-1)).sort(),['extensionVersion','protocolVersion','requestId','type']);
+    assert.equal(presenceReplies.at(-1).extensionVersion,'1.2.0');
+    await attachPopup();
   }
   const profileJson=JSON.stringify(readFileSync(profileFile,'utf-8'));
   await popupCommand(`(()=>{const input=document.querySelector('#autofillProfile');const transfer=new DataTransfer();transfer.items.add(new File([${profileJson}],'synthetic-approved-profile.json',{type:'application/json'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}))})()`);
