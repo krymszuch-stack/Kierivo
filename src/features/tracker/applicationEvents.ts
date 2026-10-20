@@ -12,6 +12,7 @@ const EVENT_STATE_LABELS: Record<ApplicationEventState, string> = {
   confirmed: 'Potwierdzone',
   pending: 'Oczekuje',
   unknown: 'Nieznane',
+  completed: 'Odbyta',
   cancelled: 'Odwołane',
 };
 

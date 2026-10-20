@@ -535,7 +535,7 @@ export interface ApplicationHistoryRecord {
 export type ApplicationStatus = 'Do wysłania' | 'Wysłana' | 'Rozmowa' | 'Oferta' | 'Odrzucona';
 
 export type ApplicationEventKind = 'application_sent' | 'interview' | 'email' | 'response_due' | 'follow_up';
-export type ApplicationEventState = 'confirmed' | 'pending' | 'unknown' | 'cancelled';
+export type ApplicationEventState = 'confirmed' | 'pending' | 'unknown' | 'completed' | 'cancelled';
 export type ApplicationEventSource = 'user' | 'page' | 'extension';
 
 /** Zdarzenie pozostaje częścią rekordu Pipeline i podlega izolacji/usuwaniu profilu. */

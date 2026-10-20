@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ApplicationEvent } from '../../../types';
-import { normalizeApplicationInterviews, projectInterviewAt, upsertInterviewEvent } from '../../../lib/applicationInterview';
+import { normalizeApplicationInterviews, projectInterviewAt, shouldCancelInterviewOnRejection, upsertInterviewEvent } from '../../../lib/applicationInterview';
 import {
   formatApplicationEventDate,
   isoToLocalDateTime,
@@ -52,25 +52,31 @@ describe('zdarzenia procesu aplikacji', () => {
     expect(removeApplicationEvent([event, other], event.id)).toEqual([other]);
   });
 
-  it('wybiera najbliższą przyszłą rozmowę, a bez przyszłych — ostatnią przeszłą', () => {
+  it('priorytetyzuje rozmowy nadal zaplanowane, a potem ostatnią odbytą', () => {
     const now = Date.parse('2026-10-20T12:00:00.000Z');
     const yesterday = { ...event, id: 'yesterday', kind: 'interview' as const, scheduledAt: '2026-10-19T10:00:00.000Z' };
     const tomorrow = { ...event, id: 'tomorrow', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
     const nextWeek = { ...event, id: 'next-week', kind: 'interview' as const, scheduledAt: '2026-10-27T10:00:00.000Z' };
 
-    expect(projectInterviewAt([yesterday, nextWeek, tomorrow], now)).toBe(tomorrow.scheduledAt);
-    expect(projectInterviewAt([{ ...yesterday, state: 'confirmed' }, { ...tomorrow, state: 'cancelled' }], now))
-      .toBe(yesterday.scheduledAt);
+    expect(projectInterviewAt([yesterday, nextWeek, tomorrow], now)).toBe(yesterday.scheduledAt);
+    expect(projectInterviewAt([
+      { ...yesterday, state: 'completed' }, tomorrow,
+    ], now)).toBe(tomorrow.scheduledAt);
+    expect(projectInterviewAt([
+      { ...yesterday, state: 'completed' }, { ...tomorrow, state: 'cancelled' },
+    ], now)).toBe(yesterday.scheduledAt);
   });
 
   it('przełożenie aktualizuje termin osi, a odwołanie zachowuje event i wybiera poprzednią rozmowę', () => {
     const now = Date.parse('2026-10-20T12:00:00.000Z');
     const yesterday = { ...event, id: 'yesterday', kind: 'interview' as const, scheduledAt: '2026-10-19T10:00:00.000Z' };
     const tomorrow = { ...event, id: 'tomorrow', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
-    const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20', status: 'Rozmowa' as const, events: [yesterday, tomorrow] };
+    const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20', status: 'Rozmowa' as const,
+      events: [{ ...yesterday, state: 'completed' as const }, tomorrow] };
 
     const rescheduled = upsertInterviewEvent(app, '2026-10-22T10:00:00.000Z', 'UTC', now);
-    expect(rescheduled.events).toEqual([yesterday, { ...tomorrow, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
+    expect(rescheduled.events).toEqual([{ ...yesterday, state: 'completed' },
+      { ...tomorrow, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
     expect(rescheduled.interviewAt).toBe('2026-10-22T10:00:00.000Z');
 
     const cancelled = upsertInterviewEvent(app, undefined, 'UTC', now);
@@ -96,6 +102,17 @@ describe('zdarzenia procesu aplikacji', () => {
 
     expect(normalized.events).toEqual([]);
     expect(normalized.interviewAt).toBeUndefined();
+  });
+
+  it('traktuje rozmowę bez godziny jako aktywną przez cały bieżący dzień', () => {
+    const today = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-20' };
+    const tomorrow = { ...today, scheduledAt: '2026-10-21' };
+    const yesterday = { ...today, scheduledAt: '2026-10-19' };
+    const now = Date.parse('2026-10-20T12:00:00.000Z');
+
+    expect(shouldCancelInterviewOnRejection(today, now)).toBe(true);
+    expect(shouldCancelInterviewOnRejection(tomorrow, now)).toBe(true);
+    expect(shouldCancelInterviewOnRejection(yesterday, now)).toBe(false);
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

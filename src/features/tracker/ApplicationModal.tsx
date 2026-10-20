@@ -336,6 +336,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                             { value: 'confirmed', label: 'Potwierdzone' },
                             { value: 'pending', label: 'Oczekuje' },
                             { value: 'unknown', label: 'Nieznane' },
+                            ...(event.kind === 'interview' ? [{ value: 'completed', label: 'Odbyta' }] : []),
                             { value: 'cancelled', label: 'Odwołane' },
                           ]}
                           className="min-w-32"
@@ -399,6 +400,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                   { value: 'unknown', label: 'Nieznane' },
                   { value: 'pending', label: 'Oczekuje' },
                   { value: 'confirmed', label: 'Potwierdzone' },
+                  ...(draftEventKind === 'interview' ? [{ value: 'completed', label: 'Odbyta' }] : []),
                   { value: 'cancelled', label: 'Odwołane' },
                 ]}
               />

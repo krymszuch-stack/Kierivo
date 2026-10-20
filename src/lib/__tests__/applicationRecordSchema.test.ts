@@ -48,6 +48,17 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
     })).toBe(true);
   });
 
+  it('pozwala oznaczyć jako odbytą tylko rozmowę', () => {
+    expect(isJobApplication({
+      ...valid,
+      events: [{ id: 'interview-1', kind: 'interview', scheduledAt: '2026-10-19T10:00:00.000Z', state: 'completed', source: 'user' }],
+    })).toBe(true);
+    expect(isJobApplication({
+      ...valid,
+      events: [{ id: 'email-1', kind: 'email', scheduledAt: '2026-10-19T10:00:00.000Z', state: 'completed', source: 'user' }],
+    })).toBe(false);
+  });
+
   it.each([
     ['nieznany rodzaj', [{ id: 'event-1', kind: 'rejection_guess', scheduledAt: '2026-10-21', state: 'unknown', source: 'user' }]],
     ['wadliwą strefę czasową', [{ id: 'event-1', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z', timeZone: 'Mars/Olympus', state: 'confirmed', source: 'user' }]],

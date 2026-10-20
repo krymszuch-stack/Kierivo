@@ -1,6 +1,6 @@
 import { ApplicationStatus, JobApplication, MasterVault } from '../types';
 import { isValidOffsetDateTime } from './isoDateTime';
-import { normalizeApplicationInterviews, projectInterviewAt } from './applicationInterview';
+import { normalizeApplicationInterviews, projectInterviewAt, shouldCancelInterviewOnRejection } from './applicationInterview';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
 import { isValidAtsScoreContext } from './atsScoreEvidence';
 import { normalizeExternalHttpUrl } from './externalHttpUrl';
@@ -274,8 +274,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
     ? raw.interviewAt
     : undefined;
   const migrationNow = Date.now();
-  const events = validEvents.map((event) => status === 'Odrzucona' &&
-    event.kind === 'interview' && event.state !== 'cancelled' && Date.parse(event.scheduledAt) >= migrationNow
+  const events = validEvents.map((event) => status === 'Odrzucona' && shouldCancelInterviewOnRejection(event, migrationNow)
     ? { ...event, state: 'cancelled' as const }
     : event);
   // Obecność dowolnej rozmowy w osi jest rozstrzygająca: odwołanego

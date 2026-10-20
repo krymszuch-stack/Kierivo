@@ -58,13 +58,17 @@ export function getApplicationCalendarEntries(
 
   for (const application of applications) {
     if (isDateOnly(application.date)) {
+      const declaredReceipt = application.events?.some((event) =>
+        event.kind === 'application_sent' && event.verificationStatus === 'user_declared' &&
+        dateKeyInTimeZone(event.scheduledAt, timeZone) === application.date,
+      );
       entries.push({
         id: `${application.id}:application`,
         applicationId: application.id,
         date: application.date,
         kind: 'application',
         title: applicationTitle(application),
-        detail: application.status,
+        detail: `${application.status}${declaredReceipt ? ' · Zadeklarowano ręcznie (Hunter), niepotwierdzone przez ATS' : ''}`,
       });
     }
 

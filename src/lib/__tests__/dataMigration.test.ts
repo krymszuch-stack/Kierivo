@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   CURRENT_APPLICATION_SCHEMA_VERSION,
   CURRENT_DATA_SCHEMA_VERSION,
@@ -160,6 +160,25 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
 
       expect(migrated?.events).toEqual([pastInterview, { ...futureInterview, state: 'cancelled' }]);
       expect(migrated?.interviewAt).toBe(pastInterview.scheduledAt);
+    });
+
+    it('odwołuje również całodniową rozmowę zaplanowaną na bieżący dzień', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-10-20T12:00:00.000Z'));
+      try {
+        const sameDayInterview = {
+          id: 'same-day-interview', kind: 'interview', scheduledAt: '2026-10-20',
+          state: 'confirmed', source: 'user',
+        };
+        const migrated = migrateApplication({
+          id: 'rejected-same-day', company: 'Firma', position: 'Rola', status: 'Odrzucona',
+          date: '2026-10-20', events: [sameDayInterview],
+        });
+
+        expect(migrated?.events).toEqual([{ ...sameDayInterview, state: 'cancelled' }]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {

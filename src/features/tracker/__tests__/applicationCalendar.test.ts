@@ -130,6 +130,24 @@ describe('application calendar', () => {
     expect(entries).toEqual([]);
   });
 
+  it('pokazuje deklarację Huntera na pozycji aplikacji, gdy zdarzenie wysłania zlewa się z jej datą', () => {
+    const entries = getApplicationCalendarEntries([
+      application({
+        date: '2026-10-20',
+        status: 'Wysłana',
+        events: [{
+          id: 'receipt-event', kind: 'application_sent', scheduledAt: '2026-10-20T09:00:00.000Z',
+          timeZone: 'Europe/Warsaw', state: 'confirmed', source: 'extension',
+          verificationStatus: 'user_declared', sourceEventId: 'receipt-12345678',
+        }],
+      }),
+    ], 'Europe/Warsaw');
+
+    expect(entries).toHaveLength(1);
+    expect(entries.find((entry) => entry.kind === 'application')?.detail)
+      .toContain('Zadeklarowano ręcznie (Hunter), niepotwierdzone przez ATS');
+  });
+
   it('zwraca pustą datę strefową dla wadliwego timestampu', () => {
     expect(dateKeyInTimeZone('nieznany termin', 'Europe/Warsaw')).toBeNull();
   });
