@@ -56,6 +56,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingEventSource, setEditingEventSource] = useState<ApplicationEventSource>('user');
   const [editingEventSourceId, setEditingEventSourceId] = useState<string | undefined>();
+  const [editingEventVerificationStatus, setEditingEventVerificationStatus] = useState<ApplicationEvent['verificationStatus']>();
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   useEffect(() => {
@@ -90,6 +91,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(null);
     setEditingEventSource('user');
     setEditingEventSourceId(undefined);
+    setEditingEventVerificationStatus(undefined);
   }, [initialData, isOpen]);
 
   const resetEventDraft = () => {
@@ -104,6 +106,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(null);
     setEditingEventSource('user');
     setEditingEventSourceId(undefined);
+    setEditingEventVerificationStatus(undefined);
   };
 
   const editEvent = (event: ApplicationEvent) => {
@@ -120,6 +123,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
     setEditingEventId(event.id);
     setEditingEventSource(event.source);
     setEditingEventSourceId(event.sourceEventId);
+    setEditingEventVerificationStatus(event.verificationStatus);
     setEventEvidenceUrlError(false);
   };
 
@@ -145,6 +149,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       ...(draftEventTime ? { timeZone } : {}),
       state: draftEventState,
       source: editingEventSource,
+      ...(editingEventVerificationStatus ? { verificationStatus: editingEventVerificationStatus } : {}),
       ...(editingEventSourceId ? { sourceEventId: editingEventSourceId } : {}),
       ...(evidenceUrl ? { evidenceUrl } : {}),
       ...(draftEventNote.trim() ? { note: draftEventNote.trim() } : {}),

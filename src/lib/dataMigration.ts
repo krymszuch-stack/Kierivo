@@ -248,10 +248,26 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const jobUrl = normalizeExternalHttpUrl(raw.jobUrl);
   const rawEvents = Array.isArray(raw.events) ? raw.events : [];
   const validEvents = rawEvents.filter(isApplicationEvent);
-  const newlyQuarantinedEvents = rawEvents.filter((event) => !isApplicationEvent(event));
+  const existingQuarantine = Array.isArray(raw.migrationQuarantine) ? raw.migrationQuarantine : [];
+  const newlyQuarantinedEvents = rawEvents
+    .filter((event) => !isApplicationEvent(event))
+    .map((rawPayload) => ({ rawPayload, reason: 'invalid_application_event' }));
+  if (raw.events !== undefined && !Array.isArray(raw.events)) {
+    newlyQuarantinedEvents.push({ rawPayload: raw.events, reason: 'events_not_array' });
+  }
+  // Ponowny start nie może dopisywać kolejnych kopii tej samej uszkodzonej wartości.
+  const quarantinePayloads = new Set(existingQuarantine.map((entry) => {
+    const payload = isRecord(entry) && 'rawPayload' in entry ? entry.rawPayload : entry;
+    try { return JSON.stringify(payload); } catch { return undefined; }
+  }));
   const migrationQuarantine = [
-    ...(Array.isArray(raw.migrationQuarantine) ? raw.migrationQuarantine : []),
-    ...newlyQuarantinedEvents,
+    ...existingQuarantine,
+    ...newlyQuarantinedEvents.filter((entry) => {
+      const serialized = JSON.stringify(entry.rawPayload);
+      if (quarantinePayloads.has(serialized)) return false;
+      quarantinePayloads.add(serialized);
+      return true;
+    }).map((entry) => ({ ...entry, quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION })),
   ];
 
   const legacyInterviewAt = typeof raw.interviewAt === 'string' && isValidOffsetDateTime(raw.interviewAt)
@@ -296,7 +312,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
-    ...(Array.isArray(raw.events) || legacyInterviewAt ? { events } : {}),
+    ...(raw.events !== undefined || legacyInterviewAt ? { events } : {}),
     ...(migrationQuarantine.length > 0 ? { migrationQuarantine } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),
     ...(typeof raw.debriefSentAt === 'string' ? { debriefSentAt: raw.debriefSentAt } : {}),

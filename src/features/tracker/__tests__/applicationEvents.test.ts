@@ -70,12 +70,22 @@ describe('zdarzenia procesu aplikacji', () => {
     const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20', status: 'Rozmowa' as const, events: [yesterday, tomorrow] };
 
     const rescheduled = upsertInterviewEvent(app, '2026-10-22T10:00:00.000Z', 'UTC', now);
-    expect(rescheduled.events).toEqual([yesterday, { ...tomorrow, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC', state: 'confirmed' }]);
+    expect(rescheduled.events).toEqual([yesterday, { ...tomorrow, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
     expect(rescheduled.interviewAt).toBe('2026-10-22T10:00:00.000Z');
 
     const cancelled = upsertInterviewEvent(app, undefined, 'UTC', now);
     expect(cancelled.events?.[1]).toMatchObject({ id: 'tomorrow', state: 'cancelled' });
     expect(cancelled.interviewAt).toBe(yesterday.scheduledAt);
+  });
+
+  it('zachowuje stan nierozstrzygniętej rozmowy przy zmianie terminu', () => {
+    const now = Date.parse('2026-10-20T12:00:00.000Z');
+    const pending = { ...event, id: 'pending-interview', kind: 'interview' as const, state: 'pending' as const,
+      scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20', status: 'Rozmowa' as const, events: [pending] };
+
+    const rescheduled = upsertInterviewEvent(app, '2026-10-22T10:00:00.000Z', 'UTC', now);
+    expect(rescheduled.events).toEqual([{ ...pending, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC' }]);
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

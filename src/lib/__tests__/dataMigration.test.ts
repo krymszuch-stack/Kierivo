@@ -75,11 +75,24 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
 
       expect(migrated?.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated?.events).toEqual([event]);
-      expect(migrated?.migrationQuarantine).toEqual([{ ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }]);
+      expect(migrated?.migrationQuarantine).toEqual([{ rawPayload: { ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }, reason: 'invalid_application_event', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION }]);
       const afterSecondRestart = migrateApplication(migrated);
       const afterThirdRestart = migrateApplication(afterSecondRestart);
       expect(afterThirdRestart).toEqual(migrated);
       expect(afterThirdRestart?.migrationQuarantine).toHaveLength(1);
+    });
+
+    it('zachowuje błędny kontener events w kwarantannie i nie duplikuje go po restartach', () => {
+      const rawEvents = { note: 'ważna historia', corrupted: true };
+      const migrated = migrateApplication({
+        id: 'malformed-events', company: 'Firma', position: 'Rola', events: rawEvents,
+      });
+
+      expect(migrated?.events).toEqual([]);
+      expect(migrated?.migrationQuarantine).toEqual([{
+        rawPayload: rawEvents, reason: 'events_not_array', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION,
+      }]);
+      expect(migrateApplication(migrateApplication(migrated))?.migrationQuarantine).toHaveLength(1);
     });
 
     it('migruje legacy interviewAt do osi zdarzeń jako projekcję rozmowy', () => {
@@ -166,7 +179,7 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(report.applicationsMigrated).toBe(1);
       expect(migrated.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated.events).toEqual([validEvent]);
-      expect(migrated.migrationQuarantine).toEqual([{ ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }]);
+      expect(migrated.migrationQuarantine).toEqual([{ rawPayload: { ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }, reason: 'invalid_application_event', quarantinedAtSchema: CURRENT_APPLICATION_SCHEMA_VERSION }]);
     });
 
     it('zachowuje nieprzetwarzalne rekordy przy migracji kolekcji aplikacji', () => {

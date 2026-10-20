@@ -34,7 +34,7 @@ export function upsertInterviewEvent(
     if (!nextAt) {
       events[index] = { ...events[index], state: 'cancelled' };
     } else {
-      events[index] = { ...events[index], scheduledAt: nextAt, timeZone, state: 'confirmed' };
+      events[index] = { ...events[index], scheduledAt: nextAt, timeZone };
     }
   } else if (nextAt) {
     events.push({
