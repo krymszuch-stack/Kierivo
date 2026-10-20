@@ -93,7 +93,9 @@ export function getApplicationCalendarEntries(
       const date = isDateOnly(event.scheduledAt)
         ? event.scheduledAt
         : dateKeyInTimeZone(event.scheduledAt, timeZone);
-      if (date) {
+      const duplicatesApplicationDate = event.kind === 'application_sent' &&
+        isDateOnly(application.date) && date === application.date;
+      if (date && !duplicatesApplicationDate) {
         entries.push({
           id: `${application.id}:event:${event.id}`,
           applicationId: application.id,

@@ -53,6 +53,44 @@ export function removeApplicationEvent(existing: ApplicationEvent[], eventId: st
   return existing.filter((event) => event.id !== eventId);
 }
 
+function sameInstant(left: string | undefined, right: string): boolean {
+  if (!left) return false;
+  if (left === right) return true;
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
+}
+
+/** Utrzymuje pole zgodności interviewAt przy zmianie zdarzeń osi procesu. */
+export function synchronizeInterviewAt(
+  previousEvents: ApplicationEvent[],
+  nextEvents: ApplicationEvent[],
+  currentInterviewAt?: string,
+): string | undefined {
+  const nextTimedInterviews = nextEvents.filter((event) =>
+    event.kind === 'interview' && event.scheduledAt.includes('T') && Number.isFinite(Date.parse(event.scheduledAt)),
+  );
+  const changedInterview = nextTimedInterviews.find((event) => {
+    const previous = previousEvents.find((candidate) => candidate.id === event.id || isSameEvent(candidate, event));
+    return !previous || previous.kind !== 'interview' || !previous.scheduledAt.includes('T') ||
+      !sameInstant(previous.scheduledAt, event.scheduledAt);
+  });
+  if (changedInterview) return changedInterview.scheduledAt;
+
+  const currentTimelineInterview = nextEvents.find((event) =>
+    event.kind === 'interview' && sameInstant(currentInterviewAt, event.scheduledAt),
+  );
+  if (currentTimelineInterview) return currentInterviewAt;
+
+  const interviewAtCameFromTimeline = previousEvents.some((event) =>
+    event.kind === 'interview' && sameInstant(currentInterviewAt, event.scheduledAt),
+  );
+  if (!interviewAtCameFromTimeline) return currentInterviewAt;
+
+  return nextTimedInterviews
+    .sort((left, right) => Date.parse(left.scheduledAt) - Date.parse(right.scheduledAt))[0]?.scheduledAt;
+}
+
 export function localDateTimeToIso(value: string): string | undefined {
   if (!value) return undefined;
   const instant = new Date(value);

@@ -68,6 +68,38 @@ describe('application calendar', () => {
     ]);
   });
 
+  it('nie dubluje zdarzenia wysłania z datą aplikacji tego samego dnia', () => {
+    const entries = getApplicationCalendarEntries([
+      application({
+        date: '2026-10-20',
+        events: [
+          {
+            id: 'sent-same-day',
+            kind: 'application_sent',
+            scheduledAt: '2026-10-20T10:15:00.000Z',
+            timeZone: 'Europe/Warsaw',
+            state: 'confirmed',
+            source: 'extension',
+            sourceEventId: 'receipt-same-day',
+          },
+          {
+            id: 'sent-later',
+            kind: 'application_sent',
+            scheduledAt: '2026-10-21T10:15:00.000Z',
+            timeZone: 'Europe/Warsaw',
+            state: 'confirmed',
+            source: 'user',
+          },
+        ],
+      }),
+    ], 'Europe/Warsaw');
+
+    expect(entries.map(({ kind, date }) => ({ kind, date }))).toEqual([
+      { kind: 'application', date: '2026-10-20' },
+      { kind: 'application_sent', date: '2026-10-21' },
+    ]);
+  });
+
   it('pokazuje stan zdarzenia i przypomnienie, a identyczny stary termin rozmowy widzi raz', () => {
     const entries = getApplicationCalendarEntries([
       application({

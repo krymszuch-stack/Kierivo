@@ -5,6 +5,7 @@ import {
   isoToLocalDateTime,
   localDateTimeToIso,
   removeApplicationEvent,
+  synchronizeInterviewAt,
   upsertApplicationEvent,
 } from '../applicationEvents';
 
@@ -35,6 +36,28 @@ describe('zdarzenia procesu aplikacji', () => {
     const other = { ...event, id: 'event-2', sourceEventId: undefined };
 
     expect(removeApplicationEvent([event, other], event.id)).toEqual([other]);
+  });
+
+  it('synchronizuje termin rozmowy używany przez panel i reguły przypomnień', () => {
+    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const priorManualAt = '2026-10-18T10:00:00.000Z';
+
+    expect(synchronizeInterviewAt([], [interview], priorManualAt)).toBe(interview.scheduledAt);
+  });
+
+  it('po usunięciu bieżącej rozmowy wybiera następną albo czyści osierocony termin', () => {
+    const current = { ...event, id: 'current', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const next = { ...event, id: 'next', kind: 'interview' as const, scheduledAt: '2026-10-22T10:00:00.000Z' };
+
+    expect(synchronizeInterviewAt([current, next], [next], current.scheduledAt)).toBe(next.scheduledAt);
+    expect(synchronizeInterviewAt([current], [], current.scheduledAt)).toBeUndefined();
+  });
+
+  it('zachowuje ręcznie ustawiony interviewAt niezwiązany ze zdarzeniem osi', () => {
+    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const manualAt = '2026-10-23T10:00:00.000Z';
+
+    expect(synchronizeInterviewAt([interview], [], manualAt)).toBe(manualAt);
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

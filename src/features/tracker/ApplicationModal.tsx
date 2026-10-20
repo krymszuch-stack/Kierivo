@@ -12,8 +12,10 @@ import {
   isoToLocalDateTime,
   localDateTimeToIso,
   removeApplicationEvent,
+  synchronizeInterviewAt,
   upsertApplicationEvent,
 } from './applicationEvents';
+import { resolveApplicationSalary } from './applicationForm';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -167,11 +169,12 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       id: initialData?.id || `app-${Date.now()}`,
       company: company.trim(),
       position: position.trim(),
-      salary: salary.trim() || 'Do negocjacji',
+      salary: resolveApplicationSalary(salary, receiptImport),
       date,
       status,
       jobUrl: normalizedJobUrl ?? '',
       notes: notes.trim(),
+      interviewAt: synchronizeInterviewAt(initialData?.events ?? [], events, initialData?.interviewAt),
       events,
     });
     onClose();
