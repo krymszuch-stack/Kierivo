@@ -34,21 +34,13 @@ try {
   cpSync(extensionSource,extensionPath,{recursive:true});
   const testManifestPath=path.join(extensionPath,'manifest.json');
   const testManifest=JSON.parse(readFileSync(testManifestPath,'utf-8'));
-  const appMatchPatterns=['http://localhost/*','http://127.0.0.1/*'];
   if (kierivoApplicationUrl) {
     const appUrl = new URL(kierivoApplicationUrl);
     if (appUrl.protocol !== 'http:' || !['localhost','127.0.0.1'].includes(appUrl.hostname)) {
       throw new Error('Test One Flow obsługuje wyłącznie lokalny origin HTTP Kierivo.');
     }
-    const appMatchPattern = `${appUrl.protocol}//${appUrl.hostname}/*`;
-    if (!appMatchPatterns.includes(appMatchPattern)) appMatchPatterns.push(appMatchPattern);
   }
-  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*',...appMatchPatterns];
-  testManifest.content_scripts=[...(testManifest.content_scripts||[]),{
-    matches:appMatchPatterns,
-    js:['kierivoPresence.js'],
-    run_at:'document_idle',
-  }];
+  testManifest.host_permissions=[...testManifest.host_permissions,'https://jobs.ashbyhq.com/*'];
   writeFileSync(testManifestPath,JSON.stringify(testManifest,null,2));
   execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',keyPath,'-out',certPath,'-days','1','-subj','/CN=jobs.ashbyhq.com','-addext','subjectAltName=DNS:jobs.ashbyhq.com'],{stdio:'ignore'});
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Synthetic software engineer role</title><script type="application/ld+json">{"@type":"JobPosting","title":"Synthetic\\n  software engineer role","hiringOrganization":{"name":"Synthetic\\n  Employer"}}</script><style>.honeypot{position:absolute;left:-10000px;top:0;width:1px;height:1px}</style></head><body><h1>Synthetic software engineer role</h1><form id="application">
