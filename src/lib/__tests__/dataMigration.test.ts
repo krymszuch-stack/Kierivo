@@ -115,6 +115,39 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrated.migrationQuarantine).toEqual([{ ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }]);
     });
 
+    it('zachowuje oś czasu po migracji, serializacji i ponownym odczycie', () => {
+      const events = [
+        {
+          id: 'receipt-sent', kind: 'application_sent',
+          scheduledAt: '2026-10-20T09:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'confirmed', source: 'extension', verificationStatus: 'user_declared',
+          sourceEventId: 'receipt-12345678', note: 'Zadeklarowano po ręcznym wysłaniu',
+        },
+        {
+          id: 'interview-technical', kind: 'interview',
+          scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'confirmed', source: 'user', evidenceUrl: 'https://example.test/invitation',
+          note: 'Rozmowa techniczna', reminderAt: '2026-10-21T10:00:00.000Z',
+        },
+        {
+          id: 'follow-up', kind: 'follow_up',
+          scheduledAt: '2026-10-24T10:00:00.000Z', timeZone: 'Europe/Warsaw',
+          state: 'pending', source: 'user', note: 'Dopytać o wynik',
+          reminderAt: '2026-10-24T08:00:00.000Z',
+        },
+      ];
+      const migrated = migrateApplication({
+        id: 'timeline-round-trip', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', events,
+      });
+
+      const afterRestart = migrateApplication(JSON.parse(JSON.stringify(migrated)));
+
+      expect(migrated?.events).toEqual(events);
+      expect(afterRestart?.events).toEqual(events);
+      expect(afterRestart?.interviewAt).toBe('2026-10-22T10:00:00.000Z');
+    });
+
     it('nieznany status traktuje zachowawczo jako szkic', () => {
       const migrated = migrateApplication({
         id: 'legacy-unknown-status',
