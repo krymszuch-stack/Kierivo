@@ -90,6 +90,7 @@ export function getApplicationCalendarEntries(
     }
 
     for (const event of application.events ?? []) {
+      if (event.state === 'cancelled') continue;
       const date = isDateOnly(event.scheduledAt)
         ? event.scheduledAt
         : dateKeyInTimeZone(event.scheduledAt, timeZone);

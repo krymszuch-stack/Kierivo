@@ -10,7 +10,7 @@ const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'Odrzucona',
 ];
 const APPLICATION_EVENT_KINDS: readonly ApplicationEventKind[] = ['application_sent', 'interview', 'email', 'response_due', 'follow_up'];
-const APPLICATION_EVENT_STATES: readonly ApplicationEventState[] = ['confirmed', 'pending', 'unknown'];
+const APPLICATION_EVENT_STATES: readonly ApplicationEventState[] = ['confirmed', 'pending', 'unknown', 'cancelled'];
 const APPLICATION_EVENT_SOURCES: readonly ApplicationEventSource[] = ['user', 'page', 'extension'];
 
 export interface ParsedApplications {

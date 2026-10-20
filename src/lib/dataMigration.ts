@@ -1,4 +1,6 @@
 import { ApplicationStatus, JobApplication, MasterVault } from '../types';
+import { isValidOffsetDateTime } from './isoDateTime';
+import { normalizeApplicationInterviews, projectInterviewAt } from './applicationInterview';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
 import { isValidAtsScoreContext } from './atsScoreEvidence';
 import { normalizeExternalHttpUrl } from './externalHttpUrl';
@@ -238,11 +240,25 @@ export function migrateApplication(raw: unknown): JobApplication | null {
     ...newlyQuarantinedEvents,
   ];
 
-  let interviewAt = typeof raw.interviewAt === 'string' ? raw.interviewAt : undefined;
-  // Reguła: Odrzucona aplikacja nie trzyma terminu rozmowy
-  if (status === 'Odrzucona') {
-    interviewAt = undefined;
+  const legacyInterviewAt = typeof raw.interviewAt === 'string' && isValidOffsetDateTime(raw.interviewAt)
+    ? raw.interviewAt
+    : undefined;
+  const events = validEvents.map((event) => status === 'Odrzucona' &&
+    event.kind === 'interview' && event.state !== 'cancelled'
+    ? { ...event, state: 'cancelled' as const }
+    : event);
+  if (status !== 'Odrzucona' && legacyInterviewAt && !events.some((event) =>
+    event.kind === 'interview' && event.scheduledAt === legacyInterviewAt && event.state !== 'cancelled')) {
+    events.push({
+      id: `legacy-interview-${id}`,
+      kind: 'interview',
+      scheduledAt: legacyInterviewAt,
+      timeZone: 'UTC',
+      state: 'confirmed',
+      source: 'user',
+    });
   }
+  const interviewAt = projectInterviewAt(events);
 
   const app: JobApplication = {
     schemaVersion: CURRENT_DATA_SCHEMA_VERSION,
@@ -264,7 +280,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
-    ...(Array.isArray(raw.events) ? { events: validEvents } : {}),
+    ...(Array.isArray(raw.events) || legacyInterviewAt ? { events } : {}),
     ...(migrationQuarantine.length > 0 ? { migrationQuarantine } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),
     ...(typeof raw.debriefSentAt === 'string' ? { debriefSentAt: raw.debriefSentAt } : {}),
@@ -272,7 +288,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
   };
 
-  return app;
+  return normalizeApplicationInterviews(app);
 }
 
 /**

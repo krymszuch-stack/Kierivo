@@ -5,6 +5,7 @@ import { applicationsKeyFor, onAppStorageWiped, onProfileStorageCleared, readJso
 import { useAuth } from '../context/AuthContext';
 import { parseApplications } from '../lib/applicationRecordSchema';
 import { mergeMigrationRecords } from '../lib/mergeMigrationRecords';
+import { normalizeApplicationInterviews } from '../lib/applicationInterview';
 
 /**
  * Aplikacje w Pipeline — jedno źródło prawdy dla całego interfejsu.
@@ -65,10 +66,7 @@ function currentApplications(profileId: string): JobApplication[] {
  */
 function withStatusRules(application: JobApplication): JobApplication {
   if (!application) return application;
-  if (application.status === 'Odrzucona' && application.interviewAt !== undefined) {
-    return { ...application, interviewAt: undefined };
-  }
-  return application;
+  return normalizeApplicationInterviews(application);
 }
 
 export function saveApplicationsFor(profileId: string, next: JobApplication[]): void {

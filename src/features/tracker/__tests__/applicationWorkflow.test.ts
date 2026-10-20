@@ -54,6 +54,7 @@ describe('Application Tracker - Cykl życia i powiązania modułu aplikacji', ()
     stored = loadApplicationsFor(profileId);
     expect(stored[0].status).toBe('Odrzucona');
     expect(stored[0].interviewAt).toBeUndefined();
+    expect(stored[0].events?.[0]).toMatchObject({ kind: 'interview', state: 'cancelled' });
   });
 
   it('liczy wylacznie udzial aplikacji w aktualnych statusach rozmowy lub oferty', () => {

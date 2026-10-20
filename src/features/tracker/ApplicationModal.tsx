@@ -12,9 +12,9 @@ import {
   isoToLocalDateTime,
   localDateTimeToIso,
   removeApplicationEvent,
-  synchronizeInterviewAt,
   upsertApplicationEvent,
 } from './applicationEvents';
+import { projectInterviewAt } from '../../lib/applicationInterview';
 import { resolveApplicationSalary } from './applicationForm';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
@@ -174,7 +174,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       status,
       jobUrl: normalizedJobUrl ?? '',
       notes: notes.trim(),
-      interviewAt: synchronizeInterviewAt(initialData?.events ?? [], events, initialData?.interviewAt),
+      interviewAt: projectInterviewAt(events),
       events,
     });
     onClose();
@@ -307,6 +307,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                             { value: 'confirmed', label: 'Potwierdzone' },
                             { value: 'pending', label: 'Oczekuje' },
                             { value: 'unknown', label: 'Nieznane' },
+                            { value: 'cancelled', label: 'Odwołane' },
                           ]}
                           className="min-w-32"
                         />
@@ -369,6 +370,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                   { value: 'unknown', label: 'Nieznane' },
                   { value: 'pending', label: 'Oczekuje' },
                   { value: 'confirmed', label: 'Potwierdzone' },
+                  { value: 'cancelled', label: 'Odwołane' },
                 ]}
               />
             </div>

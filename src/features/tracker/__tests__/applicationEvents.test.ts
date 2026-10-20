@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ApplicationEvent } from '../../../types';
+import { projectInterviewAt, upsertInterviewEvent } from '../../../lib/applicationInterview';
 import {
   formatApplicationEventDate,
   isoToLocalDateTime,
   localDateTimeToIso,
   removeApplicationEvent,
-  synchronizeInterviewAt,
-  synchronizeInterviewEventSchedule,
   upsertApplicationEvent,
 } from '../applicationEvents';
 
@@ -39,44 +38,30 @@ describe('zdarzenia procesu aplikacji', () => {
     expect(removeApplicationEvent([event, other], event.id)).toEqual([other]);
   });
 
-  it('synchronizuje termin rozmowy używany przez panel i reguły przypomnień', () => {
-    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
-    const priorManualAt = '2026-10-18T10:00:00.000Z';
+  it('wybiera najbliższą przyszłą rozmowę, a bez przyszłych — ostatnią przeszłą', () => {
+    const now = Date.parse('2026-10-20T12:00:00.000Z');
+    const yesterday = { ...event, id: 'yesterday', kind: 'interview' as const, scheduledAt: '2026-10-19T10:00:00.000Z' };
+    const tomorrow = { ...event, id: 'tomorrow', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const nextWeek = { ...event, id: 'next-week', kind: 'interview' as const, scheduledAt: '2026-10-27T10:00:00.000Z' };
 
-    expect(synchronizeInterviewAt([], [interview], priorManualAt)).toBe(interview.scheduledAt);
+    expect(projectInterviewAt([yesterday, nextWeek, tomorrow], now)).toBe(tomorrow.scheduledAt);
+    expect(projectInterviewAt([{ ...yesterday, state: 'confirmed' }, { ...tomorrow, state: 'cancelled' }], now))
+      .toBe(yesterday.scheduledAt);
   });
 
-  it('po usunięciu bieżącej rozmowy wybiera następną albo czyści osierocony termin', () => {
-    const current = { ...event, id: 'current', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
-    const next = { ...event, id: 'next', kind: 'interview' as const, scheduledAt: '2026-10-22T10:00:00.000Z' };
+  it('przełożenie aktualizuje termin osi, a odwołanie zachowuje event i wybiera poprzednią rozmowę', () => {
+    const now = Date.parse('2026-10-20T12:00:00.000Z');
+    const yesterday = { ...event, id: 'yesterday', kind: 'interview' as const, scheduledAt: '2026-10-19T10:00:00.000Z' };
+    const tomorrow = { ...event, id: 'tomorrow', kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
+    const app = { id: 'app-1', company: 'Firma', position: 'Rola', salary: '', date: '2026-10-20', status: 'Rozmowa' as const, events: [yesterday, tomorrow] };
 
-    expect(synchronizeInterviewAt([current, next], [next], current.scheduledAt)).toBe(next.scheduledAt);
-    expect(synchronizeInterviewAt([current], [], current.scheduledAt)).toBeUndefined();
-  });
+    const rescheduled = upsertInterviewEvent(app, '2026-10-22T10:00:00.000Z', 'UTC', now);
+    expect(rescheduled.events).toEqual([yesterday, { ...tomorrow, scheduledAt: '2026-10-22T10:00:00.000Z', timeZone: 'UTC', state: 'confirmed' }]);
+    expect(rescheduled.interviewAt).toBe('2026-10-22T10:00:00.000Z');
 
-  it('zastępuje termin całodniowy dokładnym czasem po dopisaniu godziny', () => {
-    const dateOnly = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21' };
-    const timed = { ...dateOnly, scheduledAt: '2026-10-21T00:00:00.000Z' };
-
-    expect(synchronizeInterviewAt([dateOnly], [timed], dateOnly.scheduledAt)).toBe(timed.scheduledAt);
-  });
-
-  it('zachowuje ręcznie ustawiony interviewAt niezwiązany ze zdarzeniem osi', () => {
-    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
-    const manualAt = '2026-10-23T10:00:00.000Z';
-
-    expect(synchronizeInterviewAt([interview], [], manualAt)).toBe(manualAt);
-  });
-
-  it('przenosi albo usuwa termin osi zmieniony w panelu rozmowy', () => {
-    const interview = { ...event, kind: 'interview' as const, scheduledAt: '2026-10-21T10:00:00.000Z' };
-    const nextAt = '2026-10-22T11:30:00.000Z';
-
-    expect(synchronizeInterviewEventSchedule([interview], interview.scheduledAt, nextAt)).toEqual([
-      { ...interview, scheduledAt: nextAt },
-    ]);
-    expect(synchronizeInterviewEventSchedule([interview], interview.scheduledAt, undefined)).toEqual([]);
-    expect(synchronizeInterviewEventSchedule([interview], '2026-10-23T10:00:00.000Z', nextAt)).toEqual([interview]);
+    const cancelled = upsertInterviewEvent(app, undefined, 'UTC', now);
+    expect(cancelled.events?.[1]).toMatchObject({ id: 'tomorrow', state: 'cancelled' });
+    expect(cancelled.interviewAt).toBe(yesterday.scheduledAt);
   });
 
   it('konwertuje lokalny termin do ISO i pokazuje go w zapisanej strefie', () => {

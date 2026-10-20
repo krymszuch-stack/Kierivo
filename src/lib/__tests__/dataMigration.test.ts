@@ -65,6 +65,22 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrateApplication(migrated)).toEqual(migrated);
     });
 
+    it('migruje legacy interviewAt do osi zdarzeń jako projekcję rozmowy', () => {
+      const migrated = migrateApplication({
+        id: 'legacy-interview', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', interviewAt: '2026-10-22T09:30:00.000Z',
+      });
+
+      expect(migrated?.events).toEqual([expect.objectContaining({
+        id: 'legacy-interview-legacy-interview',
+        kind: 'interview',
+        scheduledAt: '2026-10-22T09:30:00.000Z',
+        state: 'confirmed',
+        source: 'user',
+      })]);
+      expect(migrated?.interviewAt).toBe('2026-10-22T09:30:00.000Z');
+    });
+
     it('nieznany status traktuje zachowawczo jako szkic', () => {
       const migrated = migrateApplication({
         id: 'legacy-unknown-status',
