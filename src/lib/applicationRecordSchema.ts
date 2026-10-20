@@ -58,6 +58,7 @@ export function isApplicationEvent(value: unknown): value is ApplicationEvent {
   if (!isDate(value.scheduledAt)) return false;
   if (!APPLICATION_EVENT_STATES.includes(value.state as ApplicationEventState)) return false;
   if (!APPLICATION_EVENT_SOURCES.includes(value.source as ApplicationEventSource)) return false;
+  if (value.verificationStatus !== undefined && value.verificationStatus !== 'user_declared') return false;
   if (!isOptionalString(value, 'timeZone') ||
       (value.timeZone !== undefined && !isTimeZone(value.timeZone))) return false;
   if (String(value.scheduledAt).includes('T') &&

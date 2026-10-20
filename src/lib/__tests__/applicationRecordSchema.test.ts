@@ -30,6 +30,7 @@ describe('kontrakt zapisanej aplikacji Pipeline', () => {
         timeZone: 'Europe/Warsaw',
         state: 'pending',
         source: 'user',
+        verificationStatus: 'user_declared',
         evidenceUrl: 'https://example.test/rekrutacja',
         note: 'Rekruter zapowiedział odpowiedź.',
         reminderAt: '2026-10-22T08:00:00.000Z',

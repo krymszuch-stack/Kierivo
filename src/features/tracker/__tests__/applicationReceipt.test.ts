@@ -66,6 +66,7 @@ describe('potwierdzenie wysłania z Kierivo Hunter', () => {
       kind: 'application_sent',
       state: 'confirmed',
       source: 'extension',
+      verificationStatus: 'user_declared',
       sourceEventId: receipt!.receiptId,
       timeZone: 'America/Los_Angeles',
     })]);

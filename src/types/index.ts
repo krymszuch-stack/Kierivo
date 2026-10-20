@@ -548,6 +548,8 @@ export interface ApplicationEvent {
   timeZone?: string;
   state: ApplicationEventState;
   source: ApplicationEventSource;
+  /** Receipt Huntera potwierdza deklarację użytkownika, nie dostarczenie przez ATS. */
+  verificationStatus?: 'user_declared';
   /** Identyfikator zdarzenia źródłowego pozwalający idempotentnie scalać importy. */
   sourceEventId?: string;
   evidenceUrl?: string;

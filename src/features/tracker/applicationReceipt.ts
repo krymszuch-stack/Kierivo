@@ -75,6 +75,7 @@ export function buildApplicationFromReceipt(
     timeZone,
     state: 'confirmed',
     source: 'extension',
+    verificationStatus: 'user_declared',
     sourceEventId: receipt.receiptId,
   };
   const applicationDate = dateKeyInTimeZone(receipt.submittedAt, timeZone) ?? receipt.submittedAt.slice(0, 10);

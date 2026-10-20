@@ -193,6 +193,29 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
             To jest deklaracja użytkownika po ręcznym wysłaniu formularza. Sprawdź dane i zapisz ją w bieżącym profilu; Hunter nie wysyła aplikacji.
           </p>
         )}
+        {initialData?.migrationQuarantine && initialData.migrationQuarantine.length > 0 && (
+          <section className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" aria-labelledby="migration-quarantine-heading">
+            <h3 id="migration-quarantine-heading" className="font-semibold">Zdarzenia zachowane do weryfikacji</h3>
+            <p className="mt-1 text-xs">
+              {initialData.migrationQuarantine.length} wpisów osi nie można było bezpiecznie odczytać. Oryginały pozostają zachowane.
+            </p>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold">Pokaż zachowane dane</summary>
+              <ul className="mt-2 max-h-48 space-y-2 overflow-auto">
+                {initialData.migrationQuarantine.map((entry, index) => {
+                  let raw = '[nie można wyświetlić wpisu]';
+                  try { raw = JSON.stringify(entry, null, 2) ?? raw; } catch { /* dane JSON powinny być możliwe do odczytu */ }
+                  return (
+                    <li key={index}>
+                      <pre className="max-h-32 overflow-auto rounded-md bg-white/70 p-2 text-[10px]">{raw.slice(0, 4000)}</pre>
+                      {raw.length > 4000 && <span className="text-[10px]">Podgląd skrócony; zapisany wpis nie został skrócony.</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          </section>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Input
             label="Firma Rekrutująca"
@@ -293,6 +316,7 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
                           {formatApplicationEventDate(event, timeZone)}
                           {event.timeZone ? ` · ${event.timeZone}` : ''}
                           {' · '}{event.source === 'user' ? 'Wpis użytkownika' : event.source === 'page' ? 'Źródło ze strony' : 'Rozszerzenie'}
+                          {event.verificationStatus === 'user_declared' ? ' · Zadeklarowano ręcznie (Hunter); bez potwierdzenia ATS' : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">

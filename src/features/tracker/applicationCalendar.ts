@@ -103,7 +103,7 @@ export function getApplicationCalendarEntries(
           date,
           kind: event.kind,
           title: applicationTitle(application),
-          detail: `${getApplicationEventKindLabel(event.kind)} · ${getApplicationEventStateLabel(event.state)}`,
+          detail: `${getApplicationEventKindLabel(event.kind)} · ${getApplicationEventStateLabel(event.state)}${event.verificationStatus === 'user_declared' ? ' · Zadeklarowano (Hunter), niepotwierdzone przez ATS' : ''}`,
           timestamp: isDateOnly(event.scheduledAt) ? undefined : event.scheduledAt,
         });
       }
