@@ -90,6 +90,37 @@ describe('Izolacja historii Pipeline', () => {
     expect(readJson<JobApplication[]>(applicationsKeyFor(profilB), [])).toHaveLength(1);
   });
 
+  it('izoluje prywatne zdarzenia kalendarza razem z aplikacją', () => {
+    const applicationA = {
+      ...application('same-application-id', 'Firma A'),
+      events: [{
+        id: 'event-a',
+        kind: 'response_due' as const,
+        scheduledAt: '2026-09-12',
+        state: 'pending' as const,
+        source: 'user' as const,
+        note: 'Notatka profilu A',
+      }],
+    };
+    const applicationB = {
+      ...application('same-application-id', 'Firma B'),
+      events: [{
+        id: 'event-b',
+        kind: 'follow_up' as const,
+        scheduledAt: '2026-09-13',
+        state: 'unknown' as const,
+        source: 'user' as const,
+        note: 'Notatka profilu B',
+      }],
+    };
+
+    saveApplicationsFor('events-profile-a', [applicationA]);
+    saveApplicationsFor('events-profile-b', [applicationB]);
+
+    expect(loadApplicationsFor('events-profile-a')[0].events?.[0].note).toBe('Notatka profilu A');
+    expect(loadApplicationsFor('events-profile-b')[0].events?.[0].note).toBe('Notatka profilu B');
+  });
+
   it('zachowuje dawną wspólną historię do czasu świadomego przypisania', async () => {
     const profil = 'local-profil-a';
     saveApplicationsFor(profil, [application('a-1', 'Nowa historia')]);

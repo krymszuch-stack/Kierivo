@@ -7,6 +7,7 @@ import { ReactFloatingPanel } from '../../components/hud/ReactFloatingPanel';
 import { ApplicationPassGate } from '../../components/payments/ApplicationPassGate';
 import { useEntitlements } from '../../store/useEntitlements';
 import { InterviewLoopModal } from '../loop/InterviewLoopModal';
+import { synchronizeInterviewEventSchedule } from '../tracker/applicationEvents';
 import {
   toLocalInputValue,
   fromLocalInputValue,
@@ -130,9 +131,13 @@ export const InterviewPanel: React.FC<InterviewPanelProps> = ({
           <input
             type="datetime-local"
             value={toLocalInputValue(selected.interviewAt)}
-            onChange={(event) =>
-              onPatch(selected.id, { interviewAt: fromLocalInputValue(event.target.value) })
-            }
+            onChange={(event) => {
+              const interviewAt = fromLocalInputValue(event.target.value);
+              onPatch(selected.id, {
+                interviewAt,
+                events: synchronizeInterviewEventSchedule(selected.events, selected.interviewAt, interviewAt),
+              });
+            }}
             className="mt-1.5 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-brand-500 focus:outline-none"
           />
         </label>

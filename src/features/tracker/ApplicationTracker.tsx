@@ -11,6 +11,8 @@ import {
   Layers,
   FileText,
   SlidersHorizontal,
+  CalendarDays,
+  List,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ApplicationModal } from './ApplicationModal';
@@ -34,6 +36,12 @@ import { resolveApplicationJobOffer, resolveApplicationVault } from '../../lib/a
 import { InterviewCheatSheetView } from '../matcher/InterviewCheatSheetView';
 import { getApplicationDisplayInfo } from './applicationDisplay';
 import { ApplicationProgressTile } from './ApplicationProgressTile';
+import { ApplicationCalendar } from './ApplicationCalendar';
+import {
+  buildApplicationFromReceipt,
+  findApplicationForReceipt,
+  parseSameWindowApplicationReceipt,
+} from './applicationReceipt';
 
 
 /**
@@ -111,9 +119,11 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'COMPANY'>('DATE_DESC');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
   // Modals
   const [isAppModalOpen, setIsAppModalOpen] = useState(false);
+  const [isReceiptImport, setIsReceiptImport] = useState(false);
   const [editingApp, setEditingApp] = useState<JobApplication | null>(null);
   const [viewingDocApp, setViewingDocApp] = useState<JobApplication | null>(null);
   const [cheatSheetApp, setCheatSheetApp] = useState<JobApplication | null>(null);
@@ -121,6 +131,31 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   // Notes Drawer/Modal
   const [notesApp, setNotesApp] = useState<JobApplication | null>(null);
   const [currentNotes, setCurrentNotes] = useState<string>('');
+
+  useEffect(() => {
+    const handleHunterReceipt = (event: MessageEvent<unknown>) => {
+      const receipt = parseSameWindowApplicationReceipt(event, window, window.location.origin);
+      if (!receipt) return;
+      const existing = findApplicationForReceipt(applications, receipt.receiptId);
+      if (existing?.events?.some((item) => item.source === 'extension' && item.sourceEventId === receipt.receiptId)) {
+        showToast('Potwierdzenie z Huntera jest już zapisane', {
+          message: `${getApplicationDisplayInfo(existing).contextLabel}. Nie dodano duplikatu.`,
+        });
+        return;
+      }
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      setEditingApp(buildApplicationFromReceipt(receipt, existing, timeZone));
+      setIsReceiptImport(true);
+      setIsAppModalOpen(true);
+    };
+    window.addEventListener('message', handleHunterReceipt);
+    const receiptWindow = window as Window & { __kierivoApplicationReceiptReady?: boolean };
+    receiptWindow.__kierivoApplicationReceiptReady = true;
+    return () => {
+      window.removeEventListener('message', handleHunterReceipt);
+      delete receiptWindow.__kierivoApplicationReceiptReady;
+    };
+  }, [applications]);
 
   // Statistics
   const totalApps = applications.length;
@@ -172,7 +207,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
   const handleSaveApp = (app: JobApplication) => {
     saveApplication(app);
     const display = getApplicationDisplayInfo(app);
-    showToast('Lista aplikacji zaktualizowana', {
+    showToast(isReceiptImport ? 'Potwierdzenie z Huntera zapisane' : 'Lista aplikacji zaktualizowana', {
       message: `${display.contextLabel} (${app.status || ''}).`,
     });
   };
@@ -227,7 +262,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       <PageHeader
         title="Moje aplikacje"
         description="Masz tu wysłane CV, etapy rekrutacji i notatki z rozmów — spokojnie, żadna oferta nie wyparuje w kosmos."
-        badge="Lista aplikacji"
+        badge="Kalendarz i lista"
         actions={
           <Button
             type="button"
@@ -236,6 +271,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
             icon={Plus}
             onClick={() => {
               setEditingApp(null);
+              setIsReceiptImport(false);
               setIsAppModalOpen(true);
             }}
           >
@@ -378,7 +414,29 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           </div>
 
           {/* Search & Sort Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-xl border border-line bg-sunken p-0.5" role="group" aria-label="Widok aplikacji">
+              <Button
+                type="button"
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                icon={List}
+                aria-pressed={viewMode === 'list'}
+                aria-label="Widok listy"
+                onClick={() => setViewMode('list')}
+                className="px-2"
+              />
+              <Button
+                type="button"
+                variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+                size="sm"
+                icon={CalendarDays}
+                aria-pressed={viewMode === 'calendar'}
+                aria-label="Widok kalendarza"
+                onClick={() => setViewMode('calendar')}
+                className="px-2"
+              />
+            </div>
             <Input
               icon={Search}
               value={searchQuery}
@@ -401,21 +459,31 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         </div>
       </Card>
 
-      {/* Main Table View */}
-      <TrackerTable
-        applications={filteredApps}
-        highlightApplicationId={flashId}
-        isAdvancedMode={isAdvancedMode}
-        onStatusChange={handleStatusChange}
-        onEdit={(app) => {
-          setEditingApp(app);
-          setIsAppModalOpen(true);
-        }}
-        onDelete={handleDeleteApp}
-        onOpenNotes={handleOpenNotes}
-        onViewDocument={(app) => setViewingDocApp(app)}
-        onOpenCheatSheet={(app) => setCheatSheetApp(app)}
-      />
+      {/* Lista i kalendarz czytają tę samą, filtrowaną historię aplikacji. */}
+      {viewMode === 'calendar' ? (
+        <ApplicationCalendar
+          applications={filteredApps}
+          onSelectApplication={(app) => {
+            setEditingApp(app);
+            setIsAppModalOpen(true);
+          }}
+        />
+      ) : (
+        <TrackerTable
+          applications={filteredApps}
+          highlightApplicationId={flashId}
+          isAdvancedMode={isAdvancedMode}
+          onStatusChange={handleStatusChange}
+          onEdit={(app) => {
+            setEditingApp(app);
+            setIsAppModalOpen(true);
+          }}
+          onDelete={handleDeleteApp}
+          onOpenNotes={handleOpenNotes}
+          onViewDocument={(app) => setViewingDocApp(app)}
+          onOpenCheatSheet={(app) => setCheatSheetApp(app)}
+        />
+      )}
 
       {cheatSheetApp && resolveApplicationJobOffer(cheatSheetApp) && (
         <Modal
@@ -438,9 +506,11 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         onClose={() => {
           setIsAppModalOpen(false);
           setEditingApp(null);
+          setIsReceiptImport(false);
         }}
         onSave={handleSaveApp}
         initialData={editingApp}
+        receiptImport={isReceiptImport}
       />
 
       {/* Historical Document Snapshot Modal (BUG-002) */}

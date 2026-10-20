@@ -1,5 +1,6 @@
-import type { ApplicationStatus, JobApplication } from '../types';
+import type { ApplicationEvent, ApplicationEventKind, ApplicationEventSource, ApplicationEventState, ApplicationStatus, JobApplication } from '../types';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
+import { isValidOffsetDateTime } from './isoDateTime';
 
 const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'Do wysłania',
@@ -8,6 +9,9 @@ const APPLICATION_STATUSES: readonly ApplicationStatus[] = [
   'Oferta',
   'Odrzucona',
 ];
+const APPLICATION_EVENT_KINDS: readonly ApplicationEventKind[] = ['application_sent', 'interview', 'email', 'response_due', 'follow_up'];
+const APPLICATION_EVENT_STATES: readonly ApplicationEventState[] = ['confirmed', 'pending', 'unknown'];
+const APPLICATION_EVENT_SOURCES: readonly ApplicationEventSource[] = ['user', 'page', 'extension'];
 
 export interface ParsedApplications {
   applications: JobApplication[];
@@ -35,6 +39,33 @@ function isDate(value: unknown): value is string {
 
 function isDateTime(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isTimeZone(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isApplicationEvent(value: unknown): value is ApplicationEvent {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string' || value.id.trim() === '') return false;
+  if (!APPLICATION_EVENT_KINDS.includes(value.kind as ApplicationEventKind)) return false;
+  if (!isDate(value.scheduledAt)) return false;
+  if (!APPLICATION_EVENT_STATES.includes(value.state as ApplicationEventState)) return false;
+  if (!APPLICATION_EVENT_SOURCES.includes(value.source as ApplicationEventSource)) return false;
+  if (!isOptionalString(value, 'timeZone') ||
+      (value.timeZone !== undefined && !isTimeZone(value.timeZone))) return false;
+  if (String(value.scheduledAt).includes('T') &&
+      (!isValidOffsetDateTime(value.scheduledAt) || !isTimeZone(value.timeZone))) return false;
+  if (!isOptionalString(value, 'sourceEventId') || !isOptionalString(value, 'evidenceUrl') ||
+      !isOptionalString(value, 'note') || !isOptionalString(value, 'reminderAt')) return false;
+  if (value.reminderAt !== undefined && !isValidOffsetDateTime(value.reminderAt)) return false;
+  return true;
 }
 
 function isSnapshot(value: unknown): boolean {
@@ -94,6 +125,8 @@ export function isJobApplication(value: unknown): value is JobApplication {
   if (!isOptionalString(value, 'interviewAt') || !isOptionalString(value, 'briefDoneAt') ||
       !isOptionalString(value, 'debriefSentAt') || !isOptionalString(value, 'updatedAt')) return false;
   if (value.interviewAt !== undefined && !isDateTime(value.interviewAt)) return false;
+  if (value.events !== undefined &&
+      (!Array.isArray(value.events) || !value.events.every(isApplicationEvent))) return false;
   if (value.briefDoneAt !== undefined && !isDateTime(value.briefDoneAt)) return false;
   if (value.debriefSentAt !== undefined && !isDateTime(value.debriefSentAt)) return false;
   if (value.updatedAt !== undefined && !isDateTime(value.updatedAt)) return false;
