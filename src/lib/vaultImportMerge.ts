@@ -214,8 +214,8 @@ export function applyParsedCVToVault(
             ...base.personalInfo,
             ...(importedFullName ? { fullName: importedFullName } : {}),
             // Rozdzielone pola są jawne i mogą być eksportowane do Huntera.
-            // Po zmianie pełnego imienia z CV nie wolno zostawić w nich starej osoby.
-            ...(fullNameChanged ? { firstName: undefined, lastName: undefined } : {}),
+            // Po zmianie pełnego imienia z CV nie wolno zostawić części starej osoby.
+            ...(fullNameChanged ? { firstName: undefined, middleName: undefined, lastName: undefined } : {}),
             ...(parsed.personalInfo.title ? { title: parsed.personalInfo.title } : {}),
             ...(parsed.personalInfo.email ? { email: parsed.personalInfo.email } : {}),
             ...(parsed.personalInfo.phone ? { phone: parsed.personalInfo.phone } : {}),

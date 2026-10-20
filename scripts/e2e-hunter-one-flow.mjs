@@ -34,6 +34,8 @@ try {
   cpSync(extensionSource,extensionPath,{recursive:true});
   const testManifestPath=path.join(extensionPath,'manifest.json');
   const testManifest=JSON.parse(readFileSync(testManifestPath,'utf-8'));
+  const expectedHunterVersion=testManifest.version;
+  assert.equal(typeof expectedHunterVersion,'string','manifest testowanego Huntera zawiera wersję rozszerzenia');
   if (kierivoApplicationUrl) {
     const appUrl = new URL(kierivoApplicationUrl);
     if (appUrl.protocol !== 'http:' || !['localhost','127.0.0.1'].includes(appUrl.hostname)) {
@@ -252,17 +254,18 @@ try {
     await attachPopup();
     await popupCommand("document.querySelector('#connectKierivo').click()",true);
     let presenceStatus='';
+    const presenceEnabled=/Wykrywanie (?:Huntera jest )?włączone/;
     for(let i=0;i<100;i++){
       presenceStatus=(await popupCommand("document.querySelector('#kierivoPresenceStatus').textContent")).result.value;
-      if(presenceStatus.includes('Wykrywanie włączone'))break;
+      if(presenceEnabled.test(presenceStatus))break;
       await new Promise(resolve=>setTimeout(resolve,100));
     }
-    assert.ok(presenceStatus.includes('Wykrywanie włączone'),`włączono wykrywanie dla otwartej karty lokalnego Kierivo: ${presenceStatus}`);
-    await homePage.getByText(/Wykryto Hunter 1\.2\.0/).waitFor({state:'visible',timeout:10000});
+    assert.ok(presenceEnabled.test(presenceStatus),`włączono wykrywanie dla otwartej karty lokalnego Kierivo: ${presenceStatus}`);
+    await homePage.getByText(`Wykryto Hunter ${expectedHunterVersion}`).waitFor({state:'visible',timeout:10000});
     const presenceReplies=await homePage.evaluate(()=>window.__hunterPresenceReplies);
     assert.equal(presenceReplies.length>0,true,'Kierivo wykryło lokalny handshake z Hunterem');
     assert.deepEqual(Object.keys(presenceReplies.at(-1)).sort(),['extensionVersion','protocolVersion','requestId','type']);
-    assert.equal(presenceReplies.at(-1).extensionVersion,'1.2.0');
+    assert.equal(presenceReplies.at(-1).extensionVersion,expectedHunterVersion);
     await attachPopup();
   }
   const profileJson=JSON.stringify(readFileSync(profileFile,'utf-8'));
@@ -412,7 +415,7 @@ try {
     await new Promise(resolve=>setTimeout(resolve,50));
   }
   assert.equal(clearedReceipt.result.value,null,'użytkownik może jawnie usunąć receipt z bieżącej sesji');
-  console.log(JSON.stringify({installedMV3:true,extensionVersion:'1.2.0',atsHost:'jobs.ashbyhq.com',syntheticProfile:true,profileSource:profileFixturePath?'synthetic-profile-file':kierivoApplicationUrl?'actual-kierivo-export-button':'synthetic-fixture',testOnlyHostPermissionOverride:true,mobileViewportWidth:kierivoApplicationUrl?375:null,extensionHubFitsMobileViewport:Boolean(kierivoApplicationUrl),profileExportKeyboardReachable:Boolean(kierivoApplicationUrl),profileDownloadWorksOffline:Boolean(kierivoApplicationUrl),extensionUnavailableAndAuthStatesVisible:Boolean(kierivoApplicationUrl),previewRows:rowCount,verifiedFillCount:4,rolledBackCount:3,userEditedFieldPreserved:true,existingValuePreserved:true,honeypotAndHiddenSkipped:true,receiptCreatedByExplicitUserDeclaration:true,receiptContainsOnlyJobMetadata:true,applicationReceiver:kierivoApplicationUrl?'actual-kierivo-app':'synthetic-route',applicationRecordSaved:Boolean(kierivoApplicationUrl),calendarReceiptVisible:Boolean(kierivoApplicationUrl),duplicateReceiptIgnored:Boolean(kierivoApplicationUrl),receiptClearedByUser:true,submitCount:rolledBack.submits,controlCountUnchanged:true,pageRequestsDuringFillAndRollback}));
+  console.log(JSON.stringify({installedMV3:true,extensionVersion:expectedHunterVersion,atsHost:'jobs.ashbyhq.com',syntheticProfile:true,profileSource:profileFixturePath?'synthetic-profile-file':kierivoApplicationUrl?'actual-kierivo-export-button':'synthetic-fixture',testOnlyHostPermissionOverride:true,mobileViewportWidth:kierivoApplicationUrl?375:null,extensionHubFitsMobileViewport:Boolean(kierivoApplicationUrl),profileExportKeyboardReachable:Boolean(kierivoApplicationUrl),profileDownloadWorksOffline:Boolean(kierivoApplicationUrl),extensionUnavailableAndAuthStatesVisible:Boolean(kierivoApplicationUrl),previewRows:rowCount,verifiedFillCount:4,rolledBackCount:3,userEditedFieldPreserved:true,existingValuePreserved:true,honeypotAndHiddenSkipped:true,receiptCreatedByExplicitUserDeclaration:true,receiptContainsOnlyJobMetadata:true,applicationReceiver:kierivoApplicationUrl?'actual-kierivo-app':'synthetic-route',applicationRecordSaved:Boolean(kierivoApplicationUrl),calendarReceiptVisible:Boolean(kierivoApplicationUrl),duplicateReceiptIgnored:Boolean(kierivoApplicationUrl),receiptClearedByUser:true,submitCount:rolledBack.submits,controlCountUnchanged:true,pageRequestsDuringFillAndRollback}));
 } finally {
   await cdp?.detach().catch(()=>{});
   await context?.close().catch(()=>{});

@@ -256,6 +256,7 @@ describe('applyParsedCVToVault', () => {
   it('nie eksportuje starego imienia po imporcie CV z innym fullName', () => {
     const prev = createEmptyVault('Anna Kowalska', 'anna@example.pl');
     prev.personalInfo.firstName = 'Anna';
+    prev.personalInfo.middleName = 'Katarzyna';
     prev.personalInfo.lastName = 'Kowalska';
 
     const { vault } = applyParsedCVToVault(prev, {
@@ -270,6 +271,7 @@ describe('applyParsedCVToVault', () => {
 
     expect(vault.personalInfo.fullName).toBe('Maria Wiśniewska');
     expect(vault.personalInfo.firstName).toBeUndefined();
+    expect(vault.personalInfo.middleName).toBeUndefined();
     expect(vault.personalInfo.lastName).toBeUndefined();
     expect(buildHunterAutofillProfile(vault)).toEqual({
       schemaVersion: 1,
