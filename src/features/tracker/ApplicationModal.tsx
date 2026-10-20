@@ -15,7 +15,7 @@ import {
   synchronizeInterviewAt,
   upsertApplicationEvent,
 } from './applicationEvents';
-import { resolveApplicationSalary } from './applicationForm';
+import { hasUnknownReceiptSalary, resolveApplicationSalary } from './applicationForm';
 
 // Jak wyżej: definicja jest w `src/types`, tutaj zostaje tylko przepustka
 // dla modułów, które importowały ją stąd.
@@ -169,7 +169,10 @@ export const ApplicationModal: React.FC<ApplicationModalProps> = ({
       id: initialData?.id || `app-${Date.now()}`,
       company: company.trim(),
       position: position.trim(),
-      salary: resolveApplicationSalary(salary, receiptImport),
+      salary: resolveApplicationSalary(
+        salary,
+        receiptImport || hasUnknownReceiptSalary(initialData?.salary, initialData?.events),
+      ),
       date,
       status,
       jobUrl: normalizedJobUrl ?? '',

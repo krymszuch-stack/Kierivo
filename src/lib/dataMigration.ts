@@ -8,6 +8,7 @@ import { PendingCloudVaultSave } from './cloudVaultOutbox';
 import { createEmptyVault } from './sampleVault';
 import { readJson, StorageKeys, writeJson } from './storage';
 import { isValidAtsScore } from './canonicalAts';
+import { isApplicationEvent } from './applicationRecordSchema';
 
 /**
  * Aktualna wersja jednolitego schematu danych aplikacji (semantyczna wersja encji).
@@ -256,6 +257,7 @@ export function migrateApplication(raw: unknown): JobApplication | null {
       : {}),
     ...(Array.isArray(raw.missingKeywords) ? { missingKeywords: raw.missingKeywords } : {}),
     ...(interviewAt ? { interviewAt } : {}),
+    ...(Array.isArray(raw.events) ? { events: raw.events.filter(isApplicationEvent) } : {}),
     ...(typeof raw.briefDoneAt === 'string' ? { briefDoneAt: raw.briefDoneAt } : {}),
     ...(typeof raw.debriefSentAt === 'string' ? { debriefSentAt: raw.debriefSentAt } : {}),
     ...(isRecord(raw.documentSnapshot) ? { documentSnapshot: raw.documentSnapshot as any } : {}),

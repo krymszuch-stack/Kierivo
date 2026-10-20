@@ -44,6 +44,25 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       });
     });
 
+    it('zachowuje poprawne zdarzenia osi, a odrzuca wadliwe podczas migracji', () => {
+      const event = {
+        id: 'interview-1',
+        kind: 'interview',
+        scheduledAt: '2026-10-21T10:00:00.000Z',
+        timeZone: 'Europe/Warsaw',
+        state: 'confirmed',
+        source: 'user',
+        reminderAt: '2026-10-20T10:00:00.000Z',
+      };
+      const migrated = migrateApplication({
+        id: 'timeline-app', company: 'Firma', position: 'Rola', status: 'Rozmowa',
+        date: '2026-10-20', events: [event, { ...event, id: 'bad-event', scheduledAt: '2026-02-30T10:00:00Z' }],
+      });
+
+      expect(migrated?.schemaVersion).toBe(CURRENT_DATA_SCHEMA_VERSION);
+      expect(migrated?.events).toEqual([event]);
+    });
+
     it('nieznany status traktuje zachowawczo jako szkic', () => {
       const migrated = migrateApplication({
         id: 'legacy-unknown-status',

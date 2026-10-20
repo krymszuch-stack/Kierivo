@@ -51,7 +51,7 @@ function isTimeZone(value: unknown): value is string {
   }
 }
 
-function isApplicationEvent(value: unknown): value is ApplicationEvent {
+export function isApplicationEvent(value: unknown): value is ApplicationEvent {
   if (!isRecord(value)) return false;
   if (typeof value.id !== 'string' || value.id.trim() === '') return false;
   if (!APPLICATION_EVENT_KINDS.includes(value.kind as ApplicationEventKind)) return false;
