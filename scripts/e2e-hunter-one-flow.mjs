@@ -169,7 +169,7 @@ try {
     const mobileHubBounds=await exportPage.getByRole('region',{name:'Kierivo Extension'}).boundingBox();
     assert.ok(mobileHubBounds,'moduł wtyczki pozostaje widoczny na widoku mobilnym');
     assert.ok(mobileHubBounds.x>=0&&mobileHubBounds.x+mobileHubBounds.width<=375,'moduł wtyczki mieści się na widoku mobilnym');
-    await exportPage.getByText('Sparowanie i autoryzacja:',{exact:false}).waitFor({state:'visible'});
+    await exportPage.getByText('Obecność:',{exact:false}).waitFor({state:'visible'});
     await exportPage.getByText('Autofill:',{exact:false}).waitFor({state:'visible'});
     await exportPage.getByText('Pro:',{exact:false}).waitFor({state:'visible'});
     await exportPage.getByText('Telefon:',{exact:false}).waitFor({state:'visible'});
