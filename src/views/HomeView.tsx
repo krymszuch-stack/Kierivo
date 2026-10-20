@@ -33,6 +33,7 @@ import { useAnalysisClock } from '../hooks/useAnalysisClock';
 import { getHunterExtensionStoreUrl } from '../lib/hunterExtensionStore';
 import { normalizeExternalHttpUrl } from '../lib/externalHttpUrl';
 import { buildHunterAutofillProfile } from '../lib/hunterAutofillProfile';
+import { probeHunterExtension } from '../lib/hunterExtensionPresence';
 
 export type HomeViewProps = {
   /** Główne wezwanie do działania */
@@ -53,6 +54,9 @@ export function HomeView({
   const { applications } = useApplications();
   const { user } = useAuth();
   const [browserReportsOnline, setBrowserReportsOnline] = useState<boolean | null>(null);
+  const [hunterPresence, setHunterPresence] = useState<
+    { state: 'checking' } | { state: 'not-detected' } | { state: 'detected'; version: string }
+  >({ state: 'checking' });
   const now = useAnalysisClock();
   const profileId = user?.id ?? ANONYMOUS_PROFILE_ID;
 
@@ -90,6 +94,33 @@ export function HomeView({
     return () => {
       window.removeEventListener('online', updateConnectionHint);
       window.removeEventListener('offline', updateConnectionHint);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let attempt = 0;
+    const checkPresence = async () => {
+      const currentAttempt = ++attempt;
+      const result = await probeHunterExtension(window);
+      if (!active || currentAttempt !== attempt) return;
+      setHunterPresence(result.detected
+        ? { state: 'detected', version: result.version ?? 'unknown' }
+        : { state: 'not-detected' });
+    };
+    const updateWhenVisible = () => {
+      if (document.visibilityState === 'visible') void checkPresence();
+    };
+
+    void checkPresence();
+    window.addEventListener('focus', updateWhenVisible);
+    document.addEventListener('visibilitychange', updateWhenVisible);
+    const interval = window.setInterval(updateWhenVisible, 10000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', updateWhenVisible);
+      document.removeEventListener('visibilitychange', updateWhenVisible);
     };
   }, []);
 
@@ -192,8 +223,16 @@ export function HomeView({
 
           <p className="text-sm text-muted" role="status">
             {extensionStoreUrl
-              ? 'Stan instalacji i połączenia nie jest jeszcze wykrywany przez Kierivo.'
-              : 'Brak publicznego listingu w Chrome Web Store. Pobieranie nie jest dostępne, a stan instalacji nie jest wykrywany.'}
+              ? 'Listing jest dostępny. Kierivo sprawdza lokalną obecność Huntera.'
+              : 'Brak publicznego listingu w Chrome Web Store. Lokalną obecność Huntera można sprawdzić po przyznaniu dostępu.'}
+          </p>
+
+          <p className="rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm text-muted" role="status" aria-live="polite">
+            {hunterPresence.state === 'checking'
+              ? 'Sprawdzam, czy Hunter jest połączony…'
+              : hunterPresence.state === 'detected'
+                ? `Wykryto Hunter ${hunterPresence.version}. To potwierdza tylko obecność rozszerzenia; nie loguje Cię ani nie przesyła profilu.`
+                : 'Hunter nie jest wykryty. Aby połączyć lokalną instalację, otwórz popup Huntera, wybierz „Połącz z Kierivo” i zaakceptuj dostęp do domeny Kierivo.'}
           </p>
 
           {browserReportsOnline === false && (
@@ -203,7 +242,7 @@ export function HomeView({
           )}
 
           <ul className="grid gap-2 text-xs text-muted sm:grid-cols-2" aria-label="Dostępność Kierivo Extension">
-            <li><span className="font-semibold text-ink">Sparowanie i autoryzacja:</span> niedostępne; nie ma jeszcze handshake z rozszerzeniem.</li>
+            <li><span className="font-semibold text-ink">Obecność:</span> {hunterPresence.state === 'detected' ? `Hunter ${hunterPresence.version} wykryty` : hunterPresence.state === 'checking' ? 'sprawdzanie' : 'nie wykryto'}; handshake nie daje dostępu do profilu.</li>
             <li><span className="font-semibold text-ink">Autofill:</span> lokalny import profilu; pola wybierasz w Hunterze.</li>
             <li><span className="font-semibold text-ink">Pro:</span> niedostępny w Public Pre-Beta.</li>
             <li><span className="font-semibold text-ink">Telefon:</span> użyj ręcznego workflow; rozszerzenie przygotuj w desktopowej przeglądarce Chromium.</li>
