@@ -106,15 +106,63 @@ try {
     await exportPage.evaluate(async()=>{
       const {saveProfileVault}=await import('/src/lib/localProfile.ts');
       const {createEmptyVault}=await import('/src/lib/sampleVault.ts');
+      const {saveMilestones}=await import('/src/lib/uxMilestones.ts');
       const vault=createEmptyVault();
       Object.assign(vault.personalInfo,{
         firstName:'Alex Synthetic',middleName:'Middle Field Must Stay Local',lastName:'Synthetic',
         email:'synthetic@example.test',phone:'synthetic-phone',linkedin:'https://linkedin.example/disputed'
       });
+      vault.personalInfo.summary='Synthetic profile with verified JavaScript and React experience.';
       saveProfileVault('anonymous',vault);
+      saveMilestones('anonymous',{firstApplicationAt:new Date().toISOString()});
     });
     await exportPage.reload({waitUntil:'domcontentloaded'});
+    await exportPage.setViewportSize({width:1280,height:900});
+    await exportPage.getByRole('region',{name:'Kierivo Extension'}).waitFor({state:'visible',timeout:30000});
+
+    // Exercise the real URL-analysis entry point while keeping the offer fully synthetic.
+    // The application receives no request to an external ATS or job board.
+    const syntheticJobUrl='https://jobs.ashbyhq.com/synthetic-employer/synthetic-role';
+    await exportPage.route('**/api/fetch-jd-url',async route=>{
+      const requestBody=route.request().postDataJSON();
+      assert.deepEqual(requestBody,{url:syntheticJobUrl});
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+        success:true,title:'Synthetic Software Engineer',company:'Synthetic Employer',
+        descriptionRaw:'We are looking for a software engineer with JavaScript and React experience.',
+        sourceUrl:syntheticJobUrl,
+      })});
+    });
+    await exportPage.locator('nav[aria-label="Główna nawigacja"] button').filter({hasText:'Oferty'}).click();
+    await exportPage.getByRole('heading',{name:'Dopasowanie Ofert & Audyt ATS'}).waitFor({state:'visible'});
+    await exportPage.getByRole('tab',{name:'Tryb zaawansowany'}).click();
+    await exportPage.getByLabel('Adres URL Ogłoszenia Rekrutacyjnego').fill(syntheticJobUrl);
+    await exportPage.getByRole('button',{name:'Pobierz i Dopasuj Ofertę'}).click();
+    await exportPage.getByRole('heading',{name:/Dopasowanie do oferty: Synthetic Software Engineer/}).waitFor({state:'visible',timeout:30000});
+    const analyzedSourceUrl=await exportPage.evaluate(async()=>{
+      const {StorageKeys,profileDataKeyFor,readJson}=await import('/src/lib/storage.ts');
+      const {ANONYMOUS_PROFILE_ID}=await import('/src/lib/localProfile.ts');
+      return readJson(profileDataKeyFor(StorageKeys.lastJobAnalysis,ANONYMOUS_PROFILE_ID),null)?.sourceUrl ?? null;
+    });
+    assert.equal(analyzedSourceUrl,syntheticJobUrl,'real URL analysis retains the canonical source URL for HomeView');
+
+    // Reload returns to HomeView, where the saved analysis context must open its original URL
+    // and still download the local profile file.
+    await exportPage.reload({waitUntil:'domcontentloaded'});
     await exportPage.setViewportSize({width:375,height:812});
+    await context.route('https://jobs.ashbyhq.com/**',route=>route.fulfill({
+      status:200,contentType:'text/html',body:'<!doctype html><title>Synthetic analyzed offer</title><h1>Synthetic analyzed offer</h1>'
+    }));
+    const [analysisPopup,analysisDownload]=await Promise.all([
+      exportPage.waitForEvent('popup'),
+      exportPage.waitForEvent('download'),
+      exportPage.getByRole('link',{name:'Przygotuj autofill i otwórz ogłoszenie'}).click(),
+    ]).then(([popup,download])=>[popup,download]);
+    await analysisPopup.waitForLoadState('domcontentloaded').catch(()=>{});
+    assert.equal(analysisPopup.url(),syntheticJobUrl,'HomeView opens the analyzed offer URL');
+    assert.equal(analysisDownload.suggestedFilename(),'kierivo-hunter-autofill-profile.json','analysis context action also downloads the local profile');
+    await analysisPopup.close();
+    await analysisDownload.saveAs(profileFile);
+
     const mobileHubBounds=await exportPage.getByRole('region',{name:'Kierivo Extension'}).boundingBox();
     assert.ok(mobileHubBounds,'extension hub remains visible on a mobile viewport');
     assert.ok(mobileHubBounds.x>=0&&mobileHubBounds.x+mobileHubBounds.width<=375,'extension hub fits the mobile viewport');
