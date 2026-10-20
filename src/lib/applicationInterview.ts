@@ -55,7 +55,7 @@ export function normalizeApplicationInterviews(application: JobApplication): Job
   let events = [...(application.events ?? [])];
   if (application.status !== 'Odrzucona' && application.interviewAt?.includes('T') &&
       Number.isFinite(Date.parse(application.interviewAt)) && !events.some((event) =>
-        event.kind === 'interview' && event.scheduledAt === application.interviewAt)) {
+        event.kind === 'interview')) {
     events.push({
       id: `legacy-interview-${application.id}`,
       kind: 'interview',

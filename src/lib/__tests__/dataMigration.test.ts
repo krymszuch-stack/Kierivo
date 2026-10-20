@@ -11,6 +11,7 @@ import {
 } from '../dataMigration';
 import { measureVaultCompleteness } from '../vaultCompleteness';
 import { CANONICAL_ATS_SCORE_PROVENANCE } from '../../types';
+import { normalizeApplicationInterviews } from '../applicationInterview';
 import { StorageKeys, readJson, resetLastGoodCache, writeJson, vaultKeyFor, applicationsKeyFor } from '../storage';
 import { MemoryStorage } from './helpers/memoryStorage';
 
@@ -110,6 +111,22 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
 
       expect(migrated?.events).toEqual([cancelledInterview]);
       expect(migrated?.interviewAt).toBeUndefined();
+    });
+
+    it('nie odtwarza legacy interviewAt, gdy istnieje anulowane zdarzenie o innym terminie', () => {
+      const cancelledInterview = {
+        id: 'cancelled-different-date', kind: 'interview', scheduledAt: '2026-10-21T09:30:00.000Z',
+        state: 'cancelled', source: 'user',
+      } as const;
+      const normalized = normalizeApplicationInterviews({
+        schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION,
+        id: 'cancelled-different-date-app', company: 'Firma', position: 'Rola', salary: '',
+        date: '2026-10-20', status: 'Rozmowa', interviewAt: '2026-10-22T09:30:00.000Z',
+        events: [cancelledInterview],
+      });
+
+      expect(normalized.events).toEqual([cancelledInterview]);
+      expect(normalized.interviewAt).toBeUndefined();
     });
 
     it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {
