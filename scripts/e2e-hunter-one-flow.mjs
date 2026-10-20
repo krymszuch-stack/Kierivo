@@ -123,6 +123,16 @@ try {
     await exportPage.getByText('Pro:',{exact:false}).waitFor({state:'visible'});
     await exportPage.getByText('Telefon:',{exact:false}).waitFor({state:'visible'});
     await exportPage.getByRole('button',{name:'Wkrótce w Chrome Web Store'}).waitFor({state:'visible'});
+    await exportPage.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()});
+    let profileExportKeyboardReachable=false;
+    for(let i=0;i<80;i++){
+      await exportPage.keyboard.press('Tab');
+      profileExportKeyboardReachable=await exportPage.evaluate(()=>
+        document.activeElement?.tagName==='BUTTON'&&document.activeElement.textContent?.includes('Pobierz profil do Huntera')===true
+      );
+      if(profileExportKeyboardReachable)break;
+    }
+    assert.equal(profileExportKeyboardReachable,true,'local profile export is reachable with Tab on mobile viewport');
     await exportPage.context().setOffline(true);
     await exportPage.getByText('Przeglądarka zgłasza brak połączenia.',{exact:false}).waitFor({state:'visible'});
     const [download]=await Promise.all([
@@ -318,7 +328,7 @@ try {
     await new Promise(resolve=>setTimeout(resolve,50));
   }
   assert.equal(clearedReceipt.result.value,null,'user can explicitly remove the session receipt');
-  console.log(JSON.stringify({installedMV3:true,extensionVersion:'1.2.0',atsHost:'jobs.ashbyhq.com',syntheticProfile:true,profileSource:profileFixturePath?'synthetic-profile-file':kierivoApplicationUrl?'actual-kierivo-export-button':'synthetic-fixture',testOnlyHostPermissionOverride:true,mobileViewportWidth:kierivoApplicationUrl?375:null,extensionHubFitsMobileViewport:Boolean(kierivoApplicationUrl),profileDownloadWorksOffline:Boolean(kierivoApplicationUrl),extensionUnavailableAndAuthStatesVisible:Boolean(kierivoApplicationUrl),previewRows:rowCount,verifiedFillCount:4,rolledBackCount:3,userEditedFieldPreserved:true,existingValuePreserved:true,honeypotAndHiddenSkipped:true,receiptCreatedByExplicitUserDeclaration:true,receiptContainsOnlyJobMetadata:true,applicationReceiver:kierivoApplicationUrl?'actual-kierivo-app':'synthetic-route',applicationRecordSaved:Boolean(kierivoApplicationUrl),calendarReceiptVisible:Boolean(kierivoApplicationUrl),duplicateReceiptIgnored:Boolean(kierivoApplicationUrl),receiptClearedByUser:true,submitCount:rolledBack.submits,controlCountUnchanged:true,pageRequestsDuringFillAndRollback}));
+  console.log(JSON.stringify({installedMV3:true,extensionVersion:'1.2.0',atsHost:'jobs.ashbyhq.com',syntheticProfile:true,profileSource:profileFixturePath?'synthetic-profile-file':kierivoApplicationUrl?'actual-kierivo-export-button':'synthetic-fixture',testOnlyHostPermissionOverride:true,mobileViewportWidth:kierivoApplicationUrl?375:null,extensionHubFitsMobileViewport:Boolean(kierivoApplicationUrl),profileExportKeyboardReachable:Boolean(kierivoApplicationUrl),profileDownloadWorksOffline:Boolean(kierivoApplicationUrl),extensionUnavailableAndAuthStatesVisible:Boolean(kierivoApplicationUrl),previewRows:rowCount,verifiedFillCount:4,rolledBackCount:3,userEditedFieldPreserved:true,existingValuePreserved:true,honeypotAndHiddenSkipped:true,receiptCreatedByExplicitUserDeclaration:true,receiptContainsOnlyJobMetadata:true,applicationReceiver:kierivoApplicationUrl?'actual-kierivo-app':'synthetic-route',applicationRecordSaved:Boolean(kierivoApplicationUrl),calendarReceiptVisible:Boolean(kierivoApplicationUrl),duplicateReceiptIgnored:Boolean(kierivoApplicationUrl),receiptClearedByUser:true,submitCount:rolledBack.submits,controlCountUnchanged:true,pageRequestsDuringFillAndRollback}));
 } finally {
   await cdp?.detach().catch(()=>{});
   await context?.close().catch(()=>{});
