@@ -39,7 +39,7 @@ import { ApplicationProgressTile } from './ApplicationProgressTile';
 import { ApplicationCalendar } from './ApplicationCalendar';
 import {
   buildApplicationFromReceipt,
-  findSameDayReceiptCandidate,
+  findReceiptDuplicateCandidate,
   findApplicationForReceipt,
   type ApplicationReceipt,
   parseSameWindowApplicationReceipt,
@@ -158,7 +158,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
       }
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       if (!existing) {
-        const candidate = findSameDayReceiptCandidate(applications, receipt, timeZone);
+        const candidate = findReceiptDuplicateCandidate(applications, receipt);
         if (candidate) {
           setReceiptDuplicateCandidate({ receipt, application: candidate });
           return;
@@ -535,7 +535,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
         <Modal
           isOpen
           onClose={() => setReceiptDuplicateCandidate(null)}
-          title="Możliwe ponowne zgłoszenie dzisiaj"
+          title="Możliwe ponowne zgłoszenie w ciągu 24 godzin"
           description="Znaleźliśmy aplikację o tej samej firmie, roli i ofercie. Wybierz, czy dołączyć nowe potwierdzenie do istniejącej aplikacji, czy zachować osobny wpis."
           size="sm"
         >

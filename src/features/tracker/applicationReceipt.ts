@@ -80,24 +80,28 @@ function canonicalJobUrl(value: string | undefined): string | undefined {
   return url.href;
 }
 
-/** Tylko ostrzeżenie: nowy receiptId tego samego dnia nie scala aplikacji automatycznie. */
-export function findSameDayReceiptCandidate(
+/** Tylko ostrzeżenie: fingerprint oferty działa przez 24 godziny, bez automatycznego scalenia. */
+export function findReceiptDuplicateCandidate(
   applications: JobApplication[],
   receipt: ApplicationReceipt,
-  timeZone: string,
 ): JobApplication | undefined {
-  const day = dateKeyInTimeZone(receipt.submittedAt, timeZone);
-  if (!day) return undefined;
+  const submittedAt = Date.parse(receipt.submittedAt);
+  if (!Number.isFinite(submittedAt)) return undefined;
   const receiptUrl = canonicalJobUrl(receipt.jobUrl);
+  if (!receiptUrl) return undefined;
   const company = normalizeFingerprintText(receipt.company);
   const position = normalizeFingerprintText(receipt.position);
 
   return applications.find((application) => {
-    if (application.date !== day ||
-        normalizeFingerprintText(application.company) !== company ||
+    if (normalizeFingerprintText(application.company) !== company ||
         normalizeFingerprintText(application.position) !== position) return false;
     const applicationUrl = canonicalJobUrl(application.jobUrl);
-    return !receiptUrl || !applicationUrl || receiptUrl === applicationUrl;
+    if (!applicationUrl || receiptUrl !== applicationUrl) return false;
+    return (application.events ?? []).some((event) => {
+      if (event.kind !== 'application_sent') return false;
+      const previousSubmission = Date.parse(event.scheduledAt);
+      return Number.isFinite(previousSubmission) && Math.abs(submittedAt - previousSubmission) <= 24 * 60 * 60 * 1000;
+    });
   });
 }
 

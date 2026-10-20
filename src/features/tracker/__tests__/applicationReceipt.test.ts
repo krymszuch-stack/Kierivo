@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { JobApplication } from '../../../types';
+import type { ApplicationEvent, JobApplication } from '../../../types';
 import {
   buildApplicationFromReceipt,
-  findSameDayReceiptCandidate,
+  findReceiptDuplicateCandidate,
   findApplicationForReceipt,
   HUNTER_APPLICATION_RECEIPT_MESSAGE,
   parseApplicationReceiptMessage,
@@ -86,15 +86,23 @@ describe('potwierdzenie wysłania z Kierivo Hunter', () => {
     expect(retried.status).toBe('Rozmowa');
   });
 
-  it('wykrywa możliwe ponowne zgłoszenie tego samego dnia, ale ignoruje różny URL lub dzień', () => {
+  it('ostrzega przez 24 godziny dla tej samej oferty, ale bez zgadywania przy braku czasu', () => {
     const receipt = parseApplicationReceiptMessage(message)!;
+    const previousSubmission: ApplicationEvent = {
+      id: 'sent-1', kind: 'application_sent', scheduledAt: '2026-10-19T10:45:00.000Z',
+      state: 'confirmed', source: 'user',
+    };
     const existing: JobApplication = {
       id: 'manual-1', company: 'FIRMA TESTOWA', position: 'Inżynier', salary: '',
-      date: '2026-10-20', status: 'Wysłana', jobUrl: 'https://jobs.example.test/role/123?utm_source=mail',
+      date: '2026-10-19', status: 'Wysłana', jobUrl: 'https://jobs.example.test/role/123?utm_source=mail',
+      events: [previousSubmission],
     };
 
-    expect(findSameDayReceiptCandidate([existing], receipt, 'UTC')).toBe(existing);
-    expect(findSameDayReceiptCandidate([{ ...existing, date: '2026-10-19' }], receipt, 'UTC')).toBeUndefined();
-    expect(findSameDayReceiptCandidate([{ ...existing, jobUrl: 'https://jobs.example.test/role/456' }], receipt, 'UTC')).toBeUndefined();
+    expect(findReceiptDuplicateCandidate([existing], receipt)).toBe(existing);
+    expect(findReceiptDuplicateCandidate([{ ...existing, events: [{ ...previousSubmission, scheduledAt: '2026-10-19T10:15:00.000Z' }] }], receipt))
+      .toBeDefined();
+    expect(findReceiptDuplicateCandidate([{ ...existing, events: [{ ...previousSubmission, scheduledAt: '2026-10-19T10:14:00.000Z' }] }], receipt)).toBeUndefined();
+    expect(findReceiptDuplicateCandidate([{ ...existing, events: undefined }], receipt)).toBeUndefined();
+    expect(findReceiptDuplicateCandidate([{ ...existing, jobUrl: 'https://jobs.example.test/role/456' }], receipt)).toBeUndefined();
   });
 });
