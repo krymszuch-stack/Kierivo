@@ -240,13 +240,14 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       ];
       const migrated = migrateApplication({
         id: 'timeline-round-trip', company: 'Firma', position: 'Rola', status: 'Rozmowa',
-        date: '2026-10-20', events,
+        date: '2026-10-20', events, customFutureField: 'xyz',
       });
 
       const afterRestart = migrateApplication(JSON.parse(JSON.stringify(migrated)));
 
       expect(migrated?.events).toEqual(events);
       expect(afterRestart?.events).toEqual(events);
+      expect((afterRestart as unknown as Record<string, unknown>)?.customFutureField).toBe('xyz');
       expect(afterRestart?.interviewAt).toBe('2026-10-22T10:00:00.000Z');
     });
 
