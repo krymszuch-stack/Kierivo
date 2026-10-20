@@ -4,7 +4,7 @@ import { getHunterExtensionStoreUrl } from '../hunterExtensionStore';
 const listingUrl = 'https://chromewebstore.google.com/detail/kierivo-extension/abcdefghijklmnopabcdefghijklmnop';
 
 describe('getHunterExtensionStoreUrl', () => {
-  it('returns a valid Chrome Web Store listing URL', () => {
+  it('zwraca prawidłowy adres listingu Chrome Web Store', () => {
     expect(getHunterExtensionStoreUrl(listingUrl)).toBe(listingUrl);
   });
 
@@ -16,7 +16,7 @@ describe('getHunterExtensionStoreUrl', () => {
     'https://chromewebstore.google.com/detail/kierivo/not-an-extension-id',
     'https://chromewebstore.google.com.evil.example/detail/kierivo/abcdefghijklmnopabcdefghijklmnop',
     `${listingUrl}?tracking=1`,
-  ])('rejects an unavailable or non-canonical listing: %s', (value) => {
+  ])('odrzuca niedostępny lub niekanoniczny listing: %s', (value) => {
     expect(getHunterExtensionStoreUrl(value)).toBeNull();
   });
 });
