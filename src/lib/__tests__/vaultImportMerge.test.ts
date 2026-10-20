@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mergeImportedVault, mergeUnique, applyParsedCVToVault } from '../vaultImportMerge';
 import { createEmptyVault } from '../sampleVault';
 import { MasterVault, WorkExperience, Education, Project } from '../../types';
+import { buildHunterAutofillProfile } from '../hunterAutofillProfile';
 
 function experience(id: string, company: string, role: string): WorkExperience {
   return {
@@ -250,6 +251,30 @@ describe('applyParsedCVToVault', () => {
     expect(vault.education).toHaveLength(2);
     expect(added.history).toBe(1);
     expect(added.education).toBe(1);
+  });
+
+  it('nie eksportuje starego imienia po imporcie CV z innym fullName', () => {
+    const prev = createEmptyVault('Anna Kowalska', 'anna@example.pl');
+    prev.personalInfo.firstName = 'Anna';
+    prev.personalInfo.lastName = 'Kowalska';
+
+    const { vault } = applyParsedCVToVault(prev, {
+      ...parsedMock,
+      personalInfo: { ...parsedMock.personalInfo, fullName: 'Maria Wiśniewska' },
+    } as any, {
+      personal: 'replace',
+      skills: 'keep',
+      experience: 'keep',
+      education: 'keep',
+    });
+
+    expect(vault.personalInfo.fullName).toBe('Maria Wiśniewska');
+    expect(vault.personalInfo.firstName).toBeUndefined();
+    expect(vault.personalInfo.lastName).toBeUndefined();
+    expect(buildHunterAutofillProfile(vault)).toEqual({
+      schemaVersion: 1,
+      fields: { email: 'jan@monter.pl' },
+    });
   });
 });
 
