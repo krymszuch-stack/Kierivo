@@ -66,7 +66,9 @@ export function normalizeApplicationInterviews(application: JobApplication): Job
     });
   }
   if (application.status === 'Odrzucona') {
-    events = events.map((event) => event.kind === 'interview' && event.state !== 'cancelled'
+    const now = Date.now();
+    events = events.map((event) => event.kind === 'interview' && event.state !== 'cancelled' &&
+      Date.parse(event.scheduledAt) >= now
       ? { ...event, state: 'cancelled' as const }
       : event);
   }

@@ -26,6 +26,20 @@ describe('zdarzenia procesu aplikacji', () => {
     expect(upsertApplicationEvent([event], incoming)).toEqual([{ ...incoming, id: event.id }]);
   });
 
+  it('zachowuje user_declared przy edycji zdarzenia z Huntera', () => {
+    const declared: ApplicationEvent = {
+      ...event,
+      id: 'receipt-1',
+      kind: 'application_sent',
+      verificationStatus: 'user_declared',
+    };
+    const edited = { ...declared, note: 'Potwierdzenie zapisane' };
+    delete (edited as Partial<ApplicationEvent>).verificationStatus;
+
+    expect(upsertApplicationEvent([declared], edited as ApplicationEvent)[0].verificationStatus)
+      .toBe('user_declared');
+  });
+
   it('nie łączy identyfikatorów z różnych źródeł', () => {
     const incoming = { ...event, id: 'event-page', source: 'page' as const };
 

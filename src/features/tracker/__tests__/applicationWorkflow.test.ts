@@ -38,14 +38,14 @@ describe('Application Tracker - Cykl życia i powiązania modułu aplikacji', ()
     const updatedApp: JobApplication = {
       ...stored[0],
       status: 'Rozmowa',
-      interviewAt: '2026-10-05T10:00:00.000Z',
+      interviewAt: new Date(Date.now() - 86_400_000).toISOString(),
     };
     saveApplicationsFor(profileId, [updatedApp]);
     stored = loadApplicationsFor(profileId);
     expect(stored[0].status).toBe('Rozmowa');
-    expect(stored[0].interviewAt).toBe('2026-10-05T10:00:00.000Z');
+    expect(stored[0].interviewAt).toBe(updatedApp.interviewAt);
 
-    // Reguła biznesowa withStatusRules: zmiana na Odrzucona automatycznie czyści interviewAt
+    // Odrzucenie kończy przyszłe terminy, ale zachowuje historię odbytych rozmów.
     const rejectedApp: JobApplication = {
       ...stored[0],
       status: 'Odrzucona',
@@ -53,8 +53,8 @@ describe('Application Tracker - Cykl życia i powiązania modułu aplikacji', ()
     saveApplicationsFor(profileId, [rejectedApp]);
     stored = loadApplicationsFor(profileId);
     expect(stored[0].status).toBe('Odrzucona');
-    expect(stored[0].interviewAt).toBeUndefined();
-    expect(stored[0].events?.[0]).toMatchObject({ kind: 'interview', state: 'cancelled' });
+    expect(stored[0].interviewAt).toBe(rejectedApp.interviewAt);
+    expect(stored[0].events?.[0]).toMatchObject({ kind: 'interview', state: 'confirmed' });
   });
 
   it('liczy wylacznie udzial aplikacji w aktualnych statusach rozmowy lub oferty', () => {

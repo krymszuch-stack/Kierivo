@@ -257,8 +257,9 @@ export function migrateApplication(raw: unknown): JobApplication | null {
   const legacyInterviewAt = typeof raw.interviewAt === 'string' && isValidOffsetDateTime(raw.interviewAt)
     ? raw.interviewAt
     : undefined;
+  const migrationNow = Date.now();
   const events = validEvents.map((event) => status === 'Odrzucona' &&
-    event.kind === 'interview' && event.state !== 'cancelled'
+    event.kind === 'interview' && event.state !== 'cancelled' && Date.parse(event.scheduledAt) >= migrationNow
     ? { ...event, state: 'cancelled' as const }
     : event);
   // Obecność dowolnej rozmowy w osi jest rozstrzygająca: odwołanego
@@ -312,6 +313,19 @@ export function migrateApplication(raw: unknown): JobApplication | null {
 export function migrateApplications(raw: unknown): JobApplication[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(migrateApplication).filter((a): a is JobApplication => Boolean(a));
+}
+
+/** Zachowuje nieprzetwarzalne rekordy obok aplikacji udanych w migracji. */
+function migrateApplicationRecordsForStorage(raw: unknown[]): { records: unknown[]; migratedCount: number } {
+  let migratedCount = 0;
+  const records = raw.map((record) => {
+    if (isRecord(record) && record.schemaVersion === CURRENT_APPLICATION_SCHEMA_VERSION) return record;
+    const migrated = migrateApplication(record);
+    if (!migrated) return record;
+    migratedCount++;
+    return migrated;
+  });
+  return { records, migratedCount };
 }
 
 /**
@@ -394,9 +408,9 @@ export function migrateAllStorageAtStartup(): MigrationReport {
     // Stary klucz wspólny cvelocity:applications
     const legacyApps = readJson<unknown>(StorageKeys.applications, null);
     if (Array.isArray(legacyApps) && legacyApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
-      const migrated = migrateApplications(legacyApps);
-      writeJson(StorageKeys.applications, migrated);
-      report.applicationsMigrated += migrated.length;
+      const migrated = migrateApplicationRecordsForStorage(legacyApps);
+      writeJson(StorageKeys.applications, migrated.records);
+      report.applicationsMigrated += migrated.migratedCount;
     }
 
     // Klucze per-profil cvelocity:applications:*
@@ -412,9 +426,9 @@ export function migrateAllStorageAtStartup(): MigrationReport {
     for (const key of appsKeys) {
       const rawApps = readJson<unknown>(key, null);
       if (Array.isArray(rawApps) && rawApps.some((a) => !isRecord(a) || a.schemaVersion !== CURRENT_APPLICATION_SCHEMA_VERSION)) {
-        const migrated = migrateApplications(rawApps);
-        writeJson(key, migrated);
-        report.applicationsMigrated += migrated.length;
+        const migrated = migrateApplicationRecordsForStorage(rawApps);
+        writeJson(key, migrated.records);
+        report.applicationsMigrated += migrated.migratedCount;
       }
     }
   } catch (err) {

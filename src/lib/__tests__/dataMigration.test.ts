@@ -129,6 +129,26 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(normalized.interviewAt).toBeUndefined();
     });
 
+    it('zachowuje rozmowy przeszłe po odrzuceniu aplikacji i odwołuje tylko przyszłe', () => {
+      const pastAt = new Date(Date.now() - 86_400_000).toISOString();
+      const futureAt = new Date(Date.now() + 86_400_000).toISOString();
+      const pastInterview = {
+        id: 'past-interview', kind: 'interview', scheduledAt: pastAt,
+        state: 'confirmed', source: 'user',
+      } as const;
+      const futureInterview = {
+        id: 'future-interview', kind: 'interview', scheduledAt: futureAt,
+        state: 'confirmed', source: 'user',
+      } as const;
+      const migrated = migrateApplication({
+        id: 'rejected-history', company: 'Firma', position: 'Rola', status: 'Odrzucona',
+        date: '2026-10-10', events: [pastInterview, futureInterview],
+      });
+
+      expect(migrated?.events).toEqual([pastInterview, { ...futureInterview, state: 'cancelled' }]);
+      expect(migrated?.interviewAt).toBe(pastInterview.scheduledAt);
+    });
+
     it('ponownie migruje schema-v1 aplikacje z wadliwymi zdarzeniami do kwarantanny', () => {
       const validEvent = {
         id: 'v1-valid', kind: 'interview', scheduledAt: '2026-10-21T10:00:00.000Z',
@@ -147,6 +167,22 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
       expect(migrated.schemaVersion).toBe(CURRENT_APPLICATION_SCHEMA_VERSION);
       expect(migrated.events).toEqual([validEvent]);
       expect(migrated.migrationQuarantine).toEqual([{ ...validEvent, id: 'broken', scheduledAt: '2026-02-30T10:00:00.000Z' }]);
+    });
+
+    it('zachowuje nieprzetwarzalne rekordy przy migracji kolekcji aplikacji', () => {
+      const legacyRecords = [
+        { schemaVersion: 1, id: 'migratable', company: 'Firma', position: 'Rola', date: '2026-10-20', status: 'Applied' },
+        { legacyPayload: ['pozostaw', 'bez', 'zmian'] },
+      ];
+      writeJson(applicationsKeyFor('rejected-records'), legacyRecords);
+
+      const report = migrateAllStorageAtStartup();
+      const persisted = readJson<unknown[]>(applicationsKeyFor('rejected-records'), []);
+
+      expect(report.applicationsMigrated).toBeGreaterThanOrEqual(1);
+      expect(persisted).toHaveLength(2);
+      expect(persisted[0]).toMatchObject({ schemaVersion: CURRENT_APPLICATION_SCHEMA_VERSION, id: 'migratable' });
+      expect(persisted[1]).toEqual(legacyRecords[1]);
     });
 
     it('zachowuje oś czasu po migracji, serializacji i ponownym odczycie', () => {
