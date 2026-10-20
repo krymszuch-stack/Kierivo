@@ -332,10 +332,12 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       }
 
       const parsed = await parseScrapedJob(fetched.descriptionRaw, consentToAiProcessing);
-      const job = buildJobOfferFromScraped({ url, fetched, parsed });
+      const resolvedSourceUrl = normalizeExternalHttpUrl(fetched.sourceUrl) ??
+        normalizeExternalHttpUrl(url) ?? url;
+      const job = buildJobOfferFromScraped({ url: resolvedSourceUrl, fetched, parsed });
 
       // Ogłoszenie zostało rozpoznane — wysyłka jest anonimowa i „best effort"
-      contributeJobIntel({ ...parsed, sourceUrl: url });
+      contributeJobIntel({ ...parsed, sourceUrl: resolvedSourceUrl });
       setParsedJd(parsed);
 
       handleMatchJob(job);

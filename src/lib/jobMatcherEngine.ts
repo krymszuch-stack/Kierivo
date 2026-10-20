@@ -26,6 +26,7 @@ import { preprocessJobOfferPaste, type JobOfferPreparation } from './jobOfferPre
 import { hasLimitedMatchEvidence } from './matchInterpretation';
 import { measureVaultCompleteness } from './vaultCompleteness';
 import { extractExplicitJobLocation } from './jobOfferMetadata';
+import { normalizeExternalHttpUrl } from './externalHttpUrl';
 
 /** Źródłowy znacznik dla lokalnych, jawnie syntetycznych kart szybkiego startu. */
 export const SYNTHETIC_JOB_OFFER_PORTAL = 'Przykładowe ogłoszenie';
@@ -149,6 +150,7 @@ export function buildJobOfferFromScraped({
   parsed,
 }: BuildScrapedJobOfferParams): JobOffer {
   const fromPortal = fetched.extraction?.structured === true;
+  const sourceUrl = normalizeExternalHttpUrl(fetched.sourceUrl) ?? normalizeExternalHttpUrl(url);
 
   return {
     id: `url-${Date.now()}`,
@@ -165,7 +167,7 @@ export function buildJobOfferFromScraped({
       : (fetched.skills ?? []),
     remote: fetched.remote ?? remoteFlagForWorkModel(parsed.workModel),
     portal: 'URL',
-    url,
+    ...(sourceUrl ? { url: sourceUrl } : {}),
     techStack: parsed.toolsAndTech?.length ? parsed.toolsAndTech : (fetched.skills ?? []),
     parsedJd: parsed,
   };
