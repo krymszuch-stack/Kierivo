@@ -7,32 +7,13 @@ wdrożenia oraz blokery w Linearze. Przed utworzeniem zadania sprawdza istnieją
 issues; status Done ustawia dopiero po potwierdzeniu kryteriów zadania.
 Szczegóły: [docs/agents/linear.md](./docs/agents/linear.md).
 
-Plik dla **każdego** agenta pracującego nad tym repozytorium: Jules (Google),
-Claude Code i dowolnego innego. Opisuje realia projektu, reguły wyprowadzone
-z jego historii oraz to, co wolno delegować, a czego nie.
+Te zasady obowiązują wszystkich agentów pracujących nad repo (Jules, Claude Code, Antigravity). Opisują pracę z kodem Kierivo. Wizję produktu opisują `docs/SYSTEM_ARCHITECTURE_GUIDANCE.md` i `README.md`, a model zagrożeń — `SECURITY.md`.
 
-Każda reguła powstała po tym, jak jej brak kosztował realny błąd, i wskazuje
-miejsce w kodzie, gdzie ten błąd jest opisany. Odwołanie jest istotne — pozwala
-sprawdzić, że reguła nie została wymyślona.
+Reguły wynikają z konkretnych błędów i prowadzą do kodu lub `docs/historia/`. Archiwum jest historyczne i nie opisuje bieżącego stanu.
 
-Wizję produktu opisują `docs/SYSTEM_ARCHITECTURE_GUIDANCE.md` i `README.md`, model
-zagrożeń `SECURITY.md`. Tutaj jest wyłącznie to, jak pisać kod, żeby pasował.
+Przed zmianą zajrzyj do `docs/NOTATKI.md` w zakresie zadania; to bieżące spostrzeżenia właściciela, nie dodatkowe reguły.
 
-Bieżące obserwacje właściciela repo — rzeczy zauważone, ale jeszcze nie
-naprawione — są w [`NOTATKI.md`](./docs/NOTATKI.md). Przejrzyj je przed zmianą
-w obszarze, którego dotyczą; to kanał na spostrzeżenia, nie na reguły.
-
-Incydenty, z których wyprowadzono reguły poniżej, są opisane w archiwum
-[`docs/historia/`](./docs/historia/). Dokumenty pochodzą sprzed przebudowy
-projektu i nie opisują stanu bieżącego — służą wyłącznie do sprawdzenia,
-skąd wzięła się dana reguła.
-
-Ten plik jest kontraktem dla obu agentów: Claude Code trafia tu przez
-`CLAUDE.md`, Antigravity czyta go natywnie. Antigravity dostaje dodatkowo reguły
-per-obszar w [`.agents/rules/`](./.agents/rules/) — one nie powtarzają treści
-stąd, tylko wskazują właściwą sekcję i dokładają pułapkę specyficzną dla danego
-katalogu. **Limit Antigravity to 12 000 znaków na plik reguł**, więc ten plik
-i katalog `.agents/` pilnuje `scripts/sprawdz-limity-regul.mjs` w CI.
+Ten plik jest wspólnym kontraktem. Claude Code czyta go przez `CLAUDE.md`, Antigravity natywnie. Antigravity ma też wskazówki per obszar w `.agents/rules/`; nie duplikują zasad. Limit plików reguł Antigravity 12 000 znaków egzekwuje `scripts/sprawdz-limity-regul.mjs`.
 
 ## Codex — oszczędny kontekst i przekazywanie pracy
 
