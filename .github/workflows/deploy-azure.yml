@@ -20,7 +20,8 @@ jobs:
   deploy:
     needs: release-gate
     if: github.ref == 'refs/heads/main' && needs.release-gate.result == 'success'
-    runs-on: ubuntu-latest
+    # Playwright 1.58 nie instaluje Chromium na Ubuntu 26.04; trzymaj ten job na wspieranej LTS.
+    runs-on: ubuntu-24.04
     environment: production
 
     steps:
