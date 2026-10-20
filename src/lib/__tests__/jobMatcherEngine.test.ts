@@ -179,8 +179,8 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     };
 
     const job = buildJobOfferFromScraped({
-      url: 'https://example.com/job/123',
-      fetched: fetchedStructured,
+      url: 'https://redirect.example/temporary',
+      fetched: { ...fetchedStructured, sourceUrl: 'https://example.com/job/123' },
       parsed: parsedAi,
     });
 
@@ -191,6 +191,7 @@ describe('jobMatcherEngine - czysta warstwa domenowa dopasowania', () => {
     expect(job.salary).toBe('20 000 PLN');
     expect(job.requirements).toEqual(['Python']);
     expect(job.portal).toBe('URL');
+    expect(job.url).toBe('https://example.com/job/123');
 
     const descriptionRaw = 'Technik serwisu\nRequirements\nMiejsce pracy: Warszawa\nWymagania\nSEP G1';
     const unstructuredJob = buildJobOfferFromScraped({

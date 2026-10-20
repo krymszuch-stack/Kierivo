@@ -154,6 +154,28 @@ describe('dataMigration - Jednolity, wersjonowany schemat danych', () => {
   });
 
   describe('migrateVault', () => {
+    it('zachowuje jawnie podzielone imię i nazwisko bez zgadywania ich z fullName', () => {
+      const explicit = migrateVault({
+        version: '1.0',
+        personalInfo: {
+          fullName: 'Ada Maria Nowak',
+          firstName: 'Ada',
+          middleName: 'Maria',
+          lastName: 'Nowak',
+        },
+      });
+      const unsplit = migrateVault({
+        version: '1.0',
+        personalInfo: { fullName: 'Jan Kowalski' },
+      });
+
+      expect(explicit.personalInfo).toMatchObject({
+        fullName: 'Ada Maria Nowak', firstName: 'Ada', middleName: 'Maria', lastName: 'Nowak',
+      });
+      expect(unsplit.personalInfo.firstName).toBeUndefined();
+      expect(unsplit.personalInfo.lastName).toBeUndefined();
+    });
+
     it('zachowuje ręcznie wpisaną klauzulę CV podczas migracji Vaultu', () => {
       const migrated = migrateVault({
         version: '1.0',

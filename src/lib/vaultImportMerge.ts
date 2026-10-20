@@ -200,6 +200,11 @@ export function applyParsedCVToVault(
         )
       : [];
 
+  const importedFullName = parsed.personalInfo.fullName?.trim();
+  const fullNameChanged = Boolean(
+    importedFullName && importedFullName !== base.personalInfo?.fullName?.trim()
+  );
+
   const vault: MasterVault = {
     ...base,
     personalInfo:
@@ -207,7 +212,12 @@ export function applyParsedCVToVault(
         ? base.personalInfo
         : {
             ...base.personalInfo,
-            ...(parsed.personalInfo.fullName ? { fullName: parsed.personalInfo.fullName } : {}),
+            ...(importedFullName ? { fullName: importedFullName } : {}),
+            // Rozdzielone pola są jawne i mogą być eksportowane do Huntera.
+            // Po zmianie pełnego imienia z CV nie wolno zostawić części starej osoby.
+            ...(fullNameChanged ? { firstName: undefined, middleName: undefined, lastName: undefined } : {}),
+            // Przy zastąpieniu CV nie dziedzicz kontaktów poprzedniej osoby.
+            ...(fullNameChanged ? { email: '', phone: '' } : {}),
             ...(parsed.personalInfo.title ? { title: parsed.personalInfo.title } : {}),
             ...(parsed.personalInfo.email ? { email: parsed.personalInfo.email } : {}),
             ...(parsed.personalInfo.phone ? { phone: parsed.personalInfo.phone } : {}),

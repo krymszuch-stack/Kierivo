@@ -26,6 +26,12 @@ describe('bezpieczny odczyt ostatniej analizy z profilu', () => {
     expect(readLastJobAnalysis({ ...validSummary, score: '68' })).toEqual({ state: 'invalid' });
   });
 
+  it('zachowuje źródłowy adres ogłoszenia, ale nie dopuszcza błędnego typu pola', () => {
+    const value = { ...validSummary, sourceUrl: 'https://example.com/jobs/role-1' };
+    expect(readLastJobAnalysis(value)).toEqual({ state: 'valid', value });
+    expect(readLastJobAnalysis({ ...validSummary, sourceUrl: 12 })).toEqual({ state: 'invalid' });
+  });
+
   it('zachowuje starszą i nieznaną wersję reguł bez podstawiania bieżącej', () => {
     for (const atsScoreProvenance of ['canonical-v1', 'nieznany-silnik']) {
       const value = { ...validSummary, atsScoreProvenance };

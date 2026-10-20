@@ -63,6 +63,7 @@ import { useAnalysisClock } from '../../hooks/useAnalysisClock';
 import { getCalculationTimeFreshness } from '../../lib/analysisPeriod';
 import { AnalysisTimeNotice } from '../../components/ui/AnalysisTimeNotice';
 import { measureVaultCompleteness } from '../../lib/vaultCompleteness';
+import { normalizeExternalHttpUrl } from '../../lib/externalHttpUrl';
 
 interface JobPreset {
   id: string;
@@ -223,9 +224,11 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
         measureVaultCompleteness(sourceVault).percent,
         hasCareerEvidence(sourceVault)
       );
+      const sourceUrl = normalizeExternalHttpUrl(job.url) ?? normalizeExternalHttpUrl(job.parsedJd?.sourceUrl);
       const lastSummary: LastJobAnalysisSummary = {
         position: job.title?.trim() || 'Oferta bez podanego stanowiska',
         company: job.company?.trim() || '',
+        ...(sourceUrl ? { sourceUrl } : {}),
         ...(matchResult.canonicalResult?.state === 'SCORABLE' && matchResult.canonicalResult.score !== null
           ? { score: matchResult.canonicalResult.score }
           : {}),
@@ -329,10 +332,12 @@ export const JobMatcher: React.FC<JobMatcherProps> = ({
       }
 
       const parsed = await parseScrapedJob(fetched.descriptionRaw, consentToAiProcessing);
-      const job = buildJobOfferFromScraped({ url, fetched, parsed });
+      const resolvedSourceUrl = normalizeExternalHttpUrl(fetched.sourceUrl) ??
+        normalizeExternalHttpUrl(url) ?? url;
+      const job = buildJobOfferFromScraped({ url: resolvedSourceUrl, fetched, parsed });
 
       // Ogłoszenie zostało rozpoznane — wysyłka jest anonimowa i „best effort"
-      contributeJobIntel({ ...parsed, sourceUrl: url });
+      contributeJobIntel({ ...parsed, sourceUrl: resolvedSourceUrl });
       setParsedJd(parsed);
 
       handleMatchJob(job);

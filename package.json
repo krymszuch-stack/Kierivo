@@ -15,6 +15,7 @@
     "lint": "eslint . && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/e2e-doradca.mjs",
+    "test:e2e:one-flow": "node scripts/e2e-hunter-one-flow.mjs",
     "test:e2e:quick": "node scripts/e2e-quick-onboarding.mjs",
     "test:e2e:suggestion-undo": "node scripts/e2e-suggestion-undo.mjs",
     "test:e2e:cv-copy-parity": "node scripts/e2e-cv-copy-parity.mjs",
