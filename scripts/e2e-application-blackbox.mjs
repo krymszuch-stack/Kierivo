@@ -24,7 +24,7 @@ try {
   const producer=await promisify(execFile)(process.execPath,['scripts/test-autofill-installed.mjs'],{cwd:hunter,
     env:{...process.env,HUNTER_BLACKBOX_ONLY:'1',HUNTER_BLACKBOX_EXPORT_DIR:temp},maxBuffer:2*1024*1024,timeout:180000});
   const producerReport=JSON.parse(producer.stdout.split('\n').find(line=>line.startsWith('ADR163_BLACKBOX ')).slice('ADR163_BLACKBOX '.length));
-  assert.equal(producerReport.installedMV3,true);assert.equal(producerReport.twoSyntheticForms,true);
+  assert.equal(producerReport.installedMV3,true);assert.equal(producerReport.twoSyntheticForms,true);assert.equal(producerReport.bothFormsNextBack,true);
   assert.equal(producerReport.explicitUserSubmitBeforeReceipt,true);
   const files=['react-snapshot.json','react-pair.json','native-snapshot.json','native-pair.json'];
   const exports=Object.fromEntries(files.map(file=>[file,JSON.parse(readFileSync(path.join(temp,file),'utf8'))]));
@@ -95,7 +95,7 @@ try {
   await legacyReview.getByRole('button',{name:/Zapisz/}).last().click();await legacyReview.waitFor({state:'hidden'});
   await importFile('native-pair.json');await importFile('native-pair.json');saved=await records();assert.equal(saved.length,2);
   const native=saved.find(app=>app.applicationBlackbox?.snapshot.attemptId===exports['native-pair.json'].snapshot.attemptId);
-  assert.equal(native.events.length,1);assert.equal(native.applicationBlackbox.snapshot.answers.length,3);
+  assert.equal(native.events.length,1);assert.equal(native.applicationBlackbox.snapshot.answers.length,4);
   // Osobny profil nie może odczytać historii A; ponowne wznowienie A ją zachowuje.
   const profileB=await page.evaluate(async()=> (await (await import('/src/lib/localProfile.ts')).createLocalProfile('Synthetic Blackbox B')).profile.id);
   await page.reload();await pipeline();assert.equal(await panel.getByRole('button',{name:/Blackbox:/}).count(),0);
