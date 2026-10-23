@@ -623,6 +623,7 @@ function MainApp() {
             {/* PIPELINE — wysłane aplikacje i kontekstowy Zasobnik Rozmowy */}
             {activeTab === 'pipeline' && (
               <ApplicationTracker
+                key={currentProfileId}
                 vault={vault}
                 interviewToolboxUnlocked={unlocks.interviewToolbox}
                 showShortcutsHint={unlocks.showShortcutsHint}

@@ -83,6 +83,21 @@ export function saveApplicationsFor(profileId: string, next: JobApplication[]): 
   listeners.forEach((notify) => notify());
 }
 
+/** Blackbox potwierdza sukces dopiero po trwałym zapisie, przed publikacją cache. */
+export async function saveApplicationDurablyFor(profileId: string, application: JobApplication): Promise<boolean> {
+  if (!profileId || profileId === ANONYMOUS_PROFILE_ID || !parseApplications([application]).applications.length) return false;
+  const key = applicationsKeyFor(profileId);
+  const current = currentApplications(profileId);
+  const next = [withStatusRules(application), ...current.filter(entry => entry.id !== application.id)];
+  const rejected = rejectedByKey.get(key) ?? [];
+  if (!await writeJsonDurably(key,[...next,...rejected])) return false;
+  // Usunięcie danych lub inny zapis w czasie await unieważnia stary wynik.
+  if (cachedApplications.get(profileId) !== current) return false;
+  cachedApplications.set(profileId,next);
+  listeners.forEach(notify => notify());
+  return true;
+}
+
 /** Przypisuje starą, wspólną historię tylko po wyraźnym działaniu użytkownika. */
 export async function claimLegacyApplicationsFor(profileId: string): Promise<number> {
   if (!profileId || profileId === ANONYMOUS_PROFILE_ID) return 0;

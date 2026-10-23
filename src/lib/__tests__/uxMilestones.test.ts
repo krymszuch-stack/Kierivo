@@ -29,7 +29,7 @@ function application(overrides: Partial<JobApplication> = {}): JobApplication {
 
 describe('Progresywne odblokowania', () => {
   describe('poziom 1 — nowy użytkownik', () => {
-    it('daje dostęp tylko do profilu i aplikowania', () => {
+    it('udostępnia przygotowanie i pustą listę z importem pierwszej aplikacji', () => {
       const unlocks = deriveUnlocks({});
 
       expect(unlocks.level).toBe(1);
@@ -38,7 +38,7 @@ describe('Progresywne odblokowania', () => {
         aplikuj: true,
         cv: true,
         trenuj: false,
-        pipeline: false,
+        pipeline: true,
       });
     });
 
@@ -46,7 +46,7 @@ describe('Progresywne odblokowania', () => {
       const unlocks = deriveUnlocks({});
 
       expect(unlocks.reasons.trenuj).toMatch(/liście aplikacji/);
-      expect(unlocks.reasons.pipeline).toMatch(/Aplikuj/);
+      expect(unlocks.reasons.pipeline).toBeUndefined();
     });
 
     it('nie pokazuje skrótów klawiszowych', () => {

@@ -1,3 +1,4 @@
+import { isApplicationBlackbox } from '../features/tracker/applicationBlackbox';
 import type { ApplicationEvent, ApplicationEventKind, ApplicationEventSource, ApplicationEventState, ApplicationStatus, JobApplication } from '../types';
 import { isAtsScoreProvenance } from './atsScoreProvenance';
 import { isValidOffsetDateTime } from './isoDateTime';
@@ -134,6 +135,7 @@ export function isJobApplication(value: unknown): value is JobApplication {
   if (value.debriefSentAt !== undefined && !isDateTime(value.debriefSentAt)) return false;
   if (value.updatedAt !== undefined && !isDateTime(value.updatedAt)) return false;
   if (value.documentSnapshot !== undefined && !isSnapshot(value.documentSnapshot)) return false;
+  if (value.applicationBlackbox !== undefined && !isApplicationBlackbox(value.applicationBlackbox)) return false;
   return true;
 }
 
