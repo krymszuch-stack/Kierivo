@@ -126,7 +126,8 @@ export function deriveUnlocks(milestones: UxMilestones): UnlockState {
     aplikuj: true,
     cv: true,
     trenuj: level >= 2,
-    pipeline: level >= 2,
+    // Import pierwszej migawki Huntera wymaga dostępu do pustej listy.
+    pipeline: true,
   };
 
   const reasons: Partial<Record<NavSectionId, string>> = {};

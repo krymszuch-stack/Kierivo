@@ -351,7 +351,13 @@ export function resolveApplicationVault(
  */
 export function resolveApplicationJobOffer(application: JobApplication | null | undefined): JobOffer | null {
   const snapshot = application?.documentSnapshot?.jobOfferSnapshot;
-  if (!snapshot) return null;
+  if (!snapshot) {
+    const blackbox = application?.applicationBlackbox?.snapshot;
+    if (!blackbox?.job.description?.trim()) return null;
+    return {id:application?.id || '',title:blackbox.job.roleTitle || application?.position || '',
+      company:blackbox.job.companyName || application?.company || '',salary:application?.salary || '',location:'',
+      description:blackbox.job.description,rawDescription:blackbox.job.description,url:blackbox.job.canonicalUrl};
+  }
 
   const description = snapshot.description?.trim() || '';
   // Starsza migracja zapisywała placeholder „Nieznana firma” jako fakt.

@@ -1,4 +1,5 @@
 import React from 'react';
+import { resolveApplicationJobOffer } from '../../lib/applicationSnapshot';
 import {
   Building2,
   ExternalLink,
@@ -160,7 +161,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                             CV: {app.documentSnapshot.exportedCv.templateName}
                           </span>
                         )}
-                        {app.documentSnapshot?.jobOfferSnapshot.description?.trim() && (
+                        {resolveApplicationJobOffer(app)?.description?.trim() && (
                           <button
                             type="button"
                             onClick={() => onOpenCheatSheet(app)}
@@ -227,7 +228,7 @@ export const TrackerTable: React.FC<TrackerTableProps> = ({
                               CV: {app.documentSnapshot.exportedCv.templateName}
                             </span>
                           )}
-                          {app.documentSnapshot?.jobOfferSnapshot.description?.trim() && (
+                          {resolveApplicationJobOffer(app)?.description?.trim() && (
                             <button
                               type="button"
                               onClick={() => onOpenCheatSheet(app)}

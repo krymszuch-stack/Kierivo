@@ -1,3 +1,4 @@
+import { ApplicationBlackboxPanel } from './ApplicationBlackboxPanel';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useScopedAsyncOperation } from '../../hooks/useScopedAsyncOperation';
 import {
@@ -132,7 +133,9 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
     application: JobApplication;
   } | null>(null);
   const [viewingDocApp, setViewingDocApp] = useState<JobApplication | null>(null);
-  const [cheatSheetApp, setCheatSheetApp] = useState<JobApplication | null>(null);
+  const [cheatSheetAppId, setCheatSheetAppId] = useState<string | null>(null);
+  const cheatSheetApp = applications.find(application => application.id === cheatSheetAppId) ?? null;
+  const setCheatSheetApp = (application: JobApplication | null) => setCheatSheetAppId(application?.id ?? null);
 
   // Notes Drawer/Modal
   const [notesApp, setNotesApp] = useState<JobApplication | null>(null);
@@ -297,6 +300,8 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           </Button>
         }
       />
+
+      <ApplicationBlackboxPanel applications={applications} onInterviewPrep={setCheatSheetApp} />
 
       {hasUnassignedLegacyApplications && (
         <Card tone="raised" className="border-l-4 border-l-amber-500">
@@ -508,7 +513,7 @@ export const ApplicationTracker: React.FC<ApplicationTrackerProps> = ({
           isOpen
           onClose={() => setCheatSheetApp(null)}
           title={`Ściąga na rozmowę · ${cheatSheetApp.position || cheatSheetApp.company || 'oferta bez nazwy'}`}
-          description="Przygotowana na podstawie oferty i profilu zapisanych przy tej aplikacji."
+          description={cheatSheetApp.documentSnapshot?.vaultSnapshot ? "Przygotowana na podstawie zapisanej oferty i historycznego profilu." : "Przygotowana na podstawie zapisanej oferty i bieżącego profilu; historyczny wariant CV jest niedostępny."}
           size="full"
         >
           <InterviewCheatSheetView

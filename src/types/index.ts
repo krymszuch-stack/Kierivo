@@ -709,6 +709,8 @@ export interface JobApplication {
    * Opcjonalna dla aplikacji dodanych ręcznie w Pipeline.
    */
   documentSnapshot?: ApplicationDocumentSnapshot;
+  /** Lokalna, zatwierdzona pamięć odpowiedzi; nigdy dowód odbioru przez ATS. */
+  applicationBlackbox?: import('../features/tracker/applicationBlackbox').ApplicationBlackbox;
 
   /** Czas ostatniej aktualizacji rekordu (ISO 8601). */
   updatedAt?: string;
